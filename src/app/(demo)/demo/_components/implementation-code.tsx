@@ -15,26 +15,8 @@ export function ImplementationCode({ widget }: { widget: WidgetConfig }) {
 ${widget.events.map((e) => `  widget.addEventListener("${e}", (e) => console.log("${e}:", e.detail));`).join("\n")}
 </script>`;
 
-  const universalSetup = `<!-- Load SDK -->
-<script type="module" src="https://widgets.northwoods.church/embed-sdk/next-embed.es.js"></script>
-
-<!-- Initialize with token provider -->
-<script type="module">
-  import { init } from "https://widgets.northwoods.church/embed-sdk/next-embed.es.js";
-
-  init({
-    tokenProvider: {
-      get: async () => {
-        const res = await fetch("/api/next-token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wid: "${widget.slug}" })
-        });
-        return (await res.json()).token;
-      }
-    }
-  });
-</script>`;
+  const universalSetup = `<!-- Load MPNext Embed SDK (auto-initializes) -->
+<script type="module" src="https://your-host.com/embed-sdk/next-embed.es.js"></script>`;
 
   async function handleCopyWidget() {
     await navigator.clipboard.writeText(widgetCode);

@@ -27,9 +27,9 @@ ministry-platform/
 ├── provider.ts                 # Main provider class
 ├── helper.ts                   # Public API helper
 ├── auth/                       # Authentication
-│   ├── auth-provider.ts        # NextAuth provider
 │   ├── client-credentials.ts   # OAuth client credentials
-│   └── types.ts                # Auth-related types
+│   ├── types.ts                # Auth-related types
+│   └── index.ts                # Barrel export
 ├── services/                   # Service layer
 │   ├── table.service.ts
 │   ├── procedure.service.ts
@@ -87,7 +87,7 @@ MINISTRY_PLATFORM_CLIENT_SECRET=your_client_secret
 - ✅ Automatic OAuth2 token management
 - ✅ Service-oriented architecture
 - ✅ Zod schema validation
-- ✅ NextAuth integration
+- ✅ Better Auth integration
 - ✅ File upload/download support
 - ✅ Comprehensive error handling
 - ✅ Clean, standards-compliant code organization
@@ -135,6 +135,35 @@ mp.refreshMetadata()
 mp.getDomainInfo()
 mp.getGlobalFilters(params?)
 ```
+
+## MP Widgets Dev Setup
+
+The MP Widgets script (`MPWidgets.js`) enforces a server-side allowlist of permitted origins. To load widgets from your local dev servers, you must add `localhost` entries to the MP Web Server configuration.
+
+### 1. Edit the customer config
+
+On the MP Web Server, open:
+
+```
+[MPWebRoot]/widgets/wwwroot/_DomainData/saasdomains/customer.config
+```
+
+Add these two entries inside the `<appSettings>` section:
+
+```xml
+<add key="localhost3000" value="http://localhost:3000" />
+<add key="localhost5173" value="http://localhost:5173" />
+```
+
+### 2. Recycle the Widgets application pool
+
+Open **IIS Manager**, navigate to **Application Pools**, right-click the **Widgets** app pool for your MP instance, and select **Recycle...**
+
+![Recycle Widgets app pool in IIS](iis-recycle-widgets-app-pool.png)
+
+After recycling, the MP Widgets script will accept requests from your local dev origins.
+
+---
 
 ## Best Practices
 

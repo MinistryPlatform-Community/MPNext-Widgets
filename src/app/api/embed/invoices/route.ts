@@ -5,7 +5,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireWidgetAuth, getCorsHeaders, resolveRequestOrigin, buildOptionsResponse, buildFallbackCorsHeaders } from "@/lib/embed/auth";
-import { getTenantConfig } from "@/lib/embed/config";
 import { InvoiceService } from "@/services/invoiceService";
 
 export async function GET(req: NextRequest) {
@@ -15,10 +14,9 @@ export async function GET(req: NextRequest) {
     const claims = await requireWidgetAuth(req, { widget: ["invoices", "user-menu"] });
 
     if (claims.sub === "public") {
-      const tenant = await getTenantConfig(claims.tid);
       return NextResponse.json(
         { error: "Authentication required. Please sign in." },
-        { status: 401, headers: getCorsHeaders(origin, tenant?.allowedOrigins || []) }
+        { status: 401, headers: getCorsHeaders(origin) }
       );
     }
 
@@ -36,8 +34,7 @@ export async function GET(req: NextRequest) {
       claims.mpAccessToken || undefined
     );
 
-    const tenant = await getTenantConfig(claims.tid);
-    const headers = getCorsHeaders(origin, tenant?.allowedOrigins || []);
+    const headers = getCorsHeaders(origin);
 
     return NextResponse.json(
       { invoices },

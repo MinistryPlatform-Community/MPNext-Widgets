@@ -9,16 +9,12 @@ const MP_AUTH_TOKEN_KEY = "mpp-widgets_AuthToken";
 
 interface WidgetDemoProps {
   widget: WidgetConfig;
-  initToken: string;
-  tenantId: string;
   apiHost: string;
   mpBaseUrl: string;
 }
 
 export function WidgetDemo({
   widget,
-  initToken,
-  tenantId,
   apiHost,
   mpBaseUrl,
 }: WidgetDemoProps) {
@@ -33,18 +29,6 @@ export function WidgetDemo({
     });
     return defaults;
   });
-
-  // Build session body for token requests
-  const buildSessionBody = useCallback(() => {
-    const body: Record<string, string> = {
-      tid: tenantId,
-      wid: widget.slug,
-      initToken,
-    };
-    const mpToken = localStorage.getItem(MP_AUTH_TOKEN_KEY);
-    if (mpToken) body.mpUserToken = mpToken;
-    return body;
-  }, [tenantId, widget.slug, initToken]);
 
   // One-shot initialization — mirrors how Vite demos work
   useEffect(() => {
@@ -70,42 +54,8 @@ export function WidgetDemo({
         document.head.appendChild(script);
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sdk: any = await new Function('return import("/embed-sdk/next-embed.es.js")')();
-
-      sdk.init({
-        tokenProvider: {
-          get: async () => {
-            log("auth", "Fetching token...");
-            const body = buildSessionBody();
-            log("auth", `mpUserToken present: ${!!body.mpUserToken}`);
-            const res = await fetch(`${apiHost}/api/embed/session`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(body),
-            });
-            if (!res.ok) {
-              const err = await res.json();
-              throw new Error(err.error || "Token fetch failed");
-            }
-            const data = await res.json();
-            log("auth", `Token received (expires in ${data.expiresIn}s)`);
-            return data.token;
-          },
-          refresh: async () => {
-            log("auth", "Refreshing token...");
-            const res = await fetch(`${apiHost}/api/embed/session`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(buildSessionBody()),
-            });
-            const data = await res.json();
-            log("auth", "Token refreshed");
-            return data.token;
-          },
-        },
-      });
-      log("sdk", "SDK initialized");
+      // SDK auto-initializes — detects its host and wires up the token provider
+      log("sdk", "SDK loaded (auto-initialized)");
 
       // 3. Build the demo HTML — same structure as Vite demos
       let html = "";
@@ -178,7 +128,7 @@ export function WidgetDemo({
     bootstrap().catch((err) => {
       log("error", `Bootstrap failed: ${err.message}`);
     });
-  }, [widget, apiHost, mpBaseUrl, buildSessionBody, log]);
+  }, [widget, apiHost, mpBaseUrl, log]);
 
   // Tab switching — rebuild widget with new attributes
   const handleTabSwitch = useCallback((tabIndex: number) => {

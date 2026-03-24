@@ -227,26 +227,8 @@
     <div class="quickstart" style="border:2px dashed #F1BE48;background:#fffbeb;">
       <h2 style="margin-bottom:4px;">Universal Setup</h2>
       <p style="margin-bottom:12px;font-size:14px;color:#92400e;font-weight:500;">Add this ONCE to your site (e.g. in your header or layout template). All widgets share this setup.</p>
-      <pre><code>&lt;!-- Load SDK --&gt;
-&lt;script type="module" src="https://your-host.com/embed-sdk/next-embed.es.js"&gt;&lt;/script&gt;
-
-&lt;!-- Initialize with token provider --&gt;
-&lt;script type="module"&gt;
-  import { init } from "https://your-host.com/embed-sdk/next-embed.es.js";
-
-  init({
-    tokenProvider: {
-      get: async () =&gt; {
-        const res = await fetch("/api/next-token");
-        return (await res.json()).token;
-      },
-      refresh: async () =&gt; {
-        const res = await fetch("/api/next-token?refresh=1");
-        return (await res.json()).token;
-      }
-    }
-  });
-&lt;/script&gt;</code></pre>
+      <pre><code>&lt;!-- Load MPNext Embed SDK (auto-initializes) --&gt;
+&lt;script type="module" src="https://your-host.com/embed-sdk/next-embed.es.js"&gt;&lt;/script&gt;</code></pre>
     </div>
   </div>
 </body>

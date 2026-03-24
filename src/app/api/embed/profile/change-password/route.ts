@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWidgetAuth, getCorsHeaders, resolveRequestOrigin, buildOptionsResponse, buildFallbackCorsHeaders } from "@/lib/embed/auth";
-import { getTenantConfig } from "@/lib/embed/config";
 import { ChangePasswordSchema } from "@mpnext/types";
 
 function corsHeaders(origin: string): HeadersInit {
@@ -14,10 +13,7 @@ export async function POST(req: NextRequest) {
   try {
     const claims = await requireWidgetAuth(req, { widget: ["profile", "user-menu"] });
 
-    const tenant = await getTenantConfig(claims.tid);
-    const tenantHeaders = tenant
-      ? getCorsHeaders(origin, tenant.allowedOrigins)
-      : headers;
+    const tenantHeaders = getCorsHeaders(origin);
 
     if (claims.sub === "public") {
       return NextResponse.json(

@@ -5,7 +5,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireWidgetAuth, getCorsHeaders, resolveRequestOrigin, buildOptionsResponse, buildFallbackCorsHeaders } from "@/lib/embed/auth";
-import { getTenantConfig } from "@/lib/embed/config";
 import { FullCalendarService } from "@/services/fullCalendarService";
 
 export async function GET(req: NextRequest) {
@@ -71,9 +70,8 @@ export async function GET(req: NextRequest) {
     const service = await FullCalendarService.getInstance();
     const result = await service.getEvents(start, end, congregationId, userGuid);
 
-    const tenant = await getTenantConfig(claims.tid);
     const headers: HeadersInit = {
-      ...getCorsHeaders(origin, tenant?.allowedOrigins || []),
+      ...getCorsHeaders(origin),
       "Cache-Control": "public, max-age=300",
     };
 

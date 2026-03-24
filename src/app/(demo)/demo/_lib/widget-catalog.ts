@@ -37,6 +37,10 @@ export interface WidgetConfig {
 
 export const RECAPTCHA_SITE_KEY = "6LeMwXQsAAAAALCfbMktsSEmklS8Bj52F89TA58w";
 
+/** MP host without /ministryplatformapi suffix, for use in example snippets */
+const mpHost = (process.env.MINISTRY_PLATFORM_BASE_URL || "https://my.northwoods.church")
+  .replace(/\/ministryplatformapi\/?$/, "");
+
 export const widgetCatalog: WidgetConfig[] = [
   // ─── Authentication ───────────────────────────────────────────────
   {
@@ -49,12 +53,12 @@ export const widgetCatalog: WidgetConfig[] = [
     needsMpWidgets: true,
     attributes: {},
     events: ["userLogout", "accountModalOpen", "accountModalClose"],
-    implementationCode: `<next-user-menu mp-base-url="https://my.northwoods.church"></next-user-menu>
+    implementationCode: `<next-user-menu mp-base-url="${mpHost}"></next-user-menu>
 
 <!-- With post-logout redirect -->
 <next-user-menu
-  mp-base-url="https://my.northwoods.church"
-  post-logout-redirect-uri="https://northwoods.church"
+  mp-base-url="${mpHost}"
+  post-logout-redirect-uri="${mpHost}"
 ></next-user-menu>
 
 <!-- Deep-link to profile tab -->

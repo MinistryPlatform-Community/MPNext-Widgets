@@ -1,51 +1,51 @@
 /**
  * Session endpoint for issuing short-lived JWT tokens to embed widgets
  * POST /api/embed/session
+ *
+ * Authorization is based on the request origin matching EMBED_ALLOWED_ORIGINS.
+ * No init token or shared secret is required.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { validateInitToken } from "@/lib/embed/config";
+import { allowedOrigins } from "@/lib/embed/config";
 import { createWidgetToken } from "@/lib/embed/jwt";
-import { getCorsHeaders, resolveRequestOrigin, isOriginAllowed, buildOptionsResponse, buildFallbackCorsHeaders } from "@/lib/embed/auth";
+import {
+  getCorsHeaders,
+  resolveRequestOrigin,
+  isOriginAllowed,
+  buildOptionsResponse,
+  buildFallbackCorsHeaders,
+} from "@/lib/embed/auth";
 import { SessionRequest, SessionResponse } from "@/lib/embed/types";
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 
 export async function POST(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
-
   const fallbackCors = buildFallbackCorsHeaders(origin);
 
   try {
     const body: SessionRequest = await req.json();
-    const { tid, wid, initToken, mpUserToken } = body;
+    const { wid, mpUserToken } = body;
 
-    if (!tid || !wid || !initToken) {
+    if (!wid) {
       return NextResponse.json(
-        { error: "Missing required fields: tid, wid, initToken" },
-        { status: 400, headers: fallbackCors }
+        { error: "Missing required field: wid" },
+        { status: 400, headers: fallbackCors },
       );
     }
 
-    // Validate init token and get tenant config
-    const tenant = await validateInitToken(tid, initToken);
-    if (!tenant) {
-      return NextResponse.json(
-        { error: "Invalid tenant or init token" },
-        { status: 403, headers: fallbackCors }
-      );
-    }
-
-    const corsHeaders = getCorsHeaders(origin, tenant.allowedOrigins);
-
-    // Check if origin is allowed
-    const originAllowed = isOriginAllowed(origin, tenant.allowedOrigins);
+    // Validate origin against allowlist
+    const originAllowed = isOriginAllowed(origin, allowedOrigins);
 
     if (!originAllowed && process.env.NODE_ENV !== "development") {
       return NextResponse.json(
-        { error: `Origin ${origin} not allowed for tenant ${tid}` },
-        { status: 403, headers: fallbackCors }
+        { error: `Origin ${origin} not allowed` },
+        { status: 403, headers: fallbackCors },
       );
     }
+
+    const corsHeaders = getCorsHeaders(origin);
 
     // Determine user identity and MP access token
     let sub = "public";
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
           `${mpBaseUrl}/oauth/connect/userinfo`,
           {
             headers: { Authorization: `Bearer ${mpUserToken}` },
-          }
+          },
         );
         if (!userinfoRes.ok) {
           throw new Error(`MP userinfo returned ${userinfoRes.status}`);
@@ -71,7 +71,6 @@ export async function POST(req: NextRequest) {
         if (userinfo.sub) {
           sub = userinfo.sub;
           mpAccessToken = mpUserToken;
-          console.log("MP Widget Login: resolved user GUID:", sub);
         } else {
           console.warn("MP userinfo response missing sub claim");
         }
@@ -79,25 +78,25 @@ export async function POST(req: NextRequest) {
         console.error("Failed to verify mpUserToken:", error);
         return NextResponse.json(
           { error: "Invalid MP user token. Please sign in again." },
-          { status: 403, headers: corsHeaders }
+          { status: 403, headers: corsHeaders },
         );
       }
     } else {
-      // Fallback: NextAuth session (internal app) or public
-      const session = await auth();
-      if (session?.accessToken) {
-        mpAccessToken = session.accessToken;
+      // Fallback: BetterAuth session (internal app) or public
+      const session = await auth.api.getSession({
+        headers: await headers(),
+      });
+      if (session?.session?.accessToken) {
+        mpAccessToken = session.session.accessToken;
       } else {
-        console.warn("No user session found, using empty MP token");
         mpAccessToken = process.env.MINISTRY_PLATFORM_SERVICE_TOKEN || "";
       }
-      sub = session?.user?.id || "public";
+      sub = session?.user?.userGuid || "public";
     }
 
     // Create short-lived JWT (5 minutes)
     const token = await createWidgetToken({
       sub,
-      tid,
       wid,
       mpAccessToken,
       origin,
@@ -105,7 +104,7 @@ export async function POST(req: NextRequest) {
 
     const response: SessionResponse = {
       token,
-      expiresIn: 300, // 5 minutes in seconds
+      expiresIn: 300,
     };
 
     return NextResponse.json(response, {
@@ -115,8 +114,11 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Error creating session:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal server error" },
-      { status: 500, headers: fallbackCors }
+      {
+        error:
+          error instanceof Error ? error.message : "Internal server error",
+      },
+      { status: 500, headers: fallbackCors },
     );
   }
 }

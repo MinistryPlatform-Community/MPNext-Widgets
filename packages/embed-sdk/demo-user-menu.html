@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MPNext User Menu Widget - Demo</title>
   <!-- MP Widgets base script (provides mpp-user-login and other widgets) -->
-  <script id="MPWidgets" src="https://my.northwoods.church/widgets/dist/MPWidgets.js"></script>
+  <script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"></script>
   <style>
     body {
       font-family: ui-sans-serif, system-ui, sans-serif;
@@ -83,10 +83,10 @@
 
     <!-- Simulated site header -->
     <div class="demo-header">
-      <span class="demo-header-title">northwoods.church</span>
+      <span class="demo-header-title">Your Site</span>
       <next-user-menu
-        mp-base-url="https://my.northwoods.church"
-        api-host="http://localhost:3000"
+        mp-base-url="__MP_BASE_URL__"
+        api-host="__API_HOST__"
       ></next-user-menu>
     </div>
   </div>
@@ -117,8 +117,8 @@
     <h3>Widget Code <span style="font-weight:normal;font-size:13px;color:#474747;">— add this to any page</span></h3>
     <pre><code>&lt;!-- Place in your header --&gt;
 &lt;next-user-menu
-  mp-base-url="https://my.northwoods.church"
-  post-logout-redirect-uri="https://northwoods.church"
+  mp-base-url="__MP_BASE_URL__"
+  post-logout-redirect-uri="[YourWebUrl]"
 &gt;&lt;/next-user-menu&gt;
 
 &lt;!-- When unauthenticated: renders &lt;mpp-user-login&gt; --&gt;
@@ -128,53 +128,16 @@
 
   <div class="demo-container" style="border:2px dashed #F1BE48;background:#fffbeb;">
     <h3>Universal Setup <span style="font-weight:normal;font-size:13px;color:#92400e;">— add ONCE to your site (e.g. header or layout template)</span></h3>
-    <pre><code>&lt;!-- 1. Load MP Widgets (provides mpp-user-login) --&gt;
-&lt;script id="MPWidgets" src="https://my.northwoods.church/widgets/dist/MPWidgets.js"&gt;&lt;/script&gt;
+    <pre><code>&lt;!-- Load MP Widgets (provides mpp-user-login) --&gt;
+&lt;script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"&gt;&lt;/script&gt;
 
-&lt;!-- 2. Load MPNext Embed SDK --&gt;
-&lt;script type="module" src="./dist/next-embed.es.js"&gt;&lt;/script&gt;</code></pre>
+&lt;!-- Load MPNext Embed SDK (auto-initializes) --&gt;
+&lt;script type="module" src="https://your-host.com/embed-sdk/next-embed.es.js"&gt;&lt;/script&gt;</code></pre>
   </div>
 
   <!-- Load SDK from source (Vite dev) -->
   <script type="module">
-    import { init } from "./src/index.ts";
-
-    function buildSessionBody() {
-      const body = {
-        tid: "northwoods-dev",
-        wid: "user-menu",
-        initToken: "northwoods-dev_dev-secret"
-      };
-      const mpToken = localStorage.getItem("mpp-widgets_AuthToken");
-      if (mpToken) {
-        body.mpUserToken = mpToken;
-      }
-      return body;
-    }
-
-    async function fetchToken() {
-      const body = buildSessionBody();
-      if (!body.mpUserToken) return "";
-      try {
-        const res = await fetch("http://localhost:3000/api/embed/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
-        });
-        if (!res.ok) return "";
-        const data = await res.json();
-        return data.token;
-      } catch {
-        return "";
-      }
-    }
-
-    init({
-      tokenProvider: {
-        get: fetchToken,
-        refresh: fetchToken
-      }
-    });
+    import "./src/index.ts";
 
     const eventLog = document.getElementById("event-log");
     function logEvent(type, detail) {

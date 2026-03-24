@@ -1,4 +1,5 @@
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 import { SessionProvider } from "@/components/session-provider";
 import { TokenBridge } from "@/components/token-bridge";
 import Script from "next/script";
@@ -8,7 +9,7 @@ export default async function AppLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth();
+  const session = await auth.api.getSession({ headers: await headers() });
   const mpBaseUrl = process.env.MINISTRY_PLATFORM_BASE_URL!;
 
   return (

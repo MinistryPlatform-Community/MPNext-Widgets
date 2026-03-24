@@ -5,69 +5,61 @@
 export abstract class MPNextWidget extends HTMLElement {
   protected root: ShadowRoot;
   protected apiHost: string;
-  protected tenantId: string;
   protected tokenProvider: () => Promise<string>;
 
   constructor() {
     super();
     this.root = this.attachShadow({ mode: "open" });
 
-    // Read config from <script> tag or element attributes
-    const scriptTag = document.querySelector<HTMLScriptElement>(
-      "script[data-api-host]"
-    );
+    // Determine API host: element attribute → script tag origin → empty
     this.apiHost =
       this.getAttribute("api-host") ||
-      scriptTag?.dataset.apiHost ||
+      this.detectApiHostFromScript() ||
       "";
-    this.tenantId =
-      this.getAttribute("tenant") || scriptTag?.dataset.tenant || "";
 
-    console.log("🔧 Widget constructor - checking for token provider...");
-    console.log("window.__nextTokenProvider exists?", !!(window as any).__nextTokenProvider);
-    console.log("window.__nextTokenProvider.get exists?", !!(window as any).__nextTokenProvider?.get);
-
-    // Token provider with refresh support
+    // Token provider — resolved lazily via waitForTokenProvider()
     this.tokenProvider =
-      (window as any).__nextTokenProvider?.get ||
+      window.__nextTokenProvider?.get ||
       (async () => {
-        console.warn("⚠️ No token provider initialized. Call init() before using the widget.");
+        console.warn("No token provider initialized.");
         return this.getAttribute("token") || "";
       });
   }
 
   /**
+   * Derive the API host from the SDK script's own URL.
+   */
+  private detectApiHostFromScript(): string {
+    const scripts = document.querySelectorAll<HTMLScriptElement>(
+      'script[src*="next-embed"]',
+    );
+    for (const s of scripts) {
+      try {
+        return new URL(s.src).origin;
+      } catch { /* continue */ }
+    }
+    return "";
+  }
+
+  /**
    * Fetch wrapper with automatic token injection and refresh on 401
    */
-  protected async fetch(path: string, init?: RequestInit): Promise<Response> {
-    // Wait for token provider to be ready (max 5 seconds)
+  protected async fetch(
+    path: string,
+    init?: RequestInit,
+  ): Promise<Response> {
     await this.waitForTokenProvider();
 
-    let token: string;
-
-    try {
-      token = await this.tokenProvider();
-    } catch (error) {
-      console.error("❌ Error getting token from tokenProvider:", error);
-      throw new Error(`Failed to get authentication token: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
+    const token = await this.tokenProvider();
 
     if (!token) {
-      console.error("❌ No token received from tokenProvider");
-      console.error("Make sure you called init() with a tokenProvider before mounting the widget");
-      throw new Error("Authentication token not available. Did you call init()?");
+      throw new Error("Authentication token not available.");
     }
-
-    console.log("🔑 Token received:", token.substring(0, 20) + "...");
 
     const headers: Record<string, string> = {
       ...(init?.headers as Record<string, string>),
       Authorization: `Bearer ${token}`,
     };
-
-    if (this.tenantId) {
-      headers["X-Tenant-ID"] = this.tenantId;
-    }
 
     const res = await fetch(`${this.apiHost}${path}`, {
       ...init,
@@ -77,14 +69,13 @@ export abstract class MPNextWidget extends HTMLElement {
     });
 
     // Handle token refresh on 401
-    if (res.status === 401 && (window as any).__nextTokenProvider?.refresh) {
-      const newToken = await (window as any).__nextTokenProvider.refresh();
+    if (res.status === 401 && window.__nextTokenProvider?.refresh) {
+      const newToken = await window.__nextTokenProvider.refresh();
       return fetch(`${this.apiHost}${path}`, {
         ...init,
         headers: {
           ...(init?.headers as Record<string, string>),
           Authorization: `Bearer ${newToken}`,
-          "X-Tenant-ID": this.tenantId,
         },
         credentials: "omit",
         mode: "cors",
@@ -107,8 +98,7 @@ export abstract class MPNextWidget extends HTMLElement {
         const sheet = new CSSStyleSheet();
         sheet.replaceSync(css);
         this.root.adoptedStyleSheets = [sheet];
-      } catch (e) {
-        // Fallback for older browsers
+      } catch {
         this.injectStyleTag(css);
       }
     } else {
@@ -116,9 +106,6 @@ export abstract class MPNextWidget extends HTMLElement {
     }
   }
 
-  /**
-   * Fallback style injection via <style> tag
-   */
   private injectStyleTag(css: string): void {
     const style = document.createElement("style");
     style.textContent = css;
@@ -126,60 +113,46 @@ export abstract class MPNextWidget extends HTMLElement {
   }
 
   /**
-   * Wait for token provider to be initialized
+   * Wait for token provider to be initialized (max 5 seconds)
    */
   private async waitForTokenProvider(): Promise<void> {
-    // Wait for SDK ready promise first (if it exists)
-    if ((window as any).__nextSDKReady) {
-      console.log("⏳ Waiting for SDK initialization...");
-      await (window as any).__nextSDKReady;
-      console.log("✅ SDK initialization complete");
+    if (window.__nextSDKReady) {
+      await window.__nextSDKReady;
     }
 
-    // Double-check token provider is available
-    const maxWaitTime = 5000; // 5 seconds
-    const checkInterval = 100; // Check every 100ms
-    const startTime = Date.now();
+    const maxWait = 5000;
+    const interval = 100;
+    const start = Date.now();
 
-    while (!(window as any).__nextTokenProvider) {
-      if (Date.now() - startTime > maxWaitTime) {
-        throw new Error("Token provider not initialized after 5 seconds. Make sure init() is called.");
+    while (!window.__nextTokenProvider) {
+      if (Date.now() - start > maxWait) {
+        throw new Error(
+          "Token provider not initialized after 5 seconds.",
+        );
       }
-      await new Promise(resolve => setTimeout(resolve, checkInterval));
+      await new Promise((r) => setTimeout(r, interval));
     }
 
-    // Update token provider reference
-    this.tokenProvider = (window as any).__nextTokenProvider.get;
-    console.log("✅ Token provider ready");
+    this.tokenProvider = window.__nextTokenProvider.get;
   }
 
   /**
    * Emit custom event from widget
    */
-  protected emit(eventName: string, detail?: any): void {
+  protected emit(eventName: string, detail?: unknown): void {
     this.dispatchEvent(
       new CustomEvent(eventName, {
         detail,
         bubbles: true,
         composed: true,
-      })
+      }),
     );
   }
 
-  /**
-   * Abstract method to be implemented by child widgets
-   */
   abstract render(): void;
-
-  /**
-   * Lifecycle hook - called when element is added to DOM
-   */
   abstract connectedCallback(): void;
 }
 
-/**
- * Global token provider interface
- */
 declare global {
   interface Window {
     __nextTokenProvider?: {

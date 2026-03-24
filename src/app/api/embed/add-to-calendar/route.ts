@@ -6,7 +6,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireWidgetAuth, getCorsHeaders, resolveRequestOrigin, buildOptionsResponse, buildFallbackCorsHeaders } from "@/lib/embed/auth";
-import { getTenantConfig } from "@/lib/embed/config";
 import { AddToCalendarService } from "@/services/addToCalendarService";
 
 export async function GET(req: NextRequest) {
@@ -36,9 +35,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const tenant = await getTenantConfig(claims.tid);
     const headers = {
-      ...getCorsHeaders(origin, tenant?.allowedOrigins || []),
+      ...getCorsHeaders(origin),
       "Cache-Control": "public, max-age=300",
     };
 

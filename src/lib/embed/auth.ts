@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWidgetToken } from "./jwt";
-import { getTenantConfig } from "./config";
+import { allowedOrigins } from "./config";
 import { WidgetClaims } from "./types";
 
 export interface AuthOptions {
@@ -26,7 +26,7 @@ export function resolveRequestOrigin(req: NextRequest): string {
   if (referer) {
     try {
       const url = new URL(referer);
-      return url.origin; // e.g. "https://widgets.northwoods.church"
+      return url.origin;
     } catch {
       // malformed referer — ignore
     }
@@ -40,26 +40,23 @@ export function resolveRequestOrigin(req: NextRequest): string {
  */
 export async function requireWidgetAuth(
   req: NextRequest,
-  options: AuthOptions
+  options: AuthOptions,
 ): Promise<WidgetClaims> {
   const { widget } = options;
 
   // Extract token from Authorization header
   const authHeader = req.headers.get("authorization");
   if (!authHeader) {
-    console.error("Missing Authorization header");
     throw new Error("Missing Authorization header");
   }
 
   const parts = authHeader.split(" ");
   if (parts.length !== 2 || parts[0] !== "Bearer") {
-    console.error("Invalid Authorization header format:", authHeader);
     throw new Error("Invalid Authorization header format");
   }
 
   const token = parts[1];
   if (!token || token.trim() === "") {
-    console.error("Authorization token is empty");
     throw new Error("Authorization token is empty");
   }
 
@@ -68,32 +65,31 @@ export async function requireWidgetAuth(
   try {
     claims = await verifyWidgetToken(token);
   } catch (error) {
-    throw new Error(`Token verification failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+    throw new Error(
+      `Token verification failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
   }
 
   // Validate widget type
   const allowedWidgets = Array.isArray(widget) ? widget : [widget];
   if (!allowedWidgets.includes(claims.wid)) {
-    throw new Error(`Invalid widget: expected ${allowedWidgets.join(" or ")}, got ${claims.wid}`);
+    throw new Error(
+      `Invalid widget: expected ${allowedWidgets.join(" or ")}, got ${claims.wid}`,
+    );
   }
 
-  // Validate origin against tenant allowlist
+  // Validate origin against allowlist
   const origin = resolveRequestOrigin(req);
-  const tenant = await getTenantConfig(claims.tid);
+  const originOk = isOriginAllowed(origin, allowedOrigins);
 
-  if (!tenant) {
-    throw new Error(`Tenant not found: ${claims.tid}`);
+  if (!originOk && process.env.NODE_ENV !== "development") {
+    throw new Error(`Origin ${origin} not allowed`);
   }
 
-  // Check if origin is allowed
-  const originAllowed = isOriginAllowed(origin, tenant.allowedOrigins);
-
-  if (!originAllowed && process.env.NODE_ENV !== "development") {
-    throw new Error(`Origin ${origin} not allowed for tenant ${claims.tid}`);
-  }
-
-  if (!originAllowed && process.env.NODE_ENV === "development") {
-    console.warn(`⚠️ DEV MODE: Origin ${origin} not in allowlist, allowing anyway`);
+  if (!originOk && process.env.NODE_ENV === "development") {
+    console.warn(
+      `⚠️ DEV MODE: Origin ${origin} not in allowlist, allowing anyway`,
+    );
   }
 
   return claims;
@@ -101,15 +97,13 @@ export async function requireWidgetAuth(
 
 /**
  * Shared OPTIONS preflight response for all embed API routes.
- * Echoes the resolved origin back (never falls back to "*").
- * If origin is unknown, omits the header so the browser blocks the request.
  */
 export function buildOptionsResponse(req: NextRequest): NextResponse {
   const origin = resolveRequestOrigin(req);
   const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers":
-      "Authorization, Content-Type, Idempotency-Key, X-Tenant-ID",
+      "Authorization, Content-Type, Idempotency-Key",
     "Access-Control-Max-Age": "86400",
   };
 
@@ -122,7 +116,7 @@ export function buildOptionsResponse(req: NextRequest): NextResponse {
 }
 
 /**
- * Fallback CORS headers for error responses issued before tenant context
+ * Fallback CORS headers for error responses issued before auth context
  * is available. Returns empty object when origin is unknown (no wildcard).
  */
 export function buildFallbackCorsHeaders(origin: string): HeadersInit {
@@ -130,8 +124,7 @@ export function buildFallbackCorsHeaders(origin: string): HeadersInit {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers":
-      "Authorization, Content-Type, Idempotency-Key, X-Tenant-ID",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, Idempotency-Key",
   };
 }
 
@@ -139,9 +132,12 @@ export function buildFallbackCorsHeaders(origin: string): HeadersInit {
  * Check whether an origin is present in the allowlist.
  * Supports exact matches and wildcard subdomains (e.g. *.example.com).
  */
-export function isOriginAllowed(origin: string, allowedOrigins: string[]): boolean {
+export function isOriginAllowed(
+  origin: string,
+  origins: string[],
+): boolean {
   if (!origin) return false;
-  return allowedOrigins.some((allowed) => {
+  return origins.some((allowed) => {
     if (allowed === origin) return true;
     if (allowed.startsWith("*.")) {
       const domain = allowed.slice(2);
@@ -154,17 +150,20 @@ export function isOriginAllowed(origin: string, allowedOrigins: string[]): boole
 /**
  * Get CORS headers for the response
  */
-export function getCorsHeaders(origin: string, allowedOrigins: string[]): HeadersInit {
-  if (!isOriginAllowed(origin, allowedOrigins) && process.env.NODE_ENV !== "development") {
+export function getCorsHeaders(origin: string): HeadersInit {
+  if (
+    !isOriginAllowed(origin, allowedOrigins) &&
+    process.env.NODE_ENV !== "development"
+  ) {
     return {};
   }
 
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type, Idempotency-Key, X-Tenant-ID",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, Idempotency-Key",
     "Access-Control-Max-Age": "86400",
     "Access-Control-Allow-Credentials": "false",
-    "Vary": "Origin",
+    Vary: "Origin",
   };
 }

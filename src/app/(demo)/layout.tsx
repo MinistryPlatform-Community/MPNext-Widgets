@@ -1,4 +1,5 @@
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { checkDemoAccess } from "./demo/_lib/check-demo-access";
 import { AccessDenied } from "./demo/_components/access-denied";
@@ -14,13 +15,13 @@ export default async function DemoLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth();
+  const session = await auth.api.getSession({ headers: await headers() });
 
-  if (!session?.user?.id) {
+  if (!session?.user?.userGuid) {
     redirect("/signin?callbackUrl=/demo");
   }
 
-  const hasAccess = await checkDemoAccess(session.user.id);
+  const hasAccess = await checkDemoAccess(session.user.userGuid as string);
 
   if (!hasAccess) {
     return (

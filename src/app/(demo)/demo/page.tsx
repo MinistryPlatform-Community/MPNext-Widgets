@@ -1,4 +1,5 @@
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 import { getWidgetsByCategory, type WidgetCategory } from "./_lib/widget-catalog";
 import { DemoCard } from "./_components/demo-card";
 
@@ -10,7 +11,7 @@ const categoryOrder: WidgetCategory[] = [
 ];
 
 export default async function DemoCatalogPage() {
-  const session = await auth();
+  const session = await auth.api.getSession({ headers: await headers() });
   const grouped = getWidgetsByCategory();
 
   return (
@@ -20,7 +21,7 @@ export default async function DemoCatalogPage() {
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-500">{session?.user?.name}</span>
           <a
-            href="/api/auth/signout"
+            href="/api/auth/sign-out"
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
           >
             Sign Out

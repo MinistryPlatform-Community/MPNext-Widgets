@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth, signOut } from "@/auth";
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  const idToken = session?.idToken;
+  const hdrs = await headers();
+  const session = await auth.api.getSession({ headers: hdrs });
+  const idToken = session?.session?.idToken;
 
   const body = await req.json().catch(() => ({})) as { postLogoutRedirectUri?: string };
   const postLogoutRedirectUri =
-    body.postLogoutRedirectUri || `${process.env.NEXTAUTH_URL}/signin`;
+    body.postLogoutRedirectUri || `${process.env.BETTER_AUTH_URL || process.env.NEXTAUTH_URL}/signin`;
 
-  await signOut({ redirect: false });
+  await auth.api.signOut({ headers: hdrs });
 
   const baseUrl = process.env.MINISTRY_PLATFORM_BASE_URL!;
   const endSessionUrl = new URL(`${baseUrl}/oauth/connect/endsession`);

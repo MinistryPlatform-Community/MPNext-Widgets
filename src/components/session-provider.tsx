@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import type { Session } from 'next-auth';
+import type { Session } from '@/lib/auth';
 
 const SessionContext = createContext<Session | null>(null);
 
@@ -12,7 +12,6 @@ export function SessionProvider({
   children: React.ReactNode;
   session: Session | null;
 }) {
-  console.log('SessionProvider session: ', session);
   return (
     <SessionContext.Provider value={session}>
       {children}

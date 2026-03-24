@@ -203,13 +203,13 @@
   <!-- Main calendar widget -->
   <div class="demo-container widget-container">
     <p class="section-label">Interactive Calendar</p>
-    <next-full-calendar id="main-calendar" api-host="http://localhost:3000"></next-full-calendar>
+    <next-full-calendar id="main-calendar" api-host="__API_HOST__"></next-full-calendar>
   </div>
 
   <!-- Locked cards view example -->
   <div class="demo-container widget-container">
     <p class="section-label">Locked Cards View (no toolbar)</p>
-    <next-full-calendar api-host="http://localhost:3000" view="cards" show-toolbar="false"></next-full-calendar>
+    <next-full-calendar api-host="__API_HOST__" view="cards" show-toolbar="false"></next-full-calendar>
   </div>
 
   <div class="demo-container">
@@ -250,42 +250,14 @@
 
   <div class="demo-container" style="border:2px dashed #F1BE48;background:#fffbeb;">
     <h3>Universal Setup <span style="font-weight:normal;font-size:13px;color:#92400e;">— add ONCE to your site (e.g. header or layout template)</span></h3>
-    <pre><code>&lt;!-- Load SDK --&gt;
-&lt;script type="module"
-        src="https://cdn.northwoods.com/embed-sdk@1.0.0/next-embed.es.js"
-        data-api-host="https://api.northwoods.com"&gt;
-&lt;/script&gt;
-
-&lt;!-- Initialize with token provider --&gt;
-&lt;script type="module"&gt;
-  import { init } from "https://cdn.northwoods.com/embed-sdk@1.0.0/next-embed.es.js";
-
-  init({
-    tokenProvider: {
-      get: async () =&gt; {
-        const res = await fetch("/api/next-token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wid: "full-calendar" })
-        });
-        return (await res.json()).token;
-      },
-      refresh: async () =&gt; {
-        const res = await fetch("/api/next-token?refresh=1", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wid: "full-calendar" })
-        });
-        return (await res.json()).token;
-      }
-    }
-  });
-&lt;/script&gt;</code></pre>
+    <pre><code>&lt;!-- Load MPNext Embed SDK (auto-initializes) --&gt;
+&lt;script type="module" src="https://your-host.com/embed-sdk/next-embed.es.js"&gt;&lt;/script&gt;</code></pre>
   </div>
 
   <!-- Load the SDK from source (development mode) -->
   <script type="module">
-    import { init } from "./src/index.ts";
+    import "./src/index.ts";
+    // SDK auto-initializes — no init() call needed
 
     const statusEl = document.getElementById("status");
     const eventLog = document.getElementById("event-log");
@@ -307,59 +279,6 @@
       entry.innerHTML = `<strong>${timestamp}</strong> - <em>${type}</em>: ${JSON.stringify(detail, null, 2)}`;
       eventLog.insertBefore(entry, eventLog.firstChild);
     }
-
-    // Initialize SDK with token provider
-    init({
-      tokenProvider: {
-        get: async () => {
-          logEvent("auth", "Fetching token from API...");
-          try {
-            const res = await fetch("http://localhost:3000/api/embed/session", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                tid: "northwoods-dev",
-                wid: "full-calendar",
-                initToken: "northwoods-dev_dev-secret"
-              })
-            });
-
-            if (!res.ok) {
-              const error = await res.json();
-              throw new Error(error.error || "Token fetch failed");
-            }
-
-            const data = await res.json();
-            logEvent("auth", `Token received (expires in ${data.expiresIn}s)`);
-            showStatus("Connected to API — calendar loading...", "success");
-            return data.token;
-          } catch (error) {
-            console.error("Token fetch failed:", error);
-            showStatus(
-              `Failed to connect to API: ${error.message}. Make sure Next.js is running on http://localhost:3000`,
-              "error"
-            );
-            logEvent("error", error.message);
-            throw error;
-          }
-        },
-        refresh: async () => {
-          logEvent("auth", "Refreshing token...");
-          const res = await fetch("http://localhost:3000/api/embed/session", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              tid: "northwoods-dev",
-              wid: "full-calendar",
-              initToken: "northwoods-dev_dev-secret"
-            })
-          });
-          const data = await res.json();
-          logEvent("auth", "Token refreshed");
-          return data.token;
-        }
-      }
-    });
 
     // Apply controls
     applyBtn.addEventListener("click", () => {
@@ -400,7 +319,7 @@
       });
     });
 
-    logEvent("info", "Widgets initialized — fetching token...");
+    logEvent("info", "Widgets initialized");
   </script>
 </body>
 </html>

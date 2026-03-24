@@ -6,7 +6,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireWidgetAuth, getCorsHeaders, resolveRequestOrigin, buildOptionsResponse, buildFallbackCorsHeaders } from "@/lib/embed/auth";
-import { getTenantConfig } from "@/lib/embed/config";
 import { SubscriptionService } from "@/services/subscriptionService";
 import { SubscriptionUpdateSchema } from "@mpnext/types";
 
@@ -22,10 +21,7 @@ export async function GET(req: NextRequest) {
       widget: ["subscriptions", "user-menu"],
     });
 
-    const tenant = await getTenantConfig(claims.tid);
-    const headers = tenant
-      ? getCorsHeaders(origin, tenant.allowedOrigins)
-      : fallbackCors(origin);
+    const headers = getCorsHeaders(origin);
 
     if (claims.sub === "public") {
       return NextResponse.json(
@@ -67,10 +63,7 @@ export async function PUT(req: NextRequest) {
       widget: ["subscriptions", "user-menu"],
     });
 
-    const tenant = await getTenantConfig(claims.tid);
-    const headers = tenant
-      ? getCorsHeaders(origin, tenant.allowedOrigins)
-      : fallbackCors(origin);
+    const headers = getCorsHeaders(origin);
 
     if (claims.sub === "public") {
       return NextResponse.json(
