@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPNext Add to Calendar Widget - Demo</title>
+  <style>
+    body {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      background: #f3f4f6;
+    }
+    h1 {
+      color: #002855;
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .demo-container {
+      background: white;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      margin-bottom: 40px;
+    }
+    .info {
+      background: #e0f2fe;
+      border-left: 4px solid #004C97;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+    .event-log {
+      background: #1f2937;
+      color: #10b981;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .event-log h3 {
+      color: #10b981;
+      margin-top: 0;
+    }
+    .event-entry {
+      margin-bottom: 8px;
+      padding: 8px;
+      background: rgba(16, 185, 129, 0.1);
+      border-radius: 4px;
+    }
+    code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #004C97;
+      font-size: 13px;
+    }
+    pre {
+      background: #1f2937;
+      color: #e5e7eb;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    pre code {
+      background: transparent;
+      color: #e5e7eb;
+      padding: 0;
+    }
+    .status {
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .status.success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #10b981;
+    }
+    .status.error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #ef4444;
+    }
+    .widget-area {
+      padding: 24px;
+      border: 1px dashed #d1d5db;
+      border-radius: 8px;
+      background: #fafafa;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 4px;
+    }
+    input[type="number"] {
+      width: 160px;
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #111827;
+      margin-bottom: 12px;
+    }
+    .reload-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: #004C97;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .reload-btn:hover {
+      background: #002855;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" style="display:inline-block;margin-bottom:8px;color:#004C97;text-decoration:none;font-size:14px;font-family:ui-sans-serif,system-ui,sans-serif;">&larr; All Widgets</a>
+  <h1>Add to Calendar Widget Demo</h1>
+
+  <div class="demo-container">
+    <div id="status"></div>
+
+    <div class="info">
+      <strong>Instructions:</strong>
+      <ol style="margin: 8px 0 0 0; padding-left: 20px;">
+        <li>Make sure Next.js is running: <code>pnpm dev</code> in another terminal</li>
+        <li>Enter a valid Event ID from Ministry Platform and click Reload Widget</li>
+        <li>If the add-to-calendar-button CDN loads, you'll see a rich multi-calendar picker</li>
+        <li>If the CDN is unavailable, a fallback .ics download button is shown</li>
+        <li>Check the Event Log below for real-time updates</li>
+      </ol>
+    </div>
+
+    <!-- Event ID control -->
+    <div style="margin-bottom: 20px;">
+      <label for="event-id-input">Event ID</label>
+      <input type="number" id="event-id-input" value="1" min="1">
+      <button class="reload-btn" id="reload-btn" type="button">Reload Widget</button>
+    </div>
+
+    <!-- The actual widget -->
+    <div class="widget-area">
+      <next-add-to-calendar event-id="1" api-host="http://localhost:3000"></next-add-to-calendar>
+    </div>
+  </div>
+
+  <div class="demo-container">
+    <h3>Event Log</h3>
+    <div id="event-log" class="event-log">
+      <div class="event-entry">Initializing widget...</div>
+    </div>
+  </div>
+
+  <div class="demo-container">
+    <h3>Widget Code <span style="font-weight:normal;font-size:13px;color:#474747;">— add this to any page</span></h3>
+    <pre><code>&lt;!-- Use the widget --&gt;
+&lt;next-add-to-calendar event-id="123"&gt;&lt;/next-add-to-calendar&gt;
+
+&lt;!-- Listen to events --&gt;
+&lt;script&gt;
+  const widget = document.querySelector("next-add-to-calendar");
+  widget.addEventListener("calendarEventLoaded", (e) =&gt; {
+    console.log("Event loaded:", e.detail);
+  });
+  widget.addEventListener("addToCalendarError", (e) =&gt; {
+    console.error("Error:", e.detail);
+  });
+&lt;/script&gt;</code></pre>
+  </div>
+
+  <div class="demo-container" style="border:2px dashed #F1BE48;background:#fffbeb;">
+    <h3>Universal Setup <span style="font-weight:normal;font-size:13px;color:#92400e;">— add ONCE to your site (e.g. header or layout template)</span></h3>
+    <pre><code>&lt;!-- Load SDK --&gt;
+&lt;script type="module"
+        src="https://cdn.northwoods.com/embed-sdk@1.0.0/next-embed.es.js"
+        data-api-host="https://api.northwoods.com"&gt;
+&lt;/script&gt;
+
+&lt;!-- Initialize with token provider --&gt;
+&lt;script type="module"&gt;
+  import { init } from "https://cdn.northwoods.com/embed-sdk@1.0.0/next-embed.es.js";
+
+  init({
+    tokenProvider: {
+      get: async () =&gt; {
+        const res = await fetch("/api/next-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wid: "add-to-calendar" })
+        });
+        return (await res.json()).token;
+      }
+    }
+  });
+&lt;/script&gt;</code></pre>
+  </div>
+
+  <!-- Load the SDK from source (development mode) -->
+  <script type="module">
+    import { init } from "./src/index.ts";
+
+    const statusEl = document.getElementById("status");
+    const eventLog = document.getElementById("event-log");
+    const eventIdInput = document.getElementById("event-id-input");
+    const reloadBtn = document.getElementById("reload-btn");
+
+    function showStatus(message, type = "info") {
+      statusEl.className = `status ${type}`;
+      statusEl.innerHTML = message;
+    }
+
+    function logEvent(type, detail) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.className = "event-entry";
+      entry.innerHTML = `<strong>${timestamp}</strong> - <em>${type}</em>: ${JSON.stringify(detail, null, 2)}`;
+      eventLog.insertBefore(entry, eventLog.firstChild);
+    }
+
+    // Token provider that calls the actual API
+    init({
+      tokenProvider: {
+        get: async () => {
+          logEvent("auth", "Fetching token from API...");
+          try {
+            const res = await fetch("http://localhost:3000/api/embed/session", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tid: "northwoods-dev",
+                wid: "add-to-calendar",
+                initToken: "northwoods-dev_dev-secret"
+              })
+            });
+
+            if (!res.ok) {
+              const error = await res.json();
+              throw new Error(error.error || "Token fetch failed");
+            }
+
+            const data = await res.json();
+            logEvent("auth", `Token received (expires in ${data.expiresIn}s)`);
+            showStatus("Connected to API - Widget ready to use", "success");
+            return data.token;
+          } catch (error) {
+            console.error("Token fetch failed:", error);
+            showStatus(
+              `Failed to connect to API: ${error.message}. Make sure Next.js is running on http://localhost:3000 (run 'pnpm dev' in another terminal)`,
+              "error"
+            );
+            logEvent("error", error.message);
+            throw error;
+          }
+        },
+        refresh: async () => {
+          logEvent("auth", "Refreshing token...");
+          const res = await fetch("http://localhost:3000/api/embed/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tid: "northwoods-dev",
+              wid: "add-to-calendar",
+              initToken: "northwoods-dev_dev-secret"
+            })
+          });
+          const data = await res.json();
+          logEvent("auth", "Token refreshed");
+          return data.token;
+        }
+      }
+    });
+
+    // Widget event listeners
+    function attachWidgetListeners(widget) {
+      widget.addEventListener("calendarEventLoaded", (e) => {
+        logEvent("calendarEventLoaded", e.detail);
+        showStatus(`Event loaded: "${e.detail.title}" (ID: ${e.detail.eventId})`, "success");
+      });
+
+      widget.addEventListener("addToCalendarError", (e) => {
+        logEvent("addToCalendarError", e.detail);
+        showStatus(`Error: ${e.detail.error}`, "error");
+      });
+    }
+
+    // Initial widget
+    attachWidgetListeners(document.querySelector("next-add-to-calendar"));
+    logEvent("info", "Widget initialized");
+
+    // Reload on button click
+    reloadBtn.addEventListener("click", () => {
+      const newEventId = parseInt(eventIdInput.value, 10);
+      if (!newEventId || newEventId <= 0) {
+        showStatus("Please enter a valid Event ID (positive integer).", "error");
+        return;
+      }
+
+      // Replace the widget element to trigger a full reload
+      const widgetArea = document.querySelector(".widget-area");
+      const oldWidget = widgetArea.querySelector("next-add-to-calendar");
+      if (oldWidget) oldWidget.remove();
+
+      const newWidget = document.createElement("next-add-to-calendar");
+      newWidget.setAttribute("event-id", String(newEventId));
+      newWidget.setAttribute("api-host", "http://localhost:3000");
+      widgetArea.appendChild(newWidget);
+      attachWidgetListeners(newWidget);
+
+      logEvent("info", `Reloaded widget with event-id=${newEventId}`);
+    });
+  </script>
+</body>
+</html>

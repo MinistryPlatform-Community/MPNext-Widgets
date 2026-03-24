@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPNext User Menu Widget - Demo</title>
+  <!-- MP Widgets base script (provides mpp-user-login and other widgets) -->
+  <script id="MPWidgets" src="https://my.northwoods.church/widgets/dist/MPWidgets.js"></script>
+  <style>
+    body {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      background: #f3f4f6;
+    }
+    h1 {
+      color: #002855;
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .demo-container {
+      background: white;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      margin-bottom: 40px;
+    }
+    .info {
+      background: #e0f2fe;
+      border-left: 4px solid #004C97;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      font-size: 14px;
+    }
+    .demo-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      background: #002855;
+      border-radius: 8px;
+    }
+    .demo-header-title {
+      color: white;
+      font-weight: 600;
+      font-size: 18px;
+    }
+    .event-log {
+      background: #1f2937;
+      color: #10b981;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .event-entry {
+      margin-bottom: 8px;
+      padding: 8px;
+      background: rgba(16, 185, 129, 0.1);
+      border-radius: 4px;
+    }
+    code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #004C97;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" style="display:inline-block;margin-bottom:8px;color:#004C97;text-decoration:none;font-size:14px;font-family:ui-sans-serif,system-ui,sans-serif;">&larr; All Widgets</a>
+  <h1>MPNext User Menu Widget Demo</h1>
+
+  <div class="demo-container">
+    <div class="info">
+      <strong>Demo:</strong> When not logged in, the MP login widget appears.
+      After authenticating, the avatar menu takes its place automatically.
+    </div>
+
+    <!-- Simulated site header -->
+    <div class="demo-header">
+      <span class="demo-header-title">northwoods.church</span>
+      <next-user-menu
+        mp-base-url="https://my.northwoods.church"
+        api-host="http://localhost:3000"
+      ></next-user-menu>
+    </div>
+  </div>
+
+  <div class="demo-container">
+    <h3>Deep-Link Demo</h3>
+    <div class="info">
+      <strong>Deep Linking:</strong> Click a link below to open the modal directly to a specific tab.
+      You can also load the page with a hash like <code>#next-tab=giving</code> to auto-open.
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <a href="#next-tab=profile" style="color:#004C97;font-weight:500;">Open Profile</a>
+      <a href="#next-tab=family" style="color:#004C97;font-weight:500;">Open Family</a>
+      <a href="#next-tab=giving" style="color:#004C97;font-weight:500;">Open Giving</a>
+      <a href="#next-tab=subscriptions" style="color:#004C97;font-weight:500;">Open Subscriptions</a>
+      <a href="#next-tab=invoices" style="color:#004C97;font-weight:500;">Open Invoices</a>
+    </div>
+  </div>
+
+  <div class="demo-container">
+    <h3>Event Log</h3>
+    <div id="event-log" class="event-log">
+      <div class="event-entry">Waiting for events...</div>
+    </div>
+  </div>
+
+  <div class="demo-container">
+    <h3>Widget Code <span style="font-weight:normal;font-size:13px;color:#474747;">— add this to any page</span></h3>
+    <pre><code>&lt;!-- Place in your header --&gt;
+&lt;next-user-menu
+  mp-base-url="https://my.northwoods.church"
+  post-logout-redirect-uri="https://northwoods.church"
+&gt;&lt;/next-user-menu&gt;
+
+&lt;!-- When unauthenticated: renders &lt;mpp-user-login&gt; --&gt;
+&lt;!-- When authenticated:    renders avatar + dropdown + account modal --&gt;
+&lt;!-- post-logout-redirect-uri defaults to current page if omitted --&gt;</code></pre>
+  </div>
+
+  <div class="demo-container" style="border:2px dashed #F1BE48;background:#fffbeb;">
+    <h3>Universal Setup <span style="font-weight:normal;font-size:13px;color:#92400e;">— add ONCE to your site (e.g. header or layout template)</span></h3>
+    <pre><code>&lt;!-- 1. Load MP Widgets (provides mpp-user-login) --&gt;
+&lt;script id="MPWidgets" src="https://my.northwoods.church/widgets/dist/MPWidgets.js"&gt;&lt;/script&gt;
+
+&lt;!-- 2. Load MPNext Embed SDK --&gt;
+&lt;script type="module" src="./dist/next-embed.es.js"&gt;&lt;/script&gt;</code></pre>
+  </div>
+
+  <!-- Load SDK from source (Vite dev) -->
+  <script type="module">
+    import { init } from "./src/index.ts";
+
+    function buildSessionBody() {
+      const body = {
+        tid: "northwoods-dev",
+        wid: "user-menu",
+        initToken: "northwoods-dev_dev-secret"
+      };
+      const mpToken = localStorage.getItem("mpp-widgets_AuthToken");
+      if (mpToken) {
+        body.mpUserToken = mpToken;
+      }
+      return body;
+    }
+
+    async function fetchToken() {
+      const body = buildSessionBody();
+      if (!body.mpUserToken) return "";
+      try {
+        const res = await fetch("http://localhost:3000/api/embed/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) return "";
+        const data = await res.json();
+        return data.token;
+      } catch {
+        return "";
+      }
+    }
+
+    init({
+      tokenProvider: {
+        get: fetchToken,
+        refresh: fetchToken
+      }
+    });
+
+    const eventLog = document.getElementById("event-log");
+    function logEvent(type, detail) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.className = "event-entry";
+      entry.innerHTML = `<strong>${timestamp}</strong> - <em>${type}</em>: ${JSON.stringify(detail, null, 2)}`;
+      eventLog.insertBefore(entry, eventLog.firstChild);
+    }
+
+    const menu = document.querySelector("next-user-menu");
+
+    menu.addEventListener("userLogout", (e) => {
+      logEvent("userLogout", e.detail);
+    });
+
+    menu.addEventListener("accountModalOpen", (e) => {
+      logEvent("accountModalOpen", e.detail);
+    });
+
+    menu.addEventListener("accountModalClose", () => {
+      logEvent("accountModalClose", {});
+    });
+
+    logEvent("info", "Widget initialized");
+  </script>
+</body>
+</html>

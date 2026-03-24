@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPNext Embed SDK - Widget Library</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: #f3f4f6;
+      color: #2D2926;
+    }
+    .header {
+      background: #002855;
+      color: white;
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+    .header p {
+      font-size: 16px;
+      opacity: 0.8;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 20px;
+    }
+    .prereqs {
+      background: #e0f2fe;
+      border-left: 4px solid #004C97;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 32px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .prereqs strong { color: #004C97; }
+    .prereqs code {
+      background: #d6f0fc;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    h2 {
+      color: #002855;
+      margin-bottom: 16px;
+      font-size: 22px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+    @media (max-width: 640px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .card-header {
+      background: #004C97;
+      color: white;
+      padding: 16px 20px;
+    }
+    .card-header h3 {
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+    .card-header code {
+      background: rgba(255,255,255,0.2);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .card-body {
+      padding: 20px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .card-body p {
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 12px;
+      color: #474747;
+    }
+    .card-meta {
+      font-size: 13px;
+      color: #9E9E9E;
+      margin-bottom: 16px;
+    }
+    .card-meta span {
+      display: inline-block;
+      background: #f3f4f6;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin: 2px 4px 2px 0;
+    }
+    .card-link {
+      display: inline-block;
+      margin-top: auto;
+      background: #004C97;
+      color: white;
+      text-decoration: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+      transition: background 0.15s;
+    }
+    .card-link:hover { background: #002855; }
+    .quickstart {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      padding: 24px;
+      margin-bottom: 32px;
+    }
+    .quickstart h2 { margin-bottom: 12px; }
+    .quickstart pre {
+      background: #1f2937;
+      color: #e5e7eb;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>MPNext Embed SDK</h1>
+    <p>Widget Component Library</p>
+  </div>
+
+  <div class="container">
+    <div class="prereqs">
+      <strong>Prerequisites:</strong> Run <code>pnpm dev</code> in the project root to start the Next.js API backend on port 3000.
+    </div>
+
+    <h2>Widgets</h2>
+    <div class="grid">
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Add to Calendar</h3>
+          <code>&lt;next-add-to-calendar&gt;</code>
+        </div>
+        <div class="card-body">
+          <p>Add-to-calendar buttons for events. Loads add-to-calendar-button library from CDN with Apple, Google, iCal, and Outlook options. Falls back to .ics download.</p>
+          <div class="card-meta">
+            <span>event-id</span>
+            <span>api-host</span>
+          </div>
+          <div class="card-meta">
+            Events: <span>calendarEventLoaded</span> <span>addToCalendarError</span>
+          </div>
+          <a href="/demo-add-to-calendar.html" class="card-link">Open Demo</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Full Calendar</h3>
+          <code>&lt;next-full-calendar&gt;</code>
+        </div>
+        <div class="card-body">
+          <p>Multi-view calendar with Month, Week, List, Cards (image grid), and Calendar (mini cal + cards) views. Supports event images, campus/ministry filter chips, density dots, admin detail modal, and configurable view locking.</p>
+          <div class="card-meta">
+            <span>api-host</span>
+            <span>congregation-id</span>
+            <span>view</span>
+            <span>show-toolbar</span>
+          </div>
+          <div class="card-meta">
+            Events: <span>calendarLoaded</span> <span>eventSelected</span> <span>viewChanged</span> <span>fullCalendarError</span>
+          </div>
+          <a href="/demo-full-calendar.html" class="card-link">Open Demo</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>User Menu</h3>
+          <code>&lt;next-user-menu&gt;</code>
+        </div>
+        <div class="card-body">
+          <p>Avatar dropdown with account modal. Shows the MP login widget when unauthenticated, then switches to an avatar menu after sign-in. Tabs: Profile, Family, Giving, Subscriptions, Invoices.</p>
+          <div class="card-meta">
+            <span>mp-base-url</span>
+            <span>api-host</span>
+          </div>
+          <div class="card-meta">
+            Events: <span>userLogout</span> <span>accountModalOpen</span> <span>accountModalClose</span>
+          </div>
+          <a href="/demo-user-menu.html" class="card-link">Open Demo</a>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="quickstart">
+      <h2>Adding a Widget to a Page</h2>
+      <p style="margin-bottom:12px;font-size:14px;color:#474747;">If the <strong>Universal Setup</strong> (below) is already on your site, adding a widget is just the HTML tag:</p>
+      <pre><code>&lt;!-- Just drop the tag on any page -- no extra scripts needed! --&gt;
+&lt;next-full-calendar&gt;&lt;/next-full-calendar&gt;
+
+&lt;!-- Multiple widgets work on the same page --&gt;
+&lt;next-add-to-calendar event-id="12345"&gt;&lt;/next-add-to-calendar&gt;
+&lt;next-user-menu&gt;&lt;/next-user-menu&gt;</code></pre>
+    </div>
+
+    <div class="quickstart" style="border:2px dashed #F1BE48;background:#fffbeb;">
+      <h2 style="margin-bottom:4px;">Universal Setup</h2>
+      <p style="margin-bottom:12px;font-size:14px;color:#92400e;font-weight:500;">Add this ONCE to your site (e.g. in your header or layout template). All widgets share this setup.</p>
+      <pre><code>&lt;!-- Load SDK --&gt;
+&lt;script type="module" src="https://your-host.com/embed-sdk/next-embed.es.js"&gt;&lt;/script&gt;
+
+&lt;!-- Initialize with token provider --&gt;
+&lt;script type="module"&gt;
+  import { init } from "https://your-host.com/embed-sdk/next-embed.es.js";
+
+  init({
+    tokenProvider: {
+      get: async () =&gt; {
+        const res = await fetch("/api/next-token");
+        return (await res.json()).token;
+      },
+      refresh: async () =&gt; {
+        const res = await fetch("/api/next-token?refresh=1");
+        return (await res.json()).token;
+      }
+    }
+  });
+&lt;/script&gt;</code></pre>
+    </div>
+  </div>
+</body>
+</html>

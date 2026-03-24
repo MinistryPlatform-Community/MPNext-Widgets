@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPNext Full Calendar Widget - Demo</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      margin: 0;
+      padding: 40px 20px;
+      background: #f3f4f6;
+    }
+    h1 {
+      color: #002855;
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    h3 {
+      color: #002855;
+      margin-bottom: 12px;
+    }
+    .demo-container {
+      background: white;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      margin-bottom: 40px;
+    }
+    .demo-container.widget-container {
+      padding: 24px;
+    }
+    .info {
+      background: #e0f2fe;
+      border-left: 4px solid #004C97;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+    .event-log {
+      background: #1f2937;
+      color: #10b981;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .event-entry {
+      margin-bottom: 8px;
+      padding: 8px;
+      background: rgba(16, 185, 129, 0.1);
+      border-radius: 4px;
+    }
+    code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #004C97;
+      font-size: 13px;
+    }
+    pre {
+      background: #1f2937;
+      color: #e5e7eb;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    pre code {
+      background: transparent;
+      color: #e5e7eb;
+      padding: 0;
+    }
+    .status {
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .status.success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #10b981;
+    }
+    .status.error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #ef4444;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-end;
+      margin-bottom: 24px;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .control-group label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #474747;
+    }
+    .control-group input,
+    .control-group select {
+      padding: 7px 10px;
+      border: 1px solid #E0E0E0;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #2D2926;
+      background: white;
+    }
+    .control-group input:focus,
+    .control-group select:focus {
+      outline: none;
+      border-color: #004C97;
+      box-shadow: 0 0 0 3px rgba(0, 76, 151, 0.15);
+    }
+    .apply-btn {
+      padding: 8px 18px;
+      background: #004C97;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+    }
+    .apply-btn:hover {
+      background: #002855;
+    }
+    next-full-calendar {
+      display: block;
+      width: 100%;
+    }
+    .section-label {
+      font-size: 14px;
+      font-weight: 700;
+      color: #9E9E9E;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" style="display:inline-block;margin-bottom:8px;color:#004C97;text-decoration:none;font-size:14px;font-family:ui-sans-serif,system-ui,sans-serif;">&larr; All Widgets</a>
+  <h1>Full Calendar Widget Demo</h1>
+
+  <div class="demo-container">
+    <div id="status"></div>
+
+    <div class="info">
+      <strong>Instructions:</strong>
+      <ol style="margin: 8px 0 0 0; padding-left: 20px;">
+        <li>Make sure Next.js is running: <code>pnpm dev</code> in another terminal</li>
+        <li>The calendar loads publicly — no sign-in required</li>
+        <li>Use the controls below to switch views or filter by campus</li>
+        <li>Click any event to see its detail modal</li>
+        <li>Views: <strong>Month</strong>, <strong>Week</strong>, <strong>List</strong> (FullCalendar), <strong>Cards</strong> (image grid), <strong>Calendar</strong> (mini cal + cards)</li>
+      </ol>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+      <div class="control-group">
+        <label for="view-select">Initial View</label>
+        <select id="view-select">
+          <option value="month">Month</option>
+          <option value="week">Week</option>
+          <option value="list">List</option>
+          <option value="cards">Cards</option>
+          <option value="calendar">Calendar</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="toolbar-toggle">Show Toolbar</label>
+        <select id="toolbar-toggle">
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="congregation-select">Campus (Congregation ID)</label>
+        <select id="congregation-select">
+          <option value="">All Campuses</option>
+          <option value="1">Campus 1</option>
+          <option value="2">Campus 2</option>
+          <option value="3">Campus 3</option>
+        </select>
+      </div>
+      <button class="apply-btn" id="apply-filter">Apply</button>
+    </div>
+  </div>
+
+  <!-- Main calendar widget -->
+  <div class="demo-container widget-container">
+    <p class="section-label">Interactive Calendar</p>
+    <next-full-calendar id="main-calendar" api-host="http://localhost:3000"></next-full-calendar>
+  </div>
+
+  <!-- Locked cards view example -->
+  <div class="demo-container widget-container">
+    <p class="section-label">Locked Cards View (no toolbar)</p>
+    <next-full-calendar api-host="http://localhost:3000" view="cards" show-toolbar="false"></next-full-calendar>
+  </div>
+
+  <div class="demo-container">
+    <h3>Event Log</h3>
+    <div id="event-log" class="event-log">
+      <div class="event-entry">Initializing widget...</div>
+    </div>
+  </div>
+
+  <div class="demo-container">
+    <h3>Widget Code <span style="font-weight:normal;font-size:13px;color:#474747;">— add this to any page</span></h3>
+    <pre><code>&lt;!-- Default: full calendar with all views --&gt;
+&lt;next-full-calendar&gt;&lt;/next-full-calendar&gt;
+
+&lt;!-- Cards view only, no toolbar --&gt;
+&lt;next-full-calendar view="cards" show-toolbar="false"&gt;&lt;/next-full-calendar&gt;
+
+&lt;!-- Calendar view (mini cal + cards) --&gt;
+&lt;next-full-calendar view="calendar"&gt;&lt;/next-full-calendar&gt;
+
+&lt;!-- Listen to events --&gt;
+&lt;script&gt;
+  const widget = document.querySelector("next-full-calendar");
+  widget.addEventListener("calendarLoaded", (e) =&gt; {
+    console.log("Events loaded:", e.detail.count);
+  });
+  widget.addEventListener("eventSelected", (e) =&gt; {
+    console.log("Event clicked:", e.detail);
+  });
+  widget.addEventListener("viewChanged", (e) =&gt; {
+    console.log("View changed:", e.detail.view);
+  });
+  widget.addEventListener("fullCalendarError", (e) =&gt; {
+    console.error("Calendar error:", e.detail);
+  });
+&lt;/script&gt;</code></pre>
+  </div>
+
+  <div class="demo-container" style="border:2px dashed #F1BE48;background:#fffbeb;">
+    <h3>Universal Setup <span style="font-weight:normal;font-size:13px;color:#92400e;">— add ONCE to your site (e.g. header or layout template)</span></h3>
+    <pre><code>&lt;!-- Load SDK --&gt;
+&lt;script type="module"
+        src="https://cdn.northwoods.com/embed-sdk@1.0.0/next-embed.es.js"
+        data-api-host="https://api.northwoods.com"&gt;
+&lt;/script&gt;
+
+&lt;!-- Initialize with token provider --&gt;
+&lt;script type="module"&gt;
+  import { init } from "https://cdn.northwoods.com/embed-sdk@1.0.0/next-embed.es.js";
+
+  init({
+    tokenProvider: {
+      get: async () =&gt; {
+        const res = await fetch("/api/next-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wid: "full-calendar" })
+        });
+        return (await res.json()).token;
+      },
+      refresh: async () =&gt; {
+        const res = await fetch("/api/next-token?refresh=1", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wid: "full-calendar" })
+        });
+        return (await res.json()).token;
+      }
+    }
+  });
+&lt;/script&gt;</code></pre>
+  </div>
+
+  <!-- Load the SDK from source (development mode) -->
+  <script type="module">
+    import { init } from "./src/index.ts";
+
+    const statusEl = document.getElementById("status");
+    const eventLog = document.getElementById("event-log");
+    const mainCalendar = document.getElementById("main-calendar");
+    const congregationSelect = document.getElementById("congregation-select");
+    const viewSelect = document.getElementById("view-select");
+    const toolbarToggle = document.getElementById("toolbar-toggle");
+    const applyBtn = document.getElementById("apply-filter");
+
+    function showStatus(message, type = "info") {
+      statusEl.className = `status ${type}`;
+      statusEl.innerHTML = message;
+    }
+
+    function logEvent(type, detail) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.className = "event-entry";
+      entry.innerHTML = `<strong>${timestamp}</strong> - <em>${type}</em>: ${JSON.stringify(detail, null, 2)}`;
+      eventLog.insertBefore(entry, eventLog.firstChild);
+    }
+
+    // Initialize SDK with token provider
+    init({
+      tokenProvider: {
+        get: async () => {
+          logEvent("auth", "Fetching token from API...");
+          try {
+            const res = await fetch("http://localhost:3000/api/embed/session", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tid: "northwoods-dev",
+                wid: "full-calendar",
+                initToken: "northwoods-dev_dev-secret"
+              })
+            });
+
+            if (!res.ok) {
+              const error = await res.json();
+              throw new Error(error.error || "Token fetch failed");
+            }
+
+            const data = await res.json();
+            logEvent("auth", `Token received (expires in ${data.expiresIn}s)`);
+            showStatus("Connected to API — calendar loading...", "success");
+            return data.token;
+          } catch (error) {
+            console.error("Token fetch failed:", error);
+            showStatus(
+              `Failed to connect to API: ${error.message}. Make sure Next.js is running on http://localhost:3000`,
+              "error"
+            );
+            logEvent("error", error.message);
+            throw error;
+          }
+        },
+        refresh: async () => {
+          logEvent("auth", "Refreshing token...");
+          const res = await fetch("http://localhost:3000/api/embed/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tid: "northwoods-dev",
+              wid: "full-calendar",
+              initToken: "northwoods-dev_dev-secret"
+            })
+          });
+          const data = await res.json();
+          logEvent("auth", "Token refreshed");
+          return data.token;
+        }
+      }
+    });
+
+    // Apply controls
+    applyBtn.addEventListener("click", () => {
+      const view = viewSelect.value;
+      const toolbar = toolbarToggle.value;
+      const congId = congregationSelect.value;
+
+      mainCalendar.setAttribute("view", view);
+      mainCalendar.setAttribute("show-toolbar", toolbar);
+
+      if (congId) {
+        mainCalendar.setAttribute("congregation-id", congId);
+      } else {
+        mainCalendar.removeAttribute("congregation-id");
+      }
+
+      logEvent("controls", { view, showToolbar: toolbar, congregationId: congId || "all" });
+    });
+
+    // Listen to widget events — all calendar instances
+    document.querySelectorAll("next-full-calendar").forEach(widget => {
+      widget.addEventListener("calendarLoaded", (e) => {
+        logEvent("calendarLoaded", e.detail);
+        showStatus(`Calendar loaded — ${e.detail.count} event(s) in view`, "success");
+      });
+
+      widget.addEventListener("eventSelected", (e) => {
+        logEvent("eventSelected", e.detail);
+      });
+
+      widget.addEventListener("viewChanged", (e) => {
+        logEvent("viewChanged", e.detail);
+      });
+
+      widget.addEventListener("fullCalendarError", (e) => {
+        logEvent("fullCalendarError", e.detail);
+        showStatus(`Calendar error: ${e.detail.error}`, "error");
+      });
+    });
+
+    logEvent("info", "Widgets initialized — fetching token...");
+  </script>
+</body>
+</html>

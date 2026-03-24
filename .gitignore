@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.next/
+packages/types/dist/
+packages/embed-sdk/dist/
+packages/types/src/*.js
+packages/types/src/*.d.ts
+packages/types/src/*.d.ts.map
+
+# SDK build artifacts in public
+public/embed-sdk/next-embed.*.js
+public/embed-sdk/next-embed.*.js.map
+
+# Environment
+.env
+.env*.local
+
+# IDE
+.vs/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# TypeScript
+*.tsbuildinfo
+
+# Testing
+test-results/
+playwright-report/
+blob-report/
+.playwright-mcp/
+screenshots/
+
+# Vercel
+.vercel
+
+# MCP config
+.mcp.json
+
+# Logs
+*.log
