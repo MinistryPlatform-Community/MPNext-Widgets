@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPNext My Invoices Widget - Demo</title>
+  <!-- MP Widgets base script (provides mpp-user-login) -->
+  <script id="MPWidgets" src="https://my.northwoods.church/widgets/dist/MPWidgets.js"></script>
+  <style>
+    body {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      background: #f3f4f6;
+    }
+    h1 {
+      color: #002855;
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .demo-container {
+      background: white;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      margin-bottom: 40px;
+    }
+    .info {
+      background: #e0f2fe;
+      border-left: 4px solid #004C97;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+    .warning {
+      background: #fef3c7;
+      border-left: 4px solid #F1BE48;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+    .event-log {
+      background: #1f2937;
+      color: #10b981;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .event-log h3 {
+      color: #10b981;
+      margin-top: 0;
+    }
+    .event-entry {
+      margin-bottom: 8px;
+      padding: 8px;
+      background: rgba(16, 185, 129, 0.1);
+      border-radius: 4px;
+    }
+    code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #004C97;
+      font-size: 13px;
+    }
+    pre {
+      background: #1f2937;
+      color: #e5e7eb;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    pre code {
+      background: transparent;
+      color: #e5e7eb;
+      padding: 0;
+    }
+    .status {
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .status.success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #10b981;
+    }
+    .status.error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #ef4444;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" style="display:inline-block;margin-bottom:8px;color:#004C97;text-decoration:none;font-size:14px;font-family:ui-sans-serif,system-ui,sans-serif;">&larr; All Widgets</a>
+  <h1>My Invoices Widget Demo</h1>
+
+  <div class="demo-container">
+    <div id="status"></div>
+
+    <div class="info">
+      <strong>Instructions:</strong>
+      <ol style="margin: 8px 0 0 0; padding-left: 20px;">
+        <li>Make sure Next.js is running: <code>pnpm dev</code> in another terminal</li>
+        <li>Sign in using the user menu below</li>
+        <li>Once authenticated, the invoices widget loads automatically</li>
+        <li>Click an invoice to view details and line items</li>
+      </ol>
+    </div>
+
+    <!-- User menu for authentication -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px;background:#002855;border-radius:8px;margin-bottom:24px;">
+      <span style="color:white;font-weight:600;font-size:16px;">Sign in to continue</span>
+      <next-user-menu mp-base-url="https://my.northwoods.church"></next-user-menu>
+    </div>
+
+    <!-- The actual widget (hidden until authenticated) -->
+    <div id="widget-container" style="display:none;">
+      <next-my-invoices api-host="http://localhost:3000"></next-my-invoices>
+    </div>
+    <div id="auth-placeholder" style="text-align:center;padding:40px;color:#9E9E9E;">
+      Sign in above to load the invoices widget.
+    </div>
+  </div>
+
+  <div class="demo-container">
+    <h3>Event Log</h3>
+    <div id="event-log" class="event-log">
+      <div class="event-entry">Initializing widget...</div>
+    </div>
+  </div>
+
+  <div class="demo-container">
+    <h3>Widget Code <span style="font-weight:normal;font-size:13px;color:#474747;">— add this to any page</span></h3>
+    <pre><code>&lt;!-- Use the widget --&gt;
+&lt;next-my-invoices&gt;&lt;/next-my-invoices&gt;
+
+&lt;!-- Listen to events --&gt;
+&lt;script&gt;
+  const widget = document.querySelector("next-my-invoices");
+  widget.addEventListener("invoicesLoaded", (e) =&gt; {
+    console.log("Invoices loaded:", e.detail);
+  });
+  widget.addEventListener("invoiceSelected", (e) =&gt; {
+    console.log("Invoice selected:", e.detail);
+  });
+  widget.addEventListener("invoiceError", (e) =&gt; {
+    console.error("Invoice error:", e.detail);
+  });
+&lt;/script&gt;</code></pre>
+  </div>
+
+  <div class="demo-container" style="border:2px dashed #F1BE48;background:#fffbeb;">
+    <h3>Universal Setup <span style="font-weight:normal;font-size:13px;color:#92400e;">— add ONCE to your site (e.g. header or layout template)</span></h3>
+    <pre><code>&lt;!-- Load SDK --&gt;
+&lt;script type="module"
+        src="https://your-host.com/embed-sdk/next-embed.es.js"&gt;
+&lt;/script&gt;
+
+&lt;!-- Initialize with token provider --&gt;
+&lt;script type="module"&gt;
+  import { init } from "https://your-host.com/embed-sdk/next-embed.es.js";
+
+  init({
+    tokenProvider: {
+      get: async () =&gt; {
+        const res = await fetch("/api/nw-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wid: "invoices" })
+        });
+        return (await res.json()).token;
+      },
+      refresh: async () =&gt; {
+        const res = await fetch("/api/nw-token?refresh=1", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wid: "invoices" })
+        });
+        return (await res.json()).token;
+      }
+    }
+  });
+&lt;/script&gt;</code></pre>
+  </div>
+
+  <!-- Load the SDK from source (development mode) -->
+  <script type="module">
+    import { init } from "./src/index.ts";
+
+    const statusEl = document.getElementById("status");
+    const eventLog = document.getElementById("event-log");
+
+    function showStatus(message, type = "info") {
+      statusEl.className = `status ${type}`;
+      statusEl.innerHTML = message;
+    }
+
+    function logEvent(type, detail) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.className = "event-entry";
+      entry.innerHTML = `<strong>${timestamp}</strong> - <em>${type}</em>: ${JSON.stringify(detail, null, 2)}`;
+      eventLog.insertBefore(entry, eventLog.firstChild);
+    }
+
+    // Helper: build session request body, including MP user token from localStorage
+    function buildSessionBody() {
+      const body = {
+        tid: "northwoods-dev",
+        wid: "invoices",
+        initToken: "northwoods-dev_dev-secret"
+      };
+      const mpToken = localStorage.getItem("mpp-widgets_AuthToken");
+      if (mpToken) {
+        body.mpUserToken = mpToken;
+      }
+      return body;
+    }
+
+    // Shared fetch-token logic used by both get and refresh
+    async function fetchSessionToken() {
+      const body = buildSessionBody();
+      logEvent("auth", `Fetching token (mpUserToken present: ${!!body.mpUserToken})...`);
+
+      const res = await fetch("http://localhost:3000/api/embed/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: res.statusText }));
+        const msg = errorData.error || "Token fetch failed";
+
+        // If MP token is stale/expired, clear it so user can re-login
+        if (msg.includes("Invalid MP user token")) {
+          logEvent("auth", "MP token expired — clearing stale token, waiting for fresh login");
+          localStorage.removeItem("mpp-widgets_AuthToken");
+          // Reset UI to "sign in" state
+          widgetContainer.style.display = "none";
+          authPlaceholder.style.display = "block";
+          startAuthPoll();
+        }
+
+        throw new Error(msg);
+      }
+
+      const data = await res.json();
+      logEvent("auth", `Token received (expires in ${data.expiresIn}s)`);
+      showStatus("Connected to API - Widget ready to use", "success");
+      return data.token;
+    }
+
+    // Token provider that calls the actual API
+    init({
+      tokenProvider: {
+        get: async () => {
+          try {
+            return await fetchSessionToken();
+          } catch (error) {
+            console.error("Token fetch failed:", error);
+            showStatus(`Error: ${error.message}`, "error");
+            logEvent("error", error.message);
+            throw error;
+          }
+        },
+        refresh: async () => {
+          logEvent("auth", "Refreshing token...");
+          return await fetchSessionToken();
+        }
+      }
+    });
+
+    // Poll localStorage for auth token (set by mpp-user-login via next-user-menu)
+    const widgetContainer = document.getElementById("widget-container");
+    const authPlaceholder = document.getElementById("auth-placeholder");
+    let authPollInterval = null;
+
+    function checkAuth() {
+      const hasToken = !!localStorage.getItem("mpp-widgets_AuthToken");
+      if (hasToken) {
+        widgetContainer.style.display = "block";
+        authPlaceholder.style.display = "none";
+        logEvent("auth", "MP auth token detected in localStorage");
+        return true;
+      }
+      return false;
+    }
+
+    function startAuthPoll() {
+      if (authPollInterval) clearInterval(authPollInterval);
+      logEvent("info", "Waiting for user to sign in via user menu...");
+      authPollInterval = setInterval(() => {
+        if (checkAuth()) {
+          clearInterval(authPollInterval);
+          authPollInterval = null;
+          // Reload the widget now that we have a fresh token
+          const widget = document.querySelector("next-my-invoices");
+          if (widget && widget.retryLoad) {
+            widget.retryLoad();
+          }
+        }
+      }, 1000);
+    }
+
+    // Check immediately, then poll every second
+    if (!checkAuth()) {
+      startAuthPoll();
+    }
+
+    // Listen to widget events
+    const widget = document.querySelector("next-my-invoices");
+
+    widget.addEventListener("invoicesLoaded", (e) => {
+      logEvent("invoicesLoaded", e.detail);
+      showStatus(`Invoices loaded: ${e.detail.count} invoices`, "success");
+    });
+
+    widget.addEventListener("invoiceSelected", (e) => {
+      logEvent("invoiceSelected", e.detail);
+    });
+
+    widget.addEventListener("invoiceError", (e) => {
+      logEvent("invoiceError", e.detail);
+      showStatus(`Error: ${e.detail.error}`, "error");
+    });
+
+    logEvent("info", "Widget initialized - sign in to load invoices");
+  </script>
+</body>
+</html>

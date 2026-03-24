@@ -17,11 +17,15 @@ export { ApiClient } from "./shared/api-client";
 export { UserMenuWidget } from "./components/user-menu";
 export { AddToCalendarWidget } from "./components/add-to-calendar";
 export { FullCalendarWidget } from "./components/full-calendar";
+export { ProfileWidget } from "./components/profile";
+export { MyInvoicesWidget } from "./components/my-invoices";
 
 // Auto-register components
 import "./components/user-menu";
 import "./components/add-to-calendar";
 import "./components/full-calendar";
+import "./components/profile";
+import "./components/my-invoices";
 
 // ---------------------------------------------------------------------------
 // Auto-initialization
@@ -55,7 +59,7 @@ function detectApiHost(): string {
   // 3. Read api-host from the first widget element on the page
   //    (handles Vite dev where the SDK is a local module import)
   const widget = document.querySelector(
-    "next-user-menu, next-add-to-calendar, next-full-calendar",
+    "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices",
   );
   if (widget) {
     const host = widget.getAttribute("api-host");
@@ -107,6 +111,8 @@ function detectFirstWidgetId(): string | null {
     "NEXT-USER-MENU": "user-menu",
     "NEXT-ADD-TO-CALENDAR": "add-to-calendar",
     "NEXT-FULL-CALENDAR": "full-calendar",
+    "NEXT-PROFILE": "profile",
+    "NEXT-MY-INVOICES": "invoices",
   };
 
   for (const [tag, wid] of Object.entries(widgetMap)) {
