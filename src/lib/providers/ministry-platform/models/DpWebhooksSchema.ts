@@ -5,7 +5,7 @@ export const DpWebhooksSchema = z.object({
   Display_Name: z.string().max(50),
   Description: z.string().max(1024).nullable(),
   Http_Method: z.string().max(10),
-  Uri_Template: z.string().url().nullable(),
+  Uri_Template: z.url().nullable(),
   Body_Template: z.string().max(4000).nullable(),
   Headers_Template: z.string().max(4000).nullable(),
   Trigger_Fields: z.string().max(255).nullable(),

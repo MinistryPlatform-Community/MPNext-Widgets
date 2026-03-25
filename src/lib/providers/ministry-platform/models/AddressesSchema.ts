@@ -19,11 +19,11 @@ export const AddressesSchema = z.object({
   Time_Zone: z.string().max(50).nullable(),
   Bar_Code: z.string().max(50).nullable(),
   Area_Code: z.string().max(50).nullable(),
-  Last_Validation_Attempt: z.string().datetime().nullable(),
+  Last_Validation_Attempt: z.iso.datetime().nullable(),
   County: z.string().max(50).nullable(),
   Validated: z.boolean().nullable(),
   Do_Not_Validate: z.boolean(),
-  Last_GeoCode_Attempt: z.string().datetime().nullable(),
+  Last_GeoCode_Attempt: z.iso.datetime().nullable(),
   Country: z.string().max(100).nullable(),
 });
 

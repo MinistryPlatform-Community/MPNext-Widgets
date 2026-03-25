@@ -6,7 +6,7 @@ export const HouseholdIdentifierLogSchema = z.object({
   Source_System_Name: z.string().max(50),
   Source_Type_Name: z.string().max(128),
   Identifier_Value: z.string().max(4000),
-  _Date_Inserted: z.string().datetime(),
+  _Date_Inserted: z.iso.datetime(),
 });
 
 export type HouseholdIdentifierLogInput = z.infer<typeof HouseholdIdentifierLogSchema>;

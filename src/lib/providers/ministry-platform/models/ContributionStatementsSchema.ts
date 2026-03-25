@@ -12,8 +12,8 @@ export const ContributionStatementsSchema = z.object({
   Archived: z.boolean(),
   Archived_Campaign: z.number().int().nullable(),
   Alternate_Archived_Campaign: z.number().int().nullable(),
-  Last_Change_By_Routine: z.string().datetime(),
-  Last_Statement_File: z.string().datetime().nullable(),
+  Last_Change_By_Routine: z.iso.datetime(),
+  Last_Statement_File: z.iso.datetime().nullable(),
 });
 
 export type ContributionStatementsInput = z.infer<typeof ContributionStatementsSchema>;

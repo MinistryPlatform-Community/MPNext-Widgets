@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const WeeklySnapshotsSchema = z.object({
   Weekly_Snapshot_ID: z.number().int(),
-  Start_Date: z.string().datetime(),
+  Start_Date: z.iso.datetime(),
   Congregation_ID: z.number().int(),
   Active_People_7Days: z.number().int(),
   Active_People_1Month: z.number().int(),

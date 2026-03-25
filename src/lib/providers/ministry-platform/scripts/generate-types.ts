@@ -227,19 +227,13 @@ function mapDataTypeToZod(col: ColumnMetadata): string {
       }
       break;
     case "Email":
-      zodType = "z.string().email()";
-      if (col.Size > 0) {
-        zodType += `.max(${col.Size})`;
-      }
+      zodType = "z.email()";
       break;
     case "Phone":
       zodType = "z.string()"; // Could add phone validation regex
       break;
     case "Url":
-      zodType = "z.string().url()";
-      if (col.Size > 0) {
-        zodType += `.max(${col.Size})`;
-      }
+      zodType = "z.url()";
       break;
     case "Integer16":
     case "Integer32":
@@ -256,17 +250,17 @@ function mapDataTypeToZod(col: ColumnMetadata): string {
       zodType = "z.boolean()";
       break;
     case "Date":
-      zodType = "z.string().datetime()"; // or z.date() for Date objects
+      zodType = "z.iso.datetime()";
       break;
     case "Time":
-      zodType = "z.string()"; // Could add time format validation
+      zodType = "z.string()";
       break;
     case "DateTime":
     case "Timestamp":
-      zodType = "z.string().datetime()";
+      zodType = "z.iso.datetime()";
       break;
     case "Guid":
-      zodType = "z.string().uuid()";
+      zodType = "z.guid()";
       break;
     default:
       zodType = "z.unknown()";

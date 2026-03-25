@@ -4,7 +4,7 @@ export const DpCommunicationMessagesSchema = z.object({
   Communication_Message_ID: z.number().int(),
   Communication_ID: z.number().int(),
   Action_Status_ID: z.number().int(),
-  Action_Status_Time: z.string().datetime(),
+  Action_Status_Time: z.iso.datetime(),
   Action_Text: z.string().max(1024).nullable(),
   Contact_ID: z.number().int().nullable(),
   From: z.string().max(256),
@@ -13,7 +13,7 @@ export const DpCommunicationMessagesSchema = z.object({
   Subject: z.string().max(500).nullable(),
   Body: z.string().max(2147483647).nullable(),
   Deleted: z.boolean(),
-  _Date_Submitted: z.string().datetime().nullable(),
+  _Date_Submitted: z.iso.datetime().nullable(),
   _Priority: z.number().int(),
   _Text_Segments: z.number().int().nullable(),
 });

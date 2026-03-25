@@ -4,7 +4,7 @@ export const DepositsSchema = z.object({
   Deposit_ID: z.number().int(),
   Deposit_Name: z.string().max(75),
   Deposit_Total: z.number(),
-  Deposit_Date: z.string().datetime(),
+  Deposit_Date: z.iso.datetime(),
   Account_Number: z.string().max(30),
   Batch_Count: z.number().int(),
   Exported: z.boolean(),

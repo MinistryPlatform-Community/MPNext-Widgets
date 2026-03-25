@@ -15,7 +15,7 @@ import {
   TableMetadata,
   QueryParams,
 } from "./types";
-import type { ZodObject, ZodRawShape } from "zod";
+import { type z } from "zod";
 
 /**
  * MPHelper - Main Public API for Ministry Platform Operations
@@ -170,7 +170,7 @@ export class MPHelper {
     table: string,
     records: T[],
     params?: Pick<TableQueryParams, "$select" | "$userId"> & {
-      schema?: ZodObject<ZodRawShape>;
+      schema?: z.ZodObject;
     }
   ): Promise<T[]> {
     try {
@@ -251,7 +251,7 @@ export class MPHelper {
     table: string,
     records: T[],
     params?: Pick<TableQueryParams, "$select" | "$userId" | "$allowCreate"> & {
-      schema?: ZodObject<ZodRawShape>;
+      schema?: z.ZodObject;
       partial?: boolean;
     }
   ): Promise<T[]> {

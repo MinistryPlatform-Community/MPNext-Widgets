@@ -6,9 +6,9 @@ export const WifiDevicesSchema = z.object({
   Contact_ID: z.number().int().nullable(),
   First_Name: z.string().max(50).nullable(),
   Last_Name: z.string().max(50).nullable(),
-  Email_Address: z.string().email().max(254).nullable(),
+  Email_Address: z.email().nullable(),
   Mobile_Phone: z.string().nullable(),
-  Start_Date: z.string().datetime(),
+  Start_Date: z.iso.datetime(),
 });
 
 export type WifiDevicesInput = z.infer<typeof WifiDevicesSchema>;

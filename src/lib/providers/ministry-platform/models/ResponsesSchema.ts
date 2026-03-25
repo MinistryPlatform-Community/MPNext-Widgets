@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const ResponsesSchema = z.object({
   Response_ID: z.number().int(),
-  Response_Date: z.string().datetime(),
+  Response_Date: z.iso.datetime(),
   Opportunity_ID: z.number().int(),
   Participant_ID: z.number().int(),
   Comments: z.string().max(2000).nullable(),

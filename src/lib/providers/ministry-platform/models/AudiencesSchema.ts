@@ -6,9 +6,9 @@ export const AudiencesSchema = z.object({
   Description: z.string().max(255).nullable(),
   Processing_Order: z.number().int(),
   Active: z.boolean(),
-  Last_Update_Date: z.string().datetime().nullable(),
+  Last_Update_Date: z.iso.datetime().nullable(),
   Last_Update_Status: z.string().max(256).nullable(),
-  Next_Update_Date: z.string().datetime().nullable(),
+  Next_Update_Date: z.iso.datetime().nullable(),
 });
 
 export type AudiencesInput = z.infer<typeof AudiencesSchema>;

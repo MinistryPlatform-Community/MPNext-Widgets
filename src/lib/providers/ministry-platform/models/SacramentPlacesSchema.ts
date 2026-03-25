@@ -9,8 +9,8 @@ export const SacramentPlacesSchema = z.object({
   Phone: z.string().nullable(),
   Alt_Phone: z.string().nullable(),
   Fax: z.string().nullable(),
-  Email: z.string().email().max(254).nullable(),
-  Website: z.string().url().nullable(),
+  Email: z.email().nullable(),
+  Website: z.url().nullable(),
   Closed: z.boolean(),
   Church_Association_ID: z.number().int().nullable(),
 });
