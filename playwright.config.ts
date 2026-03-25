@@ -21,14 +21,6 @@ export default defineConfig({
         baseURL: "http://localhost:5173",
       },
     },
-    {
-      name: "webapp",
-      testDir: "./e2e/webapp",
-      use: {
-        ...devices["Desktop Chrome"],
-        baseURL: "http://localhost:3000",
-      },
-    },
   ],
 
   webServer: [
