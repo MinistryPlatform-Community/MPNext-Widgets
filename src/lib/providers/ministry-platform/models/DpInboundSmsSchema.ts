@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const DpInboundSmsSchema = z.object({
   Inbound_SMS_ID: z.number().int(),
-  Event_Time: z.string().datetime(),
+  Event_Time: z.iso.datetime(),
   Message_ID: z.string().max(64),
   Message_From: z.string().max(13),
   Message_To: z.string().max(1024),

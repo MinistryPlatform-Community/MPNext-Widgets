@@ -8,7 +8,7 @@ export const ContactHouseholdsSchema = z.object({
   Household_Type_ID: z.number().int().nullable(),
   Primary_Family: z.boolean(),
   Notes: z.string().max(2000).nullable(),
-  End_Date: z.string().datetime().nullable(),
+  End_Date: z.iso.datetime().nullable(),
 });
 
 export type ContactHouseholdsInput = z.infer<typeof ContactHouseholdsSchema>;

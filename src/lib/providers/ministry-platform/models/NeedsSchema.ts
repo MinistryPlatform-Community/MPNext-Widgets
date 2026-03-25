@@ -7,12 +7,12 @@ export const NeedsSchema = z.object({
   Need_Campaign_ID: z.number().int(),
   Need_Type_ID: z.number().int().nullable(),
   Other_Need: z.string().max(255).nullable(),
-  Target_Date: z.string().datetime().nullable(),
+  Target_Date: z.iso.datetime().nullable(),
   Complete: z.boolean(),
   Need_Provider_ID: z.number().int().nullable(),
-  Date_Assigned: z.string().datetime().nullable(),
+  Date_Assigned: z.iso.datetime().nullable(),
   Notes: z.string().max(500).nullable(),
-  Need_Guid: z.string().uuid(),
+  Need_Guid: z.guid(),
   Care_Case_ID: z.number().int().nullable(),
 });
 

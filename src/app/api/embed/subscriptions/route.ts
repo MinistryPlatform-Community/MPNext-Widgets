@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireWidgetAuth, getCorsHeaders, resolveRequestOrigin, buildOptionsResponse, buildFallbackCorsHeaders } from "@/lib/embed/auth";
 import { SubscriptionService } from "@/services/subscriptionService";
 import { SubscriptionUpdateSchema } from "@mpnext/types";
+import { z } from "zod";
 
 function fallbackCors(origin: string): HeadersInit {
   return buildFallbackCorsHeaders(origin);
@@ -77,7 +78,7 @@ export async function PUT(req: NextRequest) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { error: "Validation failed", details: z.flattenError(parsed.error).fieldErrors },
         { status: 400, headers }
       );
     }

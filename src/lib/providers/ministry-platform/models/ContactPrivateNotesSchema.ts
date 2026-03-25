@@ -5,7 +5,7 @@ export const ContactPrivateNotesSchema = z.object({
   User_ID: z.number().int(),
   Contact_ID: z.number().int().nullable(),
   Notes: z.string().max(2000),
-  Start_Date: z.string().datetime(),
+  Start_Date: z.iso.datetime(),
 });
 
 export type ContactPrivateNotesInput = z.infer<typeof ContactPrivateNotesSchema>;

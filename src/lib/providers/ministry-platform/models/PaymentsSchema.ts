@@ -4,7 +4,7 @@ export const PaymentsSchema = z.object({
   Payment_ID: z.number().int(),
   Payment_Total: z.number(),
   Contact_ID: z.number().int(),
-  Payment_Date: z.string().datetime(),
+  Payment_Date: z.iso.datetime(),
   Gateway_Response: z.string().max(500).nullable(),
   Transaction_Code: z.string().max(50).nullable(),
   Notes: z.string().max(4000).nullable(),

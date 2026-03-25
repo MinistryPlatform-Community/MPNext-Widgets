@@ -12,7 +12,7 @@ export const InvoiceDetailSchema = z.object({
   Item_Note: z.string().max(500).nullable(),
   Recipient_Name: z.string().max(75).nullable(),
   Recipient_Address: z.string().max(500).nullable(),
-  Recipient_Email: z.string().email().max(254).nullable(),
+  Recipient_Email: z.email().nullable(),
   Recipient_Phone: z.string().nullable(),
   Deposit_Requested: z.boolean(),
 });

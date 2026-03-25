@@ -2,7 +2,7 @@
 
 This document provides a summary of Ministry Platform database tables for LLM assistants working on the NorthwoodsNext project.
 
-**Generated:** 2026-03-24T13:04:56.378Z
+**Generated:** 2026-03-25T14:07:09.466Z
 **Tables:** 301
 
 ---

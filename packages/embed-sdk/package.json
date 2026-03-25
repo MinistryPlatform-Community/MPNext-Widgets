@@ -12,7 +12,9 @@
       "require": "./dist/next-embed.umd.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "vite build --watch",
     "demo": "vite",
@@ -23,8 +25,5 @@
     "@types/node": "^20.17.10",
     "typescript": "^6",
     "vite": "^8"
-  },
-  "dependencies": {
-    "zod": "^3.25.32"
   }
 }

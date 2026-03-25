@@ -6,7 +6,7 @@ export const BooksSchema = z.object({
   ISBN: z.string().max(15).nullable(),
   Description: z.string().max(255).nullable(),
   Cost: z.number().nullable(),
-  Start_Date: z.string().datetime().nullable(),
+  Start_Date: z.iso.datetime().nullable(),
   Genre_ID: z.number().int().nullable(),
 });
 

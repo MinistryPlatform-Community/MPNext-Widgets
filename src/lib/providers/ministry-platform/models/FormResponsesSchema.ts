@@ -3,12 +3,12 @@ import { z } from 'zod';
 export const FormResponsesSchema = z.object({
   Form_Response_ID: z.number().int(),
   Form_ID: z.number().int(),
-  Response_Date: z.string().datetime(),
+  Response_Date: z.iso.datetime(),
   IP_Address: z.string().max(45).nullable(),
   Contact_ID: z.number().int().nullable(),
   First_Name: z.string().max(50).nullable(),
   Last_Name: z.string().max(50).nullable(),
-  Email_Address: z.string().email().max(254).nullable(),
+  Email_Address: z.email().nullable(),
   Phone_Number: z.string().max(50).nullable(),
   Address_Line_1: z.string().max(75).nullable(),
   Address_Line_2: z.string().max(75).nullable(),
@@ -21,7 +21,7 @@ export const FormResponsesSchema = z.object({
   Opportunity_Response: z.number().int().nullable(),
   Congregation_ID: z.number().int().nullable(),
   Notification_Sent: z.boolean(),
-  Expires: z.string().datetime().nullable(),
+  Expires: z.iso.datetime().nullable(),
   Event_Participant_ID: z.number().int().nullable(),
 });
 

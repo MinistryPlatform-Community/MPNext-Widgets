@@ -4,8 +4,8 @@ export const PocketPlatformDevicesSchema = z.object({
   Device_ID: z.number().int(),
   Hardware_ID: z.string().max(50),
   User_ID: z.number().int().nullable(),
-  First_Seen: z.string().datetime(),
-  Last_Seen: z.string().datetime(),
+  First_Seen: z.iso.datetime(),
+  Last_Seen: z.iso.datetime(),
   Platform: z.string().max(50).nullable(),
   App_ID: z.number().int().nullable(),
 });

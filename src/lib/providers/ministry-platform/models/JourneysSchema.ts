@@ -8,8 +8,8 @@ export const JourneysSchema = z.object({
   Gamify: z.boolean().nullable(),
   Active: z.boolean().nullable(),
   Badge: z.string().max(400).nullable(),
-  Start_Date: z.string().datetime().nullable(),
-  End_Date: z.string().datetime().nullable(),
+  Start_Date: z.iso.datetime().nullable(),
+  End_Date: z.iso.datetime().nullable(),
   Finish_Message: z.string().max(150).nullable(),
 });
 

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const ActivityLogSchema = z.object({
   Activity_Log_ID: z.number().int(),
-  Activity_Date: z.string().datetime(),
+  Activity_Date: z.iso.datetime(),
   Activity_Type: z.string().max(75),
   Record_Name: z.string().max(75),
   Contact_ID: z.number().int(),

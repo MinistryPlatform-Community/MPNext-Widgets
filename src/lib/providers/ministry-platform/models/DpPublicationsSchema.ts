@@ -9,7 +9,7 @@ export const DpPublicationsSchema = z.object({
   Available_Online: z.boolean().nullable(),
   Online_Sort_Order: z.number().int().nullable(),
   MailChimp_List: z.string().max(50).nullable(),
-  Last_Sync_Date: z.string().datetime().nullable(),
+  Last_Sync_Date: z.iso.datetime().nullable(),
   Sync_Nightly: z.boolean(),
   Name: z.string().max(25),
   On_Connection_Card: z.boolean(),

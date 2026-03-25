@@ -7,7 +7,7 @@ export const VwMpPersonnelAuditOverviewSchema = z.object({
   Personnel_ID: z.number().int(),
   Description: z.string().max(50),
   User: z.string().max(254),
-  Date: z.string().datetime(),
+  Date: z.iso.datetime(),
   On_Behalf_Of: z.string().max(256),
   Impersonated_By: z.string().max(256),
   Field: z.string().max(50).nullable(),

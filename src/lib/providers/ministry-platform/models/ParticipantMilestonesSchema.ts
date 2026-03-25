@@ -5,7 +5,7 @@ export const ParticipantMilestonesSchema = z.object({
   Participant_ID: z.number().int(),
   Milestone_ID: z.number().int(),
   Program_ID: z.number().int(),
-  Date_Accomplished: z.string().datetime().nullable(),
+  Date_Accomplished: z.iso.datetime().nullable(),
   Event_ID: z.number().int().nullable(),
   Witness: z.number().int().nullable(),
   At_Prior_Church: z.boolean(),
