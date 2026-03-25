@@ -5,7 +5,7 @@
  *
  * Usage — just load the script and drop in widgets:
  *
- *   <script type="module" src="https://your-host.com/embed-sdk/next-embed.es.js"></script>
+ *   <script type="module" src="https://your-host.com/embed-sdk/next-embed.js"></script>
  *   <next-user-menu mp-base-url="https://mp.church.com"></next-user-menu>
  *
  * The SDK detects its own host, auto-registers a token provider that calls
@@ -33,12 +33,17 @@ import "./components/my-invoices";
 
 /**
  * Derive the API host from the script's own URL.
- * e.g. https://your-host.com/embed-sdk/next-embed.es.js → https://your-host.com
+ * e.g. https://your-host.com/embed-sdk/next-embed.js → https://your-host.com
  */
 function detectApiHost(): string {
   if (typeof document === "undefined") return "";
 
-  // 1. Currently executing script (works for <script src="https://...">)
+  // 1. Set by the cache-busting loader (next-embed.js)
+  if ((window as any).__nextEmbedApiHost) {
+    return (window as any).__nextEmbedApiHost;
+  }
+
+  // 2. Currently executing script (works for direct <script src="https://...">)
   const current = document.currentScript as HTMLScriptElement | null;
   if (current?.src) {
     try {
@@ -46,7 +51,7 @@ function detectApiHost(): string {
     } catch { /* fall through */ }
   }
 
-  // 2. Find our script tag by filename
+  // 3. Find our script tag by filename
   const scripts = document.querySelectorAll<HTMLScriptElement>(
     'script[src*="next-embed"]',
   );
@@ -56,7 +61,7 @@ function detectApiHost(): string {
     } catch { /* continue */ }
   }
 
-  // 3. Read api-host from the first widget element on the page
+  // 4. Read api-host from the first widget element on the page
   //    (handles Vite dev where the SDK is a local module import)
   const widget = document.querySelector(
     "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices",
@@ -185,5 +190,8 @@ declare global {
     };
     __nextSDKReady?: Promise<void>;
     __nextSDKReadyResolve?: () => void;
+    __nextEmbedApiHost?: string;
+    __nextEmbedBaseUrl?: string;
+    __nextEmbedCSSUrl?: string;
   }
 }

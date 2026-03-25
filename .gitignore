@@ -9,9 +9,12 @@ packages/types/src/*.js
 packages/types/src/*.d.ts
 packages/types/src/*.d.ts.map
 
-# SDK build artifacts in public
+# SDK build artifacts in public (loader + hashed bundles + hashed CSS)
+public/embed-sdk/next-embed.js
 public/embed-sdk/next-embed.*.js
 public/embed-sdk/next-embed.*.js.map
+public/embed-sdk/mp-widget-overrides.*.css
+!public/embed-sdk/mp-widget-overrides.css
 
 # Environment
 .env

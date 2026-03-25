@@ -1,20 +1,15 @@
 /**
  * Copies built SDK bundles from packages/embed-sdk/dist/ to public/embed-sdk/
- * Run after `pnpm build:sdk` to stage artifacts for Next.js static serving.
+ * Run after `hash-sdk.js` to stage artifacts for Next.js static serving.
+ *
+ * Handles dynamic content-hashed filenames and cleans stale hashed files.
  */
-const { copyFileSync, existsSync, mkdirSync } = require("fs");
+const { copyFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } = require("fs");
 const { resolve } = require("path");
 
 const root = resolve(__dirname, "..");
 const src = resolve(root, "packages/embed-sdk/dist");
 const dest = resolve(root, "public/embed-sdk");
-
-const files = [
-  "next-embed.es.js",
-  "next-embed.es.js.map",
-  "next-embed.umd.js",
-  "next-embed.umd.js.map",
-];
 
 if (!existsSync(src)) {
   console.error(`SDK dist not found: ${src}`);
@@ -26,17 +21,39 @@ if (!existsSync(dest)) {
   mkdirSync(dest, { recursive: true });
 }
 
-let copied = 0;
-for (const file of files) {
-  const from = resolve(src, file);
-  const to = resolve(dest, file);
-  if (existsSync(from)) {
-    copyFileSync(from, to);
-    copied++;
-    console.log(`  ${file}`);
-  } else {
-    console.warn(`  SKIP ${file} (not found)`);
+// ---------------------------------------------------------------------------
+// 1. Clean old hashed files from public/embed-sdk/
+// ---------------------------------------------------------------------------
+
+const stalePatterns = [
+  /^next-embed\.[a-f0-9]+\.es\.js(\.map)?$/,  // hashed bundles + maps
+  /^next-embed\.js$/,                           // loader
+  /^mp-widget-overrides\.[a-f0-9]+\.css$/,      // hashed CSS
+];
+
+const existing = readdirSync(dest);
+let cleaned = 0;
+for (const file of existing) {
+  if (stalePatterns.some((p) => p.test(file))) {
+    unlinkSync(resolve(dest, file));
+    cleaned++;
   }
 }
+if (cleaned) console.log(`  Cleaned ${cleaned} stale file(s) from public/embed-sdk/`);
 
-console.log(`Copied ${copied}/${files.length} SDK files to public/embed-sdk/`);
+// ---------------------------------------------------------------------------
+// 2. Copy new files from dist/
+// ---------------------------------------------------------------------------
+
+const distFiles = readdirSync(src).filter((f) =>
+  f.startsWith("next-embed") || f.startsWith("mp-widget-overrides"),
+);
+
+let copied = 0;
+for (const file of distFiles) {
+  copyFileSync(resolve(src, file), resolve(dest, file));
+  copied++;
+  console.log(`  ${file}`);
+}
+
+console.log(`Copied ${copied} SDK file(s) to public/embed-sdk/`);

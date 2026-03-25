@@ -22,8 +22,8 @@ export default defineConfig(({ mode }) => {
     lib: {
       entry: resolve(import.meta.dirname, "src/index.ts"),
       name: "MPNextEmbed",
-      formats: ["es", "umd"],
-      fileName: (format) => `next-embed.${format}.js`,
+      formats: ["es"],
+      fileName: () => `next-embed.es.js`,
     },
     target: "es2019",
     sourcemap: true,

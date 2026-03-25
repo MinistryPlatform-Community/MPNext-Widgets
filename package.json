@@ -12,7 +12,7 @@
     "test:widget": "concurrently -n next,widget -c blue,green \"next dev\" \"pnpm --filter @mpnext/embed-sdk demo\"",
     "build": "pnpm build:sdk && next build",
     "build:web": "next build",
-    "build:sdk": "pnpm --filter @mpnext/embed-sdk build && node scripts/copy-sdk.js",
+    "build:sdk": "pnpm --filter @mpnext/embed-sdk build && node scripts/hash-sdk.js && node scripts/copy-sdk.js",
     "start": "next start",
     "lint": "eslint .",
     "mp:generate": "tsx src/lib/providers/ministry-platform/scripts/generate-types.ts",

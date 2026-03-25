@@ -59,6 +59,10 @@ export class UserMenuWidget extends MPNextWidget {
   }
 
   private get mpWidgetCssUrl(): string {
+    // Prefer hashed URL set by the cache-busting loader
+    if (window.__nextEmbedCSSUrl) {
+      return window.__nextEmbedCSSUrl;
+    }
     return `${this.apiHost}/embed-sdk/mp-widget-overrides.css`;
   }
 
