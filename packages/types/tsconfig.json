@@ -12,7 +12,8 @@
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "types": []
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
