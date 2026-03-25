@@ -122,6 +122,32 @@ export const widgetCatalog: WidgetConfig[] = [
 <!-- Filtered by congregation -->
 <next-full-calendar congregation-id="1" view="month"></next-full-calendar>`,
   },
+
+  // ─── Authenticated Widgets ─────────────────────────────────────────
+  {
+    slug: "profile",
+    tag: "next-profile",
+    title: "Profile Editor",
+    description: "Edit user profile fields including name, email, phone, and address.",
+    category: "Authenticated",
+    needsUserMenu: true,
+    needsMpWidgets: true,
+    attributes: {},
+    events: ["profileLoaded", "profileSaved", "profileError", "passwordChanged", "passwordError"],
+    implementationCode: `<next-profile></next-profile>`,
+  },
+  {
+    slug: "my-invoices",
+    tag: "next-my-invoices",
+    title: "My Invoices",
+    description: "View and manage user invoices with line item details.",
+    category: "Authenticated",
+    needsUserMenu: true,
+    needsMpWidgets: true,
+    attributes: {},
+    events: ["invoicesLoaded", "invoiceSelected", "invoiceError"],
+    implementationCode: `<next-my-invoices></next-my-invoices>`,
+  },
 ];
 
 export function getWidgetBySlug(slug: string): WidgetConfig | undefined {
