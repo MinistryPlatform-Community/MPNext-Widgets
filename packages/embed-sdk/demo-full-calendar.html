@@ -5,80 +5,120 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MPNext Full Calendar Widget - Demo</title>
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: ui-sans-serif, system-ui, sans-serif;
-      margin: 0;
-      padding: 40px 20px;
-      background: #f3f4f6;
+      background: #f9fafb;
+      color: #2D2926;
     }
+    .page {
+      max-width: 1024px;
+      margin: 0 auto;
+      padding: 32px 16px;
+    }
+    .back-link {
+      display: inline-block;
+      margin-bottom: 16px;
+      color: #004C97;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .back-link:hover { text-decoration: underline; }
     h1 {
-      color: #002855;
-      text-align: center;
-      margin-bottom: 40px;
+      font-size: 24px;
+      font-weight: 700;
+      color: #004C97;
+      margin-bottom: 4px;
     }
-    h3 {
-      color: #002855;
-      margin-bottom: 12px;
+    .description {
+      color: #6b7280;
+      margin-bottom: 8px;
+      font-size: 16px;
     }
-    .demo-container {
-      background: white;
-      padding: 40px;
-      border-radius: 16px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      margin-bottom: 40px;
-    }
-    .demo-container.widget-container {
-      padding: 24px;
-    }
-    .info {
-      background: #e0f2fe;
-      border-left: 4px solid #004C97;
-      padding: 16px;
-      border-radius: 8px;
+    .tag-code {
+      display: inline-block;
+      font-size: 12px;
+      color: #9ca3af;
       margin-bottom: 24px;
     }
-    .event-log {
-      background: #1f2937;
-      color: #10b981;
+    .space-y > * + * { margin-top: 24px; }
+
+    /* Controls card */
+    .controls-card {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 12px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
       padding: 16px;
-      border-radius: 8px;
-      font-family: 'Courier New', monospace;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .control-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #6b7280;
+    }
+    .control-group input,
+    .control-group select {
+      padding: 6px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
       font-size: 14px;
-      max-height: 300px;
-      overflow-y: auto;
+      color: #111827;
+      background: white;
     }
-    .event-entry {
+    .control-group input:focus,
+    .control-group select:focus {
+      outline: none;
+      border-color: #004C97;
+      box-shadow: 0 0 0 1px #004C97;
+    }
+    .apply-btn {
+      padding: 6px 16px;
+      background: #004C97;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .apply-btn:hover { background: #002855; }
+
+    /* Widget demo container */
+    .demo-box {
+      min-height: 200px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      padding: 24px;
+    }
+    .section-label {
+      font-size: 14px;
+      font-weight: 700;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
       margin-bottom: 8px;
-      padding: 8px;
-      background: rgba(16, 185, 129, 0.1);
-      border-radius: 4px;
     }
-    code {
-      background: #f3f4f6;
-      padding: 2px 6px;
-      border-radius: 4px;
-      color: #004C97;
-      font-size: 13px;
+    next-full-calendar {
+      display: block;
+      width: 100%;
     }
-    pre {
-      background: #1f2937;
-      color: #e5e7eb;
-      padding: 16px;
-      border-radius: 8px;
-      overflow-x: auto;
-    }
-    pre code {
-      background: transparent;
-      color: #e5e7eb;
-      padding: 0;
-    }
+
+    /* Status messages */
     .status {
       padding: 12px;
       border-radius: 8px;
       margin-bottom: 16px;
+      font-size: 14px;
     }
     .status.success {
       background: #d1fae5;
@@ -90,138 +130,181 @@
       color: #991b1b;
       border: 1px solid #ef4444;
     }
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      align-items: flex-end;
-      margin-bottom: 24px;
-    }
-    .control-group {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .control-group label {
-      font-size: 13px;
-      font-weight: 600;
-      color: #474747;
-    }
-    .control-group input,
-    .control-group select {
-      padding: 7px 10px;
-      border: 1px solid #E0E0E0;
-      border-radius: 6px;
-      font-size: 14px;
-      color: #2D2926;
+
+    /* Card */
+    .card {
       background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
     }
-    .control-group input:focus,
-    .control-group select:focus {
-      outline: none;
-      border-color: #004C97;
-      box-shadow: 0 0 0 3px rgba(0, 76, 151, 0.15);
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid #e5e7eb;
     }
-    .apply-btn {
-      padding: 8px 18px;
+    .card-header h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #002855;
+    }
+    .card-header span {
+      font-size: 12px;
+      font-weight: 400;
+      color: #6b7280;
+      margin-left: 8px;
+    }
+    .clear-btn {
+      background: none;
+      border: none;
+      font-size: 12px;
+      color: #6b7280;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .clear-btn:hover { background: #f3f4f6; }
+    .copy-btn {
       background: #004C97;
       color: white;
       border: none;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 600;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: 4px;
       cursor: pointer;
-      transition: background-color 0.15s ease;
     }
-    .apply-btn:hover {
-      background: #002855;
-    }
-    next-full-calendar {
-      display: block;
-      width: 100%;
-    }
-    .section-label {
+    .copy-btn:hover { background: #002855; }
+
+    /* Event log */
+    .event-log {
+      background: #1f2937;
+      color: #10b981;
+      padding: 16px;
+      font-family: 'Courier New', monospace;
       font-size: 14px;
-      font-weight: 700;
-      color: #9E9E9E;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .event-entry {
       margin-bottom: 8px;
+      padding: 8px;
+      background: rgba(16, 185, 129, 0.1);
+      border-radius: 4px;
+    }
+
+    /* Code blocks */
+    pre {
+      background: #1f2937;
+      color: #e5e7eb;
+      padding: 16px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 0;
+    }
+    pre code {
+      background: transparent;
+      color: #e5e7eb;
+      padding: 0;
+    }
+    code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #004C97;
+      font-size: 13px;
+    }
+
+    /* Universal setup card */
+    .setup-card {
+      border: 2px dashed #fcd34d;
+      background: #fffbeb;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .setup-card .card-header {
+      border-bottom: 1px solid #fde68a;
+    }
+    .setup-card .card-header span {
+      color: #92400e;
+      font-weight: 500;
     }
   </style>
 </head>
 <body>
-  <a href="/" style="display:inline-block;margin-bottom:8px;color:#004C97;text-decoration:none;font-size:14px;font-family:ui-sans-serif,system-ui,sans-serif;">&larr; All Widgets</a>
-  <h1>Full Calendar Widget Demo</h1>
+  <div class="page">
+    <a href="/" class="back-link">&larr; All Widgets</a>
+    <h1>Full Calendar</h1>
+    <p class="description">Multi-view calendar with month, week, list, cards, and mini-cal views.</p>
+    <code class="tag-code">&lt;next-full-calendar&gt;</code>
 
-  <div class="demo-container">
-    <div id="status"></div>
-
-    <div class="info">
-      <strong>Instructions:</strong>
-      <ol style="margin: 8px 0 0 0; padding-left: 20px;">
-        <li>Make sure Next.js is running: <code>pnpm dev</code> in another terminal</li>
-        <li>The calendar loads publicly — no sign-in required</li>
-        <li>Use the controls below to switch views or filter by campus</li>
-        <li>Click any event to see its detail modal</li>
-        <li>Views: <strong>Month</strong>, <strong>Week</strong>, <strong>List</strong> (FullCalendar), <strong>Cards</strong> (image grid), <strong>Calendar</strong> (mini cal + cards)</li>
-      </ol>
-    </div>
-
-    <!-- Controls -->
-    <div class="controls">
-      <div class="control-group">
-        <label for="view-select">Initial View</label>
-        <select id="view-select">
-          <option value="month">Month</option>
-          <option value="week">Week</option>
-          <option value="list">List</option>
-          <option value="cards">Cards</option>
-          <option value="calendar">Calendar</option>
-        </select>
+    <div class="space-y">
+      <!-- Controls -->
+      <div class="controls-card">
+        <div class="control-group">
+          <label for="view-select">View</label>
+          <select id="view-select">
+            <option value="cards">Cards</option>
+            <option value="list">List</option>
+            <option value="month">Month</option>
+            <option value="week">Week</option>
+            <option value="calendar">Calendar</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label for="toolbar-toggle">Toolbar</label>
+          <select id="toolbar-toggle">
+            <option value="true">Show</option>
+            <option value="false">Hide</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label for="congregation-select">Congregation ID</label>
+          <select id="congregation-select">
+            <option value="">All Campuses</option>
+            <option value="1">Campus 1</option>
+            <option value="2">Campus 2</option>
+            <option value="3">Campus 3</option>
+          </select>
+        </div>
+        <button class="apply-btn" id="apply-filter">Apply</button>
       </div>
-      <div class="control-group">
-        <label for="toolbar-toggle">Show Toolbar</label>
-        <select id="toolbar-toggle">
-          <option value="true">Yes</option>
-          <option value="false">No</option>
-        </select>
+
+      <!-- Main calendar widget -->
+      <div class="demo-box">
+        <div id="status"></div>
+        <p class="section-label">Interactive Calendar</p>
+        <next-full-calendar id="main-calendar" api-host="__API_HOST__"></next-full-calendar>
       </div>
-      <div class="control-group">
-        <label for="congregation-select">Campus (Congregation ID)</label>
-        <select id="congregation-select">
-          <option value="">All Campuses</option>
-          <option value="1">Campus 1</option>
-          <option value="2">Campus 2</option>
-          <option value="3">Campus 3</option>
-        </select>
+
+      <!-- Locked cards view example -->
+      <div class="demo-box">
+        <p class="section-label">Locked Cards View (no toolbar)</p>
+        <next-full-calendar api-host="__API_HOST__" view="cards" show-toolbar="false"></next-full-calendar>
       </div>
-      <button class="apply-btn" id="apply-filter">Apply</button>
-    </div>
-  </div>
 
-  <!-- Main calendar widget -->
-  <div class="demo-container widget-container">
-    <p class="section-label">Interactive Calendar</p>
-    <next-full-calendar id="main-calendar" api-host="__API_HOST__"></next-full-calendar>
-  </div>
+      <!-- Event log -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Event Log</h3>
+          <button class="clear-btn" onclick="document.getElementById('event-log').innerHTML=''">Clear</button>
+        </div>
+        <div id="event-log" class="event-log">
+          <div class="event-entry">Initializing widget...</div>
+        </div>
+      </div>
 
-  <!-- Locked cards view example -->
-  <div class="demo-container widget-container">
-    <p class="section-label">Locked Cards View (no toolbar)</p>
-    <next-full-calendar api-host="__API_HOST__" view="cards" show-toolbar="false"></next-full-calendar>
-  </div>
-
-  <div class="demo-container">
-    <h3>Event Log</h3>
-    <div id="event-log" class="event-log">
-      <div class="event-entry">Initializing widget...</div>
-    </div>
-  </div>
-
-  <div class="demo-container">
-    <h3>Widget Code <span style="font-weight:normal;font-size:13px;color:#474747;">— add this to any page</span></h3>
-    <pre><code>&lt;!-- Default: full calendar with all views --&gt;
+      <!-- Widget code -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Widget Code<span>Add this to any page where you want this widget</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="widget-code">&lt;!-- Default: full calendar with all views --&gt;
 &lt;next-full-calendar&gt;&lt;/next-full-calendar&gt;
 
 &lt;!-- Cards view only, no toolbar --&gt;
@@ -246,12 +329,18 @@
     console.error("Calendar error:", e.detail);
   });
 &lt;/script&gt;</code></pre>
-  </div>
+      </div>
 
-  <div class="demo-container" style="border:2px dashed #F1BE48;background:#fffbeb;">
-    <h3>Universal Setup <span style="font-weight:normal;font-size:13px;color:#92400e;">— add ONCE to your site (e.g. header or layout template)</span></h3>
-    <pre><code>&lt;!-- Load MPNext Embed SDK (auto-initializes) --&gt;
+      <!-- Universal setup -->
+      <div class="setup-card">
+        <div class="card-header">
+          <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="setup-code">&lt;!-- Load MPNext Embed SDK (auto-initializes) --&gt;
 &lt;script type="module" src="https://your-host.com/embed-sdk/next-embed.es.js"&gt;&lt;/script&gt;</code></pre>
+      </div>
+    </div>
   </div>
 
   <!-- Load the SDK from source (development mode) -->
