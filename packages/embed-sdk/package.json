@@ -2,14 +2,12 @@
   "name": "@mpnext/embed-sdk",
   "version": "1.0.0",
   "type": "module",
-  "main": "./dist/next-embed.umd.js",
   "module": "./dist/next-embed.es.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/next-embed.es.js",
-      "require": "./dist/next-embed.umd.js"
+      "import": "./dist/next-embed.es.js"
     }
   },
   "files": [

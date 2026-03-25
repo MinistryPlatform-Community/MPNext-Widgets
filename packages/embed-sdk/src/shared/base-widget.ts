@@ -30,6 +30,11 @@ export abstract class MPNextWidget extends HTMLElement {
    * Derive the API host from the SDK script's own URL.
    */
   private detectApiHostFromScript(): string {
+    // Prefer host set by the cache-busting loader
+    if ((window as any).__nextEmbedApiHost) {
+      return (window as any).__nextEmbedApiHost;
+    }
+
     const scripts = document.querySelectorAll<HTMLScriptElement>(
       'script[src*="next-embed"]',
     );
