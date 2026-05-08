@@ -115,18 +115,32 @@ const ENV_VARS: EnvVar[] = [
     description: 'Ministry Platform API base URL',
   },
   {
-    name: 'NEXTAUTH_SECRET',
+    name: 'BETTER_AUTH_SECRET',
     required: true,
     sensitive: true,
-    description: 'NextAuth encryption secret',
+    description: 'Better Auth encryption secret (32+ bytes, base64url)',
     autoGenerate: true,
   },
   {
-    name: 'NEXTAUTH_URL',
+    name: 'BETTER_AUTH_URL',
     required: true,
     sensitive: false,
     description: 'Application URL',
     defaultValue: 'http://localhost:3000',
+  },
+  {
+    name: 'EMBED_JWT_SECRET',
+    required: true,
+    sensitive: true,
+    description: 'Signs short-lived widget JWTs (32+ bytes, base64url)',
+    autoGenerate: true,
+  },
+  {
+    name: 'EMBED_ALLOWED_ORIGINS',
+    required: true,
+    sensitive: false,
+    description: 'Comma-separated origins allowed to call the embed API',
+    defaultValue: 'http://localhost:3000,http://localhost:5173',
   },
   // Optional variables
   {
@@ -1081,7 +1095,7 @@ async function runInteractiveSetup(options: SetupOptions): Promise<number> {
 
       console.log(chalk.yellow(`\n  ${varDef.name}: ${varDef.description}`));
 
-      if (varDef.autoGenerate && varDef.name === 'NEXTAUTH_SECRET') {
+      if (varDef.autoGenerate) {
         const shouldGenerate = await confirm({
           message: `Auto-generate ${varDef.name}?`,
           default: true,
