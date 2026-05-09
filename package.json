@@ -6,6 +6,7 @@
     "packages/*"
   ],
   "scripts": {
+    "preinstall": "npx -y only-allow pnpm",
     "dev:next": "next dev",
     "dev:sdk": "pnpm --filter @mpnext/embed-sdk dev",
     "dev": "concurrently -n next,widget -c blue,green \"next dev\" \"pnpm --filter @mpnext/embed-sdk demo\"",
