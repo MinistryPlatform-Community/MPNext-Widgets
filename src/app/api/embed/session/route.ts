@@ -82,14 +82,11 @@ export async function POST(req: NextRequest) {
         );
       }
     } else {
-      // Fallback: BetterAuth session (internal app) or public
       const session = await auth.api.getSession({
         headers: await headers(),
       });
       if (session?.session?.accessToken) {
         mpAccessToken = session.session.accessToken;
-      } else {
-        mpAccessToken = process.env.MINISTRY_PLATFORM_SERVICE_TOKEN || "";
       }
       sub = session?.user?.userGuid || "public";
     }
