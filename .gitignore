@@ -42,6 +42,7 @@ playwright-report/
 blob-report/
 .playwright-mcp/
 screenshots/
+coverage/
 
 # Vercel
 .vercel
