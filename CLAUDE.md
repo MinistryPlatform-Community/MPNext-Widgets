@@ -113,3 +113,4 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `packages/embed-sdk/src/shared/base-widget.ts` | Abstract base class (Shadow DOM, token mgmt, fetch) |
 | `packages/embed-sdk/vite.config.ts` | Vite library mode (ES + UMD output) |
 | `public/embed-sdk/mp-widget-overrides.css` | Brand CSS for MP Shadow DOM widgets |
+| `.claude/references/ministryplatform.query-syntax.md` | MP REST API query syntax reference (`$filter`, `$select`, `_TABLE` traversal) |
