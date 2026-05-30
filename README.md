@@ -659,7 +659,7 @@ This project follows strict TypeScript conventions and code style. Please review
 
 ## License
 
-Private
+Proprietary and confidential (UNLICENSED). All rights reserved. See [LICENSE](./LICENSE).
 
 ## Support
 
