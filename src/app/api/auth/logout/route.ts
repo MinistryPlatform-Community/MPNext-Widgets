@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { getEnv } from "@/lib/env";
 
 export async function POST(req: NextRequest) {
   const hdrs = await headers();
@@ -13,7 +14,7 @@ export async function POST(req: NextRequest) {
 
   await auth.api.signOut({ headers: hdrs });
 
-  const baseUrl = process.env.MINISTRY_PLATFORM_BASE_URL!;
+  const baseUrl = getEnv("MINISTRY_PLATFORM_BASE_URL");
   const endSessionUrl = new URL(`${baseUrl}/oauth/connect/endsession`);
   if (idToken) {
     endSessionUrl.searchParams.set("id_token_hint", idToken);

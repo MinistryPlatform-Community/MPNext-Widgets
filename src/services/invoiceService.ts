@@ -1,4 +1,5 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
+import { getEnv } from "@/lib/env";
 import type {
   InvoiceListItem,
   InvoiceLineItem,
@@ -43,7 +44,7 @@ export class InvoiceService {
   private mpBaseUrl: string;
 
   private constructor() {
-    this.mpBaseUrl = process.env.MINISTRY_PLATFORM_BASE_URL!;
+    this.mpBaseUrl = getEnv("MINISTRY_PLATFORM_BASE_URL");
     this.initialize();
   }
 

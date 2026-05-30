@@ -4,8 +4,9 @@ import { customSession } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { getAccountCookie } from "better-auth/cookies";
 import { MPHelper } from "@/lib/providers/ministry-platform";
+import { getEnv } from "@/lib/env";
 
-const mpBaseUrl = process.env.MINISTRY_PLATFORM_BASE_URL!;
+const mpBaseUrl = getEnv("MINISTRY_PLATFORM_BASE_URL");
 
 const options = {
   baseURL: process.env.BETTER_AUTH_URL,
@@ -41,8 +42,8 @@ const options = {
         {
           providerId: "ministry-platform",
           discoveryUrl: `${mpBaseUrl}/oauth/.well-known/openid-configuration`,
-          clientId: process.env.OIDC_CLIENT_ID || process.env.MINISTRY_PLATFORM_CLIENT_ID!,
-          clientSecret: process.env.OIDC_CLIENT_SECRET || process.env.MINISTRY_PLATFORM_CLIENT_SECRET!,
+          clientId: process.env.OIDC_CLIENT_ID || getEnv("MINISTRY_PLATFORM_CLIENT_ID"),
+          clientSecret: process.env.OIDC_CLIENT_SECRET || getEnv("MINISTRY_PLATFORM_CLIENT_SECRET"),
           scopes: [
             "openid",
             "offline_access",

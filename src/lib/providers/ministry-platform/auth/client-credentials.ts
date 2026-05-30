@@ -1,11 +1,13 @@
+import { getEnv } from "@/lib/env";
+
 export async function getClientCredentialsToken() {
-  const mpBaseUrl = process.env.MINISTRY_PLATFORM_BASE_URL!;
+  const mpBaseUrl = getEnv("MINISTRY_PLATFORM_BASE_URL");
   const mpOauthUrl = `${mpBaseUrl}/oauth`;
 
   const params = new URLSearchParams({
     grant_type: "client_credentials",
-    client_id: process.env.MINISTRY_PLATFORM_CLIENT_ID!,
-    client_secret: process.env.MINISTRY_PLATFORM_CLIENT_SECRET!,
+    client_id: getEnv("MINISTRY_PLATFORM_CLIENT_ID"),
+    client_secret: getEnv("MINISTRY_PLATFORM_CLIENT_SECRET"),
     scope: "http://www.thinkministry.com/dataplatform/scopes/all",
   });
 

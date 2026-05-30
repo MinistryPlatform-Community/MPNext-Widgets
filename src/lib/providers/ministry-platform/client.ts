@@ -1,3 +1,4 @@
+import { getEnv } from "@/lib/env";
 import { getClientCredentialsToken } from "./auth/client-credentials";
 import { HttpClient } from "./utils/http-client";
 
@@ -23,7 +24,7 @@ export class MinistryPlatformClient {
      */
     constructor() {
         // Get base URL from environment variable
-        this.baseUrl = process.env.MINISTRY_PLATFORM_BASE_URL!;
+        this.baseUrl = getEnv("MINISTRY_PLATFORM_BASE_URL");
 
         // Create HTTP client with token getter function for automatic authentication
         this.httpClient = new HttpClient(this.baseUrl, () => this.token);
