@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
   // demo/widget surfaces a "not configured" state rather than a hardcoded host.
   const mpBaseUrl = (env.MINISTRY_PLATFORM_BASE_URL || "")
     .replace(/\/ministryplatformapi\/?$/, "");
-  const apiHost = env.BETTER_AUTH_URL || env.NEXTAUTH_URL || "http://localhost:3000";
+  const apiHost = env.BETTER_AUTH_URL || "http://localhost:3000";
 
   // Organization display name baked into widgets (e.g. SMS opt-in consent text).
   // Tenant-configurable via VITE_ORG_NAME; empty falls back to a neutral phrase.

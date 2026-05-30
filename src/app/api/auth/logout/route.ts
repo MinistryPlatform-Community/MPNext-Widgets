@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({})) as { postLogoutRedirectUri?: string };
   const postLogoutRedirectUri =
-    body.postLogoutRedirectUri || `${process.env.BETTER_AUTH_URL || process.env.NEXTAUTH_URL}/signin`;
+    body.postLogoutRedirectUri || `${process.env.BETTER_AUTH_URL}/signin`;
 
   await auth.api.signOut({ headers: hdrs });
 

@@ -30,7 +30,7 @@ export default async function WidgetDemoPage({
     notFound();
   }
 
-  const apiHost = process.env.BETTER_AUTH_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
+  const apiHost = process.env.BETTER_AUTH_URL || "http://localhost:3000";
   // mp-base-url for widgets is the MP host without /ministryplatformapi path
   const mpBaseUrl = getMpHost();
 

@@ -8,8 +8,8 @@ import { MPHelper } from "@/lib/providers/ministry-platform";
 const mpBaseUrl = process.env.MINISTRY_PLATFORM_BASE_URL!;
 
 const options = {
-  baseURL: process.env.BETTER_AUTH_URL || process.env.NEXTAUTH_URL,
-  secret: process.env.BETTER_AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+  baseURL: process.env.BETTER_AUTH_URL,
+  secret: process.env.BETTER_AUTH_SECRET,
   session: {
     cookieCache: {
       enabled: true,
