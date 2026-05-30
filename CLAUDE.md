@@ -62,7 +62,13 @@ Manual widget testing via `pnpm test:widget` (opens http://localhost:5173). Play
 
 All services follow singleton pattern: `const svc = await ServiceName.getInstance()`. Each wraps `MPHelper`.
 
-Services: `addToCalendar`, `fullCalendar`, `profile`, `subscription`, `user`
+Services: `addToCalendar`, `fullCalendar`, `profile`, `subscription`, `user`, `domainTimezone`
+
+## MP Date/Time Handling
+
+**Convert all date/time values at the MP boundary** — use `DomainTimezoneService` (never raw `new Date(x).toISOString()` or `getFullYear()`) when sending or receiving datetime fields, since MP stores wall-clock values in the domain's time zone, not UTC. Server-side, route writes/filters through `DomainTimezoneService.getInstance().toMpSqlDatetime(...)`. Client-side, format MP values with `Intl.DateTimeFormat({ timeZone })` using the IANA zone from `getMpTimezone()` (`src/app/actions/domain.ts`).
+
+See **[Date/Time Handling Reference](.claude/references/ministryplatform.datetimehandling.md)**.
 
 ## Code Conventions
 
@@ -114,3 +120,6 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `packages/embed-sdk/vite.config.ts` | Vite library mode (ES + UMD output) |
 | `public/embed-sdk/mp-widget-overrides.css` | Brand CSS for MP Shadow DOM widgets |
 | `.claude/references/ministryplatform.query-syntax.md` | MP REST API query syntax reference (`$filter`, `$select`, `_TABLE` traversal) |
+| `.claude/references/ministryplatform.datetimehandling.md` | How to send/receive MP datetimes safely via `DomainTimezoneService`, anti-patterns, Windows↔IANA mapping, test guidance |
+| `src/services/domainTimezoneService.ts` | Singleton: MP domain TZ → IANA, `toMpSqlDatetime`, `parseMpDatetime` |
+| `src/app/actions/domain.ts` | `getMpTimezone()` server action for client-side `Intl.DateTimeFormat` rendering |

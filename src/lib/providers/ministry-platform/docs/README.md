@@ -65,9 +65,14 @@ const contacts = await mp.getTableRecords<Contact>({
 });
 
 // Create contact log
+// For MP datetime columns, route through DomainTimezoneService — MP stores
+// wall-clock in the domain's time zone, not UTC.
+// See .claude/references/ministryplatform.datetimehandling.md
+import { DomainTimezoneService } from '@/services/domainTimezoneService';
+const tz = DomainTimezoneService.getInstance();
 await mp.createTableRecords('Contact_Log', [{
   Contact_ID: 12345,
-  Contact_Date: new Date().toISOString(),
+  Contact_Date: await tz.toMpSqlDatetime(new Date()),
   Made_By: 1,
   Notes: 'Follow-up call completed'
 }]);

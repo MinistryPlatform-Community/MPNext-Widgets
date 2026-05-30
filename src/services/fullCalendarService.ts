@@ -1,4 +1,5 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
+import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import type { CalendarEvent } from "@mpnext/types";
 
 // ── MP Record Types ──
@@ -119,9 +120,12 @@ export class FullCalendarService {
     congregationId?: number,
     userGuid?: string
   ): Promise<{ events: CalendarEvent[]; isAdmin: boolean; filters: FilterData }> {
-    // MP/SQL Server needs simple datetime format — strip timezone offsets
-    const startDate = new Date(start).toISOString().slice(0, 19).replace("T", " ");
-    const endDate = new Date(end).toISOString().slice(0, 19).replace("T", " ");
+    // MP $filter literals are interpreted in the domain's wall-clock time zone.
+    // Routing through DomainTimezoneService converts any incoming instant (Z or
+    // offset-tagged) to MP-TZ wall-clock so date-boundary queries don't shift.
+    const tz = DomainTimezoneService.getInstance();
+    const startDate = await tz.toMpSqlDatetime(start);
+    const endDate = await tz.toMpSqlDatetime(end);
 
     let filter = `Event_Start_Date >= '${startDate}' AND Event_End_Date <= '${endDate}' AND Cancelled = 0 AND Visibility_Level_ID = 4`;
     if (congregationId) {
