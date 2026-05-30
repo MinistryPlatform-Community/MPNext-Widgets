@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MPNext Components",
+  title: "MPNext Widgets",
   description: "Ministry Platform Embed Widget Components",
   icons: {
     icon: "/assets/icons/favicon.ico",

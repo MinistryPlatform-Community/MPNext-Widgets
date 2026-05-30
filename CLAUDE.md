@@ -1,4 +1,4 @@
-# CLAUDE.md - MPNext-Components
+# CLAUDE.md - MPNext-Widgets
 
 ## Overview
 

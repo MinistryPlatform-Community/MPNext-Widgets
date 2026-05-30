@@ -200,7 +200,7 @@ function parseArguments(): SetupOptions {
 
 function showHelp(): void {
   console.log(`
-${chalk.bold('MPNext-Components Setup')}
+${chalk.bold('MPNext-Widgets Setup')}
 
 Usage: pnpm run setup [options]
 
@@ -728,7 +728,7 @@ function checkBuildCache(): StepResult {
 // ============================================================================
 
 function runCheckMode(): number {
-  console.log(chalk.bold.blue('\nMPNext-Components Setup Check'));
+  console.log(chalk.bold.blue('\nMPNext-Widgets Setup Check'));
   console.log(chalk.blue('==============================\n'));
 
   const results: { name: string; result: StepResult }[] = [];
@@ -834,7 +834,7 @@ function runCheckMode(): number {
 // ============================================================================
 
 async function runInteractiveSetup(options: SetupOptions): Promise<number> {
-  console.log(chalk.bold.blue('\nMPNext-Components Setup'));
+  console.log(chalk.bold.blue('\nMPNext-Widgets Setup'));
   console.log(chalk.blue('======================='));
 
   const totalSteps = 9;
