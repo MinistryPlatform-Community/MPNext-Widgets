@@ -55,8 +55,18 @@ export class UserMenuWidget extends MPNextWidget {
   }
 
   private get mpBaseUrl(): string {
-    return this.getAttribute("mp-base-url") || "https://my.northwoods.church";
+    const attr = this.getAttribute("mp-base-url");
+    if (attr) return attr;
+    if (!this.mpBaseUrlWarned) {
+      this.mpBaseUrlWarned = true;
+      console.warn(
+        "[next-user-menu] No mp-base-url provided; MP login features are disabled. " +
+          "Set the mp-base-url attribute to your MinistryPlatform host.",
+      );
+    }
+    return "";
   }
+  private mpBaseUrlWarned = false;
 
   private get mpWidgetCssUrl(): string {
     // Prefer hashed URL set by the cache-busting loader

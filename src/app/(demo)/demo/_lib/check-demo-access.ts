@@ -1,8 +1,12 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 
-const DEMO_ACCESS_GROUP_IDS = (process.env.DEMO_ACCESS_GROUP_IDS || "73")
+// No tenant-specific default: fail closed when unconfigured so a fresh tenant
+// never inherits another tenant's demo-access group IDs. Grant access via
+// DEMO_ACCESS_GROUP_IDS or DEMO_PUBLIC_ACCESS instead.
+const DEMO_ACCESS_GROUP_IDS = (process.env.DEMO_ACCESS_GROUP_IDS || "")
   .split(",")
-  .map((id) => id.trim());
+  .map((id) => id.trim())
+  .filter(Boolean);
 
 /**
  * Check if the current user has access to the demo pages.
@@ -16,6 +20,14 @@ export async function checkDemoAccess(userGuid: string): Promise<boolean> {
   const publicAccess = process.env.DEMO_PUBLIC_ACCESS?.toLowerCase();
   if (publicAccess === "true" || publicAccess === "authenticated") {
     return true;
+  }
+
+  // Fail closed: with no configured groups (and no public access), deny.
+  if (DEMO_ACCESS_GROUP_IDS.length === 0) {
+    console.warn(
+      "checkDemoAccess: neither DEMO_ACCESS_GROUP_IDS nor DEMO_PUBLIC_ACCESS is set; denying demo access.",
+    );
+    return false;
   }
 
   try {

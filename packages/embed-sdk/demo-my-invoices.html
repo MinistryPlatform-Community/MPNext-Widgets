@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MPNext My Invoices Widget - Demo</title>
   <!-- MP Widgets base script (provides mpp-user-login) -->
-  <script id="MPWidgets" src="https://my.northwoods.church/widgets/dist/MPWidgets.js"></script>
+  <script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -211,7 +211,7 @@
         <!-- User menu for authentication -->
         <div class="auth-header">
           <span>Sign in to continue</span>
-          <next-user-menu mp-base-url="https://my.northwoods.church"></next-user-menu>
+          <next-user-menu mp-base-url="__MP_BASE_URL__"></next-user-menu>
         </div>
 
         <!-- The actual widget (hidden until authenticated) -->
@@ -321,9 +321,7 @@
     // Helper: build session request body, including MP user token from localStorage
     function buildSessionBody() {
       const body = {
-        tid: "northwoods-dev",
-        wid: "invoices",
-        initToken: "northwoods-dev_dev-secret"
+        wid: "invoices"
       };
       const mpToken = localStorage.getItem("mpp-widgets_AuthToken");
       if (mpToken) {

@@ -1,6 +1,6 @@
 # Ministry Platform Schema Reference
 
-This document provides a summary of Ministry Platform database tables for LLM assistants working on the NorthwoodsNext project.
+This document provides a summary of Ministry Platform database tables for LLM assistants working on this project.
 
 **Generated:** 2026-03-25T14:07:09.466Z
 **Tables:** 301

@@ -1,3 +1,5 @@
+import { getMpHostForDocs } from "@/lib/embed/config";
+
 export type WidgetCategory =
   | "Public"
   | "Authenticated"
@@ -38,8 +40,7 @@ export interface WidgetConfig {
 export const RECAPTCHA_SITE_KEY = "6LeMwXQsAAAAALCfbMktsSEmklS8Bj52F89TA58w";
 
 /** MP host without /ministryplatformapi suffix, for use in example snippets */
-const mpHost = (process.env.MINISTRY_PLATFORM_BASE_URL || "https://my.northwoods.church")
-  .replace(/\/ministryplatformapi\/?$/, "");
+const mpHost = getMpHostForDocs();
 
 export const widgetCatalog: WidgetConfig[] = [
   // ─── Authentication ───────────────────────────────────────────────

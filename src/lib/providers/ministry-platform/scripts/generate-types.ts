@@ -459,7 +459,7 @@ function generateSchemaDocument(tables: TableMetadata[], outputDir: string): str
     });
 
   let md = `# Ministry Platform Schema Reference\n\n`;
-  md += `This document provides a summary of Ministry Platform database tables for LLM assistants working on the NorthwoodsNext project.\n\n`;
+  md += `This document provides a summary of Ministry Platform database tables for LLM assistants working on this project.\n\n`;
   md += `**Generated:** ${new Date().toISOString()}\n`;
   md += `**Tables:** ${validTables.length}\n\n`;
   md += `---\n\n`;

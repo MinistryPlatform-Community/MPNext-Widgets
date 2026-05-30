@@ -2,7 +2,7 @@
 
 ## Overview
 
-**pnpm monorepo**: Component-only extraction from NorthwoodsNext. Contains 3 embed SDK widgets (user-menu, add-to-calendar, full-calendar) with their supporting API routes, services, and shared types. The embed SDK builds framework-agnostic Web Components (Shadow DOM) loaded via `<script>` on external sites.
+**pnpm monorepo**: Component-only embed SDK extraction. Contains 3 embed SDK widgets (user-menu, add-to-calendar, full-calendar) with their supporting API routes, services, and shared types. The embed SDK builds framework-agnostic Web Components (Shadow DOM) loaded via `<script>` on external sites.
 
 ## Structure
 
@@ -43,7 +43,7 @@ Manual widget testing via `pnpm test:widget` (opens http://localhost:5173). Play
 
 **Playwright test account**: `PLAYWRIGHT_MP_USERNAME` / `PLAYWRIGHT_MP_PASSWORD` in `.env.local`. This is a non-admin MP OAuth user with **MFA disabled**.
 
-**Dev tenant**: `northwoods-dev` in `src/lib/embed/config.ts`. Allowed origins: `localhost:3000`, `localhost:5173` (and 127.0.0.1 variants). Init token: `northwoods-dev_dev-secret`.
+**Dev auth**: Widget session auth is origin-based — no tenant id or init token. The `/api/embed/session` route validates the request origin against `EMBED_ALLOWED_ORIGINS` (`src/lib/embed/config.ts`). Local dev origins: `localhost:3000`, `localhost:5173` (and 127.0.0.1 variants).
 
 ## Widget Architecture
 

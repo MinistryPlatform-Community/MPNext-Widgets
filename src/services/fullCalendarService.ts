@@ -313,13 +313,20 @@ export class FullCalendarService {
 
       if (!users[0]?.User_ID) return false;
 
-      const groupIdsEnv = process.env.CALENDAR_ADMIN_GROUP_IDS || "22";
+      // No tenant-specific default: fail closed when unconfigured so a fresh
+      // tenant never inherits another tenant's admin group IDs.
+      const groupIdsEnv = process.env.CALENDAR_ADMIN_GROUP_IDS || "";
       const adminGroupIds = groupIdsEnv
         .split(",")
         .map((id) => parseInt(id.trim(), 10))
         .filter((id) => !isNaN(id));
 
-      if (adminGroupIds.length === 0) return false;
+      if (adminGroupIds.length === 0) {
+        console.warn(
+          "FullCalendarService: CALENDAR_ADMIN_GROUP_IDS is not set; no users will be treated as calendar admins.",
+        );
+        return false;
+      }
 
       const idList = adminGroupIds.join(",");
       const records = await this.mp!.getTableRecords<UserGroupRecord>({

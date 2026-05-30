@@ -45,6 +45,20 @@ describe('FullCalendarService', () => {
 
   describe('checkCalendarAdmin', () => {
     const guid = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+    const prevAdminGroups = process.env.CALENDAR_ADMIN_GROUP_IDS;
+
+    beforeEach(() => {
+      // Admin groups are tenant-configured (no hardcoded default); set explicitly.
+      process.env.CALENDAR_ADMIN_GROUP_IDS = '22';
+    });
+
+    afterEach(() => {
+      if (prevAdminGroups === undefined) {
+        delete process.env.CALENDAR_ADMIN_GROUP_IDS;
+      } else {
+        process.env.CALENDAR_ADMIN_GROUP_IDS = prevAdminGroups;
+      }
+    });
 
     it('should return true when the user is in an admin group', async () => {
       mockGetTableRecords
@@ -78,6 +92,20 @@ describe('FullCalendarService', () => {
       const result = await service.checkCalendarAdmin(guid);
 
       expect(result).toBe(false);
+    });
+
+    it('should fail closed (return false) when CALENDAR_ADMIN_GROUP_IDS is unset', async () => {
+      delete process.env.CALENDAR_ADMIN_GROUP_IDS;
+      mockGetTableRecords.mockResolvedValueOnce([
+        { User_ID: 1, User_GUID: guid, Contact_ID: 100 },
+      ]);
+
+      const service = await FullCalendarService.getInstance();
+      const result = await service.checkCalendarAdmin(guid);
+
+      expect(result).toBe(false);
+      // User lookup happens, but no group query is issued when unconfigured.
+      expect(mockGetTableRecords).toHaveBeenCalledTimes(1);
     });
 
     it('should return false when the user GUID does not resolve', async () => {

@@ -1,5 +1,12 @@
 import { MPNextWidget } from "../shared/base-widget";
 
+// Injected at build time from VITE_ORG_NAME (see vite.config.ts). Empty when unset.
+declare const __ORG_NAME__: string;
+
+/** Organization display name for consent copy; neutral fallback when unconfigured. */
+const ORG_NAME =
+  (typeof __ORG_NAME__ !== "undefined" && __ORG_NAME__) || "our organization";
+
 interface ProfileData {
   Contact_ID: number;
   Contact_GUID: string;
@@ -339,7 +346,7 @@ export class ProfileWidget extends MPNextWidget {
               <label class="nw-checkbox-label">
                 <input type="checkbox" id="sms-opt-in" ${!p.Do_Not_Text ? "checked" : ""} />
                 <div>
-                  <span>I agree to opt in to text messages from Northwoods Community Church</span>
+                  <span>I agree to opt in to text messages from ${this.esc(ORG_NAME)}</span>
                   <small class="nw-checkbox-hint">Message and data rates may apply. Message frequency varies and you may opt out at any time.</small>
                 </div>
               </label>

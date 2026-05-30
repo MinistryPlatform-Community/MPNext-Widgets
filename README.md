@@ -181,7 +181,7 @@ NEXT_PUBLIC_APP_NAME=MPNext-Widgets
 EMBED_JWT_SECRET=your_generated_secret
 EMBED_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 
-# Optional gates (default to Northwoods-specific MP group IDs if unset)
+# Group-based access gates (no default; unset = no group-based access)
 DEMO_ACCESS_GROUP_IDS=
 CALENDAR_ADMIN_GROUP_IDS=
 ```

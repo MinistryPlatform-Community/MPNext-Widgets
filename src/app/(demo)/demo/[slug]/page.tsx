@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getWidgetBySlug, widgetCatalog } from "../_lib/widget-catalog";
+import { getMpHost } from "@/lib/embed/config";
 
 import { WidgetDemo } from "../_components/widget-demo";
 
@@ -31,8 +32,7 @@ export default async function WidgetDemoPage({
 
   const apiHost = process.env.BETTER_AUTH_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
   // mp-base-url for widgets is the MP host without /ministryplatformapi path
-  const mpBaseUrlRaw = process.env.MINISTRY_PLATFORM_BASE_URL || "https://my.northwoods.church";
-  const mpBaseUrl = mpBaseUrlRaw.replace(/\/ministryplatformapi\/?$/, "");
+  const mpBaseUrl = getMpHost();
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">

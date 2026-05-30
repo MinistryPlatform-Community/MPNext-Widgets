@@ -83,13 +83,13 @@ describe("ApiClient", () => {
 
     it("includes X-Tenant-ID header when tenantId is configured", async () => {
       fetchMock.mockResolvedValueOnce(makeResponse({}));
-      const client = new ApiClient(baseConfig({ tenantId: "northwoods-dev" }));
+      const client = new ApiClient(baseConfig({ tenantId: "test-tenant" }));
 
       await client.request("/data");
 
       const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       const headers = init.headers as Record<string, string>;
-      expect(headers["X-Tenant-ID"]).toBe("northwoods-dev");
+      expect(headers["X-Tenant-ID"]).toBe("test-tenant");
     });
 
     it("omits X-Tenant-ID when tenantId is not configured", async () => {
