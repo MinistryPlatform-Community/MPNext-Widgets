@@ -2,19 +2,19 @@
 
 ## Overview
 
-**pnpm monorepo**: Component-only embed SDK extraction. Contains 3 embed SDK widgets (user-menu, add-to-calendar, full-calendar) with their supporting API routes, services, and shared types. The embed SDK builds framework-agnostic Web Components (Shadow DOM) loaded via `<script>` on external sites.
+**pnpm monorepo**: Component-only embed SDK extraction. Contains 5 embed SDK widgets (user-menu, add-to-calendar, full-calendar, profile, my-invoices) with their supporting API routes, services, and shared types. The embed SDK builds framework-agnostic Web Components (Shadow DOM) loaded via `<script>` on external sites.
 
 ## Structure
 
 ```
 src/                           # Next.js 16 (App Router)
-├── app/api/embed/             # Widget API endpoints (subset for 3 widgets)
-├── services/                  # Singleton services (addToCalendar, fullCalendar, profile, subscription, user)
+├── app/api/embed/             # Widget API endpoints (subset for 5 widgets)
+├── services/                  # Singleton services (addToCalendar, fullCalendar, profile, subscription, user, invoice, domainTimezone)
 ├── lib/embed/                 # Widget auth (JWT, CORS, tenant config)
 ├── lib/providers/ministry-platform/  # MP REST API (MPHelper, models, auth)
 packages/
 ├── embed-sdk/                 # @mpnext/embed-sdk (Vite library)
-│   ├── src/components/        # 3 Web Components (next-* custom elements)
+│   ├── src/components/        # 5 Web Components (next-* custom elements)
 │   ├── src/shared/            # base-widget.ts, api-client.ts, cdn-loader.ts
 │   └── demo-*.html            # Per-widget demo pages + index.html
 └── types/                     # @mpnext/types (Zod schemas + TS interfaces)
@@ -47,14 +47,14 @@ Manual widget testing via `pnpm test:widget` (opens http://localhost:5173). Play
 
 ## Widget Architecture
 
-1. External site loads `nw-embed.es.js` via `<script type="module">`
+1. External site loads `next-embed.es.js` via `<script type="module">`
 2. `MPNextEmbed.init()` sets token provider
 3. Token provider fetches JWT (5-min expiry) from `/api/embed/session`
 4. Widgets render in Shadow DOM; API calls use Bearer token with auto-refresh on 401
 
-**Design**: Web Components + Shadow DOM (no framework deps, ~5KB gzip), JWT+CORS auth, multi-tenant origin allowlists.
+**Design**: Web Components + Shadow DOM (no framework deps, ~33KB gzip), JWT+CORS auth, multi-tenant origin allowlists.
 
-**3 widgets**: `next-user-menu`, `next-add-to-calendar`, `next-full-calendar`
+**5 widgets**: `next-user-menu`, `next-add-to-calendar`, `next-full-calendar`, `next-profile`, `next-my-invoices`
 
 **MP widget styling**: `public/embed-sdk/mp-widget-overrides.css` injected into MP Shadow DOM widgets via `customcss` attribute. User-menu applies this automatically.
 
@@ -62,7 +62,7 @@ Manual widget testing via `pnpm test:widget` (opens http://localhost:5173). Play
 
 All services follow singleton pattern: `const svc = await ServiceName.getInstance()`. Each wraps `MPHelper`.
 
-Services: `addToCalendar`, `fullCalendar`, `profile`, `subscription`, `user`, `domainTimezone`
+Services: `addToCalendar`, `fullCalendar`, `profile`, `subscription`, `user`, `invoice`, `domainTimezone`
 
 ## MP Date/Time Handling
 
@@ -115,7 +115,7 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `src/lib/embed/auth.ts` | `requireWidgetAuth()` -- accepts `widget: string \| string[]` |
 | `src/lib/embed/config.ts` | Tenant configs & allowed origins |
 | `src/lib/embed/jwt.ts` | Widget JWT creation/verification |
-| `packages/embed-sdk/src/index.ts` | SDK entry point -- registers 3 widgets |
+| `packages/embed-sdk/src/index.ts` | SDK entry point -- registers 5 widgets |
 | `packages/embed-sdk/src/shared/base-widget.ts` | Abstract base class (Shadow DOM, token mgmt, fetch) |
 | `packages/embed-sdk/vite.config.ts` | Vite library mode (ES + UMD output) |
 | `public/embed-sdk/mp-widget-overrides.css` | Brand CSS for MP Shadow DOM widgets |
