@@ -52,7 +52,7 @@ Manual widget testing via `pnpm test:widget` (opens http://localhost:5173). Play
 3. Token provider fetches JWT (5-min expiry) from `/api/embed/session`
 4. Widgets render in Shadow DOM; API calls use Bearer token with auto-refresh on 401
 
-**Design**: Web Components + Shadow DOM (no framework deps, ~5KB gzip), JWT+CORS auth, idempotency keys, multi-tenant origin allowlists.
+**Design**: Web Components + Shadow DOM (no framework deps, ~5KB gzip), JWT+CORS auth, multi-tenant origin allowlists.
 
 **3 widgets**: `next-user-menu`, `next-add-to-calendar`, `next-full-calendar`
 

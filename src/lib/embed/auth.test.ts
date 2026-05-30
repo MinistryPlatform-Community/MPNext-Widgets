@@ -283,7 +283,7 @@ describe('buildOptionsResponse', () => {
       'GET, POST, PUT, DELETE, OPTIONS',
     );
     expect(res.headers.get('Access-Control-Allow-Headers')).toBe(
-      'Authorization, Content-Type, Idempotency-Key',
+      'Authorization, Content-Type',
     );
     expect(res.headers.get('Access-Control-Max-Age')).toBe('86400');
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(
@@ -315,8 +315,7 @@ describe('buildFallbackCorsHeaders', () => {
     expect(buildFallbackCorsHeaders('https://example.com')).toEqual({
       'Access-Control-Allow-Origin': 'https://example.com',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers':
-        'Authorization, Content-Type, Idempotency-Key',
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type',
     });
   });
 });
@@ -352,7 +351,7 @@ describe('getCorsHeaders', () => {
       'GET, POST, OPTIONS',
     );
     expect(headers['Access-Control-Allow-Headers']).toBe(
-      'Authorization, Content-Type, Idempotency-Key',
+      'Authorization, Content-Type',
     );
     expect(headers['Access-Control-Max-Age']).toBe('86400');
     expect(headers['Access-Control-Allow-Credentials']).toBe('false');
