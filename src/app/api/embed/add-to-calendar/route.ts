@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
 
   try {
-    const claims = await requireWidgetAuth(req, { widget: "add-to-calendar" });
+    await requireWidgetAuth(req, { widget: "add-to-calendar" });
 
     const url = new URL(req.url);
     const eventIdParam = url.searchParams.get("eventId");

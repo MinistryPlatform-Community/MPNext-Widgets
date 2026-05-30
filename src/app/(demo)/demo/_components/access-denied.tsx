@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export function AccessDenied() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center">
@@ -10,12 +12,12 @@ export function AccessDenied() {
           You don&apos;t have permission to access the Widget Demo Library.
           Contact your administrator to request access.
         </p>
-        <a
+        <Link
           href="/"
           className="inline-block rounded-md bg-[#004C97] px-4 py-2 text-sm font-medium text-white hover:bg-[#002855]"
         >
           Go to Dashboard
-        </a>
+        </Link>
       </div>
     </div>
   );

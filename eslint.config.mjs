@@ -9,6 +9,7 @@ const eslintConfig = [
       "packages/**",
       "public/embed-sdk/**",
       "scripts/**",
+      "coverage/**",
     ],
   },
 ];

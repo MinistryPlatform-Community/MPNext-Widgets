@@ -67,11 +67,6 @@ interface ContactRecord {
   Mobile_Phone: string | null;
 }
 
-interface EventParticipantCount {
-  Event_ID: number;
-  Count: number;
-}
-
 interface ProductRecord {
   Product_ID: number;
   Product_Name: string;
@@ -243,6 +238,9 @@ export class FullCalendarService {
       program: e.Program_ID ? [e.Program_ID] : [],
     };
 
+    // Heterogeneous results consumed positionally below; the conditional
+    // pushes for admin enrichment rule out a fixed tuple type.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const parallelFetches: Promise<any>[] = [
       this.getEventTypeMap(lookupIds.eventType),
       this.getCongregationMap(lookupIds.congregation),
@@ -364,7 +362,7 @@ export class FullCalendarService {
         ),
       ];
 
-      let ministryMap = new Map<number, MinistryRecord>();
+      const ministryMap = new Map<number, MinistryRecord>();
       if (ministryIds.length > 0) {
         const mFilter = ministryIds.map((id) => `Ministry_ID = ${id}`).join(" OR ");
         const ministries = await this.mp!.getTableRecords<MinistryRecord>({

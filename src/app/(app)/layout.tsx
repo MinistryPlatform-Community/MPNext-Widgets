@@ -10,7 +10,6 @@ export default async function AppLayout({
   children: React.ReactNode;
 }>) {
   const session = await auth.api.getSession({ headers: await headers() });
-  const mpBaseUrl = process.env.MINISTRY_PLATFORM_BASE_URL!;
 
   return (
     <SessionProvider session={session ?? null}>
