@@ -85,13 +85,6 @@ export class HttpClient {
     async put<T = unknown>(endpoint: string, body: RequestBody, queryParams?: QueryParams): Promise<T> {
         const url = this.buildUrl(endpoint, queryParams);
 
-        console.log("HTTP PUT Request:", {
-            url,
-            endpoint,
-            body: JSON.stringify(body, null, 2),
-            queryParams
-        });
-
         const response = await fetch(url, {
             method: 'PUT',
             headers: {
