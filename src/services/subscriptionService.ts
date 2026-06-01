@@ -52,17 +52,12 @@ export class SubscriptionService {
    * contact's subscription state. Sorted by Online_Sort_Order then Title.
    */
   public async getSubscriptions(
-    contactId: number,
-    congregationIds: number[] = [1, 10]
+    contactId: number
   ): Promise<SubscriptionItem[]> {
-    const congFilter = congregationIds
-      .map((id) => `Congregation_ID = ${id}`)
-      .join(" OR ");
-
     const [publications, contactPubs] = await Promise.all([
       this.mp!.getTableRecords<PublicationRow>({
         table: "dp_Publications",
-        filter: `(Available_Online = 1 OR Available_Online IS NULL) AND (${congFilter})`,
+        filter: `Available_Online = 1 OR Available_Online IS NULL`,
         select: "Publication_ID,Title,Description,Online_Sort_Order",
       }),
       this.mp!.getTableRecords<ContactPublicationRow>({
@@ -111,18 +106,13 @@ export class SubscriptionService {
    */
   public async updateSubscriptions(
     contactId: number,
-    subscribedIds: number[],
-    congregationIds: number[] = [1, 10]
+    subscribedIds: number[]
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const congFilter = congregationIds
-        .map((id) => `Congregation_ID = ${id}`)
-        .join(" OR ");
-
-      // Get all available publications for these congregations
+      // Get all available publications
       const publications = await this.mp!.getTableRecords<PublicationRow>({
         table: "dp_Publications",
-        filter: `(Available_Online = 1 OR Available_Online IS NULL) AND (${congFilter})`,
+        filter: `Available_Online = 1 OR Available_Online IS NULL`,
         select: "Publication_ID",
       });
       const validPubIds = new Set(publications.map((p) => p.Publication_ID));

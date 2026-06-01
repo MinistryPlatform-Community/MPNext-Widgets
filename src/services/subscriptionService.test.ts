@@ -86,7 +86,7 @@ describe('SubscriptionService', () => {
       expect(mockGetTableRecords).toHaveBeenCalledTimes(2);
       expect(mockGetTableRecords).toHaveBeenNthCalledWith(1, {
         table: 'dp_Publications',
-        filter: '(Available_Online = 1 OR Available_Online IS NULL) AND (Congregation_ID = 1 OR Congregation_ID = 10)',
+        filter: 'Available_Online = 1 OR Available_Online IS NULL',
         select: 'Publication_ID,Title,Description,Online_Sort_Order',
       });
       expect(mockGetTableRecords).toHaveBeenNthCalledWith(2, {
@@ -119,19 +119,6 @@ describe('SubscriptionService', () => {
       const items = await service.getSubscriptions(100);
 
       expect(items.map((i) => i.Title)).toEqual(['First', 'Middle', 'Alpha', 'Zeta']);
-    });
-
-    it('should accept custom congregation IDs in the filter', async () => {
-      mockGetTableRecords.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-
-      const service = await SubscriptionService.getInstance();
-      await service.getSubscriptions(100, [3, 7]);
-
-      expect(mockGetTableRecords).toHaveBeenNthCalledWith(1, {
-        table: 'dp_Publications',
-        filter: '(Available_Online = 1 OR Available_Online IS NULL) AND (Congregation_ID = 3 OR Congregation_ID = 7)',
-        select: 'Publication_ID,Title,Description,Online_Sort_Order',
-      });
     });
 
     it('should return [] when there are no publications', async () => {
@@ -225,7 +212,7 @@ describe('SubscriptionService', () => {
       expect(mockCreateTableRecords).not.toHaveBeenCalled();
     });
 
-    it('should ignore subscribed IDs that are not valid publications for these congregations', async () => {
+    it('should ignore subscribed IDs that are not valid publications', async () => {
       mockGetTableRecords
         .mockResolvedValueOnce([{ Publication_ID: 1 }])
         .mockResolvedValueOnce([]);
