@@ -691,7 +691,7 @@ export class UserMenuWidget extends MPNextWidget {
         </div>`;
       case "family":
         return `<div class="nw-tab-panel" data-panel="family">
-          <mpp-household hideaddhouseholdmember="false" customcss="${this.mpWidgetCssUrl}"></mpp-household>
+          <next-my-household hideaddhouseholdmember="false" api-host="${this.escapeHtml(this.apiHost)}"></next-my-household>
         </div>`;
       case "giving": {
         const statementOnTop = this.isTaxSeason();
@@ -774,7 +774,7 @@ export class UserMenuWidget extends MPNextWidget {
       "MyGiving.js",
       "MyPledges.js",
       "MyContributionStatement.js",
-      "Household.js",
+      // Household.js removed — the Family tab now uses the native <next-my-household>.
     ];
 
     scripts.forEach((file, i) => {
