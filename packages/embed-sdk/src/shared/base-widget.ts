@@ -48,7 +48,7 @@ export abstract class MPNextWidget extends HTMLElement {
     // is a local module import — no "next-embed" script tag — and a widget
     // without an explicit api-host would otherwise fetch the wrong origin).
     const sibling = document.querySelector(
-      "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices, next-my-contribution-statement, next-statement-preferences, next-my-giving, next-my-household, next-my-pledges, next-my-groups, next-subscriptions, next-event-finder",
+      "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices, next-my-contribution-statement, next-statement-preferences, next-my-giving, next-my-household, next-my-pledges, next-my-groups, next-subscriptions, next-event-finder, next-event-details",
     );
     if (sibling && sibling !== this) {
       const host = sibling.getAttribute("api-host");

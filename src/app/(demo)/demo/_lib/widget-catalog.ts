@@ -157,6 +157,38 @@ export const widgetCatalog: WidgetConfig[] = [
 ></next-event-finder>`,
   },
 
+  {
+    slug: "event-details",
+    tag: "next-event-details",
+    title: "Event Details & Registration",
+    description: "Full event detail view with registration: product options, promo codes, custom forms, participant management, and checkout redirect.",
+    category: "Public",
+    needsUserMenu: true,
+    needsMpWidgets: false,
+    attributes: { "event-id": "1", "return-url": "/demo/event-finder", "checkout-url": "/demo/my-invoices" },
+    events: [
+      "eventDetailLoaded",
+      "registrationSaved",
+      "registrationError",
+      "participantRemoved",
+      "loginRequired",
+      "eventDetailError",
+    ],
+    controls: [
+      { name: "eventId", label: "Event ID", type: "number", attribute: "event-id", placeholder: "e.g. 1234" },
+      { name: "checkoutUrl", label: "Checkout URL", type: "text", attribute: "checkout-url", placeholder: "/checkout" },
+      { name: "returnUrl", label: "Return URL", type: "text", attribute: "return-url", placeholder: "/events" },
+    ],
+    implementationCode: `<next-event-details
+  event-id="1234"
+  return-url="/events"
+  checkout-url="/checkout"
+></next-event-details>
+
+<!-- The event id can also come from the URL query string -->
+<next-event-details return-url="/events" checkout-url="/checkout"></next-event-details>`,
+  },
+
   // ─── Authenticated Widgets ─────────────────────────────────────────
   {
     slug: "profile",
