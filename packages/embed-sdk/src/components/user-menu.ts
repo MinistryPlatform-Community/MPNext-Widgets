@@ -4,7 +4,6 @@ interface UserMenuState {
   isDropdownOpen: boolean;
   isModalOpen: boolean;
   activeTab: "profile" | "family" | "giving" | "subscriptions" | "invoices";
-  scriptsLoaded: boolean;
 }
 
 interface UserInfo {
@@ -27,7 +26,6 @@ export class UserMenuWidget extends MPNextWidget {
     isDropdownOpen: false,
     isModalOpen: false,
     activeTab: "profile",
-    scriptsLoaded: false,
   };
 
   private portalEl: HTMLDivElement | null = null;
@@ -67,14 +65,6 @@ export class UserMenuWidget extends MPNextWidget {
     return "";
   }
   private mpBaseUrlWarned = false;
-
-  private get mpWidgetCssUrl(): string {
-    // Prefer hashed URL set by the cache-busting loader
-    if (window.__nextEmbedCSSUrl) {
-      return window.__nextEmbedCSSUrl;
-    }
-    return `${this.apiHost}/embed-sdk/mp-widget-overrides.css`;
-  }
 
   private get shouldPreventLoginWidget(): boolean {
     return this.hasAttribute("prevent-login-widget");
@@ -597,7 +587,6 @@ export class UserMenuWidget extends MPNextWidget {
     this.suppressHashChange = false;
 
     this.createPortal();
-    this.loadMPWidgets();
 
     this.emit("accountModalOpen", { tab: this.state.activeTab });
   }
@@ -697,15 +686,14 @@ export class UserMenuWidget extends MPNextWidget {
         const statementOnTop = this.isTaxSeason();
 
         const host = this.escapeHtml(this.apiHost);
-        const css = this.mpWidgetCssUrl;
         // Native statement list + the paperless toggle (the legacy contribution
-        // statement widget bundled both into one). Pledges has no native
-        // equivalent yet, so it stays on the legacy MP widget.
+        // statement widget bundled both into one), giving history, and pledges.
+        // The entire Giving tab is now native — no legacy MP widgets remain.
         const statement =
           `<next-my-contribution-statement api-host="${host}"></next-my-contribution-statement>` +
           `<next-statement-preferences api-host="${host}"></next-statement-preferences>`;
         const giving = `<next-my-giving hidesoftcredits="true" api-host="${host}"></next-my-giving>`;
-        const pledges = `<mpp-my-pledges hidecancelbutton="true" customcss="${css}"></mpp-my-pledges>`;
+        const pledges = `<next-my-pledges hidecancelbuttonpledge="true" api-host="${host}"></next-my-pledges>`;
 
         return statementOnTop
           ? `<div class="nw-tab-panel" data-panel="giving">${statement}${giving}${pledges}</div>`
@@ -765,32 +753,6 @@ export class UserMenuWidget extends MPNextWidget {
     if (body) {
       body.innerHTML = this.renderTabContent();
     }
-  }
-
-  // ── MP Widget Scripts ────────────────────────────────────────
-
-  private loadMPWidgets() {
-    if (this.state.scriptsLoaded || document.getElementById("MPWidgets")) {
-      return;
-    }
-
-    const base = `${this.mpBaseUrl}/widgets/dist`;
-    const scripts = [
-      "MPWidgets.js",
-      "MyPledges.js",
-      // MyGiving.js, MyContributionStatement.js and Household.js removed — those
-      // tabs now use native widgets. Only legacy <mpp-my-pledges> remains.
-    ];
-
-    scripts.forEach((file, i) => {
-      const script = document.createElement("script");
-      if (i === 0) script.id = "MPWidgets";
-      script.src = `${base}/${file}`;
-      script.async = true;
-      document.head.appendChild(script);
-    });
-
-    this.state.scriptsLoaded = true;
   }
 
   // ── Auth Helpers ─────────────────────────────────────────────
