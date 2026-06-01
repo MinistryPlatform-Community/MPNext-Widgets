@@ -44,11 +44,6 @@ export async function GET(req: NextRequest) {
         ? parsedMonth
         : undefined;
 
-    // ── Congregation (optional; only passed if valid) ──
-    const congregationParam = req.nextUrl.searchParams.get("congregationId");
-    const parsedCongId = congregationParam ? parseInt(congregationParam, 10) : NaN;
-    const congregationId = !Number.isNaN(parsedCongId) ? parsedCongId : undefined;
-
     const service = await MyGivingService.getInstance();
     const user = await service.getUserByGuid(claims.sub);
     if (!user) {
@@ -58,12 +53,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const donations = await service.getDonations(
-      user.Contact_ID,
-      year,
-      month,
-      congregationId
-    );
+    const donations = await service.getDonations(user.Contact_ID, year, month);
 
     const headers = getCorsHeaders(origin);
 

@@ -33,7 +33,6 @@ export class FullCalendarWidget extends MPNextWidget {
   private calendarInstance: any = null;
   private loading = true;
   private error: string | null = null;
-  private congregationId: string = "";
   private currentView: ViewType = "month";
   private showToolbar: boolean = true;
   private isAdmin: boolean = false;
@@ -53,12 +52,10 @@ export class FullCalendarWidget extends MPNextWidget {
   private fcLoaded = false;
 
   static get observedAttributes() {
-    return ["api-host", "congregation-id", "view", "show-toolbar"];
+    return ["api-host", "view", "show-toolbar"];
   }
 
   async connectedCallback() {
-    this.congregationId = this.getAttribute("congregation-id") || "";
-
     // Read view/toolbar attributes
     const viewAttr = this.getAttribute("view") as ViewType | null;
     if (viewAttr && ["month", "grid", "week", "list", "cards", "calendar"].includes(viewAttr)) {
@@ -102,15 +99,7 @@ export class FullCalendarWidget extends MPNextWidget {
   }
 
   attributeChangedCallback(name: string, _old: string | null, next: string | null) {
-    if (name === "congregation-id") {
-      this.congregationId = next || "";
-      if (this.calendarInstance) {
-        this.calendarInstance.refetchEvents();
-      }
-      if (["month", "list", "cards", "calendar"].includes(this.currentView)) {
-        this.loadCardsData();
-      }
-    } else if (name === "view") {
+    if (name === "view") {
       const v = next as ViewType;
       if (v && ["month", "grid", "week", "list", "cards", "calendar"].includes(v)) {
         this.switchView(v);
@@ -298,9 +287,6 @@ export class FullCalendarWidget extends MPNextWidget {
 
   private async fetchEvents(start: string, end: string): Promise<object[]> {
     const params = new URLSearchParams({ start, end });
-    if (this.congregationId) {
-      params.set("congregationId", this.congregationId);
-    }
 
     const res = await this.fetch(`/api/embed/full-calendar?${params}`);
 
@@ -356,9 +342,6 @@ export class FullCalendarWidget extends MPNextWidget {
         start: start.toISOString(),
         end: end.toISOString(),
       });
-      if (this.congregationId) {
-        params.set("congregationId", this.congregationId);
-      }
 
       const res = await this.fetch(`/api/embed/full-calendar?${params}`);
       if (!res.ok) {

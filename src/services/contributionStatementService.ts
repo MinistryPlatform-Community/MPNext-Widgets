@@ -65,14 +65,14 @@ export class ContributionStatementService {
   // ── Contribution Statements ──
 
   public async getStatements(
-    contactId: number,
-    congregationId?: number
+    contactId: number
   ): Promise<ContributionStatementGroup[]> {
     const result = await this.mp!.executeProcedure(
       "api_MPPW_GetMyContributionStatements",
       {
         "@ContactId": contactId,
-        "@CongregationId": congregationId ?? null,
+        // Congregation filtering removed; the proc still expects the param.
+        "@CongregationId": null,
       }
     );
 

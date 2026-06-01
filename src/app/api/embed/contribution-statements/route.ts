@@ -29,14 +29,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const congregationId = req.nextUrl.searchParams.get("congregationId");
-    const parsedCongId = congregationId ? parseInt(congregationId, 10) : undefined;
-    const congId =
-      parsedCongId !== undefined && !Number.isNaN(parsedCongId)
-        ? parsedCongId
-        : undefined;
-
-    const groups = await service.getStatements(user.Contact_ID, congId);
+    const groups = await service.getStatements(user.Contact_ID);
 
     const headers = getCorsHeaders(origin);
 

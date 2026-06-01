@@ -68,13 +68,13 @@ export class MyGivingService {
   public async getDonations(
     contactId: number,
     year: number,
-    month?: number,
-    congregationId?: number
+    month?: number
   ): Promise<DonationRecord[]> {
     const params: Record<string, number | null> = {
       "@ContactId": contactId,
       "@Year": year,
-      "@CongregationId": congregationId ?? null,
+      // Congregation filtering removed; the proc still expects the param.
+      "@CongregationId": null,
     };
 
     if (month != null && month > 0) {

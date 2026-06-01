@@ -262,15 +262,6 @@
             <option value="false">Hide</option>
           </select>
         </div>
-        <div class="control-group">
-          <label for="congregation-select">Congregation ID</label>
-          <select id="congregation-select">
-            <option value="">All Campuses</option>
-            <option value="1">Campus 1</option>
-            <option value="2">Campus 2</option>
-            <option value="3">Campus 3</option>
-          </select>
-        </div>
         <button class="apply-btn" id="apply-filter">Apply</button>
       </div>
 
@@ -351,7 +342,6 @@
     const statusEl = document.getElementById("status");
     const eventLog = document.getElementById("event-log");
     const mainCalendar = document.getElementById("main-calendar");
-    const congregationSelect = document.getElementById("congregation-select");
     const viewSelect = document.getElementById("view-select");
     const toolbarToggle = document.getElementById("toolbar-toggle");
     const applyBtn = document.getElementById("apply-filter");
@@ -373,18 +363,11 @@
     applyBtn.addEventListener("click", () => {
       const view = viewSelect.value;
       const toolbar = toolbarToggle.value;
-      const congId = congregationSelect.value;
 
       mainCalendar.setAttribute("view", view);
       mainCalendar.setAttribute("show-toolbar", toolbar);
 
-      if (congId) {
-        mainCalendar.setAttribute("congregation-id", congId);
-      } else {
-        mainCalendar.removeAttribute("congregation-id");
-      }
-
-      logEvent("controls", { view, showToolbar: toolbar, congregationId: congId || "all" });
+      logEvent("controls", { view, showToolbar: toolbar });
     });
 
     // Listen to widget events — all calendar instances

@@ -32,7 +32,7 @@ export class MyPledgesWidget extends MPNextWidget {
   private message: { type: "success" | "error"; text: string } | null = null;
 
   static get observedAttributes() {
-    return ["hidecancelbuttonpledge", "cancelpledgeemailtemplate", "congregationid"];
+    return ["hidecancelbuttonpledge", "cancelpledgeemailtemplate"];
   }
 
   private get hideCancelButton(): boolean {
@@ -44,10 +44,6 @@ export class MyPledgesWidget extends MPNextWidget {
     if (!raw) return undefined;
     const parsed = parseInt(raw, 10);
     return isNaN(parsed) ? undefined : parsed;
-  }
-
-  private get congregationId(): string | null {
-    return this.getAttribute("congregationid");
   }
 
   connectedCallback() {
@@ -73,12 +69,7 @@ export class MyPledgesWidget extends MPNextWidget {
     this.render();
 
     try {
-      let url = "/api/embed/my-pledges";
-      if (this.congregationId) {
-        url += `?congregationId=${encodeURIComponent(this.congregationId)}`;
-      }
-
-      const res = await this.fetch(url);
+      const res = await this.fetch("/api/embed/my-pledges");
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(data.error || `HTTP ${res.status}`);
@@ -107,17 +98,10 @@ export class MyPledgesWidget extends MPNextWidget {
       const body: {
         pledgeId: number;
         cancelEmailTemplateId?: number;
-        congregationId?: number;
       } = { pledgeId };
 
       const templateId = this.cancelEmailTemplateId;
       if (templateId !== undefined) body.cancelEmailTemplateId = templateId;
-
-      const congId = this.congregationId;
-      if (congId) {
-        const parsedCong = parseInt(congId, 10);
-        if (!isNaN(parsedCong)) body.congregationId = parsedCong;
-      }
 
       const res = await this.fetch("/api/embed/my-pledges", {
         method: "POST",

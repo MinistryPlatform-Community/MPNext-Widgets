@@ -112,7 +112,6 @@ export class FullCalendarService {
   public async getEvents(
     start: string,
     end: string,
-    congregationId?: number,
     userGuid?: string
   ): Promise<{ events: CalendarEvent[]; isAdmin: boolean; filters: FilterData }> {
     // MP $filter literals are interpreted in the domain's wall-clock time zone.
@@ -122,10 +121,7 @@ export class FullCalendarService {
     const startDate = await tz.toMpSqlDatetime(start);
     const endDate = await tz.toMpSqlDatetime(end);
 
-    let filter = `Event_Start_Date >= '${startDate}' AND Event_End_Date <= '${endDate}' AND Cancelled = 0 AND Visibility_Level_ID = 4`;
-    if (congregationId) {
-      filter += ` AND Congregation_ID = ${congregationId}`;
-    }
+    const filter = `Event_Start_Date >= '${startDate}' AND Event_End_Date <= '${endDate}' AND Cancelled = 0 AND Visibility_Level_ID = 4`;
 
     const events = await this.mp!.getTableRecords<EventRecord>({
       table: "Events",

@@ -29,6 +29,5 @@ export type MyPledgesResponse = z.infer<typeof MyPledgesResponseSchema>;
 export const CancelPledgeRequestSchema = z.object({
   pledgeId: z.number(),
   cancelEmailTemplateId: z.number().optional(),
-  congregationId: z.number().optional(),
 });
 export type CancelPledgeRequest = z.infer<typeof CancelPledgeRequestSchema>;

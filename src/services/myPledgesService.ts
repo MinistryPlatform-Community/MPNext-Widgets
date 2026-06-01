@@ -88,14 +88,12 @@ export class MyPledgesService {
 
   // ── My Pledges ──
 
-  public async getPledges(
-    userId: number,
-    congregationId?: number
-  ): Promise<Pledge[]> {
+  public async getPledges(userId: number): Promise<Pledge[]> {
     const result = await this.mp!.executeProcedure("api_MPPW_GetMyPledges", {
       "@UserId": userId,
       "@ImageBaseUrl": `${this.mpBaseUrl}/files/`,
-      "@CongregationId": congregationId ?? null,
+      // Congregation filtering removed; the proc still expects the param.
+      "@CongregationId": null,
     });
 
     const rows = (result[0] as RawPledgeRow[] | undefined) ?? [];

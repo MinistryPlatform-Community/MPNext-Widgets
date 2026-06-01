@@ -20,20 +20,10 @@ export class MyContributionStatementWidget extends MPNextWidget {
   private error: string | null = null;
   private selectedYear: Record<string, number> = {};
 
-  static get observedAttributes() {
-    return ["congregationid"];
-  }
-
   connectedCallback() {
     this.injectStyles(this.getStyles());
     this.render();
     this.loadStatements();
-  }
-
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue !== null && oldValue !== newValue) {
-      this.loadStatements();
-    }
   }
 
   public retryLoad() {
@@ -47,13 +37,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
     this.render();
 
     try {
-      let path = "/api/embed/contribution-statements";
-      const congregationId = this.getAttribute("congregationid");
-      if (congregationId) {
-        path += `?congregationId=${encodeURIComponent(congregationId)}`;
-      }
-
-      const res = await this.fetch(path);
+      const res = await this.fetch("/api/embed/contribution-statements");
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(data.error || `HTTP ${res.status}`);

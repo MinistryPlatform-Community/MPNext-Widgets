@@ -23,11 +23,6 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // ── Congregation (optional; only passed if valid) ──
-    const congregationParam = req.nextUrl.searchParams.get("congregationId");
-    const parsedCongId = congregationParam ? parseInt(congregationParam, 10) : NaN;
-    const congregationId = !Number.isNaN(parsedCongId) ? parsedCongId : undefined;
-
     const service = await MyPledgesService.getInstance();
     const user = await service.getUserByGuid(claims.sub);
     if (!user) {
@@ -38,7 +33,7 @@ export async function GET(req: NextRequest) {
     }
 
     // The proc keys off dp_Users.User_ID, so pass User_ID (not Contact_ID).
-    const pledges = await service.getPledges(user.User_ID, congregationId);
+    const pledges = await service.getPledges(user.User_ID);
 
     return NextResponse.json(
       { pledges },
@@ -111,7 +106,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Re-fetch so the widget can re-render without a second round trip.
-    const pledges = await service.getPledges(user.User_ID, parsed.congregationId);
+    const pledges = await service.getPledges(user.User_ID);
 
     return NextResponse.json(
       { pledges },

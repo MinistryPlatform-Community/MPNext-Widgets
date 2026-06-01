@@ -45,15 +45,11 @@ export class MyGivingWidget extends MPNextWidget {
   private error: string | null = null;
 
   static get observedAttributes() {
-    return ["hidesoftcredits", "congregationid"];
+    return ["hidesoftcredits"];
   }
 
   private get hideSoftCredits(): boolean {
     return (this.getAttribute("hidesoftcredits") || "").toLowerCase() === "true";
-  }
-
-  private get congregationId(): string | null {
-    return this.getAttribute("congregationid");
   }
 
   connectedCallback() {
@@ -81,7 +77,6 @@ export class MyGivingWidget extends MPNextWidget {
     try {
       let url = `/api/embed/my-giving?year=${this.selectedYear}`;
       if (this.selectedMonth > 0) url += `&month=${this.selectedMonth}`;
-      if (this.congregationId) url += `&congregationId=${encodeURIComponent(this.congregationId)}`;
 
       const res = await this.fetch(url);
       if (!res.ok) {
