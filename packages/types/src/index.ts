@@ -4,6 +4,7 @@ export * from "./full-calendar";
 export * from "./household";
 export * from "./invoices";
 export * from "./my-giving";
+export * from "./my-pledges";
 export * from "./profile";
 export * from "./statement-preferences";
 export * from "./subscription";
