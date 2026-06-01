@@ -124,6 +124,39 @@ export const widgetCatalog: WidgetConfig[] = [
 <next-full-calendar congregation-id="1" view="month"></next-full-calendar>`,
   },
 
+  {
+    slug: "event-finder",
+    tag: "next-event-finder",
+    title: "Event Finder",
+    description: "Public, filterable event search with result cards that deep-link to an event-details page.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    attributes: { "target-url": "/demo/event-details" },
+    events: ["eventsLoaded", "eventSelected", "eventFinderError"],
+    controls: [
+      { name: "keyword", label: "Keyword", type: "text", attribute: "keyword", placeholder: "e.g. retreat" },
+      { name: "congregationId", label: "Congregation ID", type: "number", attribute: "congregation-id", placeholder: "e.g. 1" },
+      { name: "ministryId", label: "Ministry ID", type: "number", attribute: "ministry-id", placeholder: "e.g. 5" },
+      {
+        name: "featured", label: "Featured Only", type: "select", attribute: "featured",
+        options: [
+          { label: "All Events", value: "" },
+          { label: "Featured Only", value: "true" },
+        ],
+        defaultValue: "",
+      },
+    ],
+    implementationCode: `<next-event-finder target-url="/events/details"></next-event-finder>
+
+<!-- Pre-filtered: featured events for a congregation -->
+<next-event-finder
+  target-url="/events/details"
+  congregation-id="1"
+  featured="true"
+></next-event-finder>`,
+  },
+
   // ─── Authenticated Widgets ─────────────────────────────────────────
   {
     slug: "profile",
