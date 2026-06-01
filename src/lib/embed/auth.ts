@@ -8,6 +8,12 @@ import { allowedOrigins } from "./config";
 import { WidgetClaims } from "./types";
 
 export interface AuthOptions {
+  /**
+   * Widget id(s) permitted to call this route. Use the wildcard `"*"` to accept
+   * any authenticated widget — appropriate for shared user-menu "chrome"
+   * requests (e.g. the avatar photo) that ride on whatever page-level token the
+   * host happens to issue, regardless of which primary widget is embedded.
+   */
   widget: string | string[];
   requireAuth?: boolean;
 }
@@ -70,9 +76,9 @@ export async function requireWidgetAuth(
     );
   }
 
-  // Validate widget type
+  // Validate widget type ("*" accepts any authenticated widget)
   const allowedWidgets = Array.isArray(widget) ? widget : [widget];
-  if (!allowedWidgets.includes(claims.wid)) {
+  if (!allowedWidgets.includes("*") && !allowedWidgets.includes(claims.wid)) {
     throw new Error(
       `Invalid widget: expected ${allowedWidgets.join(" or ")}, got ${claims.wid}`,
     );
