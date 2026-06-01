@@ -20,7 +20,11 @@ export async function GET(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
 
   try {
-    const claims = await requireWidgetAuth(req, { widget: ["my-household", "user-menu"] });
+    // The household widget can be embedded as a secondary widget (or via the
+    // next-user-menu modal) on any page, so it rides on whatever page-level
+    // token the host issues. Accept any authenticated widget for the read
+    // (still enforces non-public sub). Writes below stay restricted.
+    const claims = await requireWidgetAuth(req, { widget: "*" });
 
     if (claims.sub === "public") {
       return NextResponse.json(

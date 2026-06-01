@@ -13,7 +13,10 @@ export async function GET(req: NextRequest) {
   const headers = corsHeaders(origin);
 
   try {
-    const claims = await requireWidgetAuth(req, { widget: ["profile", "user-menu"] });
+    // The profile tab is rendered inside the next-user-menu modal on any page,
+    // so it rides on whatever page-level token the host issues. Accept any
+    // authenticated widget for the read (still enforces non-public sub).
+    const claims = await requireWidgetAuth(req, { widget: "*" });
 
     const tenantHeaders = getCorsHeaders(origin);
 

@@ -12,7 +12,11 @@ export async function GET(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
 
   try {
-    const claims = await requireWidgetAuth(req, { widget: ["statement-preferences", "user-menu"] });
+    // The statement-preferences widget can be embedded as a secondary widget on
+    // any page, so it rides on whatever page-level token the host issues. Accept
+    // any authenticated widget for the read (still enforces non-public sub).
+    // The PUT below stays restricted.
+    const claims = await requireWidgetAuth(req, { widget: "*" });
 
     if (claims.sub === "public") {
       return NextResponse.json(
