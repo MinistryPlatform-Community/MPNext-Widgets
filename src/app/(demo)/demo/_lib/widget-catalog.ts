@@ -1,10 +1,12 @@
 import { getMpHostForDocs } from "@/lib/embed/config";
+import {
+  widgetRegistry,
+  widgetCategoryOrder,
+  type WidgetCategory,
+  type WidgetMeta,
+} from "@mpnext/types";
 
-export type WidgetCategory =
-  | "Public"
-  | "Authenticated"
-  | "Staff / Admin"
-  | "Authentication";
+export type { WidgetCategory };
 
 export interface WidgetControl {
   name: string;
@@ -21,16 +23,12 @@ export interface WidgetTab {
   attributes: Record<string, string>;
 }
 
-export interface WidgetConfig {
-  slug: string;
-  tag: string;
-  title: string;
-  description: string;
-  category: WidgetCategory;
-  needsUserMenu: boolean;
-  needsMpWidgets: boolean;
+/**
+ * A demo catalog entry: the shared {@link WidgetMeta} (slug/tag/title/
+ * description/category/events) plus demo-only presentation extras.
+ */
+export interface WidgetConfig extends WidgetMeta {
   attributes: Record<string, string>;
-  events: string[];
   controls?: WidgetControl[];
   tabs?: WidgetTab[];
   recaptchaSiteKey?: string;
@@ -42,18 +40,21 @@ export const RECAPTCHA_SITE_KEY = "6LeMwXQsAAAAALCfbMktsSEmklS8Bj52F89TA58w";
 /** MP host without /ministryplatformapi suffix, for use in example snippets */
 const mpHost = getMpHostForDocs();
 
-export const widgetCatalog: WidgetConfig[] = [
-  // ─── Authentication ───────────────────────────────────────────────
-  {
-    slug: "user-menu",
-    tag: "next-user-menu",
-    title: "User Menu",
-    description: "Authentication widget with avatar dropdown and account modal. Deep-link via hash.",
-    category: "Authentication",
-    needsUserMenu: false,
-    needsMpWidgets: true,
-    attributes: {},
-    events: ["userLogout", "accountModalOpen", "accountModalClose"],
+/**
+ * Demo-only extras keyed by widget slug. The base metadata (title, category,
+ * events, …) lives in the shared `@mpnext/types` registry; only the
+ * interactive demo controls + embed snippets live here.
+ */
+interface WidgetExtras {
+  attributes?: Record<string, string>;
+  controls?: WidgetControl[];
+  tabs?: WidgetTab[];
+  recaptchaSiteKey?: string;
+  implementationCode: string;
+}
+
+const extras: Record<string, WidgetExtras> = {
+  "user-menu": {
     implementationCode: `<next-user-menu mp-base-url="${mpHost}"></next-user-menu>
 
 <!-- With post-logout redirect -->
@@ -67,32 +68,15 @@ export const widgetCatalog: WidgetConfig[] = [
 <!-- Options: profile, family, giving, subscriptions, invoices -->`,
   },
 
-  // ─── Public Widgets ───────────────────────────────────────────────
-  {
-    slug: "add-to-calendar",
-    tag: "next-add-to-calendar",
-    title: "Add to Calendar",
-    description: "iCal/calendar export button for a single event.",
-    category: "Public",
-    needsUserMenu: false,
-    needsMpWidgets: false,
+  "add-to-calendar": {
     attributes: { "event-id": "1" },
-    events: ["calendarEventLoaded", "addToCalendarError"],
     controls: [
       { name: "eventId", label: "Event ID", type: "number", attribute: "event-id", placeholder: "e.g. 1234" },
     ],
     implementationCode: `<next-add-to-calendar event-id="1234"></next-add-to-calendar>`,
   },
-  {
-    slug: "full-calendar",
-    tag: "next-full-calendar",
-    title: "Full Calendar",
-    description: "Multi-view calendar with month, week, list, cards, and mini-cal views.",
-    category: "Public",
-    needsUserMenu: false,
-    needsMpWidgets: false,
-    attributes: {},
-    events: ["calendarLoaded", "eventSelected", "viewChanged", "fullCalendarError"],
+
+  "full-calendar": {
     controls: [
       {
         name: "view", label: "View", type: "select", attribute: "view",
@@ -124,16 +108,8 @@ export const widgetCatalog: WidgetConfig[] = [
 <next-full-calendar congregation-id="1" view="month"></next-full-calendar>`,
   },
 
-  {
-    slug: "event-finder",
-    tag: "next-event-finder",
-    title: "Event Finder",
-    description: "Public, filterable event search with result cards that deep-link to an event-details page.",
-    category: "Public",
-    needsUserMenu: false,
-    needsMpWidgets: false,
+  "event-finder": {
     attributes: { "target-url": "/demo/event-details" },
-    events: ["eventsLoaded", "eventSelected", "eventFinderError"],
     controls: [
       { name: "keyword", label: "Keyword", type: "text", attribute: "keyword", placeholder: "e.g. retreat" },
       { name: "congregationId", label: "Congregation ID", type: "number", attribute: "congregation-id", placeholder: "e.g. 1" },
@@ -157,23 +133,8 @@ export const widgetCatalog: WidgetConfig[] = [
 ></next-event-finder>`,
   },
 
-  {
-    slug: "event-details",
-    tag: "next-event-details",
-    title: "Event Details & Registration",
-    description: "Full event detail view with registration: product options, promo codes, custom forms, participant management, and checkout redirect.",
-    category: "Public",
-    needsUserMenu: true,
-    needsMpWidgets: false,
+  "event-details": {
     attributes: { "event-id": "1", "return-url": "/demo/event-finder", "checkout-url": "/demo/my-invoices" },
-    events: [
-      "eventDetailLoaded",
-      "registrationSaved",
-      "registrationError",
-      "participantRemoved",
-      "loginRequired",
-      "eventDetailError",
-    ],
     controls: [
       { name: "eventId", label: "Event ID", type: "number", attribute: "event-id", placeholder: "e.g. 1234" },
       { name: "checkoutUrl", label: "Checkout URL", type: "text", attribute: "checkout-url", placeholder: "/checkout" },
@@ -189,44 +150,103 @@ export const widgetCatalog: WidgetConfig[] = [
 <next-event-details return-url="/events" checkout-url="/checkout"></next-event-details>`,
   },
 
-  // ─── Authenticated Widgets ─────────────────────────────────────────
-  {
-    slug: "profile",
-    tag: "next-profile",
-    title: "Profile Editor",
-    description: "Edit user profile fields including name, email, phone, and address.",
-    category: "Authenticated",
-    needsUserMenu: true,
-    needsMpWidgets: true,
-    attributes: {},
-    events: ["profileLoaded", "profileSaved", "profileError", "passwordChanged", "passwordError"],
+  profile: {
     implementationCode: `<next-profile></next-profile>`,
   },
-  {
-    slug: "my-invoices",
-    tag: "next-my-invoices",
-    title: "My Invoices",
-    description: "View and manage user invoices with line item details.",
-    category: "Authenticated",
-    needsUserMenu: true,
-    needsMpWidgets: true,
-    attributes: {},
-    events: ["invoicesLoaded", "invoiceSelected", "invoiceError"],
+
+  "my-household": {
+    controls: [
+      {
+        name: "hideAddHouseholdMember", label: "Add Member Button", type: "select", attribute: "hideaddhouseholdmember",
+        options: [
+          { label: "Show", value: "false" },
+          { label: "Hide", value: "true" },
+        ],
+        defaultValue: "false",
+      },
+    ],
+    implementationCode: `<next-my-household></next-my-household>`,
+  },
+
+  "my-groups": {
+    controls: [
+      {
+        name: "hideGroupLife", label: "Group Life Link", type: "select", attribute: "hidegrouplife",
+        options: [
+          { label: "Show", value: "false" },
+          { label: "Hide", value: "true" },
+        ],
+        defaultValue: "false",
+      },
+    ],
+    implementationCode: `<next-my-groups></next-my-groups>`,
+  },
+
+  subscriptions: {
+    implementationCode: `<next-subscriptions></next-subscriptions>`,
+  },
+
+  "my-invoices": {
     implementationCode: `<next-my-invoices></next-my-invoices>`,
   },
-];
+
+  "my-contribution-statement": {
+    implementationCode: `<next-my-contribution-statement></next-my-contribution-statement>`,
+  },
+
+  "statement-preferences": {
+    implementationCode: `<next-statement-preferences></next-statement-preferences>`,
+  },
+
+  "my-giving": {
+    controls: [
+      {
+        name: "hideSoftCredits", label: "Soft Credits", type: "select", attribute: "hidesoftcredits",
+        options: [
+          { label: "Show", value: "false" },
+          { label: "Hide", value: "true" },
+        ],
+        defaultValue: "false",
+      },
+    ],
+    implementationCode: `<next-my-giving></next-my-giving>`,
+  },
+
+  "my-pledges": {
+    controls: [
+      {
+        name: "hideCancelButton", label: "Cancel Button", type: "select", attribute: "hidecancelbuttonpledge",
+        options: [
+          { label: "Hidden", value: "true" },
+          { label: "Shown", value: "false" },
+        ],
+        defaultValue: "true",
+      },
+    ],
+    implementationCode: `<next-my-pledges hidecancelbuttonpledge="true"></next-my-pledges>`,
+  },
+};
+
+export const widgetCatalog: WidgetConfig[] = widgetRegistry.map((meta) => {
+  const extra = extras[meta.slug] ?? { implementationCode: `<${meta.tag}></${meta.tag}>` };
+  return {
+    ...meta,
+    attributes: extra.attributes ?? {},
+    controls: extra.controls,
+    tabs: extra.tabs,
+    recaptchaSiteKey: extra.recaptchaSiteKey,
+    implementationCode: extra.implementationCode,
+  };
+});
 
 export function getWidgetBySlug(slug: string): WidgetConfig | undefined {
   return widgetCatalog.find((w) => w.slug === slug);
 }
 
 export function getWidgetsByCategory(): Record<WidgetCategory, WidgetConfig[]> {
-  const grouped: Record<WidgetCategory, WidgetConfig[]> = {
-    Public: [],
-    Authenticated: [],
-    "Staff / Admin": [],
-    Authentication: [],
-  };
+  const grouped = Object.fromEntries(
+    widgetCategoryOrder.map((c) => [c, [] as WidgetConfig[]])
+  ) as Record<WidgetCategory, WidgetConfig[]>;
   for (const widget of widgetCatalog) {
     grouped[widget.category].push(widget);
   }

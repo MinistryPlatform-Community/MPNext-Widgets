@@ -10,3 +10,4 @@ export * from "./my-pledges";
 export * from "./profile";
 export * from "./statement-preferences";
 export * from "./subscription";
+export * from "./widgets";

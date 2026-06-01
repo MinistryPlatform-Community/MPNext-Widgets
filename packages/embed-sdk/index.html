@@ -100,9 +100,8 @@
       padding: 2px 10px;
       border-radius: 9999px;
       border: 1px solid;
+      white-space: nowrap;
     }
-    .tag-public { background: #ecfdf5; color: #047857; border-color: #d1fae5; }
-    .tag-auth { background: #faf5ff; color: #7e22ce; border-color: #e9d5ff; }
     .card p {
       font-size: 14px;
       line-height: 1.5;
@@ -172,128 +171,9 @@
       <strong>Prerequisites:</strong> Run <code>pnpm dev</code> in the project root to start the Next.js API backend on port 3000.
     </div>
 
-    <div class="section">
-      <h2>Public</h2>
-      <div class="grid">
-        <a href="/demo-add-to-calendar.html" class="card">
-          <div class="card-top">
-            <h3>Add to Calendar</h3>
-            <span class="card-tag tag-public">Public</span>
-          </div>
-          <p>iCal/calendar export button for a single event.</p>
-          <code>&lt;next-add-to-calendar&gt;</code>
-        </a>
-
-        <a href="/demo-full-calendar.html" class="card">
-          <div class="card-top">
-            <h3>Full Calendar</h3>
-            <span class="card-tag tag-public">Public</span>
-          </div>
-          <p>Multi-view calendar with month, week, list, cards, and mini-cal views.</p>
-          <code>&lt;next-full-calendar&gt;</code>
-        </a>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Authenticated</h2>
-      <div class="grid">
-        <a href="/demo-profile.html" class="card">
-          <div class="card-top">
-            <h3>Profile Editor</h3>
-            <span class="card-tag" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Authenticated</span>
-          </div>
-          <p>Edit user profile fields including name, email, phone, and address.</p>
-          <code>&lt;next-profile&gt;</code>
-        </a>
-
-        <a href="/demo-my-invoices.html" class="card">
-          <div class="card-top">
-            <h3>My Invoices</h3>
-            <span class="card-tag" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Authenticated</span>
-          </div>
-          <p>View and manage user invoices with line item details.</p>
-          <code>&lt;next-my-invoices&gt;</code>
-        </a>
-
-        <a href="/demo-my-contribution-statement.html" class="card">
-          <div class="card-top">
-            <h3>My Contribution Statements</h3>
-            <span class="card-tag" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Authenticated</span>
-          </div>
-          <p>View and download contribution statements by accounting company and year.</p>
-          <code>&lt;next-my-contribution-statement&gt;</code>
-        </a>
-
-        <a href="/demo-statement-preferences.html" class="card">
-          <div class="card-top">
-            <h3>Statement Preferences</h3>
-            <span class="card-tag" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Authenticated</span>
-          </div>
-          <p>Toggle paperless delivery of contribution statements.</p>
-          <code>&lt;next-statement-preferences&gt;</code>
-        </a>
-
-        <a href="/demo-my-giving.html" class="card">
-          <div class="card-top">
-            <h3>My Giving</h3>
-            <span class="card-tag" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Authenticated</span>
-          </div>
-          <p>Giving history with by-month and by-program charts and a donation list.</p>
-          <code>&lt;next-my-giving&gt;</code>
-        </a>
-
-        <a href="/demo-my-household.html" class="card">
-          <div class="card-top">
-            <h3>My Household</h3>
-            <span class="card-tag" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Authenticated</span>
-          </div>
-          <p>View and edit household details, addresses, and members with photos.</p>
-          <code>&lt;next-my-household&gt;</code>
-        </a>
-
-        <a href="/demo-my-pledges.html" class="card">
-          <div class="card-top">
-            <h3>My Pledges</h3>
-            <span class="card-tag" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Authenticated</span>
-          </div>
-          <p>List pledges with progress bars and cancel an active pledge.</p>
-          <code>&lt;next-my-pledges&gt;</code>
-        </a>
-
-        <a href="/demo-my-groups.html" class="card">
-          <div class="card-top">
-            <h3>My Groups</h3>
-            <span class="card-tag" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Authenticated</span>
-          </div>
-          <p>List the groups you belong to with meeting details and a Connect button.</p>
-          <code>&lt;next-my-groups&gt;</code>
-        </a>
-
-        <a href="/demo-subscriptions.html" class="card">
-          <div class="card-top">
-            <h3>My Subscriptions</h3>
-            <span class="card-tag" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Authenticated</span>
-          </div>
-          <p>Toggle publication subscriptions on or off with a single checkbox.</p>
-          <code>&lt;next-subscriptions&gt;</code>
-        </a>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Authentication</h2>
-      <div class="grid">
-        <a href="/demo-user-menu.html" class="card">
-          <div class="card-top">
-            <h3>User Menu</h3>
-            <span class="card-tag tag-auth">Authentication</span>
-          </div>
-          <p>Authentication widget with avatar dropdown and account modal. Deep-link via hash.</p>
-          <code>&lt;next-user-menu&gt;</code>
-        </a>
-      </div>
-    </div>
+    <!-- Widget sections are rendered from the shared @mpnext/types widget registry
+         (packages/types/src/widgets.ts) so this page never drifts from /demo. -->
+    <div id="widget-sections"></div>
 
     <div class="section">
       <div class="code-card">
@@ -319,5 +199,56 @@
       </div>
     </div>
   </div>
+
+  <script type="module">
+    // Single source of truth — shared with the Next.js /demo catalog.
+    import { widgetRegistry, widgetCategoryOrder } from "../types/src/widgets";
+
+    const categoryColors = {
+      Public: { bg: "#ecfdf5", color: "#047857", border: "#d1fae5" },
+      Profile: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+      Stewardship: { bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
+      Authentication: { bg: "#faf5ff", color: "#7e22ce", border: "#e9d5ff" },
+    };
+
+    const container = document.getElementById("widget-sections");
+
+    for (const category of widgetCategoryOrder) {
+      const widgets = widgetRegistry.filter((w) => w.category === category);
+      if (!widgets.length) continue;
+
+      const section = document.createElement("section");
+      section.className = "section";
+
+      const h2 = document.createElement("h2");
+      h2.textContent = category;
+      section.appendChild(h2);
+
+      const grid = document.createElement("div");
+      grid.className = "grid";
+
+      for (const w of widgets) {
+        const c = categoryColors[category] || categoryColors.Public;
+        const a = document.createElement("a");
+        a.href = `/demo-${w.slug}.html`;
+        a.className = "card";
+        a.innerHTML = `
+          <div class="card-top">
+            <h3></h3>
+            <span class="card-tag" style="background:${c.bg};color:${c.color};border-color:${c.border}"></span>
+          </div>
+          <p></p>
+          <code></code>`;
+        a.querySelector("h3").textContent = w.title;
+        a.querySelector(".card-tag").textContent = category;
+        a.querySelector("p").textContent = w.description;
+        a.querySelector("code").textContent = `<${w.tag}>`;
+        grid.appendChild(a);
+      }
+
+      section.appendChild(grid);
+      container.appendChild(section);
+    }
+  </script>
 </body>
 </html>

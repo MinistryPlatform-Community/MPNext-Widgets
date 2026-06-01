@@ -3,8 +3,8 @@ import type { WidgetConfig } from "../_lib/widget-catalog";
 
 const categoryColors: Record<string, { bg: string; text: string; border: string }> = {
   Public: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
-  Authenticated: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200" },
-  "Staff / Admin": { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
+  Profile: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200" },
+  Stewardship: { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
   Authentication: { bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200" },
 };
 
