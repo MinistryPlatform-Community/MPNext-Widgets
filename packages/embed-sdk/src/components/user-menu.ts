@@ -696,9 +696,15 @@ export class UserMenuWidget extends MPNextWidget {
       case "giving": {
         const statementOnTop = this.isTaxSeason();
 
+        const host = this.escapeHtml(this.apiHost);
         const css = this.mpWidgetCssUrl;
-        const statement = `<mpp-my-contribution-statement customcss="${css}"></mpp-my-contribution-statement>`;
-        const giving = `<mpp-my-giving hidesoftcredits="true" customcss="${css}"></mpp-my-giving>`;
+        // Native statement list + the paperless toggle (the legacy contribution
+        // statement widget bundled both into one). Pledges has no native
+        // equivalent yet, so it stays on the legacy MP widget.
+        const statement =
+          `<next-my-contribution-statement api-host="${host}"></next-my-contribution-statement>` +
+          `<next-statement-preferences api-host="${host}"></next-statement-preferences>`;
+        const giving = `<next-my-giving hidesoftcredits="true" api-host="${host}"></next-my-giving>`;
         const pledges = `<mpp-my-pledges hidecancelbutton="true" customcss="${css}"></mpp-my-pledges>`;
 
         return statementOnTop
@@ -771,10 +777,9 @@ export class UserMenuWidget extends MPNextWidget {
     const base = `${this.mpBaseUrl}/widgets/dist`;
     const scripts = [
       "MPWidgets.js",
-      "MyGiving.js",
       "MyPledges.js",
-      "MyContributionStatement.js",
-      // Household.js removed — the Family tab now uses the native <next-my-household>.
+      // MyGiving.js, MyContributionStatement.js and Household.js removed — those
+      // tabs now use native widgets. Only legacy <mpp-my-pledges> remains.
     ];
 
     scripts.forEach((file, i) => {
