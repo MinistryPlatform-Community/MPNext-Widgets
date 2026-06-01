@@ -37,6 +37,19 @@ export const widgetCategoryOrder: WidgetCategory[] = [
   "Authentication",
 ];
 
+/**
+ * Coarse access level shown as the per-card badge (distinct from the section
+ * grouping). Profile + Stewardship widgets both require a signed-in session,
+ * so they share the single "Authenticated" badge.
+ */
+export type WidgetAccessLevel = "Public" | "Authenticated" | "Authentication";
+
+export function widgetAccessLevel(category: WidgetCategory): WidgetAccessLevel {
+  if (category === "Public") return "Public";
+  if (category === "Authentication") return "Authentication";
+  return "Authenticated";
+}
+
 export const widgetRegistry: WidgetMeta[] = [
   // ── Public ───────────────────────────────────────────────
   {

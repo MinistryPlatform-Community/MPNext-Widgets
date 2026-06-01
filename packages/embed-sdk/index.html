@@ -202,12 +202,13 @@
 
   <script type="module">
     // Single source of truth — shared with the Next.js /demo catalog.
-    import { widgetRegistry, widgetCategoryOrder } from "../types/src/widgets";
+    import { widgetRegistry, widgetCategoryOrder, widgetAccessLevel } from "../types/src/widgets";
 
-    const categoryColors = {
+    // Badge = access level (Public / Authenticated / Authentication); the
+    // section header carries the finer grouping.
+    const accessColors = {
       Public: { bg: "#ecfdf5", color: "#047857", border: "#d1fae5" },
-      Profile: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
-      Stewardship: { bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
+      Authenticated: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
       Authentication: { bg: "#faf5ff", color: "#7e22ce", border: "#e9d5ff" },
     };
 
@@ -228,7 +229,8 @@
       grid.className = "grid";
 
       for (const w of widgets) {
-        const c = categoryColors[category] || categoryColors.Public;
+        const access = widgetAccessLevel(category);
+        const c = accessColors[access] || accessColors.Public;
         const a = document.createElement("a");
         a.href = `/demo-${w.slug}.html`;
         a.className = "card";
@@ -240,7 +242,7 @@
           <p></p>
           <code></code>`;
         a.querySelector("h3").textContent = w.title;
-        a.querySelector(".card-tag").textContent = category;
+        a.querySelector(".card-tag").textContent = access;
         a.querySelector("p").textContent = w.description;
         a.querySelector("code").textContent = `<${w.tag}>`;
         grid.appendChild(a);
