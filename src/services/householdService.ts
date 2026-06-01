@@ -122,30 +122,33 @@ const HOUSEHOLD_SELECT = [
   "Repeats_Annually as Alt_Address_Repeats_Annually",
 ].join(",");
 
+// Base Contacts columns are qualified with `Contacts.` because the FK-traversal
+// joins below (Suffix_ID_Table, Household_Position_ID_Table, Household_ID_Table)
+// surface same-named columns and MP rejects unqualified ones as ambiguous.
 const MEMBER_SELECT = [
-  "Contact_ID as ContactId",
-  "First_Name as FirstName",
-  "Middle_Name as MiddleName",
-  "Last_Name as LastName",
-  "Display_Name as DisplayName",
-  "Nickname as NickName",
-  "Prefix_ID as PrefixId",
-  "Suffix_ID as SuffixId",
+  "Contacts.Contact_ID as ContactId",
+  "Contacts.First_Name as FirstName",
+  "Contacts.Middle_Name as MiddleName",
+  "Contacts.Last_Name as LastName",
+  "Contacts.Display_Name as DisplayName",
+  "Contacts.Nickname as NickName",
+  "Contacts.Prefix_ID as PrefixId",
+  "Contacts.Suffix_ID as SuffixId",
   "Suffix_ID_Table.Suffix as SuffixName",
-  "Email_Address as EmailAddress",
-  "Mobile_Phone as MobilePhoneNumber",
-  "Company_Phone as WorkPhoneNumber",
-  "Household_ID as HouseholdId",
-  "Household_Position_ID as HouseholdPositionId",
+  "Contacts.Email_Address as EmailAddress",
+  "Contacts.Mobile_Phone as MobilePhoneNumber",
+  "Contacts.Company_Phone as WorkPhoneNumber",
+  "Contacts.Household_ID as HouseholdId",
+  "Contacts.Household_Position_ID as HouseholdPositionId",
   "Household_Position_ID_Table.Household_Position as HouseholdPositionName",
-  "Date_Of_Birth as DateOfBirth",
-  "Gender_ID as GenderId",
-  "Marital_Status_ID as MaritalStatusId",
-  "Bulk_Email_Opt_Out as BulkEmailOptOut",
-  "Email_Unlisted as EmailUnlisted",
-  "Do_Not_Text as DoNotText",
-  "Mobile_Phone_Unlisted as MobilePhoneUnlisted",
-  "Remove_From_Directory as RemoveFromDirectory",
+  "Contacts.Date_Of_Birth as DateOfBirth",
+  "Contacts.Gender_ID as GenderId",
+  "Contacts.Marital_Status_ID as MaritalStatusId",
+  "Contacts.Bulk_Email_Opt_Out as BulkEmailOptOut",
+  "Contacts.Email_Unlisted as EmailUnlisted",
+  "Contacts.Do_Not_Text as DoNotText",
+  "Contacts.Mobile_Phone_Unlisted as MobilePhoneUnlisted",
+  "Contacts.Remove_From_Directory as RemoveFromDirectory",
   "Household_ID_Table.Congregation_ID as CongregationId",
   "dp_fileUniqueId as FileGUID",
 ].join(",");
@@ -273,7 +276,7 @@ export class HouseholdService {
     const records = await this.mp!.getTableRecords<MemberRecord>({
       table: "Contacts",
       select: MEMBER_SELECT,
-      filter: `Household_ID = ${householdId} AND Contact_Status_ID <> 3`,
+      filter: `Contacts.Household_ID = ${householdId} AND Contacts.Contact_Status_ID <> 3`,
     });
 
     return records.map((r) => ({
@@ -349,10 +352,10 @@ export class HouseholdService {
         select: "Household_Position_ID,Household_Position",
         orderBy: "Household_Position",
       }),
-      this.mp!.getTableRecords<{ Country_Code: string; Country_Name: string }>({
+      this.mp!.getTableRecords<{ Country_Code: string; Country: string }>({
         table: "Countries",
-        select: "Country_Code,Country_Name",
-        orderBy: "Country_Name",
+        select: "Country_Code,Country",
+        orderBy: "Country",
       }),
     ]);
 
@@ -372,7 +375,7 @@ export class HouseholdService {
         id: r.Household_Position_ID,
         label: r.Household_Position,
       })),
-      countries: countryRows.map((r) => ({ code: r.Country_Code, name: r.Country_Name })),
+      countries: countryRows.map((r) => ({ code: r.Country_Code, name: r.Country })),
     };
 
     return this.lookupsCache;
