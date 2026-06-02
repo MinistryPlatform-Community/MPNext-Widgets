@@ -3,7 +3,7 @@ import { MPNextWidget } from "../shared/base-widget";
 interface UserMenuState {
   isDropdownOpen: boolean;
   isModalOpen: boolean;
-  activeTab: "profile" | "family" | "giving" | "subscriptions" | "invoices";
+  activeTab: "profile" | "family" | "groups" | "giving" | "subscriptions" | "invoices";
 }
 
 interface UserInfo {
@@ -16,6 +16,7 @@ interface UserInfo {
 const TABS = [
   { id: "profile", label: "Profile" },
   { id: "family", label: "Family" },
+  { id: "groups", label: "Groups" },
   { id: "giving", label: "Giving" },
   { id: "subscriptions", label: "Subscriptions" },
   { id: "invoices", label: "Invoices" },
@@ -681,6 +682,10 @@ export class UserMenuWidget extends MPNextWidget {
       case "family":
         return `<div class="nw-tab-panel" data-panel="family">
           <next-my-household hideaddhouseholdmember="false" api-host="${this.escapeHtml(this.apiHost)}"></next-my-household>
+        </div>`;
+      case "groups":
+        return `<div class="nw-tab-panel" data-panel="groups">
+          <next-my-groups api-host="${this.escapeHtml(this.apiHost)}"></next-my-groups>
         </div>`;
       case "giving": {
         const statementOnTop = this.isTaxSeason();
