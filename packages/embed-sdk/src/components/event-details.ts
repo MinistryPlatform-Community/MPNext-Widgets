@@ -163,6 +163,28 @@ interface BasicContact {
   householdId: number | null;
 }
 
+interface HouseholdMemberLite {
+  contactId: number;
+  firstName: string;
+  lastName: string;
+  nickName: string | null;
+  emailAddress: string | null;
+  mobilePhoneNumber: string | null;
+  dateOfBirth: string | null;
+  householdPositionId: number | null;
+}
+
+interface HouseholdAddressLite {
+  addressLine1: string;
+  addressLine2: string | null;
+  city: string;
+  stateRegion: string;
+  postalCode: string;
+}
+
+// Household positions that may register as a minor attendee (Minor Child / Adult Child).
+const MINOR_POSITION_IDS = [2, 4];
+
 interface PromoRow {
   code: string;
   amount: number;
@@ -208,6 +230,9 @@ export class EventDetailsWidget extends MPNextWidget {
 
   private isAuthenticated = false;
   private contact: BasicContact | null = null;
+  private householdMembers: HouseholdMemberLite[] = [];
+  private householdAddress: HouseholdAddressLite | null = null;
+  private alreadyRegistered = false;
   private invoiceId: string | null = null;
   private editingParticipantId: number | null = null;
   private sessionExpired = false;
@@ -291,6 +316,9 @@ export class EventDetailsWidget extends MPNextWidget {
     this.promos = [];
     this.editingParticipantId = null;
     this.sessionExpired = false;
+    this.householdMembers = [];
+    this.householdAddress = null;
+    this.alreadyRegistered = false;
     this.render();
 
     const eventId = this.resolveEventId();
@@ -318,8 +346,9 @@ export class EventDetailsWidget extends MPNextWidget {
         this.event.isUserStaff = data.isUserStaff;
       }
 
-      // 2. Determine auth
+      // 2. Determine auth (+ household for the Register As picker / prefill)
       await this.loadBasicContact();
+      if (this.isAuthenticated) await this.loadHousehold();
 
       this.invoiceId = this.resolveInvoiceId();
 
@@ -369,6 +398,47 @@ export class EventDetailsWidget extends MPNextWidget {
       this.isAuthenticated = false;
       this.contact = null;
     }
+  }
+
+  /** Load the signed-in user's household (members + address) for Register As. */
+  private async loadHousehold() {
+    try {
+      const res = await this.fetch(`/api/embed/household`);
+      if (!res.ok) return;
+      const data: {
+        members?: HouseholdMemberLite[];
+        household?: { address?: HouseholdAddressLite | null };
+      } = await res.json();
+      this.householdMembers = data.members ?? [];
+      this.householdAddress = data.household?.address ?? null;
+    } catch {
+      this.householdMembers = [];
+      this.householdAddress = null;
+    }
+  }
+
+  /** Notify the user if the selected contact is already registered. */
+  private async checkAlreadyRegistered(contactId: number | null) {
+    const ev = this.event;
+    if (!ev || !contactId) {
+      this.alreadyRegistered = false;
+      return;
+    }
+    try {
+      const res = await this.fetch(
+        `/api/embed/event-details/has-registered?eventId=${ev.eventId}&contactId=${contactId}`,
+      );
+      if (!res.ok) {
+        this.alreadyRegistered = false;
+        return;
+      }
+      const data: { hasRegistered: boolean } = await res.json();
+      this.alreadyRegistered = !!data.hasRegistered;
+    } catch {
+      this.alreadyRegistered = false;
+    }
+    const el = this.root.querySelector<HTMLElement>("#ed-already-registered");
+    if (el) el.style.display = this.alreadyRegistered ? "" : "none";
   }
 
   private isEventViewable(): boolean {
@@ -954,19 +1024,58 @@ export class EventDetailsWidget extends MPNextWidget {
       const el = this.root.querySelector<HTMLInputElement>(sel);
       if (el) el.value = v;
     };
+    const contactIdInput = this.root.querySelector<HTMLInputElement>("#ed-contact-id");
+    if (contactIdInput) contactIdInput.value = value;
+
     if (value === "Blank Form" || value === "") {
       setVal("#ed-first-name", "");
       setVal("#ed-last-name", "");
       setVal("#ed-email", "");
       setVal("#ed-phone", "");
-    } else if (this.contact) {
-      setVal("#ed-first-name", this.contact.firstName || "");
-      setVal("#ed-last-name", this.contact.lastName || "");
-      setVal("#ed-email", this.contact.emailAddress || "");
-      setVal("#ed-phone", this.contact.mobilePhoneNumber || "");
+      this.alreadyRegistered = false;
+      const note = this.root.querySelector<HTMLElement>("#ed-already-registered");
+      if (note) note.style.display = "none";
+      return;
     }
-    const contactId = this.root.querySelector<HTMLInputElement>("#ed-contact-id");
-    if (contactId) contactId.value = value;
+
+    const member = this.householdMembers.find((m) => String(m.contactId) === value);
+    const ev = this.event!;
+    if (ev.minorRegistration) {
+      // Minor attendee from the selected member; parent from the signed-in user.
+      if (member) {
+        setVal('input[name="attendeeFirstName"]', member.firstName || "");
+        setVal('input[name="attendeeLastName"]', member.lastName || "");
+        if (member.dateOfBirth) setVal("#ed-attendee-dob", member.dateOfBirth.slice(0, 10));
+      }
+      if (this.contact) {
+        setVal('input[name="parentFirstName"]', this.contact.firstName || "");
+        setVal('input[name="parentLastName"]', this.contact.lastName || "");
+        setVal('input[name="parentEmailAddress"]', this.contact.emailAddress || "");
+        setVal('input[name="parentMobilePhoneNumber"]', this.contact.mobilePhoneNumber || "");
+      }
+    } else {
+      setVal("#ed-first-name", (member ? member.firstName : this.contact?.firstName) || "");
+      setVal("#ed-last-name", (member ? member.lastName : this.contact?.lastName) || "");
+      setVal("#ed-email", (member ? member.emailAddress : this.contact?.emailAddress) || "");
+      setVal("#ed-phone", (member ? member.mobilePhoneNumber : this.contact?.mobilePhoneNumber) || "");
+    }
+    this.fillAddress();
+    void this.checkAlreadyRegistered(Number(value) || null);
+  }
+
+  /** Prefill empty address inputs from the household address. */
+  private fillAddress() {
+    const a = this.householdAddress;
+    if (!a) return;
+    const setIfEmpty = (name: string, v: string) => {
+      const el = this.root.querySelector<HTMLInputElement>(`input[name="${name}"]`);
+      if (el && !el.value) el.value = v;
+    };
+    setIfEmpty("AddressLine1", a.addressLine1 || "");
+    setIfEmpty("AddressLine2", a.addressLine2 || "");
+    setIfEmpty("City", a.city || "");
+    setIfEmpty("StateRegion", a.stateRegion || "");
+    setIfEmpty("PostalCode", a.postalCode || "");
   }
 
   // ── Render ────────────────────────────────────────────────────────────
@@ -1243,19 +1352,49 @@ export class EventDetailsWidget extends MPNextWidget {
 
   private renderRegisterAs(): string {
     if (!this.isAuthenticated || !this.contact) return "";
-    const name =
-      [this.contact.firstName, this.contact.lastName].filter(Boolean).join(" ") || "My Info";
-    // TODO: full household member list needs a household endpoint. Only the
-    // authenticated contact + Blank Form are offered here.
+    const ev = this.event!;
+    let members = this.householdMembers;
+    if (ev.minorRegistration) {
+      members = members.filter(
+        (m) => m.householdPositionId != null && MINOR_POSITION_IDS.includes(m.householdPositionId),
+      );
+    }
+    // Fall back to the signed-in contact when no household member list loaded.
+    const optionList: HouseholdMemberLite[] = members.length
+      ? members
+      : [
+          {
+            contactId: this.contact.contactId,
+            firstName: this.contact.firstName || "",
+            lastName: this.contact.lastName || "",
+            nickName: null,
+            emailAddress: this.contact.emailAddress,
+            mobilePhoneNumber: this.contact.mobilePhoneNumber,
+            dateOfBirth: null,
+            householdPositionId: null,
+          },
+        ];
+    const opts = optionList
+      .map(
+        (m) =>
+          `<option value="${m.contactId}">${this.escapeHtml(this.memberDisplayName(m))}</option>`,
+      )
+      .join("");
     return `
       <div class="ed-field">
         <label for="ed-register-as">Register As</label>
         <select id="ed-register-as" class="ed-input">
           <option value="">-- Select --</option>
-          <option value="${this.contact.contactId}">${this.escapeHtml(name)}</option>
+          ${opts}
           <option value="Blank Form">Blank Form</option>
         </select>
-      </div>`;
+      </div>
+      <div id="ed-already-registered" class="ed-message ed-message--info" style="display:${this.alreadyRegistered ? "" : "none"}">This person is already registered for this event.</div>`;
+  }
+
+  private memberDisplayName(m: HouseholdMemberLite): string {
+    const first = m.nickName || m.firstName;
+    return `${first} ${m.lastName}`.trim() || "My Info";
   }
 
   private renderAttendeeFields(): string {

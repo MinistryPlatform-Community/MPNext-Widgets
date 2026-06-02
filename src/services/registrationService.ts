@@ -127,6 +127,12 @@ export class RegistrationService {
       ? Number(payload.CurrentUserContactId) || attendeeContactId
       : attendeeContactId;
 
+    // "Update my info" — write the entered contact + address back to the
+    // signed-in user's records (legacy parity).
+    if (payload.updateMyInfo === "true") {
+      await this.applyUpdateMyInfo(payload, attendee, userId);
+    }
+
     // Build invoice line items from the selected product options + promos.
     let product: Product | null = null;
     if (productId) {
@@ -190,6 +196,65 @@ export class RegistrationService {
     }
 
     return { success: true, guid: invoiceGuid };
+  }
+
+  /**
+   * Apply the "update my info" checkbox: update the signed-in contact's
+   * name/email/phone and (best-effort) the household address. Non-fatal — a
+   * failure here must not block the registration that already succeeded.
+   */
+  private async applyUpdateMyInfo(
+    payload: Record<string, string>,
+    attendee: AttendeeFields,
+    userId: number | null
+  ): Promise<void> {
+    const contactId = Number(payload.CurrentUserContactId);
+    if (!contactId) return;
+
+    const first = attendee.isMinor ? attendee.parentFirstName : attendee.firstName;
+    const last = attendee.isMinor ? attendee.parentLastName : attendee.lastName;
+    const email = attendee.isMinor ? attendee.parentEmail : attendee.email;
+    const phone = attendee.isMinor ? attendee.parentPhone : attendee.phone;
+
+    const contactRec: Record<string, unknown> = { Contact_ID: contactId };
+    if (first) contactRec.First_Name = first;
+    if (last) contactRec.Last_Name = last;
+    if (email) contactRec.Email_Address = email;
+    if (phone) contactRec.Mobile_Phone = phone;
+
+    try {
+      await this.mp!.updateTableRecords(
+        "Contacts",
+        [contactRec],
+        userId ? { $userId: userId } : undefined
+      );
+    } catch (err) {
+      console.warn("RegistrationService: updateMyInfo (contact) failed:", err);
+    }
+
+    const householdId = Number(payload.HouseholdId);
+    if (!householdId || !attendee.addressLine1) return;
+    try {
+      const households = await this.mp!.getTableRecords<{ Address_ID: number | null }>({
+        table: "Households",
+        select: "Household_ID,Address_ID",
+        filter: `Household_ID = ${householdId}`,
+        top: 1,
+      });
+      const addressId = households[0]?.Address_ID;
+      if (!addressId) return;
+      const addressRec: Record<string, unknown> = {
+        Address_ID: addressId,
+        Address_Line_1: attendee.addressLine1,
+        Address_Line_2: attendee.addressLine2,
+        City: attendee.city,
+        "State/Region": attendee.state,
+        Postal_Code: attendee.postalCode,
+      };
+      await this.mp!.updateTableRecords("Addresses", [addressRec]);
+    } catch (err) {
+      console.warn("RegistrationService: updateMyInfo (address) failed:", err);
+    }
   }
 
   // ── Field reading ──
