@@ -111,6 +111,12 @@
       font-weight: 600;
       color: #002855;
     }
+    .card-header span {
+      font-size: 12px;
+      font-weight: 400;
+      color: #6b7280;
+      margin-left: 8px;
+    }
     .clear-btn {
       background: none;
       border: none;
@@ -121,6 +127,17 @@
       border-radius: 4px;
     }
     .clear-btn:hover { background: #f3f4f6; }
+    .copy-btn {
+      background: #004C97;
+      color: white;
+      border: none;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .copy-btn:hover { background: #002855; }
 
     /* Event log */
     .event-log {
@@ -144,6 +161,37 @@
       border-radius: 4px;
       color: #004C97;
       font-size: 13px;
+    }
+
+    /* Code blocks */
+    pre {
+      background: #1f2937;
+      color: #e5e7eb;
+      padding: 16px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 0;
+    }
+    pre code {
+      background: transparent;
+      color: #e5e7eb;
+      padding: 0;
+    }
+
+    /* Universal setup card */
+    .setup-card {
+      border: 2px dashed #fcd34d;
+      background: #fffbeb;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .setup-card .card-header {
+      border-bottom: 1px solid #fde68a;
+    }
+    .setup-card .card-header span {
+      color: #92400e;
+      font-weight: 500;
     }
   </style>
 </head>
@@ -183,6 +231,35 @@
         <div id="event-log" class="event-log">
           <div class="event-entry">Initializing widget...</div>
         </div>
+      </div>
+
+      <!-- Widget code -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Widget Code<span>Add this to any page where you want this widget</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="widget-code">&lt;!-- Use the widget --&gt;
+&lt;next-profile&gt;&lt;/next-profile&gt;
+
+&lt;!-- Listen to events --&gt;
+&lt;script&gt;
+  const widget = document.querySelector("next-profile");
+  widget.addEventListener("profileLoaded", (e) =&gt; console.log("Profile loaded:", e.detail));
+  widget.addEventListener("profileSaved", (e) =&gt; console.log("Profile saved:", e.detail));
+  widget.addEventListener("profileError", (e) =&gt; console.error("Profile error:", e.detail));
+  widget.addEventListener("passwordChanged", () =&gt; console.log("Password changed"));
+  widget.addEventListener("passwordError", (e) =&gt; console.error("Password error:", e.detail));
+&lt;/script&gt;</code></pre>
+      </div>
+
+      <!-- Universal setup -->
+      <div class="setup-card">
+        <div class="card-header">
+          <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="setup-code">__UNIVERSAL_SETUP__</code></pre>
       </div>
     </div>
   </div>

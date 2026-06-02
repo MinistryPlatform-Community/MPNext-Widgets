@@ -260,11 +260,7 @@
           <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
           <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
         </div>
-        <pre><code id="setup-code">&lt;!-- Load MP Widgets (provides mpp-user-login) --&gt;
-&lt;script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"&gt;&lt;/script&gt;
-
-&lt;!-- Load MPNext Embed SDK (auto-initializes) --&gt;
-&lt;script type="module" src="https://your-host.com/embed-sdk/next-embed.js"&gt;&lt;/script&gt;</code></pre>
+        <pre><code id="setup-code">__UNIVERSAL_SETUP__</code></pre>
       </div>
     </div>
   </div>
