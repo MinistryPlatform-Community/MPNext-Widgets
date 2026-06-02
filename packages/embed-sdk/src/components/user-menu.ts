@@ -185,14 +185,15 @@ export class UserMenuWidget extends MPNextWidget {
         this.fetchingUserInfo = false;
         this.userInfoFetchExhausted = true;
 
-        // If userinfo failed AND we have no ID token claims, the token is invalid
-        // (e.g. MP login widget wrote a partial token before login completed).
-        // Clear tokens and re-render to show the login widget.
-        const user = this.getUserInfo();
-        if (!user.firstName && !user.lastName) {
+        // A failed userinfo fetch (e.g. CORS-blocked cross-origin call to MP, or a
+        // transiently unreachable host) must NOT invalidate an otherwise valid auth
+        // token — doing so bounces the user straight back to the login widget.
+        // Only clear tokens when the auth token is genuinely missing or expired;
+        // otherwise keep the session and render with whatever display name we have.
+        if (this.hasExpiredToken() || !localStorage.getItem("mpp-widgets_AuthToken")) {
           this.clearAllMppTokens();
-          this.render();
         }
+        this.render();
       }
     }
   }
