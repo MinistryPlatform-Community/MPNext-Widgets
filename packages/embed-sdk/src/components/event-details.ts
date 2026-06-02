@@ -1,4 +1,10 @@
 import { MPNextWidget } from "../shared/base-widget";
+import {
+  renderCustomFormFields,
+  bindCustomFormDependsOn,
+  CUSTOM_FORM_STYLES,
+  type CustomFormField,
+} from "../shared/custom-form";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Local type declarations (mirrors @mpnext/types events.ts — this package
@@ -157,18 +163,6 @@ interface BasicContact {
   householdId: number | null;
 }
 
-interface CustomFormField {
-  formFieldId: number;
-  fieldLabel: string;
-  fieldType: number;
-  required: boolean;
-  fieldOrder: number;
-  fieldValues: string[];
-  dependsOn: number | null;
-  dependsOnValue: string | null;
-  isHidden: boolean;
-}
-
 interface PromoRow {
   code: string;
   amount: number;
@@ -180,18 +174,6 @@ type SubmitAction =
   | "registerAndAddAnother"
   | "saveAndCheckout"
   | "saveAndAddAnother";
-
-const FIELD_TYPE = {
-  TextBox: 1,
-  Textarea: 2,
-  Date: 3,
-  VerticalRadio: 4,
-  Dropdown: 5,
-  Instructions: 6,
-  HorizontalRadio: 7,
-  Checkbox: 8,
-  FileUpload: 9,
-} as const;
 
 const CURRENCY = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -252,7 +234,7 @@ export class EventDetailsWidget extends MPNextWidget {
   }
 
   connectedCallback() {
-    this.injectStyles(this.getStyles());
+    this.injectStyles(this.getStyles() + CUSTOM_FORM_STYLES);
     this.render();
     this.init();
   }
@@ -467,7 +449,7 @@ export class EventDetailsWidget extends MPNextWidget {
     }
     try {
       const res = await this.fetch(
-        `/api/embed/event-details/custom-form?formId=${this.event.customFormId}`,
+        `/api/embed/custom-form?formId=${this.event.customFormId}`,
       );
       if (!res.ok) {
         this.customFields = [];
@@ -902,10 +884,6 @@ export class EventDetailsWidget extends MPNextWidget {
           this.syncCheckboxQtyState();
           this.updateTotal();
         }
-        // Custom-form depends-on (radio parents).
-        if (target && target.getAttribute("data-customform-parent") === "true") {
-          this.applyDependsOn();
-        }
       });
     }
 
@@ -954,7 +932,7 @@ export class EventDetailsWidget extends MPNextWidget {
       });
     });
 
-    this.applyDependsOn();
+    if (form) bindCustomFormDependsOn(form, this.customFields);
     this.updateTotal();
   }
 
@@ -989,27 +967,6 @@ export class EventDetailsWidget extends MPNextWidget {
     }
     const contactId = this.root.querySelector<HTMLInputElement>("#ed-contact-id");
     if (contactId) contactId.value = value;
-  }
-
-  /** Custom-form depends-on: show dependent fields when parent radio matches. */
-  private applyDependsOn() {
-    const form = this.root.querySelector<HTMLFormElement>("#ed-form");
-    if (!form) return;
-    for (const field of this.customFields) {
-      if (field.dependsOn == null || field.dependsOnValue == null) continue;
-      const wrapper = form.querySelector<HTMLElement>(
-        `[data-field-id="${field.formFieldId}"]`,
-      );
-      if (!wrapper) continue;
-      const parentChecked = form.querySelector<HTMLInputElement>(
-        `input[name="mp_customform_${field.dependsOn}"]:checked`,
-      );
-      const show = parentChecked && parentChecked.value === field.dependsOnValue;
-      wrapper.style.display = show ? "" : "none";
-      wrapper.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
-        "input, select, textarea",
-      ).forEach((el) => (el.disabled = !show));
-    }
   }
 
   // ── Render ────────────────────────────────────────────────────────────
@@ -1262,7 +1219,7 @@ export class EventDetailsWidget extends MPNextWidget {
           ${this.renderAttendeeFields()}
           ${this.renderProductOptions()}
           ${this.renderPromoSection()}
-          ${this.renderCustomFormFields()}
+          ${this.renderCustomFormSection()}
           ${this.renderTotal()}
           ${this.renderSubmitButtons()}
         </form>
@@ -1496,82 +1453,15 @@ export class EventDetailsWidget extends MPNextWidget {
       </div>`;
   }
 
-  private renderCustomFormFields(): string {
+  private renderCustomFormSection(): string {
     if (!this.customFields.length) return "";
     const ev = this.event!;
-    const fields = this.customFields
-      .filter((f) => !f.isHidden)
-      .map((f) => this.renderCustomField(f))
-      .join("");
+    // Shared renderer — same implementation the standalone next-custom-form uses.
     return `
       <div class="ed-customform">
         <h3 class="ed-reg-subtitle">Additional Information</h3>
-        <input type="hidden" name="mp_customformformid" value="${ev.customFormId ?? ""}">
-        ${fields}
+        ${renderCustomFormFields(this.customFields, { formId: ev.customFormId })}
       </div>`;
-  }
-
-  private renderCustomField(f: CustomFormField): string {
-    const name = `mp_customform_${f.formFieldId}`;
-    const req = f.required ? "required" : "";
-    const label = `${this.escapeHtml(f.fieldLabel)}${f.required ? " *" : ""}`;
-    const isDependent = f.dependsOn != null && f.dependsOnValue != null;
-    const isParent = f.fieldType === FIELD_TYPE.VerticalRadio || f.fieldType === FIELD_TYPE.HorizontalRadio;
-    const parentAttr = isParent ? `data-customform-parent="true"` : "";
-    // Dependent fields start hidden/disabled; applyDependsOn reveals them.
-    const wrapStyle = isDependent ? `style="display:none"` : "";
-    const depDisabled = isDependent ? "disabled" : "";
-
-    let control = "";
-    switch (f.fieldType) {
-      case FIELD_TYPE.TextBox:
-        control = `<input class="ed-input" type="text" name="${name}" maxlength="250" ${req} ${depDisabled}>`;
-        break;
-      case FIELD_TYPE.Textarea:
-        control = `<textarea class="ed-input" name="${name}" maxlength="30000" ${req} ${depDisabled}></textarea>`;
-        break;
-      case FIELD_TYPE.Date:
-        control = `<input class="ed-input" type="date" name="${name}" ${req} ${depDisabled}>`;
-        break;
-      case FIELD_TYPE.VerticalRadio:
-      case FIELD_TYPE.HorizontalRadio: {
-        const dir = f.fieldType === FIELD_TYPE.HorizontalRadio ? "ed-radio-h" : "ed-radio-v";
-        const opts = (f.fieldValues || [])
-          .map(
-            (v) =>
-              `<label class="ed-radio"><input type="radio" id="${f.formFieldId}" name="${name}" value="${this.escapeAttr(v)}" ${parentAttr} ${req} ${depDisabled}> ${this.escapeHtml(v)}</label>`,
-          )
-          .join("");
-        control = `<div class="${dir}">${opts}</div>`;
-        break;
-      }
-      case FIELD_TYPE.Dropdown: {
-        const opts = [`<option value="">-- Select --</option>`]
-          .concat(
-            (f.fieldValues || []).map(
-              (v) => `<option value="${this.escapeAttr(v)}">${this.escapeHtml(v)}</option>`,
-            ),
-          )
-          .join("");
-        control = `<select class="ed-input" name="${name}" ${req} ${depDisabled}>${opts}</select>`;
-        break;
-      }
-      case FIELD_TYPE.Instructions:
-        return `<div class="ed-field" data-field-id="${f.formFieldId}" ${wrapStyle}><p class="ed-instructions">${this.escapeHtml(f.fieldLabel)}</p></div>`;
-      case FIELD_TYPE.Checkbox:
-        return `<div class="ed-field" data-field-id="${f.formFieldId}" ${wrapStyle}><label class="ed-checkbox"><input type="checkbox" name="${name}" value="true" ${req} ${depDisabled}> ${label}</label></div>`;
-      case FIELD_TYPE.FileUpload:
-        // Best-effort: rendered but NOT submitted in v1.
-        control = `<input class="ed-input" type="file" name="${name}_file" ${depDisabled}><small class="ed-note-text">File uploads are not submitted in this version.</small>`;
-        break;
-      default:
-        control = `<input class="ed-input" type="text" name="${name}" ${req} ${depDisabled}>`;
-    }
-
-    const dataAttrs = isDependent
-      ? `data-depends-on="${f.dependsOn}" data-depends-on-value="${this.escapeAttr(f.dependsOnValue || "")}"`
-      : "";
-    return `<div class="ed-field" data-field-id="${f.formFieldId}" ${dataAttrs} ${wrapStyle}><label>${label}</label>${control}</div>`;
   }
 
   private renderTotal(): string {

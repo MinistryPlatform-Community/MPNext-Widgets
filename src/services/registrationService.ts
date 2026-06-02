@@ -3,6 +3,7 @@ import { getEnv, getEnvOptional } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { EventDetailsService } from "@/services/eventDetailsService";
 import { ProductsService } from "@/services/productsService";
+import { CustomFormService } from "@/services/customFormService";
 import type { Product } from "@mpnext/types";
 
 /**
@@ -160,6 +161,7 @@ export class RegistrationService {
       payload,
       event.customFormId,
       attendeeContactId,
+      eventId,
       eventParticipantId
     );
 
@@ -540,44 +542,30 @@ export class RegistrationService {
 
   // ── Custom form ──
 
+  /**
+   * Persist the custom-form answers from the registration payload. Delegates to
+   * the shared CustomFormService so the standalone form widget and event
+   * registration use one implementation; the Event_Participant_ID links the
+   * response so it round-trips on reload.
+   */
   private async saveFormResponse(
     payload: Record<string, string>,
     formId: number | null,
     contactId: number,
+    eventId: number,
     eventParticipantId: number
   ): Promise<number | null> {
     if (!formId) return null;
-    const answers = Object.keys(payload)
-      .filter((k) => k.startsWith("mp_customform_") && k !== "mp_customformformid")
-      .map((k) => ({
-        fieldId: Number(k.replace("mp_customform_", "")),
-        response: payload[k],
-      }))
-      .filter((a) => !Number.isNaN(a.fieldId) && a.response != null && a.response !== "");
-
+    const forms = await CustomFormService.getInstance();
+    const answers = forms.extractAnswers(payload);
     if (answers.length === 0) return null;
-
-    const tz = DomainTimezoneService.getInstance();
-    const now = await tz.toMpSqlDatetime(new Date().toISOString());
-    const formRecord: Record<string, unknown> = {
-      Form_ID: formId,
-      Contact_ID: contactId,
-      Event_Participant_ID: eventParticipantId,
-      Response_Date: now,
-    };
-    const created = (await this.mp!.createTableRecords("Form_Responses", [
-      formRecord,
-    ])) as Array<{ Form_Response_ID?: number }>;
-    const formResponseId = created[0]?.Form_Response_ID;
-    if (!formResponseId) return null;
-
-    const answerRecords: Record<string, unknown>[] = answers.map((a) => ({
-      Form_Response_ID: formResponseId,
-      Form_Field_ID: a.fieldId,
-      Response: a.response,
-    }));
-    await this.mp!.createTableRecords("Form_Response_Answers", answerRecords);
-    return formResponseId;
+    return forms.saveFormResponse({
+      formId,
+      contactId,
+      eventId,
+      eventParticipantId,
+      answers,
+    });
   }
 
   // ───────────────────────────────────────────────────────────────────────

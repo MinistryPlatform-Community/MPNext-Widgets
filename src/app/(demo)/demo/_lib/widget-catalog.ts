@@ -150,6 +150,18 @@ const extras: Record<string, WidgetExtras> = {
 <next-event-details return-url="/events" checkout-url="/checkout"></next-event-details>`,
   },
 
+  "custom-form": {
+    attributes: { "form-id": "1" },
+    controls: [
+      { name: "formId", label: "Form ID", type: "number", attribute: "form-id", placeholder: "e.g. 1" },
+      { name: "formGuid", label: "Form GUID", type: "text", attribute: "form-guid", placeholder: "or a Form GUID" },
+    ],
+    implementationCode: `<next-custom-form form-id="123"></next-custom-form>
+
+<!-- Or reference a form by GUID -->
+<next-custom-form form-guid="00000000-0000-0000-0000-000000000000"></next-custom-form>`,
+  },
+
   profile: {
     implementationCode: `<next-profile></next-profile>`,
   },

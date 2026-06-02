@@ -1,20 +1,31 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
+import { getEnv } from "@/lib/env";
+import { DomainTimezoneService } from "@/services/domainTimezoneService";
+import type {
+  CustomFormField,
+  CustomFormHeader,
+  CustomFormDefinition,
+} from "@mpnext/types";
 
 /**
- * Reads custom-form field definitions so the event-details widget can render
- * MP custom registration forms. Mirrors the legacy CustomFormApiService.GetForm
- * shape consumed by CustomFormBuilder.js.
+ * Single source for custom-form data, shared by the standalone `next-custom-form`
+ * widget and the embedded custom form in `next-event-details`. Reads the form
+ * header + field definitions, and persists responses (Form_Responses +
+ * Form_Response_Answers). Mirrors the legacy CustomFormManager.
  */
-export interface CustomFormField {
-  formFieldId: number;
-  fieldLabel: string;
-  fieldType: number;
-  required: boolean;
-  fieldOrder: number;
-  fieldValues: string[];
-  dependsOn: number | null;
-  dependsOnValue: string | null;
-  isHidden: boolean;
+
+interface FormRow {
+  Form_ID: number;
+  Form_GUID: string | null;
+  Form_Title: string | null;
+  Instructions: string | null;
+  Complete_Message: string | null;
+  Get_Contact_Info: boolean | number | null;
+  Get_Address_Info: boolean | number | null;
+  Force_Login: boolean | number | null;
+  Product_ID: number | null;
+  Standalone_Form_Use_Only: boolean | number | null;
+  End_Date: string | null;
 }
 
 interface FormFieldRow {
@@ -30,11 +41,39 @@ interface FormFieldRow {
   Is_Hidden: boolean | number | null;
 }
 
+export interface SaveFormResponseArgs {
+  formId: number;
+  contactId?: number | null;
+  eventId?: number | null;
+  eventParticipantId?: number | null;
+  ipAddress?: string | null;
+  answers: { fieldId: number; response: string }[];
+  contact?: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+  } | null;
+  address?: {
+    line1?: string;
+    line2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  } | null;
+}
+
+const FORM_SELECT =
+  "Form_ID,Form_GUID,Form_Title,Instructions,Complete_Message,Get_Contact_Info,Get_Address_Info,Force_Login,Product_ID,Standalone_Form_Use_Only,End_Date";
+
 export class CustomFormService {
   private static instance: CustomFormService;
   private mp: MPHelper | null = null;
+  private mpBaseUrl = "";
 
   private constructor() {
+    const raw = getEnv("MINISTRY_PLATFORM_BASE_URL").replace(/\/$/, "");
+    this.mpBaseUrl = raw;
     this.initialize();
   }
 
@@ -48,6 +87,66 @@ export class CustomFormService {
 
   private async initialize(): Promise<void> {
     this.mp = new MPHelper();
+  }
+
+  // ── Read ─────────────────────────────────────────────────────────────
+
+  private async readForm(filter: string): Promise<FormRow | null> {
+    const rows = await this.mp!.getTableRecords<FormRow>({
+      table: "Forms",
+      select: FORM_SELECT,
+      filter,
+      top: 1,
+    });
+    return rows[0] ?? null;
+  }
+
+  private async toHeader(row: FormRow): Promise<CustomFormHeader> {
+    const tz = DomainTimezoneService.getInstance();
+    const now = await tz.toMpSqlDatetime(new Date().toISOString());
+    const isExpired = !!row.End_Date && row.End_Date < now;
+
+    let imageUrl: string | null = null;
+    try {
+      const files = await this.mp!.getFilesByRecord({
+        table: "Forms",
+        recordId: row.Form_ID,
+        defaultOnly: true,
+      });
+      if (files.length > 0 && files[0].IsImage) {
+        imageUrl = `${this.mpBaseUrl}/files/${files[0].UniqueFileId}`;
+      }
+    } catch {
+      imageUrl = null;
+    }
+
+    return {
+      formId: row.Form_ID,
+      formGuid: row.Form_GUID,
+      title: row.Form_Title,
+      instructions: row.Instructions,
+      completeMessage: row.Complete_Message,
+      getContactInfo: Boolean(row.Get_Contact_Info),
+      getAddressInfo: Boolean(row.Get_Address_Info),
+      forceLogin: Boolean(row.Force_Login),
+      productId: row.Product_ID,
+      standaloneOnly: Boolean(row.Standalone_Form_Use_Only),
+      isExpired,
+      imageUrl,
+    };
+  }
+
+  public async getForm(opts: {
+    formId?: number;
+    formGuid?: string;
+  }): Promise<CustomFormHeader | null> {
+    let row: FormRow | null = null;
+    if (opts.formId) {
+      row = await this.readForm(`Form_ID = ${opts.formId}`);
+    } else if (opts.formGuid) {
+      row = await this.readForm(`Form_GUID = '${opts.formGuid.replace(/'/g, "''")}'`);
+    }
+    return row ? this.toHeader(row) : null;
   }
 
   public async getFormFields(formId: number): Promise<CustomFormField[]> {
@@ -73,5 +172,82 @@ export class CustomFormService {
       dependsOnValue: r.Depends_On_Value ?? null,
       isHidden: Boolean(r.Is_Hidden),
     }));
+  }
+
+  /** Consolidated header + fields for one form (by id or guid). */
+  public async getDefinition(opts: {
+    formId?: number;
+    formGuid?: string;
+  }): Promise<CustomFormDefinition | null> {
+    const header = await this.getForm(opts);
+    if (!header) return null;
+    const fields = await this.getFormFields(header.formId);
+    return { header, fields };
+  }
+
+  // ── Write (single save, reused by event registration + standalone form) ──
+
+  public async saveFormResponse(args: SaveFormResponseArgs): Promise<number | null> {
+    if (!args.answers || args.answers.length === 0) return null;
+
+    const tz = DomainTimezoneService.getInstance();
+    const now = await tz.toMpSqlDatetime(new Date().toISOString());
+
+    const responseRecord: Record<string, unknown> = {
+      Form_ID: args.formId,
+      Response_Date: now,
+    };
+    if (args.contactId) responseRecord.Contact_ID = args.contactId;
+    if (args.eventId) responseRecord.Event_ID = args.eventId;
+    if (args.eventParticipantId) responseRecord.Event_Participant_ID = args.eventParticipantId;
+    if (args.ipAddress) responseRecord.IP_Address = args.ipAddress;
+    if (args.contact) {
+      if (args.contact.firstName) responseRecord.First_Name = args.contact.firstName;
+      if (args.contact.lastName) responseRecord.Last_Name = args.contact.lastName;
+      if (args.contact.email) responseRecord.Email_Address = args.contact.email;
+      if (args.contact.phone) responseRecord.Phone_Number = args.contact.phone;
+    }
+    if (args.address) {
+      if (args.address.line1) responseRecord.Address_Line_1 = args.address.line1;
+      if (args.address.line2) responseRecord.Address_Line_2 = args.address.line2;
+      if (args.address.city) responseRecord.Address_City = args.address.city;
+      if (args.address.state) responseRecord.Address_State = args.address.state;
+      if (args.address.zip) responseRecord.Address_Zip = args.address.zip;
+    }
+
+    const created = (await this.mp!.createTableRecords("Form_Responses", [
+      responseRecord,
+    ])) as Array<{ Form_Response_ID?: number }>;
+    const formResponseId = created[0]?.Form_Response_ID;
+    if (!formResponseId) return null;
+
+    const answerRecords: Record<string, unknown>[] = args.answers.map((a) => {
+      const rec: Record<string, unknown> = {
+        Form_Response_ID: formResponseId,
+        Form_Field_ID: a.fieldId,
+        Response: a.response,
+      };
+      if (args.eventParticipantId) rec.Event_Participant_ID = args.eventParticipantId;
+      return rec;
+    });
+    await this.mp!.createTableRecords("Form_Response_Answers", answerRecords);
+
+    return formResponseId;
+  }
+
+  /**
+   * Extract `mp_customform_{id}` answer fields from a flat form payload.
+   * Shared by the standalone submit route and event registration.
+   */
+  public extractAnswers(
+    payload: Record<string, string>,
+  ): { fieldId: number; response: string }[] {
+    return Object.keys(payload)
+      .filter((k) => k.startsWith("mp_customform_") && k !== "mp_customformformid")
+      .map((k) => ({
+        fieldId: Number(k.replace("mp_customform_", "")),
+        response: payload[k],
+      }))
+      .filter((a) => !Number.isNaN(a.fieldId) && a.response != null && a.response !== "");
   }
 }

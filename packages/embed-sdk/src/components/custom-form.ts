@@ -1,0 +1,360 @@
+import { MPNextWidget } from "../shared/base-widget";
+import {
+  renderCustomFormFields,
+  bindCustomFormDependsOn,
+  CUSTOM_FORM_STYLES,
+  type CustomFormField,
+} from "../shared/custom-form";
+
+interface CustomFormHeader {
+  formId: number;
+  formGuid: string | null;
+  title: string | null;
+  instructions: string | null;
+  completeMessage: string | null;
+  getContactInfo: boolean;
+  getAddressInfo: boolean;
+  forceLogin: boolean;
+  productId: number | null;
+  standaloneOnly: boolean;
+  isExpired: boolean;
+  imageUrl: string | null;
+}
+
+/**
+ * `next-custom-form` — standalone MinistryPlatform custom form.
+ *
+ * Renders a form's fields (via the shared custom-form module that
+ * `next-event-details` also uses) plus optional contact/address blocks, and
+ * submits a Form_Response. Ported from the legacy `mpp-custom-form`.
+ *
+ * Note: forms with a Product_ID (paid forms → checkout) collect + save the
+ * response here; the checkout hand-off is handled by the checkout widget.
+ */
+export class CustomFormWidget extends MPNextWidget {
+  private header: CustomFormHeader | null = null;
+  private fields: CustomFormField[] = [];
+  private loading = true;
+  private error: string | null = null;
+  private submitted = false;
+  private isAuthenticated = false;
+
+  static get observedAttributes() {
+    return ["api-host", "form-id", "form-guid", "id-parameter-name", "checkout-url"];
+  }
+
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
+    if (oldValue === newValue) return;
+    if ((name === "form-id" || name === "form-guid") && !this.loading) {
+      this.init();
+    }
+  }
+
+  connectedCallback() {
+    this.injectStyles(this.getStyles() + CUSTOM_FORM_STYLES);
+    this.render();
+    this.init();
+  }
+
+  public retryLoad() {
+    this.error = null;
+    this.init();
+  }
+
+  private resolveFormRef(): { formId?: string; formGuid?: string } {
+    const formId = this.getAttribute("form-id");
+    if (formId) return { formId };
+    const formGuid = this.getAttribute("form-guid");
+    if (formGuid) return { formGuid };
+    // Fall back to the URL query param (legacy default "id").
+    try {
+      const idParam = this.getAttribute("id-parameter-name") || "id";
+      const params = new URLSearchParams(window.location.search);
+      const fromUrl = params.get(idParam) || params.get("id");
+      if (fromUrl) {
+        // GUIDs contain hyphens; numeric ids do not.
+        return /\D/.test(fromUrl) ? { formGuid: fromUrl } : { formId: fromUrl };
+      }
+    } catch {
+      /* ignore */
+    }
+    return {};
+  }
+
+  private async init() {
+    this.loading = true;
+    this.error = null;
+    this.submitted = false;
+    this.render();
+
+    const ref = this.resolveFormRef();
+    if (!ref.formId && !ref.formGuid) {
+      this.error = "No form specified.";
+      this.loading = false;
+      this.render();
+      this.attachListeners();
+      this.emit("formError", { error: this.error });
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams(ref as Record<string, string>);
+      const res = await this.fetch(`/api/embed/custom-form?${params.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: { header: CustomFormHeader; fields: CustomFormField[] } = await res.json();
+      this.header = data.header;
+      this.fields = data.fields || [];
+      await this.detectAuth();
+      this.emit("formLoaded", { formId: this.header.formId });
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : "Failed to load form.";
+      this.emit("formError", { error: this.error });
+    } finally {
+      this.loading = false;
+      this.render();
+      this.attachListeners();
+    }
+  }
+
+  private async detectAuth() {
+    // Reuse the shared basic-contact endpoint only to know auth state; the form
+    // works anonymously, so failures are non-fatal.
+    try {
+      const res = await this.fetch(`/api/embed/event-details/basic-contact`);
+      this.isAuthenticated = res.ok;
+    } catch {
+      this.isAuthenticated = false;
+    }
+  }
+
+  // ── Submit ──────────────────────────────────────────────────────────────
+
+  private async submit() {
+    const form = this.root.querySelector<HTMLFormElement>("#cf-form");
+    if (!form || !this.header) return;
+    if (!form.reportValidity()) return;
+
+    const fd = new FormData(form);
+    const payload: Record<string, string> = {};
+    for (const [k, v] of fd.entries()) {
+      if (typeof v === "string") payload[k] = v;
+    }
+    payload.mp_customformformid = String(this.header.formId);
+
+    this.setSubmitDisabled(true);
+    try {
+      const res = await this.fetch(`/api/embed/custom-form/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data: { success: boolean; message?: string } = await res
+        .json()
+        .catch(() => ({ success: false }));
+      if (!data.success) {
+        const msg = data.message || "Unable to submit the form.";
+        this.error = msg;
+        this.emit("formError", { error: msg });
+        this.setSubmitDisabled(false);
+        this.render();
+        this.attachListeners();
+        return;
+      }
+      this.submitted = true;
+      this.emit("formSubmitted", { formId: this.header.formId });
+      this.render();
+      this.attachListeners();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Submit failed.";
+      this.error = msg;
+      this.emit("formError", { error: msg });
+      this.setSubmitDisabled(false);
+    }
+  }
+
+  private setSubmitDisabled(disabled: boolean) {
+    const btn = this.root.querySelector<HTMLButtonElement>(".cf-submit");
+    if (btn) btn.disabled = disabled;
+  }
+
+  // ── Listeners ─────────────────────────────────────────────────────────
+
+  private attachListeners() {
+    const retry = this.root.querySelector('[data-action="retry"]');
+    if (retry) retry.addEventListener("click", () => this.retryLoad());
+
+    const login = this.root.querySelector('[data-action="login"]');
+    if (login) login.addEventListener("click", () => this.emit("loginRequired"));
+
+    const submit = this.root.querySelector(".cf-submit");
+    if (submit) {
+      submit.addEventListener("click", (e) => {
+        e.preventDefault();
+        this.submit();
+      });
+    }
+
+    const form = this.root.querySelector<HTMLFormElement>("#cf-form");
+    if (form) bindCustomFormDependsOn(form, this.fields);
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────────
+
+  render() {
+    if (this.loading) {
+      this.root.innerHTML = `<div class="cf">${this.stateRow(this.spinner(), "Loading form…")}</div>`;
+      return;
+    }
+    if (this.error && !this.header) {
+      this.root.innerHTML = `
+        <div class="cf">
+          <div class="cf-state cf-error"><p>${this.escapeHtml(this.error)}</p>
+            <button class="cf-btn" data-action="retry">Try Again</button></div>
+        </div>`;
+      return;
+    }
+
+    const h = this.header!;
+    if (h.isExpired) {
+      this.root.innerHTML = `<div class="cf"><div class="cf-card"><p class="cf-expired">This form is no longer available.</p></div></div>`;
+      return;
+    }
+    if (this.submitted) {
+      const msg = h.completeMessage || "Thank you! Your form has been submitted.";
+      this.root.innerHTML = `<div class="cf"><div class="cf-card"><div class="cf-complete">${this.escapeHtml(msg)}</div></div></div>`;
+      return;
+    }
+    if (h.forceLogin && !this.isAuthenticated) {
+      this.root.innerHTML = `
+        <div class="cf"><div class="cf-card cf-login">
+          <p>Please sign in to complete this form.</p>
+          <button class="cf-btn cf-btn--primary" type="button" data-action="login">Sign In</button>
+        </div></div>`;
+      return;
+    }
+
+    const img = h.imageUrl
+      ? `<div class="cf-image" style="background-image:url('${this.escapeAttr(h.imageUrl)}')"></div>`
+      : "";
+    const instructions = h.instructions
+      ? `<div class="cf-instructions-block">${this.sanitize(h.instructions)}</div>`
+      : "";
+    const errorBanner = this.error
+      ? `<div class="cf-message cf-message--danger">${this.escapeHtml(this.error)}</div>`
+      : "";
+
+    this.root.innerHTML = `
+      <div class="cf">
+        <div class="cf-card">
+          ${img}
+          ${h.title ? `<h1 class="cf-title">${this.escapeHtml(h.title)}</h1>` : ""}
+          ${instructions}
+          ${errorBanner}
+          <form id="cf-form" class="cf-form" novalidate>
+            ${h.getContactInfo ? this.renderContactBlock() : ""}
+            ${h.getAddressInfo ? this.renderAddressBlock() : ""}
+            ${renderCustomFormFields(this.fields, { formId: h.formId })}
+            <div class="cf-actions">
+              <button class="cf-btn cf-btn--primary cf-submit" type="button">Submit</button>
+            </div>
+          </form>
+        </div>
+      </div>`;
+  }
+
+  private renderContactBlock(): string {
+    return `
+      <fieldset class="cf-fieldset">
+        <legend>Your Information</legend>
+        <div class="cf-grid2">
+          <div class="cf-field"><label>First Name</label><input class="cf-input" name="FirstName" required></div>
+          <div class="cf-field"><label>Last Name</label><input class="cf-input" name="LastName" required></div>
+        </div>
+        <div class="cf-grid2">
+          <div class="cf-field"><label>Email</label><input class="cf-input" type="email" name="EmailAddress" required></div>
+          <div class="cf-field"><label>Mobile Phone</label><input class="cf-input" name="MobilePhoneNumber"></div>
+        </div>
+      </fieldset>`;
+  }
+
+  private renderAddressBlock(): string {
+    return `
+      <fieldset class="cf-fieldset">
+        <legend>Address</legend>
+        <div class="cf-field"><label>Address Line 1</label><input class="cf-input" name="AddressLine1" required></div>
+        <div class="cf-field"><label>Address Line 2</label><input class="cf-input" name="AddressLine2"></div>
+        <div class="cf-grid3">
+          <div class="cf-field"><label>City</label><input class="cf-input" name="City" required></div>
+          <div class="cf-field"><label>State / Region</label><input class="cf-input" name="StateRegion" required></div>
+          <div class="cf-field"><label>Postal Code</label><input class="cf-input" name="PostalCode" required></div>
+        </div>
+      </fieldset>`;
+  }
+
+  private stateRow(icon: string, text: string): string {
+    return `<div class="cf-state">${icon}<span>${this.escapeHtml(text)}</span></div>`;
+  }
+
+  private spinner(): string {
+    return `<svg class="cf-spinner" viewBox="0 0 24 24" fill="none" width="20" height="20">
+      <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+    </svg>`;
+  }
+
+  private escapeHtml(text: string): string {
+    const el = document.createElement("span");
+    el.textContent = text ?? "";
+    return el.innerHTML;
+  }
+
+  private escapeAttr(text: string): string {
+    return this.escapeHtml(text).replace(/"/g, "&quot;");
+  }
+
+  private sanitize(html: string): string {
+    const t = document.createElement("template");
+    t.innerHTML = html;
+    t.content.querySelectorAll("script,style,iframe,object,embed").forEach((n) => n.remove());
+    t.content.querySelectorAll("*").forEach((el) => {
+      for (const attr of Array.from(el.attributes)) {
+        if (attr.name.toLowerCase().startsWith("on")) el.removeAttribute(attr.name);
+      }
+    });
+    return t.innerHTML;
+  }
+
+  private getStyles(): string {
+    return `
+      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      .cf { max-width: 720px; margin: 0 auto; }
+      .cf-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+      .cf-image { width: 100%; height: 200px; background-size: cover; background-position: center; border-radius: 12px; margin-bottom: 16px; }
+      .cf-title { font-size: 24px; font-weight: 800; color: #002855; margin: 0 0 12px; }
+      .cf-instructions-block { font-size: 15px; line-height: 1.6; color: #474747; margin-bottom: 16px; }
+      .cf-form { display: block; }
+      .cf-fieldset { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px 4px; margin: 0 0 16px; }
+      .cf-fieldset legend { font-size: 13px; font-weight: 700; color: #002855; padding: 0 6px; }
+      .cf-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .cf-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+      .cf-actions { margin-top: 16px; }
+      .cf-btn { padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
+      .cf-btn--primary { background: #004C97; color: white; }
+      .cf-btn--primary:hover { background: #002855; }
+      .cf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .cf-message { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
+      .cf-message--danger { background: #ffe9e9; color: #b91c1c; }
+      .cf-complete { font-size: 16px; line-height: 1.6; color: #2D6B1F; }
+      .cf-expired { color: #8a6d3b; font-size: 15px; margin: 0; }
+      .cf-login { text-align: center; }
+      .cf-login p { margin: 0 0 12px; }
+      .cf-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; flex-direction: column; }
+      .cf-error p { color: #b91c1c; }
+      .cf-spinner { animation: cf-spin 1s linear infinite; color: #004C97; }
+      @keyframes cf-spin { to { transform: rotate(360deg); } }
+      @media (max-width: 640px) { .cf-grid2, .cf-grid3 { grid-template-columns: 1fr; } }
+    `;
+  }
+}
+
+customElements.define("next-custom-form", CustomFormWidget);

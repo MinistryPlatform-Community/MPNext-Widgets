@@ -103,6 +103,18 @@ export const widgetRegistry: WidgetMeta[] = [
     ],
   },
 
+  {
+    slug: "custom-form",
+    tag: "next-custom-form",
+    title: "Custom Form",
+    description:
+      "Standalone MinistryPlatform custom form — renders any form's fields (the same engine used inside event registration) and saves a response.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: ["formLoaded", "formSubmitted", "formError", "loginRequired"],
+  },
+
   // ── Profile ──────────────────────────────────────────────
   {
     slug: "profile",
