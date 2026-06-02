@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MPNext Pay Widget - Demo</title>
+  <!-- MP Widgets base script (provides mpp-user-login used by next-user-menu) -->
+  <script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: ui-sans-serif, system-ui, sans-serif; background: #f9fafb; color: #2D2926; }
@@ -26,10 +28,14 @@
     .event-log { background: #1f2937; color: #10b981; padding: 16px; font-family: 'Courier New', monospace; font-size: 14px; max-height: 300px; overflow-y: auto; }
     .event-entry { margin-bottom: 8px; padding: 8px; background: rgba(16,185,129,0.1); border-radius: 4px; }
     pre { background: #1f2937; color: #e5e7eb; padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.5; margin: 0; }
+    pre code { background: transparent; color: #e5e7eb; padding: 0; }
     code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; color: #004C97; font-size: 13px; }
     .setup-card { border: 2px dashed #fcd34d; background: #fffbeb; border-radius: 12px; overflow: hidden; }
     .setup-card .card-header { border-bottom: 1px solid #fde68a; }
     .setup-card .card-header span { color: #92400e; font-weight: 500; }
+    .auth-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; background: #002855; border-radius: 8px; }
+    .auth-header span { color: white; font-weight: 600; font-size: 16px; }
+    .auth-header .hint { color: #9fb3c8; font-weight: 400; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -40,6 +46,14 @@
     <code class="tag-code">&lt;next-pay&gt;</code>
 
     <div class="space-y">
+      <!-- Optional sign-in. This sandbox gateway only processes the checkout
+           token; the User Menu is provided for a consistent header. Login is
+           NOT required. -->
+      <div class="auth-header">
+        <span>Sign in <span class="hint">(optional)</span></span>
+        <next-user-menu mp-base-url="__MP_BASE_URL__" api-host="__API_HOST__"></next-user-menu>
+      </div>
+
       <!-- Demo container. Reads ?token=... from the URL (sent here by next-checkout). -->
       <div class="demo-box">
         <next-pay api-host="__API_HOST__"></next-pay>
@@ -78,8 +92,7 @@
           <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
           <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
         </div>
-        <pre><code id="setup-code">&lt;!-- Load MPNext Embed SDK (auto-initializes) --&gt;
-&lt;script type="module" src="https://your-host.com/embed-sdk/next-embed.js"&gt;&lt;/script&gt;</code></pre>
+        <pre><code id="setup-code">__UNIVERSAL_SETUP__</code></pre>
       </div>
     </div>
   </div>
@@ -99,6 +112,17 @@
     const widget = document.querySelector("next-pay");
     widget.addEventListener("paymentSubmitted", (e) => logEvent("paymentSubmitted", e.detail));
     logEvent("info", "Widget initialized");
+
+    // Optional auth: next-user-menu writes the MP token to localStorage on
+    // sign-in/out. The gateway is driven entirely by the ?token= request, so
+    // we just log the change — no reload of the in-flight payment.
+    let lastAuthToken = localStorage.getItem("mpp-widgets_AuthToken");
+    setInterval(() => {
+      const token = localStorage.getItem("mpp-widgets_AuthToken");
+      if (token === lastAuthToken) return;
+      lastAuthToken = token;
+      logEvent("auth", token ? "Signed in" : "Signed out");
+    }, 1000);
   </script>
 </body>
 </html>

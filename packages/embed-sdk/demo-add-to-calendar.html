@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MPNext Add to Calendar Widget - Demo</title>
+  <!-- MP Widgets base script (provides mpp-user-login used by next-user-menu) -->
+  <script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -88,6 +90,11 @@
       cursor: pointer;
     }
     .apply-btn:hover { background: #002855; }
+
+    /* Optional sign-in bar */
+    .auth-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; background: #002855; border-radius: 8px; }
+    .auth-header span { color: white; font-weight: 600; font-size: 16px; }
+    .auth-header .hint { color: #9fb3c8; font-weight: 400; font-size: 13px; }
 
     /* Widget demo container */
     .demo-box {
@@ -238,6 +245,13 @@
         <button class="apply-btn" id="reload-btn" type="button">Apply</button>
       </div>
 
+      <!-- Optional sign-in. This widget works anonymously; signing in links the
+           generated calendar activity to your MP contact. Login is NOT required. -->
+      <div class="auth-header">
+        <span>Sign in <span class="hint">(optional — links your activity to your MP record)</span></span>
+        <next-user-menu mp-base-url="__MP_BASE_URL__" api-host="__API_HOST__"></next-user-menu>
+      </div>
+
       <!-- Demo container -->
       <div class="demo-box">
         <div id="status"></div>
@@ -282,8 +296,7 @@
           <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
           <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
         </div>
-        <pre><code id="setup-code">&lt;!-- Load MPNext Embed SDK (auto-initializes) --&gt;
-&lt;script type="module" src="https://your-host.com/embed-sdk/next-embed.js"&gt;&lt;/script&gt;</code></pre>
+        <pre><code id="setup-code">__UNIVERSAL_SETUP__</code></pre>
       </div>
     </div>
   </div>
@@ -324,6 +337,21 @@
       });
     }
 
+    const demoBox = document.querySelector(".demo-box");
+
+    // (Re)build the widget element to trigger a full reload — shared by the
+    // Apply button and the optional sign-in handler below.
+    function buildWidget(eventId) {
+      const oldWidget = demoBox.querySelector("next-add-to-calendar");
+      if (oldWidget) oldWidget.remove();
+      const newWidget = document.createElement("next-add-to-calendar");
+      newWidget.setAttribute("event-id", String(eventId));
+      newWidget.setAttribute("api-host", "__API_HOST__");
+      demoBox.appendChild(newWidget);
+      attachWidgetListeners(newWidget);
+      return newWidget;
+    }
+
     // Initial widget
     attachWidgetListeners(document.querySelector("next-add-to-calendar"));
     logEvent("info", "Widget initialized");
@@ -335,20 +363,22 @@
         showStatus("Please enter a valid Event ID (positive integer).", "error");
         return;
       }
-
-      // Replace the widget element to trigger a full reload
-      const demoBox = document.querySelector(".demo-box");
-      const oldWidget = demoBox.querySelector("next-add-to-calendar");
-      if (oldWidget) oldWidget.remove();
-
-      const newWidget = document.createElement("next-add-to-calendar");
-      newWidget.setAttribute("event-id", String(newEventId));
-      newWidget.setAttribute("api-host", "__API_HOST__");
-      demoBox.appendChild(newWidget);
-      attachWidgetListeners(newWidget);
-
+      buildWidget(newEventId);
       logEvent("info", `Reloaded widget with event-id=${newEventId}`);
     });
+
+    // Optional auth: next-user-menu writes the MP token to localStorage on
+    // sign-in/out. The widget works anonymously, but when the token changes we
+    // rebuild it so the next session token carries the signed-in MP user.
+    let lastAuthToken = localStorage.getItem("mpp-widgets_AuthToken");
+    setInterval(() => {
+      const token = localStorage.getItem("mpp-widgets_AuthToken");
+      if (token === lastAuthToken) return;
+      lastAuthToken = token;
+      logEvent("auth", token ? "Signed in — reloading widget" : "Signed out — reloading widget");
+      const id = parseInt(eventIdInput.value, 10);
+      buildWidget(id && id > 0 ? id : 1);
+    }, 1000);
   </script>
 </body>
 </html>

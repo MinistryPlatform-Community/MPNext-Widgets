@@ -12,7 +12,9 @@ export async function GET(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
 
   try {
-    await requireWidgetAuth(req, { widget: "add-to-calendar" });
+    // Accept the page's user-menu token too: the sign-in widget lives in the
+    // shared header on every page, so the page session is scoped to user-menu.
+    await requireWidgetAuth(req, { widget: ["add-to-calendar", "user-menu"] });
 
     const url = new URL(req.url);
     const eventIdParam = url.searchParams.get("eventId");

@@ -14,7 +14,9 @@ export async function GET(
   const origin = resolveRequestOrigin(req);
 
   try {
-    const claims = await requireWidgetAuth(req, { widget: "full-calendar" });
+    // Accept the page's user-menu token too: the sign-in widget lives in the
+    // shared header on every page, so the page session is scoped to user-menu.
+    const claims = await requireWidgetAuth(req, { widget: ["full-calendar", "user-menu"] });
 
     const { eventId: eventIdParam } = await params;
     const eventId = parseInt(eventIdParam, 10);

@@ -19,6 +19,15 @@ export default defineConfig(({ mode }) => {
   // Tenant-configurable via VITE_ORG_NAME; empty falls back to a neutral phrase.
   const orgName = env.VITE_ORG_NAME || env.ORG_NAME || "";
 
+  // ── Canonical "Universal Setup" snippet ────────────────────────────────────
+  // Single source of truth for the setup card shown on every demo page. Each
+  // demo page carries the literal `__UNIVERSAL_SETUP__` placeholder inside its
+  // <pre><code id="setup-code"> block; transformIndexHtml swaps it in below.
+  // Edit here to update every demo page at once (HTML-escaped for <pre>).
+  const universalSetup =
+    "&lt;!-- Load MPNext Embed SDK (auto-initializes) --&gt;\n" +
+    '&lt;script type="module" src="https://your-host.com/embed-sdk/next-embed.js"&gt;&lt;/script&gt;';
+
   return {
   define: {
     __ORG_NAME__: JSON.stringify(orgName),
@@ -54,6 +63,7 @@ export default defineConfig(({ mode }) => {
       name: "demo-env-replace",
       transformIndexHtml(html) {
         return html
+          .replace(/__UNIVERSAL_SETUP__/g, universalSetup)
           .replace(/__MP_BASE_URL__/g, mpBaseUrl)
           .replace(/__API_HOST__/g, apiHost);
       },
