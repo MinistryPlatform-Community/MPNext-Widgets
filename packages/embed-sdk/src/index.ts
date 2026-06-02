@@ -29,6 +29,9 @@ export { SubscriptionsWidget } from "./components/subscriptions";
 export { EventFinderWidget } from "./components/event-finder";
 export { EventDetailsWidget } from "./components/event-details";
 export { CustomFormWidget } from "./components/custom-form";
+export { CheckoutWidget } from "./components/checkout";
+export { PayWidget } from "./components/pay";
+export { CheckoutCompleteWidget } from "./components/checkout-complete";
 
 // Auto-register components
 import "./components/user-menu";
@@ -46,6 +49,9 @@ import "./components/subscriptions";
 import "./components/event-finder";
 import "./components/event-details";
 import "./components/custom-form";
+import "./components/checkout";
+import "./components/pay";
+import "./components/checkout-complete";
 
 // ---------------------------------------------------------------------------
 // Auto-initialization
@@ -84,7 +90,7 @@ function detectApiHost(): string {
   // 4. Read api-host from the first widget element on the page
   //    (handles Vite dev where the SDK is a local module import)
   const widget = document.querySelector(
-    "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices, next-my-contribution-statement, next-statement-preferences, next-my-giving, next-my-household, next-my-pledges, next-my-groups, next-subscriptions, next-event-finder, next-event-details, next-custom-form",
+    "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices, next-my-contribution-statement, next-statement-preferences, next-my-giving, next-my-household, next-my-pledges, next-my-groups, next-subscriptions, next-event-finder, next-event-details, next-custom-form, next-checkout, next-pay, next-checkout-complete",
   );
   if (widget) {
     const host = widget.getAttribute("api-host");
@@ -148,6 +154,9 @@ function detectFirstWidgetId(): string | null {
     "NEXT-EVENT-FINDER": "event-finder",
     "NEXT-EVENT-DETAILS": "event-details",
     "NEXT-CUSTOM-FORM": "custom-form",
+    "NEXT-CHECKOUT": "checkout",
+    "NEXT-PAY": "pay",
+    "NEXT-CHECKOUT-COMPLETE": "checkout-complete",
   };
 
   for (const [tag, wid] of Object.entries(widgetMap)) {

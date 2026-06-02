@@ -115,6 +115,39 @@ export const widgetRegistry: WidgetMeta[] = [
     events: ["formLoaded", "formSubmitted", "formError", "loginRequired"],
   },
 
+  {
+    slug: "checkout",
+    tag: "next-checkout",
+    title: "Checkout & Payment",
+    description:
+      "Invoice summary + payment options that hand off to a payment gateway. Reached by invoice GUID (no login required).",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: ["invoiceLoaded", "paymentComplete", "checkoutError"],
+  },
+  {
+    slug: "pay",
+    tag: "next-pay",
+    title: "Payment Gateway (Sandbox)",
+    description:
+      "Sandbox hosted-payment page (test card 4111…). Stand-in for a real vendor; swap by pointing checkout at the vendor URL + sharing the signing key.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: ["paymentSubmitted"],
+  },
+  {
+    slug: "checkout-complete",
+    tag: "next-checkout-complete",
+    title: "Checkout Complete",
+    description: "Payment confirmation page reached on return from the gateway.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: ["paymentComplete"],
+  },
+
   // ── Profile ──────────────────────────────────────────────
   {
     slug: "profile",

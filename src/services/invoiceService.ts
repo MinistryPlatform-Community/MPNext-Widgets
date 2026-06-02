@@ -4,6 +4,8 @@ import type {
   InvoiceListItem,
   InvoiceLineItem,
   InvoiceDetailResponse,
+  CheckoutInvoice,
+  CheckoutLineItem,
 } from "@mpnext/types";
 
 interface DpUserRecord {
@@ -36,6 +38,64 @@ interface ProductRecord {
   Product_ID: number;
   Product_Name: string;
   Description: string | null;
+}
+
+// ── api_MPPW_GetInvoice proc result shapes (header = result[0][0], details = result[1]) ──
+
+interface CheckoutInvoiceHeaderRow {
+  Contact_ID: number | string | null;
+  First_Name: string | null;
+  Last_Name: string | null;
+  Mobile_Phone: string | null;
+  Email_Address: string | null;
+  Address_Line_1: string | null;
+  Address_Line_2: string | null;
+  City: string | null;
+  State: string | null;
+  Postal_Code: string | null;
+  Amount_Paid: number | string | null;
+  Invoice_ID: number | string | null;
+  Invoice_Date: string | null;
+  Invoice_GUID: string | null;
+  Invoice_Total: number | string | null;
+  Invoice_Status_ID: number | string | null;
+  Notes: string | null;
+}
+
+interface CheckoutInvoiceDetailRow {
+  Invoice_Detail_ID: number | string | null;
+  Sub_Item: boolean | number | null;
+  Item_Name: string | null;
+  Item_Note: string | null;
+  Line_Total: number | string | null;
+  Item_Quantity: number | string | null;
+  Product_ID: number | string | null;
+  Recipient_Name: string | null;
+  Deposit_Requested: boolean | number | null;
+  Event_ID: number | string | null;
+  Program_ID: number | string | null;
+  Event_Participant_ID: number | string | null;
+  Participation_Status_ID: number | string | null;
+  Product_Option_Price_ID: number | string | null;
+}
+
+// Invoice status ids (mirror the legacy InvoiceStatus enum).
+const CHECKOUT_INVOICE_STATUS_CANCELLED = 7;
+
+function toCheckoutNumberOrNull(
+  value: number | string | null | undefined
+): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isNaN(n) ? null : n;
+}
+
+function toCheckoutNumber(
+  value: number | string | null | undefined,
+  fallback = 0
+): number {
+  const n = toCheckoutNumberOrNull(value);
+  return n === null ? fallback : n;
 }
 
 export class InvoiceService {
@@ -330,5 +390,91 @@ export class InvoiceService {
     });
 
     return { invoice, lineItems };
+  }
+
+  // ── Checkout Invoice (by GUID, via api_MPPW_GetInvoice) ──
+
+  /**
+   * Load a single invoice for the checkout/payment flow, keyed by GUID. Wraps
+   * the legacy `api_MPPW_GetInvoice` proc (header in result[0][0], detail rows
+   * in result[1]) and maps it onto the shared CheckoutInvoice contract.
+   *
+   * Pass `mpContactId` (> 0) for an authenticated payor so the proc can scope
+   * to the logged-in contact; omit it for the public/guest checkout path.
+   */
+  public async getCheckoutInvoiceByGuid(
+    invoiceGuid: string,
+    mpContactId?: number
+  ): Promise<CheckoutInvoice | null> {
+    const params: Record<string, string | number | null> = {
+      "@InvoiceGuid": invoiceGuid,
+    };
+    if (mpContactId != null && mpContactId > 0) {
+      params["@MpLoggedInContactId"] = mpContactId;
+    }
+
+    const [result, statusMap] = await Promise.all([
+      this.mp!.executeProcedure("api_MPPW_GetInvoice", params),
+      this.getStatusMap(),
+    ]);
+
+    const header = ((result[0] as CheckoutInvoiceHeaderRow[] | undefined) ?? [])[0];
+    if (!header) return null;
+
+    const details = (result[1] as CheckoutInvoiceDetailRow[] | undefined) ?? [];
+
+    const invoiceTotal = toCheckoutNumber(header.Invoice_Total);
+    const amountPaid = toCheckoutNumber(header.Amount_Paid);
+    const balanceDue = Math.max(0, Number((invoiceTotal - amountPaid).toFixed(2)));
+    const statusId = toCheckoutNumber(header.Invoice_Status_ID);
+    const canPay = statusId !== CHECKOUT_INVOICE_STATUS_CANCELLED && balanceDue > 0;
+
+    // Best-effort deposit: sum of detail Line_Total flagged Deposit_Requested.
+    const depositRows = details.filter((d) => Boolean(d.Deposit_Requested));
+    const depositDue =
+      depositRows.length > 0
+        ? Number(
+            depositRows
+              .reduce((sum, d) => sum + toCheckoutNumber(d.Line_Total), 0)
+              .toFixed(2)
+          )
+        : null;
+
+    const lineItems: CheckoutLineItem[] = details.map((d) => ({
+      invoiceDetailId: toCheckoutNumber(d.Invoice_Detail_ID),
+      itemName: d.Item_Name ?? null,
+      itemNote: d.Item_Note ?? null,
+      recipientName: d.Recipient_Name ?? null,
+      quantity: toCheckoutNumber(d.Item_Quantity),
+      lineTotal: toCheckoutNumber(d.Line_Total),
+      isSubItem: Boolean(d.Sub_Item),
+      eventParticipantId: toCheckoutNumberOrNull(d.Event_Participant_ID),
+    }));
+
+    return {
+      invoiceId: toCheckoutNumber(header.Invoice_ID),
+      invoiceGuid: header.Invoice_GUID ?? invoiceGuid,
+      invoiceDate: String(header.Invoice_Date ?? ""),
+      invoiceTotal,
+      amountPaid,
+      balanceDue,
+      depositDue,
+      statusId,
+      status: statusMap.get(statusId) || "Unknown",
+      canPay,
+      payorContactId: toCheckoutNumberOrNull(header.Contact_ID),
+      payor: {
+        firstName: header.First_Name ?? null,
+        lastName: header.Last_Name ?? null,
+        email: header.Email_Address ?? null,
+        mobilePhone: header.Mobile_Phone ?? null,
+        addressLine1: header.Address_Line_1 ?? null,
+        addressLine2: header.Address_Line_2 ?? null,
+        city: header.City ?? null,
+        state: header.State ?? null,
+        postalCode: header.Postal_Code ?? null,
+      },
+      lineItems,
+    };
   }
 }

@@ -8,6 +8,7 @@ export * from "./invoices";
 export * from "./my-giving";
 export * from "./my-groups";
 export * from "./my-pledges";
+export * from "./payment-token";
 export * from "./profile";
 export * from "./statement-preferences";
 export * from "./subscription";

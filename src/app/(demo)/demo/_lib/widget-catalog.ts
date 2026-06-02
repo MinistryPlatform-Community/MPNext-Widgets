@@ -150,6 +150,29 @@ const extras: Record<string, WidgetExtras> = {
 <next-event-details return-url="/events" checkout-url="/checkout"></next-event-details>`,
   },
 
+  checkout: {
+    attributes: { "payment-processor-url": "/demo/pay", "back-to-event-url": "/demo/event-finder" },
+    controls: [
+      { name: "invoiceId", label: "Invoice GUID", type: "text", attribute: "invoice-id", placeholder: "Invoice_GUID" },
+    ],
+    implementationCode: `<next-checkout
+  payment-processor-url="/pay"
+  back-to-event-url="/events"
+></next-checkout>
+
+<!-- Invoice GUID comes from the URL (?id=) or an invoice-id attribute -->`,
+  },
+
+  pay: {
+    implementationCode: `<!-- Sandbox gateway. The request token arrives via ?token= -->
+<next-pay></next-pay>`,
+  },
+
+  "checkout-complete": {
+    implementationCode: `<!-- Reached on return from the gateway with ?token= -->
+<next-checkout-complete></next-checkout-complete>`,
+  },
+
   "custom-form": {
     attributes: { "form-id": "1" },
     controls: [
