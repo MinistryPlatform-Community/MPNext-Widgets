@@ -96,24 +96,56 @@ executed here:
 - **`MPPW_DEFAULT_PARTICIPANT_TYPE_ID`** (new, optional; default `1`) — used when
   creating a `Participants` record during anonymous/new-contact registration. Set to the
   tenant's web-registration participant type (legacy config `defaultParticipantType`).
+- **`PAYMENT_JWT_SIGNING_KEY`** (new; required in production, ≥16 chars) — HS256 key
+  for the checkout↔gateway hand-off tokens. The sandbox `next-pay` uses the same key;
+  a real vendor must share it. See §8.
 
-## 6. Widget simplifications (in-code TODOs)
+## 6. Widget simplifications (remaining in-code TODOs)
 
-- **"Register As" list** shows only the signed-in contact + "Blank Form" — there is no
-  household-members endpoint yet, so the legacy family-member picker (and minor/parent
-  auto-fill from household positions) is not wired.
+Resolved in the second wave (§8): the "Register As" household-member picker +
+contact/address prefill, and `updateMyInfo` write-back. Still simplified:
+
 - **Custom-form FileUpload (type 9)** renders an input but is not submitted in v1.
 - **"Email a Friend"** emits `emailRequested` + shows a "not available" note (no send
   endpoint).
-- **Participant in-place edit** simplified to remove-and-re-register (the most arcane
-  legacy branch); Save&* button variants folded into the Register actions.
+- **Participant in-place edit** — remove + re-add is supported; full re-population of an
+  existing participant's form (options/promo/custom-form answers) is the one remaining
+  legacy behavior not yet ported.
 
 ## 7. Suggested follow-ups
 
-1. Add a household-members endpoint and wire the full "Register As" family picker +
-   minor/parent auto-fill.
+1. Port participant in-place edit (re-populate the form from an existing participant).
 2. Wire `next-event-finder` detail links (and the user-menu, if desired) to
    `next-event-details`.
-3. Build the `next-invoice-checkout` widget to complete the registration → payment loop.
+3. Custom-form FileUpload submission + the "Email a Friend" send endpoint.
 4. Pre-submit availability gate (the `availability` endpoint exists but the widget
    currently relies on the server's `register` 409 path).
+5. Replace the sandbox `next-pay` with a real payment vendor (share `PAYMENT_JWT_SIGNING_KEY`,
+   point `payment-processor-url` at the vendor, wire its callback to `/payment/notify`).
+
+## 8. Second wave — custom-form reuse, checkout/payment, gap fixes
+
+Built after the initial finder/details migration:
+
+- **Custom form unified** — one shared renderer (`embed-sdk/src/shared/custom-form.ts`)
+  + one service (`customFormService`: getForm/getDefinition/saveFormResponse) used by
+  BOTH the new standalone `next-custom-form` widget and `next-event-details` (its inline
+  copy removed; `registrationService` delegates its form-response save). Routes
+  `GET /api/embed/custom-form` and `POST /custom-form/submit`.
+- **Checkout/payment loop** — `next-checkout` (invoice display + pay options),
+  `next-pay` (sandbox gateway, test card 4111…), `next-checkout-complete`. Backend:
+  `invoiceService.getCheckoutInvoiceByGuid`, `paymentService` (Payments/Payment_Detail),
+  `checkoutService` (HS256 tokens), routes under `/api/embed/checkout/*`, `/pay/*`,
+  `/payment/notify`. Shared token contract in `@mpnext/types/payment-token.ts`.
+- **event-details gaps** — household "Register As" picker (reuses `GET /api/embed/household`)
+  + prefill, `updateMyInfo` write-back, already-registered notice.
+
+### Additional live-verification items (second wave)
+- Custom form: `Forms` columns (`Get_Contact_Info`, `Get_Address_Info`, `Complete_Message`,
+  `Force_Login`, `Product_ID`, `Standalone_Form_Use_Only`, `End_Date`) and the
+  `Form_Responses` contact/address columns written by `saveFormResponse`.
+- Checkout: `Invoices.Amount_Paid` is read for the status calc and may be computed (summed
+  from `Payments`) rather than stored on some tenants — defensively handled, but confirm.
+- Payment writes (`Payments`, `Payment_Detail`) and `api_MPPW_GetUnpaidInvoiceDetails`
+  allocation; the whole pay loop runs against the sandbox `next-pay` until a real vendor
+  is wired.
