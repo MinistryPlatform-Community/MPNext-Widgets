@@ -83,10 +83,15 @@ export async function POST(req: NextRequest) {
           console.warn("MP userinfo response missing sub claim");
         }
       } catch (error) {
-        console.error("Failed to verify mpUserToken:", error);
-        return NextResponse.json(
-          { error: "Invalid MP user token. Please sign in again." },
-          { status: 403, headers: corsHeaders },
+        // The mpUserToken is opportunistic: the SDK sends whatever it finds in
+        // localStorage (mpp-widgets_AuthToken) on every session request. A
+        // stale/expired token must NOT block the widget — public widgets
+        // (event-finder, event-details, etc.) only need an anonymous session,
+        // and auth-required widgets will render their logged-out state. Fall
+        // back to a public session instead of returning 403.
+        console.warn(
+          "Ignoring invalid/expired mpUserToken; issuing public session:",
+          error instanceof Error ? error.message : error,
         );
       }
     } else {

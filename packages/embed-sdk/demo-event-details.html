@@ -57,13 +57,9 @@
         <button class="apply-btn" id="reload-btn" type="button">Apply</button>
       </div>
 
-      <div class="demo-box">
-        <next-event-details
-          event-id="1"
-          return-url="/demo-event-finder.html"
-          checkout-url="/demo-my-invoices.html"
-          api-host="__API_HOST__"></next-event-details>
-      </div>
+      <!-- Widget is created from script so the ?id= deep-link (from the
+           event-finder) and the Event ID control share one code path. -->
+      <div class="demo-box"></div>
 
       <div class="card">
         <div class="card-header">
@@ -106,6 +102,13 @@
     </div>
   </div>
 
+  <!-- Classic script runs before the deferred module below, so the SDK's
+       host detection has the API host even though this demo creates its
+       widget element dynamically (no static element to read api-host from). -->
+  <script>
+    window.__nextEmbedApiHost = "__API_HOST__";
+  </script>
+
   <script type="module">
     import "./src/index.ts";
 
@@ -123,12 +126,9 @@
         .forEach((evt) => widget.addEventListener(evt, (e) => logEvent(evt, e.detail)));
     }
 
-    attach(document.querySelector("next-event-details"));
-    logEvent("info", "Widget initialized");
+    const idInput = document.getElementById("event-id-input");
 
-    document.getElementById("reload-btn").addEventListener("click", () => {
-      const id = parseInt(document.getElementById("event-id-input").value, 10);
-      if (!id || id <= 0) return;
+    function buildWidget(id) {
       const box = document.querySelector(".demo-box");
       const old = box.querySelector("next-event-details");
       if (old) old.remove();
@@ -139,6 +139,20 @@
       w.setAttribute("api-host", "__API_HOST__");
       box.appendChild(w);
       attach(w);
+      return w;
+    }
+
+    // Honor the ?id= deep-link from the event-finder; fall back to the input default.
+    const urlId = parseInt(new URLSearchParams(window.location.search).get("id") || "", 10);
+    const initialId = urlId && urlId > 0 ? urlId : parseInt(idInput.value, 10) || 1;
+    idInput.value = String(initialId);
+    buildWidget(initialId);
+    logEvent("info", `Widget initialized with event-id=${initialId}`);
+
+    document.getElementById("reload-btn").addEventListener("click", () => {
+      const id = parseInt(idInput.value, 10);
+      if (!id || id <= 0) return;
+      buildWidget(id);
       logEvent("info", `Reloaded with event-id=${id}`);
     });
   </script>

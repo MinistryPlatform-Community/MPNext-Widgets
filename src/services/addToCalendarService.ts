@@ -83,7 +83,9 @@ export class AddToCalendarService {
         if (location.Address_ID) {
           const addresses = await this.mp!.getTableRecords<AddressRecord>({
             table: "Addresses",
-            select: "Address_ID,Address_Line_1,City,State/Region,Postal_Code",
+            // [State/Region] must be bracketed — the slash is MP's FK-traversal
+            // operator, so unbracketed it is read as columns State→Region.
+            select: "Address_ID,Address_Line_1,City,[State/Region],Postal_Code",
             filter: `Address_ID = ${location.Address_ID}`,
             top: 1,
           });

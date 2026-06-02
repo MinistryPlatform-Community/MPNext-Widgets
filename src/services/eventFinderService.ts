@@ -134,10 +134,12 @@ export class EventFinderService {
     const ids = filtered.map((r) => Number(r.Id)).slice(0, MAX_RESULTS);
     if (ids.length === 0) return [];
 
-    const eventsResult = await this.mp!.executeProcedure("api_MPPW_GetEvents", {
+    // api_MPPW_GetEvents declares @EventIds as an array of Integers. Sending it
+    // on the query string collapses it to a string ("201,359,…") which MP
+    // rejects with 500. Use the POST-body variant so the array stays typed.
+    const eventsResult = await this.mp!.executeProcedureWithBody("api_MPPW_GetEvents", {
       "@ImageBaseUrl": this.imageBaseUrl,
-      // MP api_MPPW_* procs that take an id list accept a comma-delimited string.
-      "@EventIds": ids.join(","),
+      "@EventIds": ids,
     });
 
     const cardRows = (eventsResult[0] as EventCardRow[] | undefined) ?? [];

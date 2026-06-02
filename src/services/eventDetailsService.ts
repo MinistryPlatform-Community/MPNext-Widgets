@@ -400,8 +400,10 @@ export class EventDetailsService {
   private async getAddressLine(addressId: number): Promise<string | null> {
     const rows = await this.mp!.getTableRecords<AddressRow>({
       table: "Addresses",
+      // [State/Region] must be bracketed — the slash is MP's FK-traversal
+      // operator, so an unbracketed State/Region is read as columns State→Region.
       select:
-        "Address_ID,Address_Line_1,Address_Line_2,City,State/Region,Postal_Code",
+        "Address_ID,Address_Line_1,Address_Line_2,City,[State/Region],Postal_Code",
       filter: `Address_ID = ${addressId}`,
       top: 1,
     });
