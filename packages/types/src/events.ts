@@ -215,6 +215,12 @@ export const BasicContactSchema = z.object({
   emailAddress: z.string().nullable(),
   mobilePhoneNumber: z.string().nullable(),
   householdId: z.number().nullable(),
+  // Home address (from the contact's household) — best-effort, for form prefill.
+  addressLine1: z.string().nullable().optional(),
+  addressLine2: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  stateRegion: z.string().nullable().optional(),
+  postalCode: z.string().nullable().optional(),
 });
 export type BasicContact = z.infer<typeof BasicContactSchema>;
 

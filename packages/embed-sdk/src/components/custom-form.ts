@@ -21,6 +21,19 @@ interface CustomFormHeader {
   imageUrl: string | null;
 }
 
+/** Subset of the basic-contact response used to prefill the form for signed-in users. */
+interface PrefillContact {
+  firstName: string | null;
+  lastName: string | null;
+  emailAddress: string | null;
+  mobilePhoneNumber: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  stateRegion?: string | null;
+  postalCode?: string | null;
+}
+
 /**
  * `next-custom-form` — standalone MinistryPlatform custom form.
  *
@@ -38,6 +51,7 @@ export class CustomFormWidget extends MPNextWidget {
   private error: string | null = null;
   private submitted = false;
   private isAuthenticated = false;
+  private contact: PrefillContact | null = null;
 
   static get observedAttributes() {
     return ["api-host", "form-id", "form-guid", "id-parameter-name", "checkout-url"];
@@ -113,17 +127,49 @@ export class CustomFormWidget extends MPNextWidget {
       this.loading = false;
       this.render();
       this.attachListeners();
+      this.prefillContact();
     }
   }
 
   private async detectAuth() {
-    // Reuse the shared basic-contact endpoint only to know auth state; the form
-    // works anonymously, so failures are non-fatal.
+    // Reuse the shared basic-contact endpoint to know auth state AND prefill the
+    // signed-in contact's info. The form works anonymously, so failures are non-fatal.
     try {
       const res = await this.fetch(`/api/embed/event-details/basic-contact`);
       this.isAuthenticated = res.ok;
+      if (res.ok) {
+        const data: { contact?: PrefillContact } = await res.json().catch(() => ({}));
+        this.contact = data.contact ?? null;
+      } else {
+        this.contact = null;
+      }
     } catch {
       this.isAuthenticated = false;
+      this.contact = null;
+    }
+  }
+
+  /**
+   * Prefill the contact/address inputs from the signed-in contact. Only fills
+   * empty fields, so it never clobbers anything the user has already typed.
+   */
+  private prefillContact() {
+    if (!this.contact) return;
+    const map: Record<string, string | null | undefined> = {
+      FirstName: this.contact.firstName,
+      LastName: this.contact.lastName,
+      EmailAddress: this.contact.emailAddress,
+      MobilePhoneNumber: this.contact.mobilePhoneNumber,
+      AddressLine1: this.contact.addressLine1,
+      AddressLine2: this.contact.addressLine2,
+      City: this.contact.city,
+      StateRegion: this.contact.stateRegion,
+      PostalCode: this.contact.postalCode,
+    };
+    for (const [name, value] of Object.entries(map)) {
+      if (!value) continue;
+      const input = this.root.querySelector<HTMLInputElement>(`input[name="${name}"]`);
+      if (input && !input.value) input.value = value;
     }
   }
 

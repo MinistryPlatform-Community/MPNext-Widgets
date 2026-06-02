@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MPNext Custom Form Widget - Demo</title>
+  <!-- MP Widgets base script (provides mpp-user-login used by next-user-menu) -->
+  <script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: ui-sans-serif, system-ui, sans-serif; background: #f9fafb; color: #2D2926; }
@@ -27,6 +29,9 @@
     .event-log { background: #1f2937; color: #10b981; padding: 16px; font-family: 'Courier New', monospace; font-size: 14px; max-height: 300px; overflow-y: auto; }
     .event-entry { margin-bottom: 8px; padding: 8px; background: rgba(16,185,129,0.1); border-radius: 4px; }
     .note { background: #e0f2fe; border-left: 4px solid #004C97; padding: 12px 16px; border-radius: 8px; font-size: 14px; }
+    .auth-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; background: #002855; border-radius: 8px; }
+    .auth-header span { color: white; font-weight: 600; font-size: 16px; }
+    .auth-header .hint { color: #9fb3c8; font-weight: 400; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -37,19 +42,27 @@
     <code class="tag-code">&lt;next-custom-form&gt;</code>
 
     <div class="space-y">
-      <div class="note">Provide a <code>form-id</code> (or <code>form-guid</code>) of a MinistryPlatform form. The form's fields, depends-on logic, and optional contact/address blocks render automatically.</div>
+      <div class="note">Provide a <code>form-id</code> (or <code>form-guid</code>) of a MinistryPlatform form. You can also pass it in the page URL as <code>?id=&lt;id-or-guid&gt;</code> (or <code>?formId=</code> / <code>?formGuid=</code>). The form's fields, depends-on logic, and optional contact/address blocks render automatically.</div>
 
       <div class="controls-card">
         <div class="control-group">
-          <label for="form-id-input">Form ID</label>
-          <input type="number" id="form-id-input" value="1" min="1">
+          <label for="form-id-input">Form ID or GUID</label>
+          <input type="text" id="form-id-input" value="1">
         </div>
         <button class="apply-btn" id="reload-btn" type="button">Apply</button>
       </div>
 
-      <div class="demo-box">
-        <next-custom-form form-id="1" api-host="__API_HOST__"></next-custom-form>
+      <!-- Optional sign-in. The form works anonymously; signing in links the
+           response to your MP contact record (and is required only for forms
+           with Force Login). Login is NOT required for this widget. -->
+      <div class="auth-header">
+        <span>Sign in <span class="hint">(optional — autofills your info &amp; links your response to your MP record)</span></span>
+        <next-user-menu mp-base-url="__MP_BASE_URL__" api-host="__API_HOST__"></next-user-menu>
       </div>
+
+      <!-- api-host is carried on a static attribute: Vite's transformIndexHtml
+           substitutes __API_HOST__ in markup, but NOT inside inline module scripts. -->
+      <div class="demo-box" data-api-host="__API_HOST__"></div>
 
       <div class="card">
         <div class="card-header"><h3>Event Log</h3><button class="clear-btn" onclick="document.getElementById('event-log').innerHTML=''">Clear</button></div>
@@ -72,20 +85,51 @@
       ["formLoaded", "formSubmitted", "formError", "loginRequired"].forEach((evt) =>
         w.addEventListener(evt, (e) => logEvent(evt, e.detail)));
     }
-    attach(document.querySelector("next-custom-form"));
+
+    const box = document.querySelector(".demo-box");
+    const apiHost = box.dataset.apiHost; // substituted by Vite in static markup
+
+    // Numeric ⇒ form-id; anything with a non-digit (e.g. a GUID) ⇒ form-guid.
+    // Build via innerHTML so api-host is present when the element upgrades — the
+    // widget captures apiHost in its constructor, so a late setAttribute is too late.
+    function applyRef(ref) {
+      const isGuid = /\D/.test(ref);
+      const attr = isGuid ? "form-guid" : "form-id";
+      const esc = (s) => s.replace(/"/g, "&quot;");
+      box.innerHTML = `<next-custom-form ${attr}="${esc(ref)}" api-host="${esc(apiHost)}"></next-custom-form>`;
+      attach(box.querySelector("next-custom-form"));
+      logEvent("info", `Loaded with ${attr}=${ref}`);
+    }
+
+    // Read the form ref from the URL (?id= / ?formId= / ?formGuid=), else default to 1.
+    const params = new URLSearchParams(window.location.search);
+    const initialRef = params.get("id") || params.get("formId") || params.get("formGuid") || "1";
+    document.getElementById("form-id-input").value = initialRef;
+    applyRef(initialRef);
     logEvent("info", "Widget initialized");
+
+    // Optional auth: next-user-menu writes the MP token to localStorage on sign-in.
+    // The form works anonymously, but when the token appears/changes we reload the
+    // current widget so it re-runs auth detection (passes Force-Login gates and
+    // links the submission to the signed-in contact).
+    let lastAuthToken = localStorage.getItem("mpp-widgets_AuthToken");
+    setInterval(() => {
+      const token = localStorage.getItem("mpp-widgets_AuthToken");
+      if (token === lastAuthToken) return;
+      lastAuthToken = token;
+      logEvent("auth", token ? "Signed in — reloading form" : "Signed out — reloading form");
+      const widget = box.querySelector("next-custom-form");
+      if (widget && widget.retryLoad) widget.retryLoad();
+    }, 1000);
+
     document.getElementById("reload-btn").addEventListener("click", () => {
-      const id = parseInt(document.getElementById("form-id-input").value, 10);
-      if (!id || id <= 0) return;
-      const box = document.querySelector(".demo-box");
-      const old = box.querySelector("next-custom-form");
-      if (old) old.remove();
-      const w = document.createElement("next-custom-form");
-      w.setAttribute("form-id", String(id));
-      w.setAttribute("api-host", "__API_HOST__");
-      box.appendChild(w);
-      attach(w);
-      logEvent("info", `Reloaded with form-id=${id}`);
+      const ref = document.getElementById("form-id-input").value.trim();
+      if (!ref) return;
+      // Keep the URL in sync so the view is shareable/reloadable.
+      const url = new URL(window.location.href);
+      url.searchParams.set("id", ref);
+      window.history.replaceState(null, "", url);
+      applyRef(ref);
     });
   </script>
 </body>

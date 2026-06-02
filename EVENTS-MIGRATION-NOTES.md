@@ -142,8 +142,13 @@ Built after the initial finder/details migration:
 
 ### Additional live-verification items (second wave)
 - Custom form: `Forms` columns (`Get_Contact_Info`, `Get_Address_Info`, `Complete_Message`,
-  `Force_Login`, `Product_ID`, `Standalone_Form_Use_Only`, `End_Date`) and the
+  `Force_Login`, `Standalone_Form_Use_Only`, `End_Date`) and the
   `Form_Responses` contact/address columns written by `saveFormResponse`.
+  **Resolved:** `Forms` has **no `Product_ID`** column (and there is no FK between
+  `Forms` and `Products`), so the assumed paid-form → product link does not exist in
+  MP. `Product_ID` was removed from the `Forms` select; `CustomFormHeader.productId`
+  is now always `null`. If paid custom forms are needed, the product association must
+  come from a different mechanism (not `Forms.Product_ID`).
 - Checkout: `Invoices.Amount_Paid` is read for the status calc and may be computed (summed
   from `Payments`) rather than stored on some tenants — defensively handled, but confirm.
 - Payment writes (`Payments`, `Payment_Detail`) and `api_MPPW_GetUnpaidInvoiceDetails`

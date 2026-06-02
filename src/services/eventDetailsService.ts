@@ -264,14 +264,63 @@ export class EventDetailsService {
     const c = rows[0];
     if (!c) return null;
 
+    const householdId = toNumberOrNull(c.Household_ID);
+    const address = householdId != null ? await this.getHouseholdAddress(householdId) : null;
+
     return {
       contactId: toNumber(c.Contact_ID),
       firstName: c.First_Name ?? null,
       lastName: c.Last_Name ?? null,
       emailAddress: c.Email_Address ?? null,
       mobilePhoneNumber: c.Mobile_Phone ?? null,
-      householdId: toNumberOrNull(c.Household_ID),
+      householdId,
+      addressLine1: address?.addressLine1 ?? null,
+      addressLine2: address?.addressLine2 ?? null,
+      city: address?.city ?? null,
+      stateRegion: address?.stateRegion ?? null,
+      postalCode: address?.postalCode ?? null,
     };
+  }
+
+  /** Household home address for prefill — best-effort, never throws. */
+  private async getHouseholdAddress(householdId: number): Promise<{
+    addressLine1: string | null;
+    addressLine2: string | null;
+    city: string | null;
+    stateRegion: string | null;
+    postalCode: string | null;
+  } | null> {
+    try {
+      const households = await this.mp!.getTableRecords<{ Address_ID: number | null }>({
+        table: "Households",
+        select: "Address_ID",
+        filter: `Household_ID = ${householdId}`,
+        top: 1,
+      });
+      const addressId = toNumberOrNull(households[0]?.Address_ID);
+      if (addressId == null) return null;
+
+      const rows = await this.mp!.getTableRecords<AddressRow>({
+        table: "Addresses",
+        // [State/Region] must be bracketed — see getAddressLine().
+        select:
+          "Address_ID,Address_Line_1,Address_Line_2,City,[State/Region],Postal_Code",
+        filter: `Address_ID = ${addressId}`,
+        top: 1,
+      });
+      const a = rows[0];
+      if (!a) return null;
+
+      return {
+        addressLine1: a.Address_Line_1 ?? null,
+        addressLine2: a.Address_Line_2 ?? null,
+        city: a.City ?? null,
+        stateRegion: a["State/Region"] ?? null,
+        postalCode: a.Postal_Code ?? null,
+      };
+    } catch {
+      return null;
+    }
   }
 
   // ── Single event detail ──
