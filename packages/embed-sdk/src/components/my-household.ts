@@ -1,4 +1,10 @@
 import { MPNextWidget } from "../shared/base-widget";
+import {
+  validateForm,
+  bindLiveValidation,
+  requiredStar,
+  FORM_VALIDATION_STYLES,
+} from "../shared/form-validation";
 
 interface LookupOption {
   id: number;
@@ -158,8 +164,11 @@ export class MyHouseholdWidget extends MPNextWidget {
     );
   }
 
+  // Shared validation options: this widget wraps every input in `.nw-field`.
+  private static VALIDATION_OPTS = { wrapperSelector: ".nw-field" } as const;
+
   connectedCallback() {
-    this.injectStyles(this.getStyles());
+    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
     this.render();
     this.loadHousehold();
   }
@@ -610,7 +619,7 @@ export class MyHouseholdWidget extends MPNextWidget {
               <legend class="nw-section-label">Household</legend>
               <div class="nw-grid">
                 <div class="nw-field nw-field-full">
-                  <label for="hh-name">Household Name *</label>
+                  <label for="hh-name">Household Name${requiredStar()}</label>
                   <input id="hh-name" name="hh-name" type="text" value="${this.escapeHtml(
                     h.name || "",
                   )}" required />
@@ -758,8 +767,8 @@ export class MyHouseholdWidget extends MPNextWidget {
                   )}</select>
                 </div>
                 <div class="nw-field">
-                  <label for="mb-first">First Name *</label>
-                  <input id="mb-first" type="text" value="${this.escapeHtml(
+                  <label for="mb-first">First Name${requiredStar()}</label>
+                  <input id="mb-first" name="mb-first" type="text" value="${this.escapeHtml(
                     m?.firstName || "",
                   )}" required />
                 </div>
@@ -770,8 +779,8 @@ export class MyHouseholdWidget extends MPNextWidget {
                   )}" />
                 </div>
                 <div class="nw-field">
-                  <label for="mb-last">Last Name *</label>
-                  <input id="mb-last" type="text" value="${this.escapeHtml(
+                  <label for="mb-last">Last Name${requiredStar()}</label>
+                  <input id="mb-last" name="mb-last" type="text" value="${this.escapeHtml(
                     m?.lastName || "",
                   )}" required />
                 </div>
@@ -949,18 +958,24 @@ export class MyHouseholdWidget extends MPNextWidget {
     const householdForm = this.root.querySelector(
       "#household-form",
     ) as HTMLFormElement | null;
-    householdForm?.addEventListener("submit", (e) => {
-      e.preventDefault();
-      this.submitHousehold();
-    });
+    if (householdForm) {
+      householdForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        this.submitHousehold();
+      });
+      bindLiveValidation(householdForm, MyHouseholdWidget.VALIDATION_OPTS);
+    }
 
     const memberForm = this.root.querySelector(
       "#member-form",
     ) as HTMLFormElement | null;
-    memberForm?.addEventListener("submit", (e) => {
-      e.preventDefault();
-      this.submitMember();
-    });
+    if (memberForm) {
+      memberForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        this.submitMember();
+      });
+      bindLiveValidation(memberForm, MyHouseholdWidget.VALIDATION_OPTS);
+    }
 
     // Photo picker
     const pickBtn = this.root.querySelector('[data-action="pick-photo"]');
@@ -1138,16 +1153,31 @@ export class MyHouseholdWidget extends MPNextWidget {
   private async submitHousehold() {
     this.householdAlert = null;
 
-    const name = this.getVal("hh-name");
-    if (!name) {
-      this.householdAlert = {
-        kind: "warning",
-        text: "Household Name is required.",
+    const form = this.root.querySelector(
+      "#household-form",
+    ) as HTMLFormElement | null;
+    if (form) {
+      const opts = {
+        ...MyHouseholdWidget.VALIDATION_OPTS,
+        messages: { "hh-name": "Household Name is required." },
       };
-      this.render();
-      return;
+      if (!validateForm(form, opts).valid) {
+        // Field-level errors are the primary feedback; keep a summary banner.
+        // Re-apply inline errors after render() rebuilds the form markup.
+        this.householdAlert = {
+          kind: "warning",
+          text: "Please fix the highlighted fields.",
+        };
+        this.render();
+        const reRendered = this.root.querySelector(
+          "#household-form",
+        ) as HTMLFormElement | null;
+        if (reRendered) validateForm(reRendered, opts);
+        return;
+      }
     }
 
+    const name = this.getVal("hh-name");
     const congregationId = this.getVal("hh-congregation");
     const body: Record<string, unknown> = {
       name,
@@ -1202,17 +1232,35 @@ export class MyHouseholdWidget extends MPNextWidget {
   private async submitMember() {
     this.memberAlert = null;
 
-    const firstName = this.getVal("mb-first");
-    const lastName = this.getVal("mb-last");
-    if (!firstName || !lastName) {
-      this.memberAlert = {
-        kind: "warning",
-        text: "First Name and Last Name are required.",
+    const form = this.root.querySelector(
+      "#member-form",
+    ) as HTMLFormElement | null;
+    if (form) {
+      const opts = {
+        ...MyHouseholdWidget.VALIDATION_OPTS,
+        messages: {
+          "mb-first": "First Name is required.",
+          "mb-last": "Last Name is required.",
+        },
       };
-      this.render();
-      return;
+      if (!validateForm(form, opts).valid) {
+        // Field-level errors are the primary feedback; keep a summary banner.
+        // Re-apply inline errors after render() rebuilds the form markup.
+        this.memberAlert = {
+          kind: "warning",
+          text: "Please fix the highlighted fields.",
+        };
+        this.render();
+        const reRendered = this.root.querySelector(
+          "#member-form",
+        ) as HTMLFormElement | null;
+        if (reRendered) validateForm(reRendered, opts);
+        return;
+      }
     }
 
+    const firstName = this.getVal("mb-first");
+    const lastName = this.getVal("mb-last");
     const prefixId = this.getVal("mb-prefix");
     const suffixId = this.getVal("mb-suffix");
     const genderId = this.getVal("mb-gender");

@@ -5,6 +5,12 @@ import {
   CUSTOM_FORM_STYLES,
   type CustomFormField,
 } from "../shared/custom-form";
+import {
+  validateForm,
+  bindLiveValidation,
+  requiredStar,
+  FORM_VALIDATION_STYLES,
+} from "../shared/form-validation";
 
 interface CustomFormHeader {
   formId: number;
@@ -65,7 +71,7 @@ export class CustomFormWidget extends MPNextWidget {
   }
 
   connectedCallback() {
-    this.injectStyles(this.getStyles() + CUSTOM_FORM_STYLES);
+    this.injectStyles(this.getStyles() + CUSTOM_FORM_STYLES + FORM_VALIDATION_STYLES);
     this.render();
     this.init();
   }
@@ -178,7 +184,7 @@ export class CustomFormWidget extends MPNextWidget {
   private async submit() {
     const form = this.root.querySelector<HTMLFormElement>("#cf-form");
     if (!form || !this.header) return;
-    if (!form.reportValidity()) return;
+    if (!validateForm(form).valid) return;
 
     const fd = new FormData(form);
     const payload: Record<string, string> = {};
@@ -241,7 +247,10 @@ export class CustomFormWidget extends MPNextWidget {
     }
 
     const form = this.root.querySelector<HTMLFormElement>("#cf-form");
-    if (form) bindCustomFormDependsOn(form, this.fields);
+    if (form) {
+      bindCustomFormDependsOn(form, this.fields);
+      bindLiveValidation(form);
+    }
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -313,11 +322,11 @@ export class CustomFormWidget extends MPNextWidget {
       <fieldset class="cf-fieldset">
         <legend>Your Information</legend>
         <div class="cf-grid2">
-          <div class="cf-field"><label>First Name</label><input class="cf-input" name="FirstName" required></div>
-          <div class="cf-field"><label>Last Name</label><input class="cf-input" name="LastName" required></div>
+          <div class="cf-field"><label>First Name${requiredStar()}</label><input class="cf-input" name="FirstName" required></div>
+          <div class="cf-field"><label>Last Name${requiredStar()}</label><input class="cf-input" name="LastName" required></div>
         </div>
         <div class="cf-grid2">
-          <div class="cf-field"><label>Email</label><input class="cf-input" type="email" name="EmailAddress" required></div>
+          <div class="cf-field"><label>Email${requiredStar()}</label><input class="cf-input" type="email" name="EmailAddress" required></div>
           <div class="cf-field"><label>Mobile Phone</label><input class="cf-input" name="MobilePhoneNumber"></div>
         </div>
       </fieldset>`;
@@ -327,12 +336,12 @@ export class CustomFormWidget extends MPNextWidget {
     return `
       <fieldset class="cf-fieldset">
         <legend>Address</legend>
-        <div class="cf-field"><label>Address Line 1</label><input class="cf-input" name="AddressLine1" required></div>
+        <div class="cf-field"><label>Address Line 1${requiredStar()}</label><input class="cf-input" name="AddressLine1" required></div>
         <div class="cf-field"><label>Address Line 2</label><input class="cf-input" name="AddressLine2"></div>
         <div class="cf-grid3">
-          <div class="cf-field"><label>City</label><input class="cf-input" name="City" required></div>
-          <div class="cf-field"><label>State / Region</label><input class="cf-input" name="StateRegion" required></div>
-          <div class="cf-field"><label>Postal Code</label><input class="cf-input" name="PostalCode" required></div>
+          <div class="cf-field"><label>City${requiredStar()}</label><input class="cf-input" name="City" required></div>
+          <div class="cf-field"><label>State / Region${requiredStar()}</label><input class="cf-input" name="StateRegion" required></div>
+          <div class="cf-field"><label>Postal Code${requiredStar()}</label><input class="cf-input" name="PostalCode" required></div>
         </div>
       </fieldset>`;
   }

@@ -1,4 +1,20 @@
 import { MPNextWidget } from "../shared/base-widget";
+import {
+  validateForm,
+  bindLiveValidation,
+  requiredStar,
+  FORM_VALIDATION_STYLES,
+} from "../shared/form-validation";
+
+const PAY_VALIDATION_OPTS = {
+  wrapperSelector: ".nw-pay-field",
+  messages: {
+    "name-on-card": "Please enter the name on the card.",
+    "card-number": "Please enter a card number.",
+    expiry: "Please enter the expiry date.",
+    cvv: "Please enter the CVV.",
+  },
+} as const;
 
 interface PaymentRequestToken {
   invoiceId: string;
@@ -40,7 +56,7 @@ export class PayWidget extends MPNextWidget {
   }
 
   connectedCallback() {
-    this.injectStyles(this.getStyles());
+    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
     this.render();
     this.init();
   }
@@ -101,17 +117,13 @@ export class PayWidget extends MPNextWidget {
   private async submit() {
     if (!this.request || !this.token) return;
 
+    const form = this.root.querySelector<HTMLFormElement>("#nw-pay-form");
+    if (!form || !validateForm(form, PAY_VALIDATION_OPTS).valid) return;
+
     const nameOnCard = this.value("#nw-pay-name");
     const cardNumber = this.value("#nw-pay-card");
     const expiry = this.value("#nw-pay-expiry");
     const cvv = this.value("#nw-pay-cvv");
-
-    if (!nameOnCard || !cardNumber || !expiry || !cvv) {
-      this.formError = "Please complete all card fields.";
-      this.render();
-      this.attachListeners();
-      return;
-    }
 
     this.formError = null;
     this.submitting = true;
@@ -178,6 +190,7 @@ export class PayWidget extends MPNextWidget {
         e.preventDefault();
         this.submit();
       });
+      bindLiveValidation(form, PAY_VALIDATION_OPTS);
     }
   }
 
@@ -236,25 +249,25 @@ export class PayWidget extends MPNextWidget {
         </div>
       </div>
 
-      <form id="nw-pay-form" class="nw-pay-form" autocomplete="off">
+      <form id="nw-pay-form" class="nw-pay-form" autocomplete="off" novalidate>
         <div class="nw-pay-field">
-          <label for="nw-pay-name">Name on Card</label>
-          <input id="nw-pay-name" type="text" placeholder="Jane Doe"
-            value="${this.escapeAttr(name === "—" ? "" : name)}">
+          <label for="nw-pay-name">Name on Card${requiredStar()}</label>
+          <input id="nw-pay-name" name="name-on-card" type="text" placeholder="Jane Doe"
+            required value="${this.escapeAttr(name === "—" ? "" : name)}">
         </div>
         <div class="nw-pay-field">
-          <label for="nw-pay-card">Card Number</label>
-          <input id="nw-pay-card" type="text" inputmode="numeric"
-            placeholder="${TEST_CARD}">
+          <label for="nw-pay-card">Card Number${requiredStar()}</label>
+          <input id="nw-pay-card" name="card-number" type="text" inputmode="numeric"
+            required placeholder="${TEST_CARD}">
         </div>
         <div class="nw-pay-row">
           <div class="nw-pay-field">
-            <label for="nw-pay-expiry">Expiry</label>
-            <input id="nw-pay-expiry" type="text" placeholder="MM/YY">
+            <label for="nw-pay-expiry">Expiry${requiredStar()}</label>
+            <input id="nw-pay-expiry" name="expiry" type="text" required placeholder="MM/YY">
           </div>
           <div class="nw-pay-field">
-            <label for="nw-pay-cvv">CVV</label>
-            <input id="nw-pay-cvv" type="text" inputmode="numeric" placeholder="123">
+            <label for="nw-pay-cvv">CVV${requiredStar()}</label>
+            <input id="nw-pay-cvv" name="cvv" type="text" inputmode="numeric" required placeholder="123">
           </div>
         </div>
         ${this.formError ? `<div class="nw-pay-inline-error">${this.escapeHtml(this.formError)}</div>` : ""}

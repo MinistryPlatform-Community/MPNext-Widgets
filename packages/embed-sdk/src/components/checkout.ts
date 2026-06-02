@@ -1,4 +1,11 @@
 import { MPNextWidget } from "../shared/base-widget";
+import {
+  validateForm,
+  bindLiveValidation,
+  requiredStar,
+  FORM_VALIDATION_STYLES,
+  type ValidateOptions,
+} from "../shared/form-validation";
 
 interface CheckoutLineItem {
   invoiceDetailId: number;
@@ -68,7 +75,7 @@ export class CheckoutWidget extends MPNextWidget {
   }
 
   connectedCallback() {
-    this.injectStyles(this.getStyles());
+    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
     this.render();
     this.init();
   }
@@ -224,6 +231,21 @@ export class CheckoutWidget extends MPNextWidget {
     }
   }
 
+  private validationOpts(): ValidateOptions {
+    return {
+      wrapperSelector: ".nw-co-field",
+      customValidators: {
+        "nw-other-amount": (value) => {
+          const n = parseFloat(value);
+          if (isNaN(n) || n <= 0) {
+            return "Please enter a valid payment amount.";
+          }
+          return null;
+        },
+      },
+    };
+  }
+
   private selectedAmount(): number {
     if (!this.invoice) return 0;
     if (this.payChoice === "deposit" && this.invoice.depositDue != null) {
@@ -238,6 +260,10 @@ export class CheckoutWidget extends MPNextWidget {
 
   private async startPayment() {
     if (!this.invoice || !this.guid) return;
+
+    const form = this.root.querySelector<HTMLFormElement>("#nw-co-pay-form");
+    if (form && !validateForm(form, this.validationOpts()).valid) return;
+
     const amount = this.selectedAmount();
     if (amount <= 0) {
       this.error = "Please enter a valid payment amount.";
@@ -289,9 +315,13 @@ export class CheckoutWidget extends MPNextWidget {
       retry.addEventListener("click", () => this.retryLoad());
     }
 
-    const payBtn = this.root.querySelector<HTMLButtonElement>('[data-action="pay"]');
-    if (payBtn) {
-      payBtn.addEventListener("click", () => this.startPayment());
+    const form = this.root.querySelector<HTMLFormElement>("#nw-co-pay-form");
+    if (form) {
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        this.startPayment();
+      });
+      bindLiveValidation(form, this.validationOpts());
     }
 
     this.root
@@ -443,7 +473,7 @@ export class CheckoutWidget extends MPNextWidget {
   private renderPaySection(inv: CheckoutInvoice): string {
     const hasDeposit = inv.depositDue != null && inv.depositDue > 0;
     return `
-      <div class="nw-co-pay">
+      <form id="nw-co-pay-form" class="nw-co-pay" novalidate>
         <div class="nw-co-pay-title">Payment Amount</div>
         <label class="nw-co-choice">
           <input type="radio" name="nw-pay-choice" value="full" ${this.payChoice === "full" ? "checked" : ""}>
@@ -463,10 +493,10 @@ export class CheckoutWidget extends MPNextWidget {
         </label>
         ${
           this.payChoice === "other"
-            ? `<div class="nw-co-other">
+            ? `<div class="nw-co-field nw-co-other">
                 <span class="nw-co-other-prefix">$</span>
-                <input id="nw-other-amount" type="number" min="0" step="0.01"
-                  inputmode="decimal" placeholder="0.00"
+                <input id="nw-other-amount" name="nw-other-amount" type="number" min="0" step="0.01"
+                  inputmode="decimal" placeholder="0.00" required
                   value="${this.escapeAttr(this.otherAmount)}">
               </div>`
             : ""
@@ -476,13 +506,13 @@ export class CheckoutWidget extends MPNextWidget {
           <span>You will pay</span>
           <span id="nw-pay-total" class="nw-co-pay-amount">${this.formatCurrency(this.selectedAmount())}</span>
         </div>
-        <button class="nw-co-btn nw-co-btn--pay" data-action="pay">Pay</button>
+        <button type="submit" class="nw-co-btn nw-co-btn--pay" data-action="pay">Pay</button>
         ${
           this.getAttribute("back-to-event-url")
             ? `<a class="nw-co-changes" href="${this.escapeAttr(this.getAttribute("back-to-event-url") as string)}">Make Changes</a>`
             : ""
         }
-      </div>`;
+      </form>`;
   }
 
   private renderStatusSection(inv: CheckoutInvoice): string {

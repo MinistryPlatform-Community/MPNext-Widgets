@@ -1,4 +1,10 @@
 import { MPNextWidget } from "../shared/base-widget";
+import {
+  validateForm,
+  bindLiveValidation,
+  requiredStar,
+  FORM_VALIDATION_STYLES,
+} from "../shared/form-validation";
 
 // Injected at build time from VITE_ORG_NAME (see vite.config.ts). Empty when unset.
 declare const __ORG_NAME__: string;
@@ -42,10 +48,6 @@ interface ProfileLookups {
   maritalStatuses: LookupOption[];
 }
 
-interface ValidationErrors {
-  [key: string]: string;
-}
-
 export class ProfileWidget extends MPNextWidget {
   private loading = true;
   private saving = false;
@@ -56,8 +58,6 @@ export class ProfileWidget extends MPNextWidget {
   private passwordError: string | null = null;
   private profile: ProfileData | null = null;
   private lookups: ProfileLookups | null = null;
-  private validationErrors: ValidationErrors = {};
-  private passwordErrors: ValidationErrors = {};
   private showOldPassword = false;
   private showNewPassword = false;
   private showConfirmPassword = false;
@@ -67,7 +67,7 @@ export class ProfileWidget extends MPNextWidget {
   private uploadingPhoto = false;
 
   connectedCallback() {
-    this.injectStyles(this.getStyles());
+    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
     this.render();
     this.loadProfile();
   }
@@ -244,18 +244,16 @@ export class ProfileWidget extends MPNextWidget {
               </select>
             </div>
             <div class="nw-field">
-              <label for="First_Name">First Name *</label>
+              <label for="First_Name">First Name${requiredStar()}</label>
               <input id="First_Name" name="First_Name" type="text" value="${this.esc(p.First_Name || "")}" required />
-              ${this.fieldError("First_Name")}
             </div>
             <div class="nw-field">
               <label for="Middle_Name">Middle Name</label>
               <input id="Middle_Name" name="Middle_Name" type="text" value="${this.esc(p.Middle_Name || "")}" />
             </div>
             <div class="nw-field">
-              <label for="Last_Name">Last Name *</label>
+              <label for="Last_Name">Last Name${requiredStar()}</label>
               <input id="Last_Name" name="Last_Name" type="text" value="${this.esc(p.Last_Name || "")}" required />
-              ${this.fieldError("Last_Name")}
             </div>
             <div class="nw-field">
               <label for="Nickname">Nickname</label>
@@ -329,17 +327,14 @@ export class ProfileWidget extends MPNextWidget {
             <div class="nw-field">
               <label for="Mobile_Phone">Mobile Phone</label>
               <input id="Mobile_Phone" name="Mobile_Phone" type="tel" value="${this.esc(p.Mobile_Phone || "")}" placeholder="999-999-9999" data-phone />
-              ${this.fieldError("Mobile_Phone")}
             </div>
             <div class="nw-field">
               <label for="Company_Phone">Work Phone</label>
               <input id="Company_Phone" name="Company_Phone" type="tel" value="${this.esc(p.Company_Phone || "")}" placeholder="999-999-9999" data-phone />
-              ${this.fieldError("Company_Phone")}
             </div>
             <div class="nw-field nw-field-full">
-              <label for="Email_Address">Email *</label>
+              <label for="Email_Address">Email${requiredStar()}</label>
               <input id="Email_Address" name="Email_Address" type="email" value="${this.esc(p.Email_Address || "")}" required />
-              ${this.fieldError("Email_Address")}
             </div>
             <div class="nw-field nw-field-full nw-comm-prefs">
               <div class="nw-comm-header">How should we contact you?</div>
@@ -372,28 +367,25 @@ export class ProfileWidget extends MPNextWidget {
           ${this.passwordError ? `<div class="nw-toast nw-toast-error">${this.esc(this.passwordError)}</div>` : ""}
           <div class="nw-grid nw-grid-single">
             <div class="nw-field nw-field-full">
-              <label for="oldPassword">Current Password *</label>
+              <label for="oldPassword">Current Password${requiredStar()}</label>
               <div class="nw-password-wrap">
                 <input id="oldPassword" name="oldPassword" type="${this.showOldPassword ? "text" : "password"}" required autocomplete="current-password" />
                 <button type="button" class="nw-eye-btn" data-toggle="oldPassword">${this.eyeIcon(this.showOldPassword)}</button>
               </div>
-              ${this.pwError("oldPassword")}
             </div>
             <div class="nw-field nw-field-full">
-              <label for="newPassword">New Password *</label>
+              <label for="newPassword">New Password${requiredStar()}</label>
               <div class="nw-password-wrap">
-                <input id="newPassword" name="newPassword" type="${this.showNewPassword ? "text" : "password"}" required autocomplete="new-password" />
+                <input id="newPassword" name="newPassword" type="${this.showNewPassword ? "text" : "password"}" required autocomplete="new-password" minlength="8" />
                 <button type="button" class="nw-eye-btn" data-toggle="newPassword">${this.eyeIcon(this.showNewPassword)}</button>
               </div>
-              ${this.pwError("newPassword")}
             </div>
             <div class="nw-field nw-field-full">
-              <label for="confirmPassword">Confirm New Password *</label>
+              <label for="confirmPassword">Confirm New Password${requiredStar()}</label>
               <div class="nw-password-wrap">
                 <input id="confirmPassword" name="confirmPassword" type="${this.showConfirmPassword ? "text" : "password"}" required autocomplete="new-password" />
                 <button type="button" class="nw-eye-btn" data-toggle="confirmPassword">${this.eyeIcon(this.showConfirmPassword)}</button>
               </div>
-              ${this.pwError("confirmPassword")}
             </div>
           </div>
           <div class="nw-actions">
@@ -413,15 +405,21 @@ export class ProfileWidget extends MPNextWidget {
     const profileForm = this.root.querySelector("#profile-form") as HTMLFormElement | null;
     const passwordForm = this.root.querySelector("#password-form") as HTMLFormElement | null;
 
-    profileForm?.addEventListener("submit", (e) => {
-      e.preventDefault();
-      this.handleProfileSubmit();
-    });
+    if (profileForm) {
+      profileForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        this.handleProfileSubmit();
+      });
+      bindLiveValidation(profileForm, this.profileValidationOpts());
+    }
 
-    passwordForm?.addEventListener("submit", (e) => {
-      e.preventDefault();
-      this.handlePasswordSubmit();
-    });
+    if (passwordForm) {
+      passwordForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        this.handlePasswordSubmit();
+      });
+      bindLiveValidation(passwordForm, this.passwordValidationOpts());
+    }
 
     const photoBtn = this.root.querySelector(".nw-photo-btn");
     const photoInput = this.root.querySelector(".nw-photo-input") as HTMLInputElement | null;
@@ -456,9 +454,13 @@ export class ProfileWidget extends MPNextWidget {
   }
 
   private async handleProfileSubmit() {
-    this.validationErrors = {};
     this.error = null;
     this.saveSuccess = false;
+
+    const form = this.root.querySelector("#profile-form") as HTMLFormElement | null;
+    if (!form) return;
+    const { valid } = validateForm(form, this.profileValidationOpts());
+    if (!valid) return;
 
     const getValue = (id: string) => (this.root.querySelector(`#${id}`) as HTMLInputElement | HTMLSelectElement)?.value?.trim() ?? "";
     const getChecked = (id: string) => (this.root.querySelector(`#${id}`) as HTMLInputElement)?.checked ?? false;
@@ -466,23 +468,6 @@ export class ProfileWidget extends MPNextWidget {
     const firstName = getValue("First_Name");
     const lastName = getValue("Last_Name");
     const email = getValue("Email_Address");
-
-    const mobilePhone = getValue("Mobile_Phone");
-    const companyPhone = getValue("Company_Phone");
-    const phoneRegex = /^\d{3}-\d{3}-\d{4}$/;
-
-    if (!firstName) this.validationErrors.First_Name = "First name is required";
-    else if (/&/.test(firstName) || /\band\b/i.test(firstName)) this.validationErrors.First_Name = "Please enter only your first name (no \"&\" or \"and\")";
-    if (!lastName) this.validationErrors.Last_Name = "Last name is required";
-    if (!email) this.validationErrors.Email_Address = "Email is required";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) this.validationErrors.Email_Address = "Invalid email address";
-    if (mobilePhone && !phoneRegex.test(mobilePhone)) this.validationErrors.Mobile_Phone = "Use format: 999-999-9999";
-    if (companyPhone && !phoneRegex.test(companyPhone)) this.validationErrors.Company_Phone = "Use format: 999-999-9999";
-
-    if (Object.keys(this.validationErrors).length > 0) {
-      this.render();
-      return;
-    }
 
     const dobMonth = getValue("dob-month");
     const dobDay = getValue("dob-day");
@@ -553,26 +538,19 @@ export class ProfileWidget extends MPNextWidget {
   }
 
   private async handlePasswordSubmit() {
-    this.passwordErrors = {};
     this.passwordError = null;
     this.passwordSuccess = false;
+
+    const form = this.root.querySelector("#password-form") as HTMLFormElement | null;
+    if (!form) return;
+    const { valid } = validateForm(form, this.passwordValidationOpts());
+    if (!valid) return;
 
     const getValue = (id: string) => (this.root.querySelector(`#${id}`) as HTMLInputElement)?.value ?? "";
 
     const oldPassword = getValue("oldPassword");
     const newPassword = getValue("newPassword");
     const confirmPassword = getValue("confirmPassword");
-
-    if (!oldPassword) this.passwordErrors.oldPassword = "Current password is required";
-    if (!newPassword) this.passwordErrors.newPassword = "New password is required";
-    else if (newPassword.length < 8) this.passwordErrors.newPassword = "Must be at least 8 characters";
-    if (!confirmPassword) this.passwordErrors.confirmPassword = "Please confirm your new password";
-    else if (newPassword !== confirmPassword) this.passwordErrors.confirmPassword = "Passwords do not match";
-
-    if (Object.keys(this.passwordErrors).length > 0) {
-      this.render();
-      return;
-    }
 
     this.savingPassword = true;
     this.render();
@@ -625,14 +603,48 @@ export class ProfileWidget extends MPNextWidget {
     }
   }
 
-  private fieldError(field: string): string {
-    const err = this.validationErrors[field];
-    return err ? `<span class="nw-field-error">${this.esc(err)}</span>` : "";
+  /** Shared validation config for the profile form (submit + live-clear). */
+  private profileValidationOpts() {
+    const phoneRegex = /^\d{3}-\d{3}-\d{4}$/;
+    return {
+      messages: {
+        First_Name: "First name is required",
+        Last_Name: "Last name is required",
+        Email_Address: "Email is required",
+      },
+      customValidators: {
+        First_Name: (v: string) =>
+          /&/.test(v) || /\band\b/i.test(v)
+            ? 'Please enter only your first name (no "&" or "and")'
+            : null,
+        Email_Address: (v: string) =>
+          v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? "Invalid email address" : null,
+        Mobile_Phone: (v: string) =>
+          v && !phoneRegex.test(v) ? "Use format: 999-999-9999" : null,
+        Company_Phone: (v: string) =>
+          v && !phoneRegex.test(v) ? "Use format: 999-999-9999" : null,
+      },
+    };
   }
 
-  private pwError(field: string): string {
-    const err = this.passwordErrors[field];
-    return err ? `<span class="nw-field-error">${this.esc(err)}</span>` : "";
+  /** Shared validation config for the password form (submit + live-clear). */
+  private passwordValidationOpts() {
+    return {
+      messages: {
+        oldPassword: "Current password is required",
+        newPassword: "New password is required",
+        confirmPassword: "Please confirm your new password",
+      },
+      customValidators: {
+        newPassword: (v: string) =>
+          v && v.length < 8 ? "Must be at least 8 characters" : null,
+        confirmPassword: (v: string, form: HTMLFormElement) =>
+          v &&
+          v !== (form.querySelector('[name="newPassword"]') as HTMLInputElement | null)?.value
+            ? "Passwords do not match"
+            : null,
+      },
+    };
   }
 
   private eyeIcon(visible: boolean): string {

@@ -5,6 +5,12 @@ import {
   CUSTOM_FORM_STYLES,
   type CustomFormField,
 } from "../shared/custom-form";
+import {
+  validateForm,
+  bindLiveValidation,
+  requiredStar,
+  FORM_VALIDATION_STYLES,
+} from "../shared/form-validation";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Local type declarations (mirrors @mpnext/types events.ts — this package
@@ -259,7 +265,7 @@ export class EventDetailsWidget extends MPNextWidget {
   }
 
   connectedCallback() {
-    this.injectStyles(this.getStyles() + CUSTOM_FORM_STYLES);
+    this.injectStyles(this.getStyles() + CUSTOM_FORM_STYLES + FORM_VALIDATION_STYLES);
     this.render();
     this.init();
   }
@@ -581,7 +587,7 @@ export class EventDetailsWidget extends MPNextWidget {
     const form = this.root.querySelector<HTMLFormElement>("#ed-form");
     if (!form) return;
 
-    if (!form.reportValidity()) {
+    if (!validateForm(form).valid) {
       this.setMessage("danger", "Please verify the registration details.");
       return;
     }
@@ -1003,6 +1009,7 @@ export class EventDetailsWidget extends MPNextWidget {
     });
 
     if (form) bindCustomFormDependsOn(form, this.customFields);
+    if (form) bindLiveValidation(form);
     this.updateTotal();
   }
 
@@ -1404,19 +1411,19 @@ export class EventDetailsWidget extends MPNextWidget {
         <fieldset class="ed-fieldset">
           <legend>Attendee (Minor)</legend>
           <div class="ed-grid2">
-            <div class="ed-field"><label>First Name</label><input class="ed-input" name="attendeeFirstName" required></div>
-            <div class="ed-field"><label>Last Name</label><input class="ed-input" name="attendeeLastName" required></div>
+            <div class="ed-field"><label>First Name${requiredStar()}</label><input class="ed-input" name="attendeeFirstName" required></div>
+            <div class="ed-field"><label>Last Name${requiredStar()}</label><input class="ed-input" name="attendeeLastName" required></div>
           </div>
-          <div class="ed-field"><label>Date of Birth</label><input id="ed-attendee-dob" class="ed-input" type="date" name="attendeeDateOfBirth" required></div>
+          <div class="ed-field"><label>Date of Birth${requiredStar()}</label><input id="ed-attendee-dob" class="ed-input" type="date" name="attendeeDateOfBirth" required></div>
         </fieldset>
         <fieldset class="ed-fieldset">
           <legend>Parent / Guardian</legend>
           <div class="ed-grid2">
-            <div class="ed-field"><label>First Name</label><input class="ed-input" name="parentFirstName" required></div>
-            <div class="ed-field"><label>Last Name</label><input class="ed-input" name="parentLastName" required></div>
+            <div class="ed-field"><label>First Name${requiredStar()}</label><input class="ed-input" name="parentFirstName" required></div>
+            <div class="ed-field"><label>Last Name${requiredStar()}</label><input class="ed-input" name="parentLastName" required></div>
           </div>
           <div class="ed-grid2">
-            <div class="ed-field"><label>Email</label><input class="ed-input" type="email" name="parentEmailAddress" required></div>
+            <div class="ed-field"><label>Email${requiredStar()}</label><input class="ed-input" type="email" name="parentEmailAddress" required></div>
             <div class="ed-field"><label>Mobile Phone</label><input class="ed-input" name="parentMobilePhoneNumber"></div>
           </div>
         </fieldset>
@@ -1426,11 +1433,11 @@ export class EventDetailsWidget extends MPNextWidget {
       <fieldset class="ed-fieldset">
         <legend>Attendee</legend>
         <div class="ed-grid2">
-          <div class="ed-field"><label>First Name</label><input id="ed-first-name" class="ed-input" name="FirstName" required></div>
-          <div class="ed-field"><label>Last Name</label><input id="ed-last-name" class="ed-input" name="LastName" required></div>
+          <div class="ed-field"><label>First Name${requiredStar()}</label><input id="ed-first-name" class="ed-input" name="FirstName" required></div>
+          <div class="ed-field"><label>Last Name${requiredStar()}</label><input id="ed-last-name" class="ed-input" name="LastName" required></div>
         </div>
         <div class="ed-grid2">
-          <div class="ed-field"><label>Email</label><input id="ed-email" class="ed-input" type="email" name="EmailAddress" required></div>
+          <div class="ed-field"><label>Email${requiredStar()}</label><input id="ed-email" class="ed-input" type="email" name="EmailAddress" required></div>
           <div class="ed-field"><label>Mobile Phone</label><input id="ed-phone" class="ed-input" name="MobilePhoneNumber"></div>
         </div>
       </fieldset>
@@ -1440,15 +1447,16 @@ export class EventDetailsWidget extends MPNextWidget {
 
   private renderAddressFields(): string {
     const required = this.event!.isFreeEvent ? "" : "required";
+    const star = required ? requiredStar() : "";
     return `
       <fieldset class="ed-fieldset">
         <legend>Address</legend>
-        <div class="ed-field"><label>Address Line 1</label><input class="ed-input" name="AddressLine1" ${required}></div>
+        <div class="ed-field"><label>Address Line 1${star}</label><input class="ed-input" name="AddressLine1" ${required}></div>
         <div class="ed-field"><label>Address Line 2</label><input class="ed-input" name="AddressLine2"></div>
         <div class="ed-grid3">
-          <div class="ed-field"><label>City</label><input class="ed-input" name="City" ${required}></div>
-          <div class="ed-field"><label>State / Region</label><input class="ed-input" name="StateRegion" ${required}></div>
-          <div class="ed-field"><label>Postal Code</label><input class="ed-input" name="PostalCode" ${required}></div>
+          <div class="ed-field"><label>City${star}</label><input class="ed-input" name="City" ${required}></div>
+          <div class="ed-field"><label>State / Region${star}</label><input class="ed-input" name="StateRegion" ${required}></div>
+          <div class="ed-field"><label>Postal Code${star}</label><input class="ed-input" name="PostalCode" ${required}></div>
         </div>
       </fieldset>`;
   }

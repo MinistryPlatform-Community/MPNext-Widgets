@@ -8,6 +8,8 @@
  * class prefix; host widgets inject {@link CUSTOM_FORM_STYLES}.
  */
 
+import { requiredStar } from "./form-validation";
+
 export interface CustomFormField {
   formFieldId: number;
   fieldLabel: string;
@@ -68,7 +70,7 @@ export function renderCustomFormFields(
 function renderField(f: CustomFormField): string {
   const name = `mp_customform_${f.formFieldId}`;
   const req = f.required ? "required" : "";
-  const label = `${escapeHtml(f.fieldLabel)}${f.required ? " *" : ""}`;
+  const label = `${escapeHtml(f.fieldLabel)}${f.required ? requiredStar() : ""}`;
   const isDependent = f.dependsOn != null && f.dependsOnValue != null;
   const isParent = f.fieldType === FT.VerticalRadio || f.fieldType === FT.HorizontalRadio;
   const parentAttr = isParent ? `data-customform-parent="true"` : "";
