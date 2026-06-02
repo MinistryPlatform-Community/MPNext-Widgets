@@ -1,5 +1,6 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
+import { ConfigSettingsService } from "@/services/configSettingsService";
 import type { FileDescription } from "@/lib/providers/ministry-platform/types/provider.types";
 import type {
   HouseholdAddress,
@@ -384,19 +385,8 @@ export class HouseholdService {
   // ── Google Maps Key ──
 
   public async getGoogleMapsApiKey(): Promise<string | null> {
-    try {
-      const rows = await this.mp!.getTableRecords<{ Value: string | null }>({
-        table: "dp_Configuration_Settings",
-        select: "Value",
-        filter: "Application_Code = 'COMMON' AND Key_Name = 'GoogleMapsAPIKey'",
-        top: 1,
-      });
-      const value = rows[0]?.Value?.trim();
-      return value ? value : null;
-    } catch (err) {
-      console.warn("HouseholdService: Failed to fetch Google Maps API key:", err);
-      return null;
-    }
+    const config = await ConfigSettingsService.getInstance();
+    return config.getGoogleMapsApiKey();
   }
 
   // ── Bundle ──

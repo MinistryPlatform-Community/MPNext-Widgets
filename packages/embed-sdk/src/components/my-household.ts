@@ -5,6 +5,11 @@ import {
   requiredStar,
   FORM_VALIDATION_STYLES,
 } from "../shared/form-validation";
+import {
+  loadGoogleMaps,
+  attachAddressAutocomplete,
+  type ParsedAddress,
+} from "../shared/google-places";
 
 interface LookupOption {
   id: number;
@@ -95,50 +100,6 @@ type AlertKind = "success" | "error" | "warning";
 interface AlertMsg {
   kind: AlertKind;
   text: string;
-}
-
-// Module-level guard so the Google Maps Places script is only loaded once.
-let googleMapsPromise: Promise<boolean> | null = null;
-
-function loadGoogleMaps(key: string): Promise<boolean> {
-  if (typeof window === "undefined") return Promise.resolve(false);
-  if (
-    typeof (window as any).google !== "undefined" &&
-    (window as any).google?.maps?.places
-  ) {
-    return Promise.resolve(true);
-  }
-  if ((window as any).__nextGoogleMapsPromise) {
-    return (window as any).__nextGoogleMapsPromise;
-  }
-  if (googleMapsPromise) return googleMapsPromise;
-
-  googleMapsPromise = new Promise<boolean>((resolve) => {
-    try {
-      const existing = document.querySelector<HTMLScriptElement>(
-        'script[data-next-google-maps="1"]',
-      );
-      if (existing) {
-        existing.addEventListener("load", () => resolve(true));
-        existing.addEventListener("error", () => resolve(false));
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-        key,
-      )}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      script.dataset.nextGoogleMaps = "1";
-      script.addEventListener("load", () => resolve(true));
-      script.addEventListener("error", () => resolve(false));
-      document.head.appendChild(script);
-    } catch {
-      resolve(false);
-    }
-  });
-  (window as any).__nextGoogleMapsPromise = googleMapsPromise;
-  return googleMapsPromise;
 }
 
 export class MyHouseholdWidget extends MPNextWidget {
@@ -1045,68 +1006,29 @@ export class MyHouseholdWidget extends MPNextWidget {
   }
 
   private attachAutocomplete(prefix: string) {
-    try {
-      const g = (window as any).google;
-      if (!g?.maps?.places?.Autocomplete) return;
-      const input = this.root.querySelector(
-        `#${prefix}-line1`,
-      ) as HTMLInputElement | null;
-      if (!input) return;
-
-      const autocomplete = new g.maps.places.Autocomplete(input, {
-        types: ["address"],
-        fields: ["address_components"],
-      });
-
-      autocomplete.addListener("place_changed", () => {
-        try {
-          const place = autocomplete.getPlace();
-          if (!place || !place.address_components) return;
-          this.fillAddressFromPlace(prefix, place.address_components);
-        } catch {
-          /* graceful fallback */
-        }
-      });
-    } catch {
-      /* graceful fallback — manual entry */
-    }
+    const input = this.root.querySelector(
+      `#${prefix}-line1`,
+    ) as HTMLInputElement | null;
+    if (!input) return;
+    attachAddressAutocomplete(input, (addr) =>
+      this.fillAddressFromPlace(prefix, addr),
+    );
   }
 
-  private fillAddressFromPlace(
-    prefix: string,
-    components: Array<{ long_name: string; short_name: string; types: string[] }>,
-  ) {
-    const get = (type: string, useShort = false): string => {
-      const c = components.find((comp) => comp.types.includes(type));
-      if (!c) return "";
-      return useShort ? c.short_name : c.long_name;
-    };
-
-    const streetNumber = get("street_number");
-    const route = get("route");
-    const line1 = [streetNumber, route].filter(Boolean).join(" ").trim();
-    const city =
-      get("locality") ||
-      get("postal_town") ||
-      get("sublocality") ||
-      get("administrative_area_level_2");
-    const state = get("administrative_area_level_1", true);
-    const postal = get("postal_code");
-    const countryCode = get("country", true);
-
+  private fillAddressFromPlace(prefix: string, addr: ParsedAddress) {
     const setVal = (id: string, value: string) => {
       const el = this.root.querySelector(`#${id}`) as HTMLInputElement | null;
       if (el && value) el.value = value;
     };
 
-    if (line1) setVal(`${prefix}-line1`, line1);
-    if (city) setVal(`${prefix}-city`, city);
-    if (state) setVal(`${prefix}-state`, state);
-    if (postal) setVal(`${prefix}-postal`, postal);
+    if (addr.line1) setVal(`${prefix}-line1`, addr.line1);
+    if (addr.city) setVal(`${prefix}-city`, addr.city);
+    if (addr.state) setVal(`${prefix}-state`, addr.state);
+    if (addr.postalCode) setVal(`${prefix}-postal`, addr.postalCode);
 
-    if (countryCode) {
+    if (addr.countryCode) {
       const match = this.data?.lookups.countries.find(
-        (c) => c.code.toUpperCase() === countryCode.toUpperCase(),
+        (c) => c.code.toUpperCase() === addr.countryCode.toUpperCase(),
       );
       if (match) {
         const sel = this.root.querySelector(

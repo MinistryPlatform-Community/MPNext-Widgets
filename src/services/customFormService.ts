@@ -1,5 +1,6 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
+import { ConfigSettingsService } from "@/services/configSettingsService";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import type {
   CustomFormField,
@@ -105,18 +106,17 @@ export class CustomFormService {
     const now = await tz.toMpSqlDatetime(new Date().toISOString());
     const isExpired = !!row.End_Date && row.End_Date < now;
 
+    const config = await ConfigSettingsService.getInstance();
+    const [filesResult, googleMapsApiKey] = await Promise.all([
+      this.mp!
+        .getFilesByRecord({ table: "Forms", recordId: row.Form_ID, defaultOnly: true })
+        .catch(() => [] as Awaited<ReturnType<MPHelper["getFilesByRecord"]>>),
+      config.getGoogleMapsApiKey(),
+    ]);
+
     let imageUrl: string | null = null;
-    try {
-      const files = await this.mp!.getFilesByRecord({
-        table: "Forms",
-        recordId: row.Form_ID,
-        defaultOnly: true,
-      });
-      if (files.length > 0 && files[0].IsImage) {
-        imageUrl = `${this.mpBaseUrl}/files/${files[0].UniqueFileId}`;
-      }
-    } catch {
-      imageUrl = null;
+    if (filesResult.length > 0 && filesResult[0].IsImage) {
+      imageUrl = `${this.mpBaseUrl}/files/${filesResult[0].UniqueFileId}`;
     }
 
     return {
@@ -134,6 +134,7 @@ export class CustomFormService {
       standaloneOnly: Boolean(row.Standalone_Form_Use_Only),
       isExpired,
       imageUrl,
+      googleMapsApiKey,
     };
   }
 

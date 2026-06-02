@@ -11,6 +11,10 @@ import {
   requiredStar,
   FORM_VALIDATION_STYLES,
 } from "../shared/form-validation";
+import {
+  loadGoogleMaps,
+  attachAddressAutocomplete,
+} from "../shared/google-places";
 
 interface CustomFormHeader {
   formId: number;
@@ -25,6 +29,7 @@ interface CustomFormHeader {
   standaloneOnly: boolean;
   isExpired: boolean;
   imageUrl: string | null;
+  googleMapsApiKey: string | null;
 }
 
 /** Subset of the basic-contact response used to prefill the form for signed-in users. */
@@ -250,7 +255,46 @@ export class CustomFormWidget extends MPNextWidget {
     if (form) {
       bindCustomFormDependsOn(form, this.fields);
       bindLiveValidation(form);
+      this.initGooglePlaces();
     }
+  }
+
+  /**
+   * Wire Google Places autocomplete onto the address block. No-op unless the
+   * form collects an address and the tenant has a Google Maps key configured.
+   * Fills only Line 1/City/State/Postal — the fields the submit endpoint
+   * persists (Form_Responses has no country column).
+   */
+  private async initGooglePlaces() {
+    const key = this.header?.googleMapsApiKey;
+    if (!this.header?.getAddressInfo || !key || key.trim() === "") return;
+
+    const line1 = this.root.querySelector<HTMLInputElement>("#cf-line1");
+    if (!line1) return;
+
+    let loaded = false;
+    try {
+      loaded = await loadGoogleMaps(key);
+    } catch {
+      loaded = false;
+    }
+    if (!loaded) return;
+    // Form may have been torn down (re-render) while the script loaded.
+    if (!line1.isConnected) return;
+
+    attachAddressAutocomplete(line1, (addr) => {
+      const setVal = (id: string, value: string) => {
+        const el = this.root.querySelector<HTMLInputElement>(`#${id}`);
+        if (el && value) {
+          el.value = value;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+      };
+      setVal("cf-line1", addr.line1);
+      setVal("cf-city", addr.city);
+      setVal("cf-state", addr.state);
+      setVal("cf-postal", addr.postalCode);
+    });
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -336,12 +380,12 @@ export class CustomFormWidget extends MPNextWidget {
     return `
       <fieldset class="cf-fieldset">
         <legend>Address</legend>
-        <div class="cf-field"><label>Address Line 1${requiredStar()}</label><input class="cf-input" name="AddressLine1" required></div>
-        <div class="cf-field"><label>Address Line 2</label><input class="cf-input" name="AddressLine2"></div>
+        <div class="cf-field"><label>Address Line 1${requiredStar()}</label><input class="cf-input" id="cf-line1" name="AddressLine1" autocomplete="off" required></div>
+        <div class="cf-field"><label>Address Line 2</label><input class="cf-input" id="cf-line2" name="AddressLine2" autocomplete="off"></div>
         <div class="cf-grid3">
-          <div class="cf-field"><label>City${requiredStar()}</label><input class="cf-input" name="City" required></div>
-          <div class="cf-field"><label>State / Region${requiredStar()}</label><input class="cf-input" name="StateRegion" required></div>
-          <div class="cf-field"><label>Postal Code${requiredStar()}</label><input class="cf-input" name="PostalCode" required></div>
+          <div class="cf-field"><label>City${requiredStar()}</label><input class="cf-input" id="cf-city" name="City" autocomplete="off" required></div>
+          <div class="cf-field"><label>State / Region${requiredStar()}</label><input class="cf-input" id="cf-state" name="StateRegion" autocomplete="off" required></div>
+          <div class="cf-field"><label>Postal Code${requiredStar()}</label><input class="cf-input" id="cf-postal" name="PostalCode" autocomplete="off" required></div>
         </div>
       </fieldset>`;
   }
