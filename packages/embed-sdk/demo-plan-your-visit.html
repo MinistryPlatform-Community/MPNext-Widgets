@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPNext Plan Your Visit Widget - Demo</title>
+  <!-- MP Widgets base script (provides mpp-user-login used by next-user-menu) -->
+  <script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: ui-sans-serif, system-ui, sans-serif; background: #f9fafb; color: #2D2926; }
+    .page { max-width: 1024px; margin: 0 auto; padding: 32px 16px; }
+    .back-link { display: inline-block; margin-bottom: 16px; color: #004C97; text-decoration: none; font-size: 14px; }
+    .back-link:hover { text-decoration: underline; }
+    h1 { font-size: 24px; font-weight: 700; color: #004C97; margin-bottom: 4px; }
+    .description { color: #6b7280; margin-bottom: 8px; font-size: 16px; }
+    .tag-code { display: inline-block; font-size: 12px; color: #9ca3af; margin-bottom: 24px; }
+    .space-y > * + * { margin-top: 24px; }
+    .controls-card { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+    .control-group { display: flex; flex-direction: column; gap: 4px; }
+    .control-group label { font-size: 12px; font-weight: 600; color: #6b7280; }
+    .control-group input { width: 150px; padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; color: #111827; }
+    .apply-btn { padding: 6px 16px; background: #004C97; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .apply-btn:hover { background: #002855; }
+    .demo-box { min-height: 200px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); padding: 24px; }
+    .card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); overflow: hidden; }
+    .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; }
+    .card-header h3 { font-size: 14px; font-weight: 600; color: #002855; }
+    .card-header span { font-size: 12px; font-weight: 400; color: #6b7280; margin-left: 8px; }
+    .clear-btn { background: none; border: none; font-size: 12px; color: #6b7280; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+    .copy-btn { background: #004C97; color: white; border: none; font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 4px; cursor: pointer; }
+    .event-log { background: #1f2937; color: #10b981; padding: 16px; font-family: 'Courier New', monospace; font-size: 14px; max-height: 300px; overflow-y: auto; }
+    .event-entry { margin-bottom: 8px; padding: 8px; background: rgba(16,185,129,0.1); border-radius: 4px; }
+    pre { background: #1f2937; color: #e5e7eb; padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.5; margin: 0; }
+    pre code { background: transparent; color: #e5e7eb; padding: 0; }
+    code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; color: #004C97; font-size: 13px; }
+    .setup-card { border: 2px dashed #fcd34d; background: #fffbeb; border-radius: 12px; overflow: hidden; }
+    .setup-card .card-header { border-bottom: 1px solid #fde68a; }
+    .setup-card .card-header span { color: #92400e; font-weight: 500; }
+    .note { background: #e0f2fe; border-left: 4px solid #004C97; padding: 12px 16px; border-radius: 8px; font-size: 14px; line-height: 1.5; }
+    .auth-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; background: #002855; border-radius: 8px; }
+    .auth-header span { color: white; font-weight: 600; font-size: 16px; }
+    .auth-header .hint { color: #9fb3c8; font-weight: 400; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a href="/" class="back-link">&larr; All Widgets</a>
+    <h1>Plan Your Visit</h1>
+    <p class="description">Two-step first-time-visitor registration: an emailed verification link unlocks the household visit-details form.</p>
+    <code class="tag-code">&lt;next-plan-your-visit&gt;</code>
+
+    <div class="space-y">
+      <div class="note">
+        Step 1 emails a verification link back to this page (<code>?mpp-verify-id=…</code>). Opening that link shows
+        the visit-details form (step 2), which creates the household + members in MinistryPlatform. Supply the
+        template / milestone IDs configured in your MP instance below.
+      </div>
+
+      <div class="controls-card">
+        <div class="control-group">
+          <label for="verif-tpl">Verification Email Template ID</label>
+          <input type="number" id="verif-tpl" placeholder="dp_Communications ID">
+        </div>
+        <div class="control-group">
+          <label for="church-tpl">Church Notification Template ID</label>
+          <input type="number" id="church-tpl" placeholder="dp_Communications ID">
+        </div>
+        <div class="control-group">
+          <label for="milestone-id">Milestone ID</label>
+          <input type="number" id="milestone-id" placeholder="Milestone ID">
+        </div>
+        <div class="control-group">
+          <label for="program-id">Milestone Program ID</label>
+          <input type="number" id="program-id" placeholder="Program ID">
+        </div>
+        <button class="apply-btn" id="apply-btn" type="button">Apply</button>
+      </div>
+
+      <div class="auth-header">
+        <span>Sign in <span class="hint">(optional — existing members are offered sign-in instead)</span></span>
+        <next-user-menu mp-base-url="__MP_BASE_URL__" api-host="__API_HOST__"></next-user-menu>
+      </div>
+
+      <div class="demo-box"></div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Event Log</h3>
+          <button class="clear-btn" onclick="document.getElementById('event-log').innerHTML=''">Clear</button>
+        </div>
+        <div id="event-log" class="event-log">
+          <div class="event-entry">Initializing widget...</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Widget Code<span>Add this to any page where you want this widget</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="widget-code">&lt;next-plan-your-visit
+  return-url="https://your-site.com/plan-your-visit"
+  verification-email-template-id="1234"
+  church-notification-email-template-id="1235"
+  collect-address="true"
+  milestone-to-assign-id="50"
+  milestone-program-id="3"&gt;&lt;/next-plan-your-visit&gt;
+
+&lt;script&gt;
+  const w = document.querySelector("next-plan-your-visit");
+  w.addEventListener("verificationSent", (e) =&gt; console.log("Email sent:", e.detail));
+  w.addEventListener("visitPlanned", (e) =&gt; console.log("Registered:", e.detail));
+  w.addEventListener("loginRequired", () =&gt; console.log("Sign in"));
+&lt;/script&gt;</code></pre>
+      </div>
+
+      <div class="setup-card">
+        <div class="card-header">
+          <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="setup-code">__UNIVERSAL_SETUP__</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.__nextEmbedApiHost = "__API_HOST__";
+  </script>
+
+  <script type="module">
+    import "./src/index.ts";
+
+    const STORAGE_KEY = "pyv-demo-config";
+    const eventLog = document.getElementById("event-log");
+    function logEvent(type, detail) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.className = "event-entry";
+      entry.innerHTML = `<strong>${timestamp}</strong> - <em>${type}</em>: ${JSON.stringify(detail || {})}`;
+      eventLog.insertBefore(entry, eventLog.firstChild);
+    }
+
+    const inputs = {
+      verif: document.getElementById("verif-tpl"),
+      church: document.getElementById("church-tpl"),
+      milestone: document.getElementById("milestone-id"),
+      program: document.getElementById("program-id"),
+    };
+
+    // Persist the IDs so they survive the email-link round trip back to this page.
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      inputs.verif.value = saved.verif || "";
+      inputs.church.value = saved.church || "";
+      inputs.milestone.value = saved.milestone || "";
+      inputs.program.value = saved.program || "";
+    } catch {}
+
+    function returnUrl() {
+      const u = new URL(window.location.href);
+      u.search = "";
+      return u.toString();
+    }
+
+    function buildWidget() {
+      const cfg = {
+        verif: inputs.verif.value.trim(),
+        church: inputs.church.value.trim(),
+        milestone: inputs.milestone.value.trim(),
+        program: inputs.program.value.trim(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+
+      const box = document.querySelector(".demo-box");
+      const old = box.querySelector("next-plan-your-visit");
+      if (old) old.remove();
+      const w = document.createElement("next-plan-your-visit");
+      w.setAttribute("api-host", "__API_HOST__");
+      w.setAttribute("return-url", returnUrl());
+      w.setAttribute("collect-address", "true");
+      if (cfg.verif) w.setAttribute("verification-email-template-id", cfg.verif);
+      if (cfg.church) w.setAttribute("church-notification-email-template-id", cfg.church);
+      if (cfg.milestone) w.setAttribute("milestone-to-assign-id", cfg.milestone);
+      if (cfg.program) w.setAttribute("milestone-program-id", cfg.program);
+      box.appendChild(w);
+      ["verificationSent", "contactExists", "verified", "visitPlanned", "loginRequired"]
+        .forEach((evt) => w.addEventListener(evt, (e) => logEvent(evt, e.detail)));
+      return w;
+    }
+
+    buildWidget();
+    logEvent("info", "Widget initialized");
+    document.getElementById("apply-btn").addEventListener("click", () => {
+      buildWidget();
+      logEvent("info", "Re-applied configuration");
+    });
+  </script>
+</body>
+</html>

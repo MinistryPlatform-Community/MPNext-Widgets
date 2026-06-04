@@ -1,0 +1,54 @@
+/**
+ * Directory access check for the next-online-directory widget.
+ * GET /api/embed/online-directory/access -> { canAccess }
+ *
+ * Authentication required. Reports whether the signed-in user's participant
+ * type / member status permit viewing the directory.
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import {
+  requireWidgetAuth,
+  getCorsHeaders,
+  resolveRequestOrigin,
+  buildOptionsResponse,
+  buildFallbackCorsHeaders,
+} from "@/lib/embed/auth";
+import { OnlineDirectoryService } from "@/services/onlineDirectoryService";
+
+export async function GET(req: NextRequest) {
+  const origin = resolveRequestOrigin(req);
+
+  try {
+    const claims = await requireWidgetAuth(req, { widget: "*" });
+    if (claims.sub === "public") {
+      return NextResponse.json(
+        { error: "Authentication required. Please sign in." },
+        { status: 401, headers: getCorsHeaders(origin) }
+      );
+    }
+
+    const service = await OnlineDirectoryService.getInstance();
+    const user = await service.getUserByGuid(claims.sub);
+
+    const canAccess = user ? await service.canAccessDirectory(user.Contact_ID) : false;
+
+    return NextResponse.json(
+      { canAccess },
+      { status: 200, headers: getCorsHeaders(origin) }
+    );
+  } catch (error) {
+    console.error("Error checking directory access:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Internal server error" },
+      {
+        status: error instanceof Error && error.message.includes("Token") ? 403 : 500,
+        headers: buildFallbackCorsHeaders(origin),
+      }
+    );
+  }
+}
+
+export async function OPTIONS(req: NextRequest) {
+  return buildOptionsResponse(req);
+}

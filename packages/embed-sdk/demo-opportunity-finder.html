@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPNext Opportunity Finder Widget - Demo</title>
+  <!-- MP Widgets base script (provides mpp-user-login used by next-user-menu) -->
+  <script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: ui-sans-serif, system-ui, sans-serif; background: #f9fafb; color: #2D2926; }
+    .page { max-width: 1024px; margin: 0 auto; padding: 32px 16px; }
+    .back-link { display: inline-block; margin-bottom: 16px; color: #004C97; text-decoration: none; font-size: 14px; }
+    .back-link:hover { text-decoration: underline; }
+    h1 { font-size: 24px; font-weight: 700; color: #004C97; margin-bottom: 4px; }
+    .description { color: #6b7280; margin-bottom: 8px; font-size: 16px; }
+    .tag-code { display: inline-block; font-size: 12px; color: #9ca3af; margin-bottom: 24px; }
+    .space-y > * + * { margin-top: 24px; }
+    .demo-box { min-height: 200px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); padding: 24px; }
+    .card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); overflow: hidden; }
+    .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; }
+    .card-header h3 { font-size: 14px; font-weight: 600; color: #002855; }
+    .card-header span { font-size: 12px; font-weight: 400; color: #6b7280; margin-left: 8px; }
+    .clear-btn { background: none; border: none; font-size: 12px; color: #6b7280; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+    .clear-btn:hover { background: #f3f4f6; }
+    .copy-btn { background: #004C97; color: white; border: none; font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 4px; cursor: pointer; }
+    .copy-btn:hover { background: #002855; }
+    .event-log { background: #1f2937; color: #10b981; padding: 16px; font-family: 'Courier New', monospace; font-size: 14px; max-height: 300px; overflow-y: auto; }
+    .event-entry { margin-bottom: 8px; padding: 8px; background: rgba(16,185,129,0.1); border-radius: 4px; }
+    pre { background: #1f2937; color: #e5e7eb; padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.5; margin: 0; }
+    pre code { background: transparent; color: #e5e7eb; padding: 0; }
+    code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; color: #004C97; font-size: 13px; }
+    .setup-card { border: 2px dashed #fcd34d; background: #fffbeb; border-radius: 12px; overflow: hidden; }
+    .setup-card .card-header { border-bottom: 1px solid #fde68a; }
+    .setup-card .card-header span { color: #92400e; font-weight: 500; }
+    .auth-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; background: #002855; border-radius: 8px; }
+    .auth-header span { color: white; font-weight: 600; font-size: 16px; }
+    .auth-header .hint { color: #9fb3c8; font-weight: 400; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a href="/" class="back-link">&larr; All Widgets</a>
+    <h1>Opportunity Finder</h1>
+    <p class="description">Public, filterable volunteer-opportunity search with result cards that deep-link to an opportunity-details page.</p>
+    <code class="tag-code">&lt;next-opportunity-finder&gt;</code>
+
+    <div class="space-y">
+      <!-- Optional sign-in. Opportunity search is public; signing in lets
+           results reflect staff-only visibility and carries you through to
+           opportunity-details as a known contact. Login is NOT required. -->
+      <div class="auth-header">
+        <span>Sign in <span class="hint">(optional — personalizes results &amp; links your activity to your MP record)</span></span>
+        <next-user-menu mp-base-url="__MP_BASE_URL__" api-host="__API_HOST__"></next-user-menu>
+      </div>
+
+      <!-- Demo container. target-url points at the opportunity-details demo page. -->
+      <div class="demo-box">
+        <next-opportunity-finder
+          target-url="/demo-opportunity-details.html"
+          api-host="__API_HOST__"></next-opportunity-finder>
+      </div>
+
+      <!-- Event log -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Event Log</h3>
+          <button class="clear-btn" onclick="document.getElementById('event-log').innerHTML=''">Clear</button>
+        </div>
+        <div id="event-log" class="event-log">
+          <div class="event-entry">Initializing widget...</div>
+        </div>
+      </div>
+
+      <!-- Widget code -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Widget Code<span>Add this to any page where you want this widget</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="widget-code">&lt;!-- Use the widget --&gt;
+&lt;next-opportunity-finder target-url="/serve/opportunities/details"&gt;&lt;/next-opportunity-finder&gt;
+
+&lt;!-- Pre-filtered: opportunities for ministry 5, ongoing only --&gt;
+&lt;next-opportunity-finder target-url="/serve/opportunities/details" ministry-id="5" frequency="1"&gt;&lt;/next-opportunity-finder&gt;
+
+&lt;!-- Listen to events --&gt;
+&lt;script&gt;
+  const widget = document.querySelector("next-opportunity-finder");
+  widget.addEventListener("opportunitiesLoaded", (e) =&gt; console.log("Loaded:", e.detail.count));
+  widget.addEventListener("opportunitySelected", (e) =&gt; console.log("Selected:", e.detail.opportunityId));
+  widget.addEventListener("opportunityFinderError", (e) =&gt; console.error("Error:", e.detail));
+&lt;/script&gt;</code></pre>
+      </div>
+
+      <!-- Universal setup -->
+      <div class="setup-card">
+        <div class="card-header">
+          <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="setup-code">__UNIVERSAL_SETUP__</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import "./src/index.ts";
+
+    const eventLog = document.getElementById("event-log");
+    function logEvent(type, detail) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.className = "event-entry";
+      entry.innerHTML = `<strong>${timestamp}</strong> - <em>${type}</em>: ${JSON.stringify(detail)}`;
+      eventLog.insertBefore(entry, eventLog.firstChild);
+    }
+
+    const widget = document.querySelector("next-opportunity-finder");
+    widget.addEventListener("opportunitiesLoaded", (e) => logEvent("opportunitiesLoaded", e.detail));
+    widget.addEventListener("opportunitySelected", (e) => logEvent("opportunitySelected", e.detail));
+    widget.addEventListener("opportunityFinderError", (e) => logEvent("opportunityFinderError", e.detail));
+    logEvent("info", "Widget initialized");
+
+    // Optional auth: next-user-menu writes the MP token to localStorage on
+    // sign-in/out. The finder works anonymously, but when the token changes we
+    // reload so results re-fetch against the signed-in contact.
+    let lastAuthToken = localStorage.getItem("mpp-widgets_AuthToken");
+    setInterval(() => {
+      const token = localStorage.getItem("mpp-widgets_AuthToken");
+      if (token === lastAuthToken) return;
+      lastAuthToken = token;
+      logEvent("auth", token ? "Signed in — reloading results" : "Signed out — reloading results");
+      if (widget.retryLoad) widget.retryLoad();
+    }, 1000);
+  </script>
+</body>
+</html>

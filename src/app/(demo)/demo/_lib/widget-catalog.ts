@@ -260,6 +260,23 @@ const extras: Record<string, WidgetExtras> = {
     ],
     implementationCode: `<next-my-pledges hidecancelbuttonpledge="true"></next-my-pledges>`,
   },
+
+  "pledge-campaign": {
+    attributes: { "campaign-id": "3", "suggested-amounts": "30,50,100" },
+    controls: [
+      { name: "campaignId", label: "Pledge Campaign ID", type: "number", attribute: "campaign-id", placeholder: "e.g. 3" },
+      { name: "suggestedAmounts", label: "Suggested Amounts", type: "text", attribute: "suggested-amounts", placeholder: "30,50,100 (or NULL)" },
+      { name: "pledgeEmailTemplate", label: "Email Template ID", type: "number", attribute: "pledge-email-template", placeholder: "dp_Communications ID" },
+    ],
+    implementationCode: `<next-pledge-campaign campaign-id="3" suggested-amounts="30,50,100"></next-pledge-campaign>
+
+<!-- The campaign id can also come from the URL query string (?id=) -->
+<next-pledge-campaign
+  campaign-id="3"
+  suggested-amounts="30,50,100"
+  pledge-email-template="528"
+></next-pledge-campaign>`,
+  },
 };
 
 export const widgetCatalog: WidgetConfig[] = widgetRegistry.map((meta) => {

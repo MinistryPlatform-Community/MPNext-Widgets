@@ -115,6 +115,89 @@ export const widgetRegistry: WidgetMeta[] = [
   },
 
   {
+    slug: "group-finder",
+    tag: "next-group-finder",
+    title: "Group Finder",
+    description:
+      "Public, filterable small-group search with result cards that deep-link to a group-details page, plus an optional Suggest-a-Group form.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: ["groupsLoaded", "groupSelected", "groupSuggested", "loginRequired", "groupFinderError"],
+  },
+  {
+    slug: "group-details",
+    tag: "next-group-details",
+    title: "Group Details & Sign-up",
+    description:
+      "Full group detail view with a tabbed contact-the-group (inquiry) and sign-up flow honoring full-group, hidden-tab, and address options.",
+    category: "Public",
+    needsUserMenu: true,
+    needsMpWidgets: false,
+    events: [
+      "groupDetailLoaded",
+      "inquirySubmitted",
+      "signupSubmitted",
+      "loginRequired",
+      "groupDetailError",
+    ],
+  },
+
+  {
+    slug: "opportunity-finder",
+    tag: "next-opportunity-finder",
+    title: "Opportunity Finder",
+    description:
+      "Public, filterable volunteer-opportunity search with result cards that deep-link to an opportunity-details page.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: ["opportunitiesLoaded", "opportunitySelected", "opportunityFinderError"],
+  },
+  {
+    slug: "opportunity-details",
+    tag: "next-opportunity-details",
+    title: "Opportunity Details & Response",
+    description:
+      "Full volunteer-opportunity detail view with a response form: Respond As household picker, custom form, and remaining-needed gating.",
+    category: "Public",
+    needsUserMenu: true,
+    needsMpWidgets: false,
+    events: [
+      "opportunityDetailLoaded",
+      "responseSaved",
+      "responseError",
+      "loginRequired",
+      "opportunityDetailError",
+    ],
+  },
+
+  {
+    slug: "plan-your-visit",
+    tag: "next-plan-your-visit",
+    title: "Plan Your Visit",
+    description:
+      "Two-step first-time-visitor registration: a verified-email link unlocks a household visit-details form (head, spouse, children, address) that creates MP records and notifies the church.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: ["verificationSent", "contactExists", "verified", "visitPlanned", "loginRequired"],
+  },
+
+  {
+    slug: "online-directory",
+    tag: "next-online-directory",
+    title: "Online Directory",
+    description:
+      "Authenticated member directory: search by name/phone/email, filter by family, with phone, birthday, map, and email-a-member actions.",
+    category: "Public",
+    accessLevel: "Authenticated",
+    needsUserMenu: true,
+    needsMpWidgets: false,
+    events: ["directoryReady", "directorySearched", "directoryEmailSent", "loginRequired", "directoryError"],
+  },
+
+  {
     slug: "custom-form",
     tag: "next-custom-form",
     title: "Custom Form",
@@ -255,6 +338,18 @@ export const widgetRegistry: WidgetMeta[] = [
     needsUserMenu: true,
     needsMpWidgets: true,
     events: ["pledgesLoaded", "pledgeCanceled", "pledgeError"],
+  },
+  {
+    slug: "pledge-campaign",
+    tag: "next-pledge-campaign",
+    title: "Pledge Campaign",
+    description:
+      "Show a campaign's pledged/received progress and make a pledge (signed-in or anonymous) with suggested amounts, frequency, and a live installment total.",
+    category: "Stewardship",
+    accessLevel: "Public",
+    needsUserMenu: true,
+    needsMpWidgets: true,
+    events: ["pledgeCampaignLoaded", "pledgeSaved", "pledgeError", "loginRequired", "pledgeCampaignError"],
   },
 
   // ── Authentication ───────────────────────────────────────
