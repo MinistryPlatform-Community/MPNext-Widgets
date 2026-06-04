@@ -228,7 +228,7 @@
       grid.className = "grid";
 
       for (const w of widgets) {
-        const access = widgetAccessLevel(category);
+        const access = widgetAccessLevel(w);
         const c = accessColors[access] || accessColors.Public;
         const a = document.createElement("a");
         a.href = `/demo-${w.slug}.html`;

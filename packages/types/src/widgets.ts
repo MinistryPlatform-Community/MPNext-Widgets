@@ -11,7 +11,7 @@
  * Keep this file dependency-free (no zod) so both runtimes can import it.
  */
 
-export type WidgetCategory = "Public" | "Profile" | "Stewardship" | "Authentication";
+export type WidgetCategory = "Public" | "Payments" | "Profile" | "Stewardship" | "Authentication";
 
 export interface WidgetMeta {
   /** URL slug (/demo/{slug}) and basis for demo-{slug}.html. */
@@ -21,6 +21,13 @@ export interface WidgetMeta {
   title: string;
   description: string;
   category: WidgetCategory;
+  /**
+   * Explicit access badge override. Defaults to the category-derived level
+   * (see {@link widgetAccessLevel}). Needed when a category mixes access
+   * levels — e.g. Payments holds publicly-reachable checkout widgets plus the
+   * authenticated My Invoices.
+   */
+  accessLevel?: WidgetAccessLevel;
   /** Whether the widget relies on a signed-in session (next-user-menu). */
   needsUserMenu: boolean;
   /** Whether the demo embeds legacy MP Shadow-DOM widgets. */
@@ -32,6 +39,7 @@ export interface WidgetMeta {
 /** Display order for category sections across both demo surfaces. */
 export const widgetCategoryOrder: WidgetCategory[] = [
   "Public",
+  "Payments",
   "Profile",
   "Stewardship",
   "Authentication",
@@ -44,9 +52,12 @@ export const widgetCategoryOrder: WidgetCategory[] = [
  */
 export type WidgetAccessLevel = "Public" | "Authenticated" | "Authentication";
 
-export function widgetAccessLevel(category: WidgetCategory): WidgetAccessLevel {
-  if (category === "Public") return "Public";
-  if (category === "Authentication") return "Authentication";
+export function widgetAccessLevel(
+  widget: Pick<WidgetMeta, "category" | "accessLevel">
+): WidgetAccessLevel {
+  if (widget.accessLevel) return widget.accessLevel;
+  if (widget.category === "Public") return "Public";
+  if (widget.category === "Authentication") return "Authentication";
   return "Authenticated";
 }
 
@@ -115,13 +126,15 @@ export const widgetRegistry: WidgetMeta[] = [
     events: ["formLoaded", "formSubmitted", "formError", "loginRequired"],
   },
 
+  // ── Payments ─────────────────────────────────────────────
   {
     slug: "checkout",
     tag: "next-checkout",
     title: "Checkout & Payment",
     description:
       "Invoice summary + payment options that hand off to a payment gateway. Reached by invoice GUID (no login required).",
-    category: "Public",
+    category: "Payments",
+    accessLevel: "Public",
     needsUserMenu: false,
     needsMpWidgets: false,
     events: ["invoiceLoaded", "paymentComplete", "checkoutError"],
@@ -132,7 +145,8 @@ export const widgetRegistry: WidgetMeta[] = [
     title: "Payment Gateway (Sandbox)",
     description:
       "Sandbox hosted-payment page (test card 4111…). Stand-in for a real vendor; swap by pointing checkout at the vendor URL + sharing the signing key.",
-    category: "Public",
+    category: "Payments",
+    accessLevel: "Public",
     needsUserMenu: false,
     needsMpWidgets: false,
     events: ["paymentSubmitted"],
@@ -142,10 +156,21 @@ export const widgetRegistry: WidgetMeta[] = [
     tag: "next-checkout-complete",
     title: "Checkout Complete",
     description: "Payment confirmation page reached on return from the gateway.",
-    category: "Public",
+    category: "Payments",
+    accessLevel: "Public",
     needsUserMenu: false,
     needsMpWidgets: false,
     events: ["paymentComplete"],
+  },
+  {
+    slug: "my-invoices",
+    tag: "next-my-invoices",
+    title: "My Invoices",
+    description: "View and manage user invoices with line item details.",
+    category: "Payments",
+    needsUserMenu: true,
+    needsMpWidgets: true,
+    events: ["invoicesLoaded", "invoiceSelected", "invoiceError"],
   },
 
   // ── Profile ──────────────────────────────────────────────
@@ -191,16 +216,6 @@ export const widgetRegistry: WidgetMeta[] = [
   },
 
   // ── Stewardship ──────────────────────────────────────────
-  {
-    slug: "my-invoices",
-    tag: "next-my-invoices",
-    title: "My Invoices",
-    description: "View and manage user invoices with line item details.",
-    category: "Stewardship",
-    needsUserMenu: true,
-    needsMpWidgets: true,
-    events: ["invoicesLoaded", "invoiceSelected", "invoiceError"],
-  },
   {
     slug: "my-contribution-statement",
     tag: "next-my-contribution-statement",

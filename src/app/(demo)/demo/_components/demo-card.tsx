@@ -11,7 +11,7 @@ const accessColors: Record<string, { bg: string; text: string; border: string }>
 };
 
 export function DemoCard({ widget }: { widget: WidgetConfig }) {
-  const access = widgetAccessLevel(widget.category);
+  const access = widgetAccessLevel(widget);
   const colors = accessColors[access] ?? accessColors.Public;
 
   return (
