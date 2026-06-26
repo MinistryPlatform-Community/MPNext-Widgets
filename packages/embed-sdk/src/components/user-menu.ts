@@ -35,6 +35,7 @@ export class UserMenuWidget extends MPNextWidget {
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private isRefreshingToken = false;
   private tokenRenewalExhausted = false;
+  private mpWidgetsWarned = false;
   private cachedUserInfo: UserInfo | null = null;
   private fetchingUserInfo = false;
   private userInfoFetchExhausted = false;
@@ -351,6 +352,24 @@ export class UserMenuWidget extends MPNextWidget {
 
   private ensureLightDOMLogin() {
     if (this.querySelector("mpp-user-login")) return;
+    // We never inject MPWidgets.js — the host church site is expected to load it.
+    // If <mpp-user-login> isn't a registered custom element, MPWidgets.js is
+    // absent, so the element below stays inert (no login button, and the OAuth
+    // return handler that populates mpp-widgets_* won't run). Warn loudly rather
+    // than failing silently. We still append it in case the script loads later.
+    if (
+      typeof customElements !== "undefined" &&
+      !customElements.get("mpp-user-login") &&
+      !this.mpWidgetsWarned
+    ) {
+      this.mpWidgetsWarned = true;
+      console.warn(
+        "[next-user-menu] <mpp-user-login> is not registered — MPWidgets.js does " +
+          "not appear to be loaded on this page. The host site must include it for " +
+          'login to work, e.g. <script id="MPWidgets" ' +
+          'src="<MP_HOST>/widgets/dist/MPWidgets.js"></script>.',
+      );
+    }
     const login = document.createElement("mpp-user-login");
     this.appendChild(login);
   }
@@ -403,6 +422,16 @@ export class UserMenuWidget extends MPNextWidget {
     }
   }
 
+  /**
+   * Renewal ladder, tried in order until one succeeds:
+   *   1. Better Auth session-tokens — works only same-origin to our app/demo.
+   *   2. MP silent REAUTH — replicates MPWidgets.js's own credentialed renew;
+   *      works only when the embed host is same-site to the MP host (the MP SSO
+   *      cookie rides along). The browser blocks it cross-site.
+   * If both fail, tokens are left intact (Layer 0) and the widget renders its
+   * logged-out state; MP's <mpp-user-login> then provides the reactive top-level
+   * SignIn redirect on click (silent if the MP SSO session is still alive).
+   */
   private async handleTokenExpiry(): Promise<void> {
     // `tokenRenewalExhausted` prevents a tight retry loop: once renewal is
     // known to be unavailable, render()/authPoll/storage events must not keep
@@ -410,51 +439,146 @@ export class UserMenuWidget extends MPNextWidget {
     // authenticated branch) or on logout.
     if (this.isRefreshingToken || this.tokenRenewalExhausted) return;
     this.isRefreshingToken = true;
-    try {
-      // Same-origin app/demo context only: when the widget is hosted on our own
-      // Next.js origin, the Better Auth session cookie is sent (default
-      // same-origin credentials) and can re-mint MP tokens. On a cross-origin
-      // embed (the MP Widget Login case — the common one) there is no Better
-      // Auth cookie, so this returns unauthenticated and we fall through.
-      const res = await fetch(`${this.apiHost}/api/auth/session-tokens`);
-      if (res.ok) {
-        const data = await res.json() as {
-          authenticated?: boolean;
-          accessToken?: string;
-          idToken?: string;
-          refreshToken?: string;
-          expiresAt?: number;
-        };
-        if (data.authenticated && data.accessToken) {
-          localStorage.setItem("mpp-widgets_AuthToken", data.accessToken);
-          if (data.idToken) localStorage.setItem("mpp-widgets_IdToken", data.idToken);
-          if (data.refreshToken) localStorage.setItem("mpp-widgets_Refresh", data.refreshToken);
-          if (data.expiresAt) {
-            const d = new Date(data.expiresAt * 1000);
-            localStorage.setItem("mpp-widgets_ExpiresAfter", d.toString());
-          }
-          this.isRefreshingToken = false;
-          this.tokenRenewalExhausted = false;
-          this.scheduleExpiryTimer();
-          this.render();
-          return;
-        }
-      }
-    } catch {}
-    // Renewal unavailable (e.g. cross-origin embed with no Better Auth session).
+
+    const renewed =
+      (await this.tryBetterAuthRenewal()) || (await this.attemptSilentReauth());
+
+    this.isRefreshingToken = false;
+    if (renewed) {
+      this.tokenRenewalExhausted = false;
+      this.scheduleExpiryTimer();
+      this.render();
+      return;
+    }
+
+    // No silent path available (cross-site embed, or the MP SSO session ended).
     //
     // Do NOT clear MP tokens here. Wiping mpp-widgets_AuthToken / IdToken /
-    // ExpiresAfter destroys the exact precondition MP's own silent renew
-    // (the credentialed state=REAUTH authorize fetch) requires, and forces a
-    // fresh manual login. That is the "sometimes I have to click twice" bug.
-    //
-    // Leave tokens in place: the widget renders its logged-out state because the
-    // *access* token is expired (hasLocalStorageAuth checks expiry), but the
-    // session markers survive so MP's same-site renew can still work. Tokens are
-    // only cleared on explicit logout (handleLogout) or a confirmed hard 401.
-    this.isRefreshingToken = false;
+    // ExpiresAfter destroys the exact precondition MP's own silent renew (the
+    // credentialed state=REAUTH authorize fetch) requires, and forces a fresh
+    // manual login — the "sometimes I have to click twice" bug. Leave them: the
+    // widget renders logged-out because the access token is expired, but the
+    // session markers survive. Tokens clear only on explicit logout or a
+    // confirmed hard 401.
     this.tokenRenewalExhausted = true;
     this.render();
+  }
+
+  /**
+   * Layer: same-origin renewal via Better Auth. The session cookie is sent only
+   * with default same-origin credentials, so this succeeds when the widget runs
+   * on our own Next.js origin (app / demo) and no-ops on a cross-origin embed.
+   */
+  private async tryBetterAuthRenewal(): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.apiHost}/api/auth/session-tokens`);
+      if (!res.ok) return false;
+      const data = (await res.json()) as {
+        authenticated?: boolean;
+        accessToken?: string;
+        idToken?: string;
+        refreshToken?: string;
+        expiresAt?: number;
+      };
+      if (data.authenticated && data.accessToken) {
+        this.saveMppTokens(data);
+        return true;
+      }
+    } catch {
+      // network/CORS failure — fall through to the next renewal path
+    }
+    return false;
+  }
+
+  /**
+   * Layer 1 — MP silent renew, replicating MPWidgets.js's RefreshTokensAsync:
+   * a credentialed fetch to MP's authorize endpoint in state=REAUTH mode, which
+   * returns fresh tokens as JSON when the MP SSO cookie is present. We rebuild
+   * the request from MP's own /widgets/Api/Auth config (signInUrl, clientId,
+   * scope, redirectUrl, nonce) so we stay blind to the tenant's DNS topology —
+   * the browser decides whether the cookie rides along (same-site) or is blocked
+   * (cross-site, where this returns false and the caller falls back).
+   */
+  private async attemptSilentReauth(): Promise<boolean> {
+    const cfg = await this.getMpAuthConfig();
+    if (!cfg) return false;
+    const url =
+      `${cfg.signInUrl}?response_type=${encodeURIComponent(cfg.responseType)}` +
+      `&scope=${encodeURIComponent(cfg.scope)}` +
+      `&client_id=${encodeURIComponent(cfg.clientId)}` +
+      `&redirect_uri=${encodeURIComponent(cfg.redirectUrl)}` +
+      `&nonce=${encodeURIComponent(cfg.nonce)}` +
+      `&state=REAUTH`;
+    try {
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) return false;
+      // REAUTH mode returns tokens as JSON; a missing cookie yields a login
+      // redirect/HTML instead, so json() throws and we treat it as "no renew".
+      const tok = (await res.json()) as {
+        accessToken?: string;
+        idToken?: string;
+        expiresIn?: number;
+      };
+      if (!tok?.accessToken) return false;
+      this.saveMppTokens(tok);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Fetch MP's widget auth config (signInUrl, clientId, scope, redirectUrl,
+   * nonce) from {mpHost}/widgets/Api/Auth. Returns null if unavailable.
+   */
+  private async getMpAuthConfig(): Promise<{
+    signInUrl: string;
+    responseType: string;
+    scope: string;
+    clientId: string;
+    redirectUrl: string;
+    nonce: string;
+  } | null> {
+    const base = this.mpBaseUrl;
+    if (!base) return null;
+    const root = base.replace(/\/+$/, "").replace(/\/ministryplatformapi$/i, "");
+    try {
+      const res = await fetch(`${root}/widgets/Api/Auth`);
+      if (!res.ok) return null;
+      const cfg = await res.json();
+      if (!cfg?.signInUrl || !cfg?.clientId) return null;
+      return cfg;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Persist tokens in the mpp-widgets_ localStorage keys MP's MPWidgets.js
+   * reads/writes, matching MP's own serialization: raw token strings, and
+   * ExpiresAfter as a Date.toString() (MP applies a 60s safety margin to
+   * expiresIn; we mirror that). Accepts either expiresIn (seconds, REAUTH) or
+   * expiresAt (epoch seconds, Better Auth).
+   */
+  private saveMppTokens(tok: {
+    accessToken?: string;
+    idToken?: string;
+    refreshToken?: string;
+    expiresIn?: number;
+    expiresAt?: number;
+  }): void {
+    if (tok.accessToken) localStorage.setItem("mpp-widgets_AuthToken", tok.accessToken);
+    if (tok.idToken) localStorage.setItem("mpp-widgets_IdToken", tok.idToken);
+    if (tok.refreshToken) localStorage.setItem("mpp-widgets_Refresh", tok.refreshToken);
+    let expiry: Date | null = null;
+    if (typeof tok.expiresIn === "number") {
+      expiry = new Date(Date.now() + (tok.expiresIn - 60) * 1000);
+    } else if (typeof tok.expiresAt === "number") {
+      expiry = new Date(tok.expiresAt * 1000);
+    }
+    if (expiry && !isNaN(expiry.getTime())) {
+      localStorage.setItem("mpp-widgets_ExpiresAfter", expiry.toString());
+    }
   }
 
   private clearUserInfoRetry() {
