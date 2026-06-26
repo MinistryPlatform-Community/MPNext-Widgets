@@ -34,6 +34,7 @@ export class UserMenuWidget extends MPNextWidget {
   private authPollTimer: ReturnType<typeof setInterval> | null = null;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private isRefreshingToken = false;
+  private tokenRenewalExhausted = false;
   private cachedUserInfo: UserInfo | null = null;
   private fetchingUserInfo = false;
   private userInfoFetchExhausted = false;
@@ -280,6 +281,8 @@ export class UserMenuWidget extends MPNextWidget {
 
     // Manage light DOM login widget and userinfo fetch
     if (authenticated) {
+      // Fresh, non-expired session detected — re-arm renewal for the next cycle.
+      this.tokenRenewalExhausted = false;
       this.removeLightDOMLogin();
       this.stopAuthPoll();
       this.scheduleExpiryTimer();
@@ -401,9 +404,18 @@ export class UserMenuWidget extends MPNextWidget {
   }
 
   private async handleTokenExpiry(): Promise<void> {
-    if (this.isRefreshingToken) return;
+    // `tokenRenewalExhausted` prevents a tight retry loop: once renewal is
+    // known to be unavailable, render()/authPoll/storage events must not keep
+    // re-invoking this. It is reset when a fresh session is detected (render's
+    // authenticated branch) or on logout.
+    if (this.isRefreshingToken || this.tokenRenewalExhausted) return;
     this.isRefreshingToken = true;
     try {
+      // Same-origin app/demo context only: when the widget is hosted on our own
+      // Next.js origin, the Better Auth session cookie is sent (default
+      // same-origin credentials) and can re-mint MP tokens. On a cross-origin
+      // embed (the MP Widget Login case — the common one) there is no Better
+      // Auth cookie, so this returns unauthenticated and we fall through.
       const res = await fetch(`${this.apiHost}/api/auth/session-tokens`);
       if (res.ok) {
         const data = await res.json() as {
@@ -422,15 +434,26 @@ export class UserMenuWidget extends MPNextWidget {
             localStorage.setItem("mpp-widgets_ExpiresAfter", d.toString());
           }
           this.isRefreshingToken = false;
+          this.tokenRenewalExhausted = false;
           this.scheduleExpiryTimer();
           this.render();
           return;
         }
       }
     } catch {}
-    // Refresh failed or session expired — clear tokens and show login
+    // Renewal unavailable (e.g. cross-origin embed with no Better Auth session).
+    //
+    // Do NOT clear MP tokens here. Wiping mpp-widgets_AuthToken / IdToken /
+    // ExpiresAfter destroys the exact precondition MP's own silent renew
+    // (the credentialed state=REAUTH authorize fetch) requires, and forces a
+    // fresh manual login. That is the "sometimes I have to click twice" bug.
+    //
+    // Leave tokens in place: the widget renders its logged-out state because the
+    // *access* token is expired (hasLocalStorageAuth checks expiry), but the
+    // session markers survive so MP's same-site renew can still work. Tokens are
+    // only cleared on explicit logout (handleLogout) or a confirmed hard 401.
     this.isRefreshingToken = false;
-    this.clearAllMppTokens();
+    this.tokenRenewalExhausted = true;
     this.render();
   }
 
@@ -815,6 +838,7 @@ export class UserMenuWidget extends MPNextWidget {
     this.cachedUserInfo = null;
     this.deferredRenderDone = false;
     this.userInfoFetchExhausted = false;
+    this.tokenRenewalExhausted = false;
     this.clearUserInfoRetry();
     this.closeDropdown();
     this.closeModal();
