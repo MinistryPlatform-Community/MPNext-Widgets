@@ -14,6 +14,17 @@
 
 export { MPNextWidget } from "./shared/base-widget";
 export { ApiClient } from "./shared/api-client";
+export {
+  AuthSession,
+  getAuthSession,
+  SID_KEY,
+  LEGACY_TOKEN_KEY,
+  type AuthConfig,
+  type EmbedAuthMode,
+  type AuthSessionUser,
+  type MeResponse,
+} from "./shared/auth-session";
+import { getAuthSession } from "./shared/auth-session";
 export { UserMenuWidget } from "./components/user-menu";
 export { AddToCalendarWidget } from "./components/add-to-calendar";
 export { FullCalendarWidget } from "./components/full-calendar";
@@ -115,39 +126,17 @@ function detectApiHost(): string {
 }
 
 /**
- * Built-in token provider that calls /api/embed/session.
+ * Built-in token provider. Delegates to the page-wide AuthSession, which owns
+ * mode discovery, the sid, the handoff exchange, the legacy silent-upgrade and
+ * the in-memory JWT cache.
  */
 function createTokenProvider(apiHost: string) {
-  async function fetchToken(wid?: string): Promise<string> {
-    // Determine widget ID from the first next-* element on the page
-    const resolvedWid =
-      wid || detectFirstWidgetId() || "unknown";
-
-    const mpToken = typeof localStorage !== "undefined"
-      ? localStorage.getItem("mpp-widgets_AuthToken")
-      : null;
-
-    const body: Record<string, string> = { wid: resolvedWid };
-    if (mpToken) body.mpUserToken = mpToken;
-
-    const res = await fetch(`${apiHost}/api/embed/session`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Token fetch failed" }));
-      throw new Error(err.error || "Token fetch failed");
-    }
-
-    const data = await res.json();
-    return data.token;
-  }
+  // Determine widget ID from the first next-* element on the page
+  const resolveWid = () => detectFirstWidgetId() || "unknown";
 
   return {
-    get: () => fetchToken(),
-    refresh: () => fetchToken(),
+    get: () => getAuthSession(apiHost).getToken(resolveWid()),
+    refresh: () => getAuthSession(apiHost).refreshToken(resolveWid()),
   };
 }
 
@@ -204,6 +193,12 @@ if (typeof window !== "undefined") {
       const provider = createTokenProvider(apiHost);
       window.__nextTokenProvider = provider;
       window.__nextSDKReadyResolve?.();
+      // Returned from the OAuth callback with #nw_auth=<code>: exchange it now
+      // (single-use, 60s TTL) instead of waiting for the first widget fetch.
+      const session = getAuthSession(apiHost);
+      if (session.hasPendingHandoff()) {
+        void provider.get().catch(() => {});
+      }
       return true;
     }
     return false;
@@ -221,8 +216,8 @@ if (typeof window !== "undefined") {
     }
   }
 
-  // Expose global API for manual init (advanced use)
-  (window as any).MPNextEmbed = { init };
+  // Expose global API for manual init (advanced use) and the auth session
+  (window as any).MPNextEmbed = { init, getAuthSession };
 }
 
 /**

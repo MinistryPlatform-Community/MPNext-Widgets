@@ -354,7 +354,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   private attachListeners() {
     const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.emit("loginRequired"));
+    if (login) login.addEventListener("click", () => this.requestLogin("plan-your-visit"));
 
     const verForm = this.root.querySelector<HTMLFormElement>("#pyv-verify-form");
     if (verForm) {

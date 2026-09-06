@@ -242,7 +242,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
 
   private attachShellListeners() {
     const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.emit("loginRequired"));
+    if (login) login.addEventListener("click", () => this.requestLogin("online-directory"));
     const retry = this.root.querySelector('[data-action="retry"]');
     if (retry) retry.addEventListener("click", () => this.retryLoad());
   }

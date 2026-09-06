@@ -376,7 +376,7 @@ export class GroupFinderWidget extends MPNextWidget {
 
       if (res.status === 401) {
         this.setSuggestMessage("warning", "Please sign in to suggest a group.");
-        this.emit("loginRequired");
+        this.requestLogin("group-finder");
         if (submitBtn) submitBtn.disabled = false;
         return;
       }

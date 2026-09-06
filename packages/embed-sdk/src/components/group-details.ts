@@ -290,7 +290,7 @@ export class GroupDetailsWidget extends MPNextWidget {
 
       if (res.status === 401) {
         this.setMessage("warning", "Please sign in to continue.");
-        this.emit("loginRequired");
+        this.requestLogin("group-details");
         this.setSubmitDisabled(false);
         return;
       }
@@ -380,7 +380,7 @@ export class GroupDetailsWidget extends MPNextWidget {
 
   private attachListeners() {
     const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.emit("loginRequired"));
+    if (login) login.addEventListener("click", () => this.requestLogin("group-details"));
 
     // Tab switching.
     this.root.querySelectorAll<HTMLElement>("[data-tab]").forEach((el) => {

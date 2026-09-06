@@ -241,7 +241,7 @@ export class CustomFormWidget extends MPNextWidget {
     if (retry) retry.addEventListener("click", () => this.retryLoad());
 
     const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.emit("loginRequired"));
+    if (login) login.addEventListener("click", () => this.requestLogin("custom-form"));
 
     const submit = this.root.querySelector(".cf-submit");
     if (submit) {

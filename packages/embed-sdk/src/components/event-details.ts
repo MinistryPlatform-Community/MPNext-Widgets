@@ -930,7 +930,7 @@ export class EventDetailsWidget extends MPNextWidget {
     if (back) back.addEventListener("click", () => this.init());
 
     const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.emit("loginRequired"));
+    if (login) login.addEventListener("click", () => this.requestLogin("event-details"));
 
     const email = this.root.querySelector('[data-action="email"]');
     if (email) {
