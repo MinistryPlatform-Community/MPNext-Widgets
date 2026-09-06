@@ -553,7 +553,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
 
     // Sign-in (force-login panel).
     const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.emit("loginRequired"));
+    if (login) login.addEventListener("click", () => this.requestLogin("pledge-campaign"));
 
     // Submit / create-another.
     const submitBtn = this.root.querySelector<HTMLButtonElement>("#pc-submit");

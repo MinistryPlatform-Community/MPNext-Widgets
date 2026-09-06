@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireWidgetAuth, getCorsHeaders, resolveRequestOrigin, buildOptionsResponse, buildFallbackCorsHeaders } from "@/lib/embed/auth";
+import { getMpUserAccessToken } from "@/lib/embed/embed-session";
 import { InvoiceService } from "@/services/invoiceService";
 
 export async function GET(req: NextRequest) {
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
 
     const invoices = await service.getInvoices(
       user.Contact_ID,
-      claims.mpAccessToken || undefined
+      (await getMpUserAccessToken(claims)) ?? undefined
     );
 
     const headers = getCorsHeaders(origin);

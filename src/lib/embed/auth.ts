@@ -42,6 +42,21 @@ export function resolveRequestOrigin(req: NextRequest): string {
 }
 
 /**
+ * Best-effort client IP for rate limiting: first hop of `x-forwarded-for`,
+ * then `x-real-ip`, else `"unknown"`.
+ */
+export function getClientIp(req: NextRequest): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  const realIp = req.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+  return "unknown";
+}
+
+/**
  * Verify widget authentication and return claims
  */
 export async function requireWidgetAuth(
@@ -87,15 +102,28 @@ export async function requireWidgetAuth(
   // Validate origin against allowlist
   const origin = resolveRequestOrigin(req);
   const originOk = isOriginAllowed(origin, allowedOrigins);
+  const isDev = process.env.NODE_ENV === "development";
 
-  if (!originOk && process.env.NODE_ENV !== "development") {
+  if (!originOk && !isDev) {
     throw new Error(`Origin ${origin} not allowed`);
   }
 
-  if (!originOk && process.env.NODE_ENV === "development") {
+  if (!originOk && isDev) {
     console.warn(
       `⚠️ DEV MODE: Origin ${origin} not in allowlist, allowing anyway`,
     );
+  }
+
+  // Bind the token to the origin it was issued for. A token minted for one
+  // host must not be replayable from another allowed host.
+  if (claims.origin && origin && claims.origin !== origin) {
+    if (isDev) {
+      console.warn(
+        `⚠️ DEV MODE: token origin ${claims.origin} does not match request origin ${origin}, allowing anyway`,
+      );
+    } else {
+      throw new Error("Token origin mismatch");
+    }
   }
 
   return claims;
@@ -133,22 +161,55 @@ export function buildFallbackCorsHeaders(origin: string): HeadersInit {
   };
 }
 
+const LOCAL_HOSTNAMES: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
 /**
  * Check whether an origin is present in the allowlist.
- * Supports exact matches and wildcard subdomains (e.g. *.example.com).
+ *
+ * - The origin must parse as a URL; comparison is against `url.origin`.
+ * - Exact entries match `url.origin` exactly.
+ * - Wildcard entries (`*.example.com`) match the apex (`example.com`) or any
+ *   subdomain on a dot boundary (`www.example.com`), never a lookalike
+ *   (`evilexample.com`) or a suffix-attack (`example.com.attacker.net`).
+ * - Wildcard matches require `https:` unless NODE_ENV is `development` or the
+ *   hostname is `localhost` / `127.0.0.1`.
  */
 export function isOriginAllowed(
   origin: string,
   origins: string[],
 ): boolean {
   if (!origin) return false;
-  return origins.some((allowed) => {
-    if (allowed === origin) return true;
-    if (allowed.startsWith("*.")) {
-      const domain = allowed.slice(2);
-      return origin.endsWith(domain);
-    }
+
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
     return false;
+  }
+  if (url.origin === "null") return false;
+
+  const hostname = url.hostname.toLowerCase();
+  const isDev = process.env.NODE_ENV === "development";
+
+  return origins.some((allowed) => {
+    if (!allowed) return false;
+
+    if (allowed.startsWith("*.")) {
+      const domain = allowed.slice(2).toLowerCase();
+      if (!domain) return false;
+      const hostMatches = hostname === domain || hostname.endsWith(`.${domain}`);
+      if (!hostMatches) return false;
+      if (url.protocol === "https:") return true;
+      return isDev || LOCAL_HOSTNAMES.has(hostname);
+    }
+
+    if (allowed === url.origin) return true;
+    // Tolerate allowlist entries written with a path or trailing slash.
+    try {
+      return new URL(allowed).origin === url.origin;
+    } catch {
+      return false;
+    }
   });
 }
 

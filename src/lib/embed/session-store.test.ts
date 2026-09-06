@@ -1,0 +1,350 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  MemorySessionStore,
+  UpstashSessionStore,
+  getSessionStore,
+  __resetSessionStoreForTests,
+} from './session-store';
+import type { EmbedSessionRecord } from './types';
+
+function makeRecord(overrides: Partial<EmbedSessionRecord> = {}): EmbedSessionRecord {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    sidHash: 'hash-1',
+    origin: 'https://example.com',
+    user: { userGuid: 'g1', firstName: 'A', lastName: 'B', email: 'a@b.c', imageGuid: null },
+    mpAccessTokenEnc: 'v1.iv.ct',
+    mpRefreshTokenEnc: null,
+    mpIdTokenEnc: null,
+    mpExpiresAt: now + 3600,
+    createdAt: now,
+    lastSeenAt: now,
+    absoluteExpiresAt: now + 86400,
+    ...overrides,
+  };
+}
+
+describe('MemorySessionStore', () => {
+  let store: MemorySessionStore;
+
+  beforeEach(() => {
+    store = new MemorySessionStore();
+    vi.useFakeTimers();
+    vi.setSystemTime(1_700_000_000_000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe('sessions', () => {
+    it('set/get/delete a record', async () => {
+      const rec = makeRecord();
+      await store.set(rec, 60);
+      expect(await store.get('hash-1')).toEqual(rec);
+      await store.delete('hash-1');
+      expect(await store.get('hash-1')).toBeNull();
+    });
+
+    it('returns null for unknown keys', async () => {
+      expect(await store.get('nope')).toBeNull();
+    });
+
+    it('expires records after the ttl', async () => {
+      await store.set(makeRecord(), 10);
+      vi.advanceTimersByTime(9_999);
+      expect(await store.get('hash-1')).not.toBeNull();
+      vi.advanceTimersByTime(2);
+      expect(await store.get('hash-1')).toBeNull();
+    });
+
+    it('overwriting a record resets its ttl', async () => {
+      await store.set(makeRecord(), 10);
+      vi.advanceTimersByTime(8_000);
+      await store.set(makeRecord({ lastSeenAt: 1 }), 10);
+      vi.advanceTimersByTime(8_000);
+      expect((await store.get('hash-1'))?.lastSeenAt).toBe(1);
+    });
+
+    it('stores a deep copy (JSON) so later mutation of the input does not leak', async () => {
+      const rec = makeRecord();
+      await store.set(rec, 60);
+      rec.origin = 'https://mutated.example.com';
+      expect((await store.get('hash-1'))?.origin).toBe('https://example.com');
+    });
+
+    it('delete is idempotent', async () => {
+      await expect(store.delete('missing')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('handoff codes', () => {
+    it('takeHandoff returns the value exactly once', async () => {
+      await store.setHandoff('c1', { sid: 's', origin: 'https://o.com', wid: 'user-menu' }, 60);
+      expect(await store.takeHandoff('c1')).toEqual({ sid: 's', origin: 'https://o.com', wid: 'user-menu' });
+      expect(await store.takeHandoff('c1')).toBeNull();
+    });
+
+    it('returns null for unknown or expired codes', async () => {
+      expect(await store.takeHandoff('unknown')).toBeNull();
+      await store.setHandoff('c2', { sid: 's', origin: 'o', wid: 'w' }, 60);
+      vi.advanceTimersByTime(60_001);
+      expect(await store.takeHandoff('c2')).toBeNull();
+    });
+
+    it('handoff and session keys do not collide', async () => {
+      await store.set(makeRecord({ sidHash: 'same' }), 60);
+      await store.setHandoff('same', { sid: 's', origin: 'o', wid: 'w' }, 60);
+      expect(await store.takeHandoff('same')).not.toBeNull();
+      expect(await store.get('same')).not.toBeNull();
+    });
+  });
+
+  describe('locks', () => {
+    it('acquireLock is exclusive until released', async () => {
+      expect(await store.acquireLock('refresh:x', 10)).toBe(true);
+      expect(await store.acquireLock('refresh:x', 10)).toBe(false);
+      await store.releaseLock('refresh:x');
+      expect(await store.acquireLock('refresh:x', 10)).toBe(true);
+    });
+
+    it('locks expire after their ttl', async () => {
+      expect(await store.acquireLock('refresh:y', 2)).toBe(true);
+      vi.advanceTimersByTime(1_999);
+      expect(await store.acquireLock('refresh:y', 2)).toBe(false);
+      vi.advanceTimersByTime(2);
+      expect(await store.acquireLock('refresh:y', 2)).toBe(true);
+    });
+
+    it('different lock keys are independent', async () => {
+      expect(await store.acquireLock('a', 10)).toBe(true);
+      expect(await store.acquireLock('b', 10)).toBe(true);
+    });
+  });
+
+  describe('incr', () => {
+    it('counts from 1 and keeps the original window expiry', async () => {
+      expect(await store.incr('ip:1.2.3.4:100', 10)).toBe(1);
+      expect(await store.incr('ip:1.2.3.4:100', 10)).toBe(2);
+      vi.advanceTimersByTime(9_000);
+      expect(await store.incr('ip:1.2.3.4:100', 10)).toBe(3);
+      // Window started at t=0 with ttl 10s: at 10.001s it is gone regardless of later incr calls
+      vi.advanceTimersByTime(1_001);
+      expect(await store.incr('ip:1.2.3.4:100', 10)).toBe(1);
+    });
+
+    it('separate keys have separate counters', async () => {
+      await store.incr('k1', 10);
+      await store.incr('k1', 10);
+      expect(await store.incr('k2', 10)).toBe(1);
+    });
+  });
+
+  it('exposes size and clear for tests', async () => {
+    await store.set(makeRecord(), 60);
+    await store.setHandoff('c', { sid: 's', origin: 'o', wid: 'w' }, 60);
+    expect(store.size).toBe(2);
+    store.clear();
+    expect(store.size).toBe(0);
+  });
+});
+
+describe('UpstashSessionStore', () => {
+  const url = 'https://redis.example.upstash.io';
+  const token = 'upstash-token';
+  let calls: { url: string; init: RequestInit }[];
+  let responder: (body: unknown, path: string) => unknown;
+
+  beforeEach(() => {
+    calls = [];
+    responder = () => ({ result: null });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const u = String(input);
+        calls.push({ url: u, init: init ?? {} });
+        const path = u.slice(url.length);
+        const body = init?.body ? JSON.parse(String(init.body)) : null;
+        const result = responder(body, path);
+        return new Response(JSON.stringify(result), { status: 200 });
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('requires url and token', () => {
+    expect(() => new UpstashSessionStore('', token)).toThrow();
+    expect(() => new UpstashSessionStore(url, '')).toThrow();
+  });
+
+  it('sends SET with EX ttl and a bearer token for set()', async () => {
+    const store = new UpstashSessionStore(`${url}/`, token);
+    responder = () => ({ result: 'OK' });
+    const rec = makeRecord();
+    await store.set(rec, 120);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe(url);
+    const headers = calls[0].init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Bearer ${token}`);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual([
+      'SET',
+      'nw:sess:hash-1',
+      JSON.stringify(rec),
+      'EX',
+      120,
+    ]);
+  });
+
+  it('parses GET results and returns null for missing/invalid', async () => {
+    const store = new UpstashSessionStore(url, token);
+    const rec = makeRecord();
+    responder = () => ({ result: JSON.stringify(rec) });
+    expect(await store.get('hash-1')).toEqual(rec);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual(['GET', 'nw:sess:hash-1']);
+
+    responder = () => ({ result: null });
+    expect(await store.get('hash-1')).toBeNull();
+
+    responder = () => ({ result: 'not-json' });
+    expect(await store.get('hash-1')).toBeNull();
+
+    responder = () => ({ result: JSON.stringify({ foo: 'bar' }) });
+    expect(await store.get('hash-1')).toBeNull();
+  });
+
+  it('uses DEL for delete and releaseLock', async () => {
+    const store = new UpstashSessionStore(url, token);
+    responder = () => ({ result: 1 });
+    await store.delete('h');
+    await store.releaseLock('refresh:h');
+    expect(JSON.parse(String(calls[0].init.body))).toEqual(['DEL', 'nw:sess:h']);
+    expect(JSON.parse(String(calls[1].init.body))).toEqual(['DEL', 'nw:lock:refresh:h']);
+  });
+
+  it('uses GETDEL for single-use handoff', async () => {
+    const store = new UpstashSessionStore(url, token);
+    const value = { sid: 's', origin: 'https://o.com', wid: 'w' };
+    responder = () => ({ result: JSON.stringify(value) });
+    expect(await store.takeHandoff('code-hash')).toEqual(value);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual(['GETDEL', 'nw:handoff:code-hash']);
+
+    responder = () => ({ result: null });
+    expect(await store.takeHandoff('code-hash')).toBeNull();
+  });
+
+  it('setHandoff uses SET EX under the handoff prefix', async () => {
+    const store = new UpstashSessionStore(url, token);
+    responder = () => ({ result: 'OK' });
+    await store.setHandoff('code-hash', { sid: 's', origin: 'o', wid: 'w' }, 60);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual([
+      'SET',
+      'nw:handoff:code-hash',
+      JSON.stringify({ sid: 's', origin: 'o', wid: 'w' }),
+      'EX',
+      60,
+    ]);
+  });
+
+  it('acquireLock uses SET NX EX and maps OK/null', async () => {
+    const store = new UpstashSessionStore(url, token);
+    responder = () => ({ result: 'OK' });
+    expect(await store.acquireLock('refresh:h', 10)).toBe(true);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual(['SET', 'nw:lock:refresh:h', '1', 'NX', 'EX', 10]);
+
+    responder = () => ({ result: null });
+    expect(await store.acquireLock('refresh:h', 10)).toBe(false);
+  });
+
+  it('incr uses the pipeline endpoint with INCR + EXPIRE', async () => {
+    const store = new UpstashSessionStore(url, token);
+    responder = (_body, path) => {
+      expect(path).toBe('/pipeline');
+      return [{ result: 7 }, { result: 1 }];
+    };
+    expect(await store.incr('ip:1.2.3.4:100', 65)).toBe(7);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual([
+      ['INCR', 'nw:rl:ip:1.2.3.4:100'],
+      ['EXPIRE', 'nw:rl:ip:1.2.3.4:100', 65],
+    ]);
+  });
+
+  it('throws on non-2xx responses and on redis errors', async () => {
+    const store = new UpstashSessionStore(url, token);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('nope', { status: 500 })),
+    );
+    await expect(store.get('h')).rejects.toThrow(/Session store request failed \(500\)/);
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ error: 'WRONGTYPE' }), { status: 200 })),
+    );
+    await expect(store.get('h')).rejects.toThrow(/WRONGTYPE/);
+  });
+
+  it('never puts the token in the URL', async () => {
+    const store = new UpstashSessionStore(url, token);
+    responder = () => ({ result: null });
+    await store.get('h');
+    expect(calls[0].url).not.toContain(token);
+  });
+});
+
+describe('getSessionStore', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.stubEnv('EMBED_JWT_SECRET', 'test-embed-jwt-secret-at-least-32-bytes-long-for-hs256');
+    vi.stubEnv('EMBED_SESSION_STORE_URL', '');
+    vi.stubEnv('EMBED_SESSION_STORE_TOKEN', '');
+    __resetSessionStoreForTests();
+  });
+
+  it('returns a MemorySessionStore singleton when no store URL is configured', () => {
+    __resetSessionStoreForTests();
+    const a = getSessionStore();
+    const b = getSessionStore();
+    expect(a).toBeInstanceOf(MemorySessionStore);
+    expect(a).toBe(b);
+  });
+
+  it('__resetSessionStoreForTests yields a fresh instance', () => {
+    const a = getSessionStore();
+    __resetSessionStoreForTests();
+    expect(getSessionStore()).not.toBe(a);
+  });
+
+  it('returns an UpstashSessionStore when url + token are set', () => {
+    vi.stubEnv('EMBED_SESSION_STORE_URL', 'https://redis.example.upstash.io');
+    vi.stubEnv('EMBED_SESSION_STORE_TOKEN', 'tok');
+    __resetSessionStoreForTests();
+    expect(getSessionStore()).toBeInstanceOf(UpstashSessionStore);
+  });
+
+  it('warns once in production when falling back to memory', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    __resetSessionStoreForTests();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    getSessionStore();
+    __resetSessionStoreForTests();
+    // reset clears the instance; the warn flag is also reset, so a second cold start warns again
+    getSessionStore();
+    getSessionStore();
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn.mock.calls[0][0]).toMatch(/in-memory session store/);
+    warn.mockRestore();
+  });
+
+  it('does not warn outside production', () => {
+    __resetSessionStoreForTests();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    getSessionStore();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});

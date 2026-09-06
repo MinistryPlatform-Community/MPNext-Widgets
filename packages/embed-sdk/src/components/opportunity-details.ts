@@ -376,7 +376,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     if (back) back.addEventListener("click", () => this.init());
 
     const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.emit("loginRequired"));
+    if (login) login.addEventListener("click", () => this.requestLogin("opportunity-details"));
 
     const respondAs = this.root.querySelector<HTMLSelectElement>("#od-respond-as");
     if (respondAs) {

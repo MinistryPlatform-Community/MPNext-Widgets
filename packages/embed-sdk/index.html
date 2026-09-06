@@ -43,6 +43,46 @@
       border-radius: 4px;
       font-size: 13px;
     }
+    /* Auth mode banner (resolved from /api/embed/auth/config) */
+    .auth-mode {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-left: 4px solid #F1BE48;
+      padding: 10px 16px;
+      border-radius: 8px;
+      margin: -16px 0 32px;
+      font-size: 13px;
+      color: #6b7280;
+      line-height: 1.5;
+    }
+    .auth-mode-label {
+      font-weight: 600;
+      color: #002855;
+    }
+    .auth-mode-pill {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 9999px;
+      border: 1px solid #e5e7eb;
+      background: #f3f4f6;
+      color: #2D2926;
+    }
+    .auth-mode-pill[data-mode="legacy"]   { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+    .auth-mode-pill[data-mode="dual"]     { background: #e0f2fe; border-color: #bae6fd; color: #004C97; }
+    .auth-mode-pill[data-mode="hardened"] { background: #ecfdf5; border-color: #d1fae5; color: #047857; }
+    .auth-mode code {
+      background: #f3f4f6;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #004C97;
+    }
     h2 {
       color: #002855;
       margin-bottom: 16px;
@@ -171,6 +211,13 @@
       <strong>Prerequisites:</strong> Run <code>pnpm dev</code> in the project root to start the Next.js API backend on port 3000.
     </div>
 
+    <!-- Widget auth mode, as resolved by the API for this page's origin -->
+    <div class="auth-mode" id="auth-mode" role="status">
+      <span class="auth-mode-label">Widget auth mode</span>
+      <span class="auth-mode-pill" id="auth-mode-pill">checking…</span>
+      <span id="auth-mode-note">Set <code>EMBED_AUTH_MODE</code> (legacy | dual | hardened) in <code>.env.local</code>, or override just this origin with <code>EMBED_AUTH_MODE_ORIGINS=http://localhost:5173=dual</code>. See README “Widget Authentication”.</span>
+    </div>
+
     <!-- Widget sections are rendered from the shared @mpnext/types widget registry
          (packages/types/src/widgets.ts) so this page never drifts from /demo. -->
     <div id="widget-sections"></div>
@@ -200,6 +247,27 @@
   </div>
 
   <script type="module">
+    // Widget auth mode banner. The SDK resolves the same endpoint at boot and
+    // falls back to legacy whenever it is unreachable, so mirror that here.
+    (async () => {
+      const pill = document.getElementById("auth-mode-pill");
+      const apiHost = "__API_HOST__";
+      try {
+        const res = await fetch(`${apiHost}/api/embed/auth/config`, { mode: "cors", credentials: "omit" });
+        if (!res.ok) throw new Error(String(res.status));
+        const cfg = await res.json();
+        const mode = ["legacy", "dual", "hardened"].includes(cfg?.mode) ? cfg.mode : null;
+        if (!mode) throw new Error("unknown mode");
+        pill.textContent = mode;
+        pill.dataset.mode = mode;
+        pill.title = `Resolved by ${apiHost}/api/embed/auth/config for ${location.origin}`;
+      } catch {
+        pill.textContent = "legacy (config unavailable)";
+        pill.dataset.mode = "legacy";
+        pill.title = `${apiHost}/api/embed/auth/config did not answer — the SDK falls back to legacy. Is pnpm dev running and this origin in EMBED_ALLOWED_ORIGINS?`;
+      }
+    })();
+
     // Single source of truth — shared with the Next.js /demo catalog.
     import { widgetRegistry, widgetCategoryOrder, widgetAccessLevel } from "../types/src/widgets";
 

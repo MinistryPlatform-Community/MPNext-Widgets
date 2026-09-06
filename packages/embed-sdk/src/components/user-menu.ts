@@ -1,4 +1,5 @@
 import { MPNextWidget } from "../shared/base-widget";
+import type { EmbedAuthMode } from "../shared/auth-session";
 
 interface UserMenuState {
   isDropdownOpen: boolean;
@@ -51,8 +52,29 @@ export class UserMenuWidget extends MPNextWidget {
   private storageHandler = () => this.render();
   private hashChangeHandler = () => this.checkHashDeepLink();
 
+  // ── Hardened / dual mode state (unused in legacy mode) ─────────
+  /** Resolved auth mode; null until /api/embed/auth/config has been fetched. */
+  private authMode: EmbedAuthMode | null = null;
+  private unsubscribeAuth: (() => void) | null = null;
+  /** Display info from /api/embed/auth/me, keyed by the sid it was fetched for. */
+  private meInfo: UserInfo | null = null;
+  private meSid: string | null = null;
+  private fetchingMe = false;
+  private meExhaustedForSid: string | null = null;
+  private loggingOut = false;
+
   static get observedAttributes() {
-    return ["first-name", "last-name", "email", "image-url", "mp-base-url", "prevent-login-widget", "post-logout-redirect-uri"];
+    return [
+      "first-name",
+      "last-name",
+      "email",
+      "image-url",
+      "mp-base-url",
+      "prevent-login-widget",
+      "post-logout-redirect-uri",
+      "session-scope",
+      "prefer-mp-login",
+    ];
   }
 
   private get mpBaseUrl(): string {
@@ -73,14 +95,61 @@ export class UserMenuWidget extends MPNextWidget {
     return this.hasAttribute("prevent-login-widget");
   }
 
+  /** True once the auth mode is known and is `dual` or `hardened`. */
+  private get isHardenedMode(): boolean {
+    return this.authMode === "dual" || this.authMode === "hardened";
+  }
+
+  /**
+   * In `dual` mode with the `prefer-mp-login` attribute, the host keeps using
+   * MP's own <mpp-user-login> (when MPWidgets.js is loaded); the SDK then
+   * silently upgrades the resulting MP token to a server session.
+   */
+  private get shouldUseMpLoginInDual(): boolean {
+    return (
+      this.authMode === "dual" &&
+      this.hasAttribute("prefer-mp-login") &&
+      typeof customElements !== "undefined" &&
+      !!customElements.get("mpp-user-login")
+    );
+  }
+
   private get isAuthenticated(): boolean {
+    if (this.isHardenedMode) return this.authSession.isAuthenticated();
     return this.hasLocalStorageAuth();
   }
 
   /**
-   * Resolve user info from: element attributes → cached userinfo → ID token → sessionStorage
+   * Resolve user info.
+   *   legacy:          element attributes → cached userinfo → ID token → sessionStorage
+   *   dual/hardened:   element attributes → /api/embed/auth/me (cached)
    */
   private getUserInfo(): UserInfo {
+    if (this.isHardenedMode) return this.getUserInfoHardened();
+    return this.getUserInfoLegacy();
+  }
+
+  private getUserInfoHardened(): UserInfo {
+    const attrFirst = this.getAttribute("first-name") || "";
+    const attrLast = this.getAttribute("last-name") || "";
+    if (attrFirst || attrLast) {
+      return {
+        firstName: attrFirst,
+        lastName: attrLast,
+        email: this.getAttribute("email") || "",
+        imageUrl: this.getAttribute("image-url") || "",
+      };
+    }
+    if (this.meInfo) return this.meInfo;
+    return {
+      firstName: "",
+      lastName: "",
+      email: this.getAttribute("email") || "",
+      imageUrl: this.getAttribute("image-url") || "",
+    };
+  }
+
+  private getUserInfoLegacy(): UserInfo {
     const attrFirst = this.getAttribute("first-name") || "";
     const attrLast = this.getAttribute("last-name") || "";
     if (attrFirst || attrLast) {
@@ -224,12 +293,50 @@ export class UserMenuWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
+    this.applySessionScope();
+    // Neutral placeholder until the auth mode is known; render() no-ops into
+    // the placeholder while authMode is null.
     this.render();
     document.addEventListener("click", this.documentClickHandler, true);
     document.addEventListener("keydown", this.escapeHandler);
     window.addEventListener("storage", this.storageHandler);
     window.addEventListener("hashchange", this.hashChangeHandler);
+    void this.resolveAuthMode();
+  }
+
+  /**
+   * Discover the auth mode once (legacy on any failure), then do the first real
+   * render. In dual/hardened, re-render whenever the session changes.
+   */
+  private async resolveAuthMode(): Promise<void> {
+    let mode: EmbedAuthMode = "legacy";
+    try {
+      mode = (await this.authSession.getConfig()).mode;
+    } catch {
+      mode = "legacy";
+    }
+    if (!this.isConnected) return;
+    this.authMode = mode;
+    if (mode !== "legacy") {
+      if (!this.unsubscribeAuth) {
+        this.unsubscribeAuth = this.authSession.onChange(() => {
+          if (this.isConnected) this.render();
+        });
+      }
+      // Returned from the OAuth callback: exchange the one-time handoff code
+      // now (60s TTL) rather than waiting for the first widget fetch. The
+      // resulting sid change re-renders us through onChange.
+      if (this.authSession.hasPendingHandoff()) {
+        void this.authSession.getToken("user-menu").catch(() => {});
+      }
+    }
+    this.render();
     this.checkHashDeepLink();
+  }
+
+  private applySessionScope(): void {
+    const scope = this.getAttribute("session-scope");
+    this.authSession.setStorageScope(scope === "tab" ? "tab" : "local");
   }
 
   disconnectedCallback() {
@@ -237,6 +344,10 @@ export class UserMenuWidget extends MPNextWidget {
     document.removeEventListener("keydown", this.escapeHandler);
     window.removeEventListener("storage", this.storageHandler);
     window.removeEventListener("hashchange", this.hashChangeHandler);
+    if (this.unsubscribeAuth) {
+      this.unsubscribeAuth();
+      this.unsubscribeAuth = null;
+    }
     this.stopAuthPoll();
     this.clearExpiryTimer();
     this.clearUserInfoRetry();
@@ -247,7 +358,10 @@ export class UserMenuWidget extends MPNextWidget {
     }
   }
 
-  attributeChangedCallback() {
+  attributeChangedCallback(name?: string) {
+    if (name === "session-scope" && this.isConnected) {
+      this.applySessionScope();
+    }
     if (this.root) {
       this.render();
     }
@@ -278,6 +392,179 @@ export class UserMenuWidget extends MPNextWidget {
   }
 
   render() {
+    if (this.authMode === null) {
+      this.renderPlaceholder();
+      return;
+    }
+    if (this.isHardenedMode) {
+      this.renderHardened();
+      return;
+    }
+    this.renderLegacy();
+  }
+
+  /** Neutral avatar-sized placeholder shown until the auth mode resolves. */
+  private renderPlaceholder() {
+    this.setContent('<span class="nw-placeholder" aria-hidden="true"></span>');
+  }
+
+  /** Replace the widget's Shadow DOM content (creating the wrapper on first use). */
+  private setContent(html: string) {
+    const container = this.root.querySelector(".nw-user-menu") as HTMLElement;
+    if (container) {
+      container.innerHTML = html;
+    } else {
+      const wrapper = document.createElement("div");
+      wrapper.className = "nw-user-menu";
+      wrapper.innerHTML = html;
+      this.root.appendChild(wrapper);
+    }
+  }
+
+  // ── dual / hardened render ───────────────────────────────────
+  //
+  // No mpp-widgets_* writes, no REAUTH, no expiry timer. The server session is
+  // the source of truth: when it ends, the next token mint returns
+  // invalid_session, AuthSession clears the sid and notifies us via onChange.
+
+  private renderHardened() {
+    const authenticated = this.authSession.isAuthenticated();
+    const useMpLogin = !authenticated && this.shouldUseMpLoginInDual;
+
+    if (authenticated) {
+      this.removeLightDOMLogin();
+      this.stopAuthPoll();
+      this.fetchMe();
+      this.fetchAvatarPhoto();
+
+      if (this.pendingDeepLinkTab) {
+        const tab = this.pendingDeepLinkTab;
+        this.pendingDeepLinkTab = null;
+        setTimeout(() => this.openModal(tab), 0);
+      }
+    } else {
+      this.meInfo = null;
+      this.meSid = null;
+      if (this.avatarPhotoUrl) {
+        URL.revokeObjectURL(this.avatarPhotoUrl);
+        this.avatarPhotoUrl = null;
+      }
+      this.fetchingPhoto = false;
+      if (useMpLogin) {
+        this.ensureLightDOMLogin();
+        // MPWidgets.js stores its tokens after the OAuth return; the storage
+        // event is cross-tab only, so a read-only poll picks up the same-tab login.
+        this.startAuthPoll();
+      } else {
+        this.removeLightDOMLogin();
+        this.stopAuthPoll();
+      }
+    }
+
+    let html: string;
+    if (authenticated) {
+      html = this.renderAuthenticated();
+    } else if (useMpLogin || this.shouldPreventLoginWidget) {
+      html = `<slot></slot>`;
+    } else {
+      html = this.renderSignInButton();
+    }
+    this.setContent(html);
+
+    if (authenticated) {
+      this.attachShadowListeners();
+    } else {
+      const btn = this.root.querySelector(".nw-login-btn");
+      if (btn) {
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          // Cancelable `loginRequired` first (host hook), then SDK-driven login.
+          this.requestLogin("user-menu");
+        });
+      }
+    }
+  }
+
+  private renderSignInButton(): string {
+    return `
+      <button class="nw-login-btn" type="button">
+        <svg class="nw-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Sign In
+      </button>
+    `;
+  }
+
+  /** Load display info from /api/embed/auth/me once per sid. */
+  private async fetchMe(): Promise<void> {
+    const sid = this.authSession.getSid();
+    if (!sid) return;
+    if (this.meInfo && this.meSid === sid) return;
+    if (this.fetchingMe || this.meExhaustedForSid === sid) return;
+    this.fetchingMe = true;
+    try {
+      const res = await this.authSession.me("user-menu");
+      if (res.authenticated && res.user) {
+        this.meInfo = {
+          firstName: res.user.firstName || "",
+          lastName: res.user.lastName || "",
+          email: res.user.email || "",
+          imageUrl: "",
+        };
+        this.meSid = sid;
+        this.fetchingMe = false;
+        if (this.isConnected) this.render();
+        return;
+      }
+      this.meExhaustedForSid = sid;
+    } catch {
+      this.meExhaustedForSid = sid;
+    }
+    this.fetchingMe = false;
+  }
+
+  private async handleLogoutHardened(): Promise<void> {
+    if (this.loggingOut) return;
+    this.loggingOut = true;
+    this.closeDropdown();
+    this.closeModal();
+
+    const postLogoutRedirectUri = this.getAttribute("post-logout-redirect-uri") || window.location.href;
+    let endSessionUrl: string | null = null;
+    try {
+      endSessionUrl = await this.authSession.logout({ postLogoutRedirectUri });
+    } catch {
+      endSessionUrl = null;
+    }
+
+    this.meInfo = null;
+    this.meSid = null;
+    this.meExhaustedForSid = null;
+    if (this.avatarPhotoUrl) {
+      URL.revokeObjectURL(this.avatarPhotoUrl);
+      this.avatarPhotoUrl = null;
+    }
+    this.fetchingPhoto = false;
+    this.loggingOut = false;
+
+    // Cancelable — a host page may preventDefault() to handle the redirect itself.
+    const event = new CustomEvent("userLogout", {
+      detail: { endSessionUrl, postLogoutRedirectUri },
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    });
+    const handled = !this.dispatchEvent(event);
+
+    if (!handled && endSessionUrl) {
+      window.location.href = endSessionUrl;
+      return;
+    }
+    this.render();
+  }
+
+  // ── legacy render (unchanged behavior) ───────────────────────
+
+  private renderLegacy() {
     const authenticated = this.isAuthenticated;
 
     // Manage light DOM login widget and userinfo fetch
@@ -688,7 +975,11 @@ export class UserMenuWidget extends MPNextWidget {
     const logoutBtn = this.root.querySelector('[data-action="logout"]');
     if (logoutBtn) {
       logoutBtn.addEventListener("click", () => {
-        this.handleLogout();
+        if (this.isHardenedMode) {
+          void this.handleLogoutHardened();
+        } else {
+          this.handleLogout();
+        }
       });
     }
   }
@@ -1117,6 +1408,43 @@ export class UserMenuWidget extends MPNextWidget {
         width: 16px;
         height: 16px;
         flex-shrink: 0;
+      }
+
+      /* Placeholder while the auth mode resolves */
+      .nw-placeholder {
+        display: inline-block;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: #e5e7eb;
+      }
+
+      /* Own Sign In button (dual / hardened modes) */
+      .nw-login-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 36px;
+        padding: 0 14px;
+        border: none;
+        border-radius: 6px;
+        background: #004C97;
+        color: white;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1;
+        cursor: pointer;
+        outline: none;
+        transition: box-shadow 0.15s, opacity 0.15s;
+      }
+
+      .nw-login-btn:hover {
+        opacity: 0.9;
+      }
+
+      .nw-login-btn:focus-visible {
+        box-shadow: 0 0 0 2px white, 0 0 0 4px #004C97;
       }
     `;
   }

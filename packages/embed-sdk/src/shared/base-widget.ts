@@ -1,3 +1,5 @@
+import { getAuthSession, type AuthSession } from "./auth-session";
+
 /**
  * Base class for MPNext embeddable widgets
  * Handles Shadow DOM, API communication, and token management
@@ -151,6 +153,34 @@ export abstract class MPNextWidget extends HTMLElement {
     }
 
     this.tokenProvider = window.__nextTokenProvider.get;
+  }
+
+  /**
+   * Page-wide AuthSession (mode discovery, sid, login/logout helpers).
+   */
+  protected get authSession(): AuthSession {
+    return getAuthSession(this.apiHost);
+  }
+
+  /**
+   * Ask for sign-in. Emits a cancelable, bubbling `loginRequired` event with
+   * `{ wid }` so host pages that already handle login keep working. When the
+   * event is not prevented and the auth mode is `dual` or `hardened`, the SDK
+   * navigates to the widget host's login route itself. In `legacy` (or before
+   * the mode is known) behavior is unchanged: the event is the only signal.
+   */
+  protected requestLogin(wid: string): void {
+    const ev = new CustomEvent("loginRequired", {
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+      detail: { wid },
+    });
+    const handled = !this.dispatchEvent(ev);
+    const mode = this.authSession.getMode();
+    if (!handled && mode !== null && mode !== "legacy") {
+      this.authSession.login({ wid });
+    }
   }
 
   /**

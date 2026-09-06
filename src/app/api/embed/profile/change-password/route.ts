@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWidgetAuth, getCorsHeaders, resolveRequestOrigin, buildOptionsResponse, buildFallbackCorsHeaders } from "@/lib/embed/auth";
+import { getMpUserAccessToken } from "@/lib/embed/embed-session";
 import { ChangePasswordSchema } from "@mpnext/types";
 import { z } from "zod";
 
@@ -33,6 +34,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Resolve the MP token to act as the user (v1: carried in the JWT; v2: from
+    // the server-side session, refreshed on demand).
+    const mpAccessToken = await getMpUserAccessToken(claims);
+    if (!mpAccessToken) {
+      return NextResponse.json(
+        { error: "Session expired. Please sign in again." },
+        { status: 401, headers: tenantHeaders }
+      );
+    }
+
     const mpBaseUrl = process.env.MINISTRY_PLATFORM_BASE_URL;
     if (!mpBaseUrl) {
       throw new Error("MINISTRY_PLATFORM_BASE_URL not configured");
@@ -44,7 +55,7 @@ export async function POST(req: NextRequest) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${claims.mpAccessToken}`,
+          Authorization: `Bearer ${mpAccessToken}`,
         },
         body: JSON.stringify({
           OldPassword: parsed.data.oldPassword,
