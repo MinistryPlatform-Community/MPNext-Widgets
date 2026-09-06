@@ -7,10 +7,14 @@
  * verifies. The token embeds the name/email the visitor supplied so the
  * registration form can pre-fill and the server can trust those values.
  *
- * Signed with HS256 using EMBED_JWT_SECRET (same secret as the widget session
- * JWT) but with a distinct `typ` and a longer expiry, since the visitor may take
- * a while to open the email.
+ * Signed with HS256 (jose) using EMBED_JWT_SECRET (same secret as the widget
+ * session JWT) but with a distinct payload `typ` and a longer expiry, since the
+ * visitor may take a while to open the email. No `iss`/`aud` is required on
+ * verification so tokens emailed before a deploy keep working.
  */
+
+import { SignJWT, jwtVerify } from "jose";
+import { getJwtSecret, JWT_ALGORITHM } from "./jwt";
 
 export interface VerifyPayload {
   typ: "pyv-verify";
@@ -21,15 +25,10 @@ export interface VerifyPayload {
   exp: number;
 }
 
-const ALGORITHM = "HS256";
 const DEFAULT_EXPIRY_SECONDS = 60 * 60 * 24; // 24 hours
 
-function getSecret(): string {
-  const secret = process.env.EMBED_JWT_SECRET;
-  if (!secret && process.env.NODE_ENV === "production") {
-    throw new Error("EMBED_JWT_SECRET environment variable is required in production");
-  }
-  return secret || "development-secret-do-not-use-in-production";
+function getSecretKey(): Uint8Array {
+  return new TextEncoder().encode(getJwtSecret());
 }
 
 export async function createVerifyToken(
@@ -37,81 +36,48 @@ export async function createVerifyToken(
   expirySeconds: number = DEFAULT_EXPIRY_SECONDS
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  const payload: VerifyPayload = {
+  return new SignJWT({
     typ: "pyv-verify",
     firstName: data.firstName,
     lastName: data.lastName,
     email: data.email,
-    iat: now,
-    exp: now + expirySeconds,
-  };
-
-  const header = { alg: ALGORITHM, typ: "JWT" };
-  const encodedHeader = base64UrlEncode(JSON.stringify(header));
-  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
-  const signature = base64UrlEncode(
-    await hmac(`${encodedHeader}.${encodedPayload}`, getSecret())
-  );
-  return `${encodedHeader}.${encodedPayload}.${signature}`;
+  })
+    .setProtectedHeader({ alg: JWT_ALGORITHM, typ: "JWT" })
+    .setIssuedAt(now)
+    .setExpirationTime(now + expirySeconds)
+    .sign(getSecretKey());
 }
 
 /** Verify a token and return its payload, or null when invalid/expired. */
 export async function verifyVerifyToken(token: string): Promise<VerifyPayload | null> {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [encodedHeader, encodedPayload, signature] = parts;
+  if (!token || typeof token !== "string") return null;
 
-  const expected = base64UrlEncode(
-    await hmac(`${encodedHeader}.${encodedPayload}`, getSecret())
-  );
-  if (!timingSafeEqual(signature, expected)) return null;
-
-  let payload: VerifyPayload;
+  let payload: Record<string, unknown>;
   try {
-    payload = JSON.parse(base64UrlDecode(encodedPayload)) as VerifyPayload;
+    const result = await jwtVerify(token, getSecretKey(), {
+      algorithms: [JWT_ALGORITHM],
+    });
+    payload = result.payload;
   } catch {
     return null;
   }
 
   if (payload.typ !== "pyv-verify") return null;
-  if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null;
-  if (!payload.email || !payload.firstName || !payload.lastName) return null;
-
-  return payload;
-}
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i++) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  if (typeof payload.exp !== "number" || typeof payload.iat !== "number") return null;
+  if (
+    typeof payload.email !== "string" || !payload.email ||
+    typeof payload.firstName !== "string" || !payload.firstName ||
+    typeof payload.lastName !== "string" || !payload.lastName
+  ) {
+    return null;
   }
-  return mismatch === 0;
-}
 
-function base64UrlEncode(str: string): string {
-  return Buffer.from(str)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "");
-}
-
-function base64UrlDecode(str: string): string {
-  let s = str.replace(/-/g, "+").replace(/_/g, "/");
-  while (s.length % 4) s += "=";
-  return Buffer.from(s, "base64").toString();
-}
-
-async function hmac(data: string, secret: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(data));
-  return Buffer.from(signature).toString("base64");
+  return {
+    typ: "pyv-verify",
+    firstName: payload.firstName,
+    lastName: payload.lastName,
+    email: payload.email,
+    iat: payload.iat,
+    exp: payload.exp,
+  };
 }
