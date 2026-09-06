@@ -78,6 +78,47 @@
       font-size: 14px;
     }
     .info-box strong { color: #004C97; }
+
+    /* Auth mode banner (resolved from /api/embed/auth/config) */
+    .auth-mode {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-left: 4px solid #F1BE48;
+      padding: 10px 16px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      color: #6b7280;
+      line-height: 1.5;
+    }
+    .auth-mode-label {
+      font-weight: 600;
+      color: #002855;
+    }
+    .auth-mode-pill {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 9999px;
+      border: 1px solid #e5e7eb;
+      background: #f3f4f6;
+      color: #2D2926;
+    }
+    .auth-mode-pill[data-mode="legacy"]   { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+    .auth-mode-pill[data-mode="dual"]     { background: #e0f2fe; border-color: #bae6fd; color: #004C97; }
+    .auth-mode-pill[data-mode="hardened"] { background: #ecfdf5; border-color: #d1fae5; color: #047857; }
+    .auth-mode code {
+      font-size: 12px;
+    }
+    .auth-mode-error {
+      color: #b91c1c;
+      font-weight: 500;
+    }
     .deep-links {
       display: flex;
       gap: 12px;
@@ -202,6 +243,19 @@
     <p class="description">Authentication widget with avatar dropdown and account modal. Deep-link via hash.</p>
     <code class="tag-code">&lt;next-user-menu&gt;</code>
 
+    <!-- Widget auth mode, as resolved by the API for this page's origin -->
+    <div class="auth-mode" id="auth-mode" role="status">
+      <span class="auth-mode-label">Widget auth mode</span>
+      <span class="auth-mode-pill" id="auth-mode-pill">checking…</span>
+      <span id="auth-mode-note">
+        <strong>legacy</strong> renders <code>&lt;mpp-user-login&gt;</code> from MPWidgets.js;
+        <strong>dual</strong> / <strong>hardened</strong> render the widget's own Sign In and keep MP tokens on the server.
+        Set <code>EMBED_AUTH_MODE</code> in <code>.env.local</code>, or override this origin only with
+        <code>EMBED_AUTH_MODE_ORIGINS=http://localhost:5173=dual</code>.
+      </span>
+      <span class="auth-mode-error" id="auth-mode-error" hidden></span>
+    </div>
+
     <div class="space-y">
       <!-- Demo container -->
       <div class="demo-box">
@@ -249,9 +303,11 @@
   post-logout-redirect-uri="[YourWebUrl]"
 &gt;&lt;/next-user-menu&gt;
 
-&lt;!-- When unauthenticated: renders &lt;mpp-user-login&gt; --&gt;
-&lt;!-- When authenticated:    renders avatar + dropdown + account modal --&gt;
-&lt;!-- post-logout-redirect-uri defaults to current page if omitted --&gt;</code></pre>
+&lt;!-- When unauthenticated: legacy mode renders &lt;mpp-user-login&gt; (MPWidgets.js); --&gt;
+&lt;!--                      dual / hardened render the widget's own Sign In button --&gt;
+&lt;!-- When authenticated:   renders avatar + dropdown + account modal --&gt;
+&lt;!-- post-logout-redirect-uri defaults to current page if omitted --&gt;
+&lt;!-- Optional: session-scope="tab" (sessionStorage sid), prefer-mp-login (dual only) --&gt;</code></pre>
       </div>
 
       <!-- Universal setup -->
@@ -279,6 +335,43 @@
     }
 
     const menu = document.querySelector("next-user-menu");
+
+    // Auth mode banner. Same endpoint the SDK resolves at boot; the SDK falls
+    // back to legacy when it is unreachable, so mirror that here.
+    (async () => {
+      const pill = document.getElementById("auth-mode-pill");
+      const errEl = document.getElementById("auth-mode-error");
+      const apiHost = "__API_HOST__";
+      try {
+        const res = await fetch(`${apiHost}/api/embed/auth/config`, { mode: "cors", credentials: "omit" });
+        if (!res.ok) throw new Error(String(res.status));
+        const cfg = await res.json();
+        const mode = ["legacy", "dual", "hardened"].includes(cfg?.mode) ? cfg.mode : null;
+        if (!mode) throw new Error("unknown mode");
+        pill.textContent = mode;
+        pill.dataset.mode = mode;
+        pill.title = `Resolved by ${apiHost}/api/embed/auth/config for ${location.origin}`;
+      } catch {
+        pill.textContent = "legacy (config unavailable)";
+        pill.dataset.mode = "legacy";
+        pill.title = `${apiHost}/api/embed/auth/config did not answer — the SDK falls back to legacy. Is pnpm dev running and this origin in EMBED_ALLOWED_ORIGINS?`;
+      }
+      // Surface a failed OAuth return (#nw_auth_error=…) or handoff exchange.
+      const auth = window.MPNextEmbed?.getAuthSession?.();
+      const showError = () => {
+        const code = auth?.getAuthError?.();
+        errEl.hidden = !code;
+        errEl.textContent = code ? `Sign-in error: ${code}` : "";
+      };
+      if (auth) {
+        showError();
+        auth.onChange(showError);
+      }
+    })();
+
+    menu.addEventListener("loginRequired", (e) => {
+      logEvent("loginRequired", e.detail);
+    });
 
     menu.addEventListener("userLogout", (e) => {
       logEvent("userLogout", e.detail);
