@@ -20,7 +20,7 @@ import { renderAgendaList } from "./full-calendar-list";
 
 // ── Constants ──
 
-const FC_VERSION = "6.1.15";
+const FC_VERSION = "6.1.21";
 const FC_CDN_BASE = `https://cdn.jsdelivr.net/npm/fullcalendar@${FC_VERSION}`;
 const CARDS_PAGE_SIZE = 12;
 
