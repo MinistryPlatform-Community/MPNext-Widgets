@@ -16,7 +16,7 @@ ${widget.events.map((e) => `  widget.addEventListener("${e}", (e) => console.log
 </script>`;
 
   const universalSetup = `<!-- Load MPNext Embed SDK (auto-initializes) -->
-<script type="module" src="https://your-host.com/embed-sdk/next-embed.es.js"></script>`;
+<script type="module" src="https://your-host.com/embed-sdk/next-embed.js"></script>`;
 
   async function handleCopyWidget() {
     await navigator.clipboard.writeText(widgetCode);

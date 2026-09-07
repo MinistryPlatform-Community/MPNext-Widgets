@@ -31,6 +31,12 @@ public/embed-sdk/next-embed.umd.js.map
 (`.gitignore:13-17` covers all of them, so nothing is committed and nothing
 deploys. Vercel starts from a clean checkout.)
 
+> **Update (2026-09-07, item 22):** the app no longer *loads* that leftover —
+> `/demo/<slug>` and the customer-facing snippet now point at the stable loader
+> `next-embed.js`, and `src/app/(demo)/demo/_components/sdk-loader-reference.test.ts`
+> keeps them there. So this item is purely about the verification trap below; it
+> no longer masks a broken demo page.
+
 ## Why it is worth fixing anyway
 
 They are a **verification trap.** The obvious way to confirm a change landed in
