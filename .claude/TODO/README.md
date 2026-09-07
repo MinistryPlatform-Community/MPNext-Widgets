@@ -26,6 +26,13 @@ PR #19), all four GitHub Actions majors, and security overrides for `undici` /
 | 7 | `07-fullcalendar-7.md` | medium | needs visual QA |
 | 9 | `09-token-bridge-lint-warning.md` | low | 30 min |
 | 10 | `10-sri-cdn-scripts.md` | low change, breaks a widget if the hash is wrong | 45 min |
+| 11 | `11-oauth-additional-fields-dropped.md` | medium — touches an authz input | 1–2 hours |
+| 12 | `12-demo-layout-redirect-loop.md` | low | 30 min |
+
+Items 11 and 12 are **not** dependency upgrades. They are pre-existing bugs
+found while live-testing item 5 on 2026-09-07 and confirmed against a 1.6.30
+baseline. 12 is the visible symptom of 11; fix 11 to restore `/demo`, and 12 so
+the next missing field is not another silent loop.
 
 **Standard verification gate** for every branch below:
 
