@@ -8,21 +8,23 @@ The prerequisite (**Node 24 baseline**) is already done on `dev`:
 `engines.node: "24.x"`, `.nvmrc: 24`, CI `node-version: 24`, `@types/node@^24.13.3`
 in both the root and `@mpnext/embed-sdk`. Everything here assumes Node 24.
 
-Also already done (do not redo): `next` 16.3.4, `better-auth` 1.6.30, `vite` 8.2.2,
-`postcss` 8.5.28, all `@radix-ui/*`, `jose` 6.2.12, `zod` 4.5.4 (incl. `@mpnext/types`),
+Also already done (do not redo): `next` 16.3.4, `better-auth` 1.7.3 (item 5,
+PR #20), `chalk` 6.0.0 (item 6), `vite` 8.2.2, `postcss` 8.5.28, all
+`@radix-ui/*`, `jose` 6.2.12, `zod` 4.5.4 (incl. `@mpnext/types`),
 `react`/`react-dom` 19.2.8, `playwright` 1.63.0, `eslint-config-next` 16.3.4,
 FullCalendar CDN pin 6.1.21, add-to-calendar-button CDN pin 2.15.0 (item 8,
 PR #19), all four GitHub Actions majors, and security overrides for `undici` /
 `js-yaml@4` / `@humanfs/node` / `brace-expansion`.
 `pnpm audit` was clean as of 2026-09-07.
 
+Do **not** bump `@types/node` past `^24.13.3` — it is deliberately pinned to
+match the Node 24 runtime (Vercel runs 24).
+
 | # | File | Risk | Rough size |
 |---|------|------|-----------|
 | 2 | `02-test-stack-vitest5-jsdom30.md` | medium | half day |
 | 3 | `03-typescript-7.md` | high | half–full day |
 | 4 | `04-eslint-10.md` | medium | 1–3 hours |
-| 5 | `05-better-auth-1.7.md` | medium | 1–2 hours + manual auth test |
-| 6 | `06-chalk-6.md` | low | 15 min |
 | 7 | `07-fullcalendar-7.md` | medium | needs visual QA |
 | 9 | `09-token-bridge-lint-warning.md` | low | 30 min |
 | 10 | `10-sri-cdn-scripts.md` | low change, breaks a widget if the hash is wrong | 45 min |
@@ -30,9 +32,10 @@ PR #19), all four GitHub Actions majors, and security overrides for `undici` /
 | 12 | `12-demo-layout-redirect-loop.md` | low | 30 min |
 
 Items 11 and 12 are **not** dependency upgrades. They are pre-existing bugs
-found while live-testing item 5 on 2026-09-07 and confirmed against a 1.6.30
-baseline. 12 is the visible symptom of 11; fix 11 to restore `/demo`, and 12 so
-the next missing field is not another silent loop.
+found while live-testing the better-auth 1.7 upgrade (item 5) on 2026-09-07
+and confirmed against a 1.6.30 baseline. 12 is the visible symptom of 11; fix
+11 to restore `/demo`, and 12 so the next missing field is not another silent
+loop.
 
 **Standard verification gate** for every branch below:
 
