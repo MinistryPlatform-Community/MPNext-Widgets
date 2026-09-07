@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export function TokenBridge() {
+  const router = useRouter();
+
   useEffect(() => {
     async function bridgeTokens() {
       try {
@@ -61,6 +64,9 @@ export function TokenBridge() {
           });
           const data = await res.json();
           if (data.redirectUrl) {
+            // Cross-origin, top-level navigation to MinistryPlatform's OIDC end-session
+            // endpoint. Must stay a raw location assignment — router.push() cannot
+            // leave the origin.
             window.location.href = data.redirectUrl;
             return;
           }
@@ -68,7 +74,7 @@ export function TokenBridge() {
           // Logout API failed
         }
 
-        window.location.href = "/signin";
+        router.push("/signin");
       })();
     }
 
@@ -77,7 +83,7 @@ export function TokenBridge() {
     return () => {
       document.removeEventListener("userLogout", handleLogout);
     };
-  }, []);
+  }, [router]);
 
   return null;
 }
