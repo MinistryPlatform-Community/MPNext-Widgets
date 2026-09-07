@@ -21,6 +21,13 @@ import { renderAgendaList } from "./full-calendar-list";
 // ── Constants ──
 
 const FC_VERSION = "6.1.21";
+// Subresource Integrity for index.global.min.js at the pinned version above.
+// BUMPING FC_VERSION REQUIRES RECOMPUTING THIS HASH — a stale hash makes the
+// browser refuse the script and the week/grid views render
+// "Failed to load calendar library." Recompute with:
+//   curl -sL "https://cdn.jsdelivr.net/npm/fullcalendar@<ver>/index.global.min.js" \
+//     | openssl dgst -sha384 -binary | openssl base64 -A
+const FC_SRI = "sha384-WDvnzcla8X1CQM97EnYyl4OoTCvmMFp5lBiVNO3IjVdvLMOUjwt+iuYb/Mru5A9v";
 const FC_CDN_BASE = `https://cdn.jsdelivr.net/npm/fullcalendar@${FC_VERSION}`;
 const CARDS_PAGE_SIZE = 12;
 
@@ -119,7 +126,7 @@ export class FullCalendarWidget extends MPNextWidget {
 
   private async loadFullCalendar(): Promise<void> {
     if (this.fcLoaded) return;
-    await loadScript(`${FC_CDN_BASE}/index.global.min.js`);
+    await loadScript(`${FC_CDN_BASE}/index.global.min.js`, FC_SRI);
     this.fcLoaded = true;
   }
 

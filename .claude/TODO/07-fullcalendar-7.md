@@ -6,12 +6,23 @@
 
 ## Current state
 
-`packages/embed-sdk/src/components/full-calendar.ts:23-24`:
+`packages/embed-sdk/src/components/full-calendar.ts:23-31`:
 
 ```ts
 const FC_VERSION = "6.1.21";
+const FC_SRI = "sha384-WDvnzcla8X1CQM97EnYyl4OoTCvmMFp5lBiVNO3IjVdvLMOUjwt+iuYb/Mru5A9v";
 const FC_CDN_BASE = `https://cdn.jsdelivr.net/npm/fullcalendar@${FC_VERSION}`;
 ```
+
+> **Bumping `FC_VERSION` REQUIRES recomputing `FC_SRI`** (added in item 10, done).
+> The script tag now carries `integrity` + `crossOrigin="anonymous"`, so a new
+> version with the old hash is *blocked by the browser* — `week`/`grid` render
+> "Failed to load calendar library." and nothing else fails first, so it is easy
+> to misread as a v7 API break. Recompute in the same commit as the bump:
+>
+> ```
+> curl -sL "https://cdn.jsdelivr.net/npm/fullcalendar@7.1.0/index.global.min.js" >   | openssl dgst -sha384 -binary | openssl base64 -A
+> ```
 
 Already bumped 6.1.15 → **6.1.21** (latest 6.x) in the dependency pass, and the
 new pin is confirmed present in the rebuilt bundle. 6.x is still maintained, so
@@ -32,11 +43,13 @@ plugin registration and view configuration.
    bundle exposes itself, since `full-calendar.ts` consumes it off the global
    after `loadScript`. The instance is held as `private calendarInstance: any`,
    so **the compiler will not catch API breakage here** — it is all runtime.
-2. Bump `FC_VERSION` to `7.1.0`. Check whether the `FC_CDN_BASE`-relative asset
+2. Bump `FC_VERSION` to `7.1.0` **and recompute `FC_SRI` in the same edit** (see
+   the box above). Check whether the `FC_CDN_BASE`-relative asset
    paths (the JS bundle and any CSS pulled via `injectExternalCSS`) moved in v7 —
    v7 reorganized package layout, so the derived URLs may need updating too.
-3. `pnpm build:sdk`, then verify the pinned version actually landed in the output:
-   `grep -o "fullcalendar@[0-9.]*" public/embed-sdk/next-embed.*.es.js`
+3. `pnpm build:sdk`, then verify the pinned version **and the new hash** actually
+   landed in the output:
+   `grep -o "fullcalendar@[0-9.]*\|sha384-[A-Za-z0-9+/=]*" public/embed-sdk/next-embed.*.es.js`
 4. **Visual QA** via `pnpm test:widget` (http://localhost:5173,
    `demo-full-calendar.html`) against a live MP domain. Exercise every value of
    `ViewType`: `month`, `grid`, `week`, `list`, `cards`, `calendar` — plus the
@@ -49,5 +62,8 @@ plugin registration and view configuration.
 
 ## Done when
 
-All six views render correctly against live MP data, event dates match MP's
-wall-clock values under a non-UTC `TZ`, and the standard verification gate passes.
+All six views render correctly against live MP data, `FC_SRI` matches a freshly
+computed hash for the new `FC_VERSION` (and the browser console shows no
+"Failed to find a valid digest" error on the `week`/`grid` views), event dates
+match MP's wall-clock values under a non-UTC `TZ`, and the standard verification
+gate passes.
