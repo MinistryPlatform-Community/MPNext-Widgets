@@ -89,6 +89,20 @@ describe('session store wiring (TODO 14)', () => {
     expect(options.session?.cookieCache?.enabled).toBe(true);
     expect(options.session?.cookieCache?.maxAge).toBe(300);
   });
+
+  it('keeps the cache off the authorization path (TODO 24)', async () => {
+    // `maxAge` bounds the staleness of the reads that are still allowed to use
+    // the cache. It is deliberately NOT what protects an access decision --
+    // that is `getAuthoritativeSession`, and shortening `maxAge` must never be
+    // mistaken for a substitute. Full call-site cover in auth-session.test.ts.
+    const { readFile } = await import('node:fs/promises');
+    const { resolve } = await import('node:path');
+    const source = await readFile(
+      resolve(process.cwd(), 'src/lib/auth-session.ts'),
+      'utf8',
+    );
+    expect(source).toContain('disableCookieCache: true');
+  });
 });
 
 describe('better-auth user schema: userGuid / imageGuid', () => {

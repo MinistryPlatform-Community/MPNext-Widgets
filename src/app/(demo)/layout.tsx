@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { getAuthoritativeSession } from "@/lib/auth-session";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { SessionProvider } from "@/components/session-provider";
@@ -17,7 +17,13 @@ export default async function DemoLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth.api.getSession({ headers: await headers() });
+  // Authoritative read, not the cookie-cache one. This layout is the access
+  // boundary for every `/demo` route: it decides signed-in-or-not and then
+  // feeds `userGuid` to `checkDemoAccess`. Reading the cached cookie here let
+  // a cookie captured before sign-out render the full catalog for up to
+  // `cookieCache.maxAge` (TODO 24). Costs one session-store GET per gated
+  // render; see `src/lib/auth-session.ts` for the tradeoff.
+  const session = await getAuthoritativeSession(await headers());
 
   // Only a genuinely unauthenticated request goes to /signin. Anything else
   // would loop: /signin sees a valid session and sends the user straight back.

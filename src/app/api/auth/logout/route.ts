@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { getCachedSession } from "@/lib/auth-session";
 import { getEnv } from "@/lib/env";
 
 export async function POST(req: NextRequest) {
   const hdrs = await headers();
-  const session = await auth.api.getSession({ headers: hdrs });
+  // Deliberately the cached read. This is a de-escalation: the session is
+  // only consulted for the `id_token` that becomes MP's `id_token_hint`, and
+  // `signOut` below is what actually revokes. Forcing a store round trip here
+  // would only make logout slower, and would drop the hint in the one case
+  // (already-revoked session) where nothing is at stake.
+  const session = await getCachedSession(hdrs);
   const idToken = session?.session?.idToken;
 
   const body = await req.json().catch(() => ({})) as { postLogoutRedirectUri?: string };

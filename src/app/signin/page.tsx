@@ -16,7 +16,16 @@ function SignInContent() {
 
     async function startSignIn() {
       try {
-        const { data: session } = await authClient.getSession();
+        // `disableCookieCache` keeps this decision in step with the `/demo`
+        // gate, which now reads the session store authoritatively. Without it
+        // the two can disagree: a revoked session still verifies against the
+        // cache cookie here, so this page bounces the user to `/demo`, the
+        // gate rejects them, and they land back here -- a redirect loop that
+        // would last until `cookieCache.maxAge`. One store read on a page that
+        // is about to start an OAuth round trip anyway.
+        const { data: session } = await authClient.getSession({
+          query: { disableCookieCache: true },
+        });
         if (cancelled) {
           return;
         }

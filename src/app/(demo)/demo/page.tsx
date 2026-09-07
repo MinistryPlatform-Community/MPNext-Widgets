@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { getCachedSession } from "@/lib/auth-session";
 import { headers } from "next/headers";
 import { widgetCategoryOrder } from "@mpnext/types";
 import { getWidgetsByCategory } from "./_lib/widget-catalog";
@@ -7,7 +7,11 @@ import { DemoCard } from "./_components/demo-card";
 const categoryOrder = widgetCategoryOrder;
 
 export default async function DemoCatalogPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  // Cached read on purpose: this is the display name in the header, and
+  // `(demo)/layout.tsx` has already made the authoritative access decision for
+  // this render. Keeping item 14's optimisation here is why the authoritative
+  // read costs one extra store GET per page, not two.
+  const session = await getCachedSession(await headers());
   const grouped = getWidgetsByCategory();
 
   return (
