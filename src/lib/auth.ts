@@ -40,7 +40,10 @@ const options = {
     genericOAuth({
       config: [
         {
-          providerId: "ministry-platform",
+          // Also the `:id` in Better Auth's `/callback/:id` route, so this is
+          // the trailing segment of the redirect URI registered on the MP
+          // OAuth client: {BETTER_AUTH_URL}/api/auth/callback/ministryplatform
+          providerId: "ministryplatform",
           discoveryUrl: `${mpBaseUrl}/oauth/.well-known/openid-configuration`,
           clientId: process.env.OIDC_CLIENT_ID || getEnv("MINISTRY_PLATFORM_CLIENT_ID"),
           clientSecret: process.env.OIDC_CLIENT_SECRET || getEnv("MINISTRY_PLATFORM_CLIENT_SECRET"),
@@ -49,7 +52,13 @@ const options = {
             "offline_access",
             "http://www.thinkministry.com/dataplatform/scopes/all",
           ],
+          // MP rejects PKCE. Must stay explicit: Better Auth 1.7 flipped the
+          // default to true.
           pkce: false,
+          // Better Auth 1.7 drives RP-initiated logout from the discovery
+          // document's end_session_endpoint on signOut(). We already hand-roll
+          // that in /api/auth/logout, so leave it to us and avoid two redirects.
+          disableProviderLogout: true,
           authorizationUrlParams: {
             realm: "realm",
           },
@@ -74,6 +83,13 @@ const options = {
             const profile = await response.json();
 
             return {
+              // Better Auth 1.7 derives the stable account id from `sub` for
+              // OIDC-discovery providers (MP advertises
+              // id_token_signing_alg_values_supported, so it takes that branch)
+              // and from `id` otherwise. Return both: omitting `sub` resolves
+              // the subject to "" and sign-in fails with
+              // OAUTH_ACCOUNT_SUBJECT_INVALID.
+              sub: profile.sub,
               id: profile.sub,
               email: profile.email,
               name: `${profile.given_name} ${profile.family_name}`,
