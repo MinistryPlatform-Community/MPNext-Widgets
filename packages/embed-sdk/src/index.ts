@@ -14,11 +14,42 @@
 
 export { MPNextWidget } from "./shared/base-widget";
 export { ApiClient } from "./shared/api-client";
+export {
+  AuthSession,
+  getAuthSession,
+  SID_KEY,
+  LEGACY_TOKEN_KEY,
+  type AuthConfig,
+  type EmbedAuthMode,
+  type AuthSessionUser,
+  type MeResponse,
+} from "./shared/auth-session";
+import { getAuthSession } from "./shared/auth-session";
 export { UserMenuWidget } from "./components/user-menu";
 export { AddToCalendarWidget } from "./components/add-to-calendar";
 export { FullCalendarWidget } from "./components/full-calendar";
 export { ProfileWidget } from "./components/profile";
 export { MyInvoicesWidget } from "./components/my-invoices";
+export { MyContributionStatementWidget } from "./components/my-contribution-statement";
+export { StatementPreferencesWidget } from "./components/statement-preferences";
+export { MyGivingWidget } from "./components/my-giving";
+export { MyHouseholdWidget } from "./components/my-household";
+export { MyPledgesWidget } from "./components/my-pledges";
+export { MyGroupsWidget } from "./components/my-groups";
+export { SubscriptionsWidget } from "./components/subscriptions";
+export { EventFinderWidget } from "./components/event-finder";
+export { EventDetailsWidget } from "./components/event-details";
+export { GroupFinderWidget } from "./components/group-finder";
+export { GroupDetailsWidget } from "./components/group-details";
+export { OpportunityFinderWidget } from "./components/opportunity-finder";
+export { OpportunityDetailsWidget } from "./components/opportunity-details";
+export { PlanYourVisitWidget } from "./components/plan-your-visit";
+export { OnlineDirectoryWidget } from "./components/online-directory";
+export { PledgeCampaignWidget } from "./components/pledge-campaign";
+export { CustomFormWidget } from "./components/custom-form";
+export { CheckoutWidget } from "./components/checkout";
+export { PayWidget } from "./components/pay";
+export { CheckoutCompleteWidget } from "./components/checkout-complete";
 
 // Auto-register components
 import "./components/user-menu";
@@ -26,6 +57,26 @@ import "./components/add-to-calendar";
 import "./components/full-calendar";
 import "./components/profile";
 import "./components/my-invoices";
+import "./components/my-contribution-statement";
+import "./components/statement-preferences";
+import "./components/my-giving";
+import "./components/my-household";
+import "./components/my-pledges";
+import "./components/my-groups";
+import "./components/subscriptions";
+import "./components/event-finder";
+import "./components/event-details";
+import "./components/group-finder";
+import "./components/group-details";
+import "./components/opportunity-finder";
+import "./components/opportunity-details";
+import "./components/plan-your-visit";
+import "./components/online-directory";
+import "./components/pledge-campaign";
+import "./components/custom-form";
+import "./components/checkout";
+import "./components/pay";
+import "./components/checkout-complete";
 
 // ---------------------------------------------------------------------------
 // Auto-initialization
@@ -64,7 +115,7 @@ function detectApiHost(): string {
   // 4. Read api-host from the first widget element on the page
   //    (handles Vite dev where the SDK is a local module import)
   const widget = document.querySelector(
-    "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices",
+    "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices, next-my-contribution-statement, next-statement-preferences, next-my-giving, next-my-household, next-my-pledges, next-my-groups, next-subscriptions, next-event-finder, next-event-details, next-group-finder, next-group-details, next-opportunity-finder, next-opportunity-details, next-plan-your-visit, next-online-directory, next-pledge-campaign, next-custom-form, next-checkout, next-pay, next-checkout-complete",
   );
   if (widget) {
     const host = widget.getAttribute("api-host");
@@ -75,39 +126,17 @@ function detectApiHost(): string {
 }
 
 /**
- * Built-in token provider that calls /api/embed/session.
+ * Built-in token provider. Delegates to the page-wide AuthSession, which owns
+ * mode discovery, the sid, the handoff exchange, the legacy silent-upgrade and
+ * the in-memory JWT cache.
  */
 function createTokenProvider(apiHost: string) {
-  async function fetchToken(wid?: string): Promise<string> {
-    // Determine widget ID from the first next-* element on the page
-    const resolvedWid =
-      wid || detectFirstWidgetId() || "unknown";
-
-    const mpToken = typeof localStorage !== "undefined"
-      ? localStorage.getItem("mpp-widgets_AuthToken")
-      : null;
-
-    const body: Record<string, string> = { wid: resolvedWid };
-    if (mpToken) body.mpUserToken = mpToken;
-
-    const res = await fetch(`${apiHost}/api/embed/session`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Token fetch failed" }));
-      throw new Error(err.error || "Token fetch failed");
-    }
-
-    const data = await res.json();
-    return data.token;
-  }
+  // Determine widget ID from the first next-* element on the page
+  const resolveWid = () => detectFirstWidgetId() || "unknown";
 
   return {
-    get: () => fetchToken(),
-    refresh: () => fetchToken(),
+    get: () => getAuthSession(apiHost).getToken(resolveWid()),
+    refresh: () => getAuthSession(apiHost).refreshToken(resolveWid()),
   };
 }
 
@@ -118,6 +147,26 @@ function detectFirstWidgetId(): string | null {
     "NEXT-FULL-CALENDAR": "full-calendar",
     "NEXT-PROFILE": "profile",
     "NEXT-MY-INVOICES": "invoices",
+    "NEXT-MY-CONTRIBUTION-STATEMENT": "contribution-statements",
+    "NEXT-STATEMENT-PREFERENCES": "statement-preferences",
+    "NEXT-MY-GIVING": "my-giving",
+    "NEXT-MY-HOUSEHOLD": "my-household",
+    "NEXT-MY-PLEDGES": "my-pledges",
+    "NEXT-MY-GROUPS": "my-groups",
+    "NEXT-SUBSCRIPTIONS": "subscriptions",
+    "NEXT-EVENT-FINDER": "event-finder",
+    "NEXT-EVENT-DETAILS": "event-details",
+    "NEXT-GROUP-FINDER": "group-finder",
+    "NEXT-GROUP-DETAILS": "group-details",
+    "NEXT-OPPORTUNITY-FINDER": "opportunity-finder",
+    "NEXT-OPPORTUNITY-DETAILS": "opportunity-details",
+    "NEXT-PLAN-YOUR-VISIT": "plan-your-visit",
+    "NEXT-ONLINE-DIRECTORY": "online-directory",
+    "NEXT-PLEDGE-CAMPAIGN": "pledge-campaign",
+    "NEXT-CUSTOM-FORM": "custom-form",
+    "NEXT-CHECKOUT": "checkout",
+    "NEXT-PAY": "pay",
+    "NEXT-CHECKOUT-COMPLETE": "checkout-complete",
   };
 
   for (const [tag, wid] of Object.entries(widgetMap)) {
@@ -144,6 +193,12 @@ if (typeof window !== "undefined") {
       const provider = createTokenProvider(apiHost);
       window.__nextTokenProvider = provider;
       window.__nextSDKReadyResolve?.();
+      // Returned from the OAuth callback with #nw_auth=<code>: exchange it now
+      // (single-use, 60s TTL) instead of waiting for the first widget fetch.
+      const session = getAuthSession(apiHost);
+      if (session.hasPendingHandoff()) {
+        void provider.get().catch(() => {});
+      }
       return true;
     }
     return false;
@@ -161,8 +216,8 @@ if (typeof window !== "undefined") {
     }
   }
 
-  // Expose global API for manual init (advanced use)
-  (window as any).MPNextEmbed = { init };
+  // Expose global API for manual init (advanced use) and the auth session
+  (window as any).MPNextEmbed = { init, getAuthSession };
 }
 
 /**

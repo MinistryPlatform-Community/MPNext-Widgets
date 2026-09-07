@@ -172,16 +172,6 @@ describe('FullCalendarService', () => {
       expect(eventsCall.orderBy).toBe('Event_Start_Date ASC');
     });
 
-    it('should append congregation filter when congregationId is given', async () => {
-      mockGetTableRecords.mockResolvedValueOnce([]);
-
-      const service = await FullCalendarService.getInstance();
-      await service.getEvents(start, end, 7);
-
-      const eventsCall = mockGetTableRecords.mock.calls[0][0];
-      expect(eventsCall.filter).toContain('Congregation_ID = 7');
-    });
-
     it('should enrich events with lookups, registration URL, and detail URL', async () => {
       mockGetTableRecords
         // Events

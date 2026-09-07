@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPNext Group Details Widget - Demo</title>
+  <!-- MP Widgets base script (provides mpp-user-login used by next-user-menu) -->
+  <script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: ui-sans-serif, system-ui, sans-serif; background: #f9fafb; color: #2D2926; }
+    .page { max-width: 1024px; margin: 0 auto; padding: 32px 16px; }
+    .back-link { display: inline-block; margin-bottom: 16px; color: #004C97; text-decoration: none; font-size: 14px; }
+    .back-link:hover { text-decoration: underline; }
+    h1 { font-size: 24px; font-weight: 700; color: #004C97; margin-bottom: 4px; }
+    .description { color: #6b7280; margin-bottom: 8px; font-size: 16px; }
+    .tag-code { display: inline-block; font-size: 12px; color: #9ca3af; margin-bottom: 24px; }
+    .space-y > * + * { margin-top: 24px; }
+    .controls-card { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+    .control-group { display: flex; flex-direction: column; gap: 4px; }
+    .control-group label { font-size: 12px; font-weight: 600; color: #6b7280; }
+    .control-group input { width: 160px; padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; color: #111827; }
+    .apply-btn { padding: 6px 16px; background: #004C97; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .apply-btn:hover { background: #002855; }
+    .demo-box { min-height: 200px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); padding: 24px; }
+    .card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); overflow: hidden; }
+    .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; }
+    .card-header h3 { font-size: 14px; font-weight: 600; color: #002855; }
+    .card-header span { font-size: 12px; font-weight: 400; color: #6b7280; margin-left: 8px; }
+    .clear-btn { background: none; border: none; font-size: 12px; color: #6b7280; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+    .copy-btn { background: #004C97; color: white; border: none; font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 4px; cursor: pointer; }
+    .event-log { background: #1f2937; color: #10b981; padding: 16px; font-family: 'Courier New', monospace; font-size: 14px; max-height: 300px; overflow-y: auto; }
+    .event-entry { margin-bottom: 8px; padding: 8px; background: rgba(16,185,129,0.1); border-radius: 4px; }
+    pre { background: #1f2937; color: #e5e7eb; padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.5; margin: 0; }
+    pre code { background: transparent; color: #e5e7eb; padding: 0; }
+    code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; color: #004C97; font-size: 13px; }
+    .setup-card { border: 2px dashed #fcd34d; background: #fffbeb; border-radius: 12px; overflow: hidden; }
+    .setup-card .card-header { border-bottom: 1px solid #fde68a; }
+    .setup-card .card-header span { color: #92400e; font-weight: 500; }
+    .note { background: #e0f2fe; border-left: 4px solid #004C97; padding: 12px 16px; border-radius: 8px; font-size: 14px; line-height: 1.5; }
+    .auth-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; background: #002855; border-radius: 8px; }
+    .auth-header span { color: white; font-weight: 600; font-size: 16px; }
+    .auth-header .hint { color: #9fb3c8; font-weight: 400; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a href="/" class="back-link">&larr; All Widgets</a>
+    <h1>Group Details &amp; Sign-up</h1>
+    <p class="description">Full group detail view with a tabbed Contact-the-Group (inquiry) and Sign-up flow.</p>
+    <code class="tag-code">&lt;next-group-details&gt;</code>
+
+    <div class="space-y">
+      <div class="note">
+        Contacting a group (inquiry) works anonymously. Signing up for a group requires sign-in so the
+        participant can be attached to your contact record.
+      </div>
+
+      <div class="controls-card">
+        <div class="control-group">
+          <label for="group-id-input">Group ID</label>
+          <input type="number" id="group-id-input" value="1" min="1" placeholder="e.g. 1234">
+        </div>
+        <button class="apply-btn" id="reload-btn" type="button">Apply</button>
+      </div>
+
+      <!-- Optional sign-in. Inquiry works anonymously; sign-up requires login. -->
+      <div class="auth-header">
+        <span>Sign in <span class="hint">(required to sign up; pre-fills your household members)</span></span>
+        <next-user-menu mp-base-url="__MP_BASE_URL__" api-host="__API_HOST__"></next-user-menu>
+      </div>
+
+      <!-- Widget is created from script so the ?id= deep-link (from the
+           group-finder) and the Group ID control share one code path. -->
+      <div class="demo-box"></div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Event Log</h3>
+          <button class="clear-btn" onclick="document.getElementById('event-log').innerHTML=''">Clear</button>
+        </div>
+        <div id="event-log" class="event-log">
+          <div class="event-entry">Initializing widget...</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Widget Code<span>Add this to any page where you want this widget</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="widget-code">&lt;!-- Group id can come from this attribute or the URL ?id= --&gt;
+&lt;next-group-details
+  group-id="1234"
+  return-url="/groups"
+  show-full-address="true"&gt;&lt;/next-group-details&gt;
+
+&lt;script&gt;
+  const w = document.querySelector("next-group-details");
+  w.addEventListener("groupDetailLoaded", (e) =&gt; console.log("Loaded:", e.detail));
+  w.addEventListener("inquirySubmitted", (e) =&gt; console.log("Inquiry sent:", e.detail));
+  w.addEventListener("signupSubmitted", (e) =&gt; console.log("Signed up:", e.detail));
+  w.addEventListener("loginRequired", () =&gt; console.log("Sign in required"));
+  w.addEventListener("groupDetailError", (e) =&gt; console.error(e.detail));
+&lt;/script&gt;</code></pre>
+      </div>
+
+      <div class="setup-card">
+        <div class="card-header">
+          <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="setup-code">__UNIVERSAL_SETUP__</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Classic script runs before the deferred module below, so the SDK's
+       host detection has the API host even though this demo creates its
+       widget element dynamically (no static element to read api-host from). -->
+  <script>
+    window.__nextEmbedApiHost = "__API_HOST__";
+  </script>
+
+  <script type="module">
+    import "./src/index.ts";
+
+    const eventLog = document.getElementById("event-log");
+    function logEvent(type, detail) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.className = "event-entry";
+      entry.innerHTML = `<strong>${timestamp}</strong> - <em>${type}</em>: ${JSON.stringify(detail)}`;
+      eventLog.insertBefore(entry, eventLog.firstChild);
+    }
+
+    function attach(widget) {
+      ["groupDetailLoaded", "inquirySubmitted", "signupSubmitted", "loginRequired", "groupDetailError"]
+        .forEach((evt) => widget.addEventListener(evt, (e) => logEvent(evt, e.detail)));
+    }
+
+    const idInput = document.getElementById("group-id-input");
+
+    function buildWidget(id) {
+      const box = document.querySelector(".demo-box");
+      const old = box.querySelector("next-group-details");
+      if (old) old.remove();
+      const w = document.createElement("next-group-details");
+      w.setAttribute("group-id", String(id));
+      w.setAttribute("return-url", "/demo-group-finder.html");
+      w.setAttribute("show-full-address", "true");
+      w.setAttribute("api-host", "__API_HOST__");
+      box.appendChild(w);
+      attach(w);
+      return w;
+    }
+
+    // Honor the ?id= deep-link from the group-finder; fall back to the input default.
+    const urlId = parseInt(new URLSearchParams(window.location.search).get("id") || "", 10);
+    const initialId = urlId && urlId > 0 ? urlId : parseInt(idInput.value, 10) || 1;
+    idInput.value = String(initialId);
+    buildWidget(initialId);
+    logEvent("info", `Widget initialized with group-id=${initialId}`);
+
+    document.getElementById("reload-btn").addEventListener("click", () => {
+      const id = parseInt(idInput.value, 10);
+      if (!id || id <= 0) return;
+      buildWidget(id);
+      logEvent("info", `Reloaded with group-id=${id}`);
+    });
+
+    // Optional auth: next-user-menu writes the MP token to localStorage on
+    // sign-in/out. Inquiry works anonymously, but when the token changes we
+    // rebuild so sign-up + household members reflect the signed-in contact.
+    let lastAuthToken = localStorage.getItem("mpp-widgets_AuthToken");
+    setInterval(() => {
+      const token = localStorage.getItem("mpp-widgets_AuthToken");
+      if (token === lastAuthToken) return;
+      lastAuthToken = token;
+      logEvent("auth", token ? "Signed in — reloading widget" : "Signed out — reloading widget");
+      const id = parseInt(idInput.value, 10);
+      buildWidget(id && id > 0 ? id : initialId);
+    }, 1000);
+  </script>
+</body>
+</html>

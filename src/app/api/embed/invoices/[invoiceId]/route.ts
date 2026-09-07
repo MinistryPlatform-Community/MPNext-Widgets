@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireWidgetAuth, getCorsHeaders, resolveRequestOrigin, buildOptionsResponse, buildFallbackCorsHeaders } from "@/lib/embed/auth";
+import { getMpUserAccessToken } from "@/lib/embed/embed-session";
 import { InvoiceService } from "@/services/invoiceService";
 
 export async function GET(
@@ -14,7 +15,10 @@ export async function GET(
   const origin = resolveRequestOrigin(req);
 
   try {
-    const claims = await requireWidgetAuth(req, { widget: ["invoices", "user-menu"] });
+    // The invoices tab is rendered inside the next-user-menu modal on any page,
+    // so it rides on whatever page-level token the host issues. Accept any
+    // authenticated widget for the read (still enforces non-public sub).
+    const claims = await requireWidgetAuth(req, { widget: "*" });
 
     if (claims.sub === "public") {
       return NextResponse.json(
@@ -44,7 +48,7 @@ export async function GET(
     const detail = await service.getInvoiceDetail(
       invoiceIdNum,
       user.Contact_ID,
-      claims.mpAccessToken || undefined
+      (await getMpUserAccessToken(claims)) ?? undefined
     );
     if (!detail) {
       return NextResponse.json(

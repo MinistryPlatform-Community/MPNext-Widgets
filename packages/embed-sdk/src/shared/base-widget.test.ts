@@ -14,6 +14,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MPNextWidget } from "./base-widget";
+import { AuthSession } from "./auth-session";
 
 // Concrete test subclass with public hooks into the protected API.
 class TestWidget extends MPNextWidget {
@@ -34,6 +35,9 @@ class TestWidget extends MPNextWidget {
   }
   public callEmit(name: string, detail?: unknown): void {
     (this as unknown as { emit: MPNextWidget["emit"] }).emit(name, detail);
+  }
+  public callRequestLogin(wid: string): void {
+    (this as unknown as { requestLogin: MPNextWidget["requestLogin"] }).requestLogin(wid);
   }
   public getRoot(): ShadowRoot {
     return (this as unknown as { root: ShadowRoot }).root;
@@ -78,6 +82,7 @@ describe("MPNextWidget", () => {
     delete (window as unknown as { __nextTokenProvider?: unknown }).__nextTokenProvider;
     delete (window as unknown as { __nextSDKReady?: unknown }).__nextSDKReady;
     delete (window as unknown as { __nextEmbedApiHost?: unknown }).__nextEmbedApiHost;
+    delete (window as unknown as { __nextAuthSession?: unknown }).__nextAuthSession;
 
     // Clean any leftover SDK script tags inserted by previous tests.
     document.querySelectorAll('script[src*="next-embed"]').forEach((el) => el.remove());
@@ -331,6 +336,67 @@ describe("MPNextWidget", () => {
       expect(ev.detail).toEqual({ id: 42 });
       expect(ev.bubbles).toBe(true);
       expect(ev.composed).toBe(true);
+    });
+  });
+
+  describe("requestLogin()", () => {
+    function spyNavigate() {
+      return vi
+        .spyOn(AuthSession.prototype as unknown as { navigateTo: (u: string) => void }, "navigateTo")
+        .mockImplementation(() => {});
+    }
+    function stubMode(mode: "legacy" | "dual" | "hardened" | null) {
+      vi.spyOn(AuthSession.prototype, "getMode").mockReturnValue(mode);
+    }
+
+    it("dispatches a cancelable, composed, bubbling loginRequired event with { wid }", () => {
+      stubMode("hardened");
+      spyNavigate();
+      const widget = makeWidget();
+      document.body.appendChild(widget);
+      const handler = vi.fn();
+      document.addEventListener("loginRequired", handler as EventListener, { once: true });
+
+      widget.callRequestLogin("event-details");
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const ev = handler.mock.calls[0][0] as CustomEvent;
+      expect(ev.detail).toEqual({ wid: "event-details" });
+      expect(ev.cancelable).toBe(true);
+      expect(ev.bubbles).toBe(true);
+      expect(ev.composed).toBe(true);
+    });
+
+    it("navigates to login in dual/hardened when the event is not prevented", () => {
+      stubMode("dual");
+      const nav = spyNavigate();
+      const widget = makeWidget();
+      document.body.appendChild(widget);
+      widget.callRequestLogin("group-details");
+      expect(nav).toHaveBeenCalledTimes(1);
+      expect(new URL(nav.mock.calls[0][0], "http://localhost").searchParams.get("wid")).toBe("group-details");
+    });
+
+    it("does not navigate when a host listener calls preventDefault()", () => {
+      stubMode("hardened");
+      const nav = spyNavigate();
+      const widget = makeWidget();
+      document.body.appendChild(widget);
+      widget.addEventListener("loginRequired", (e) => e.preventDefault());
+      widget.callRequestLogin("custom-form");
+      expect(nav).not.toHaveBeenCalled();
+    });
+
+    it("never navigates in legacy mode or before the mode is known", () => {
+      const nav = spyNavigate();
+      const widget = makeWidget();
+      document.body.appendChild(widget);
+
+      stubMode("legacy");
+      widget.callRequestLogin("plan-your-visit");
+      stubMode(null);
+      widget.callRequestLogin("plan-your-visit");
+      expect(nav).not.toHaveBeenCalled();
     });
   });
 

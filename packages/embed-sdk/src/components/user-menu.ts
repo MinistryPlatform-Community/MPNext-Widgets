@@ -1,10 +1,10 @@
 import { MPNextWidget } from "../shared/base-widget";
+import type { EmbedAuthMode } from "../shared/auth-session";
 
 interface UserMenuState {
   isDropdownOpen: boolean;
   isModalOpen: boolean;
-  activeTab: "profile" | "family" | "giving" | "subscriptions" | "invoices";
-  scriptsLoaded: boolean;
+  activeTab: "profile" | "family" | "groups" | "giving" | "subscriptions" | "invoices";
 }
 
 interface UserInfo {
@@ -17,6 +17,7 @@ interface UserInfo {
 const TABS = [
   { id: "profile", label: "Profile" },
   { id: "family", label: "Family" },
+  { id: "groups", label: "Groups" },
   { id: "giving", label: "Giving" },
   { id: "subscriptions", label: "Subscriptions" },
   { id: "invoices", label: "Invoices" },
@@ -27,7 +28,6 @@ export class UserMenuWidget extends MPNextWidget {
     isDropdownOpen: false,
     isModalOpen: false,
     activeTab: "profile",
-    scriptsLoaded: false,
   };
 
   private portalEl: HTMLDivElement | null = null;
@@ -35,6 +35,8 @@ export class UserMenuWidget extends MPNextWidget {
   private authPollTimer: ReturnType<typeof setInterval> | null = null;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private isRefreshingToken = false;
+  private tokenRenewalExhausted = false;
+  private mpWidgetsWarned = false;
   private cachedUserInfo: UserInfo | null = null;
   private fetchingUserInfo = false;
   private userInfoFetchExhausted = false;
@@ -50,8 +52,29 @@ export class UserMenuWidget extends MPNextWidget {
   private storageHandler = () => this.render();
   private hashChangeHandler = () => this.checkHashDeepLink();
 
+  // ── Hardened / dual mode state (unused in legacy mode) ─────────
+  /** Resolved auth mode; null until /api/embed/auth/config has been fetched. */
+  private authMode: EmbedAuthMode | null = null;
+  private unsubscribeAuth: (() => void) | null = null;
+  /** Display info from /api/embed/auth/me, keyed by the sid it was fetched for. */
+  private meInfo: UserInfo | null = null;
+  private meSid: string | null = null;
+  private fetchingMe = false;
+  private meExhaustedForSid: string | null = null;
+  private loggingOut = false;
+
   static get observedAttributes() {
-    return ["first-name", "last-name", "email", "image-url", "mp-base-url", "prevent-login-widget", "post-logout-redirect-uri"];
+    return [
+      "first-name",
+      "last-name",
+      "email",
+      "image-url",
+      "mp-base-url",
+      "prevent-login-widget",
+      "post-logout-redirect-uri",
+      "session-scope",
+      "prefer-mp-login",
+    ];
   }
 
   private get mpBaseUrl(): string {
@@ -68,26 +91,65 @@ export class UserMenuWidget extends MPNextWidget {
   }
   private mpBaseUrlWarned = false;
 
-  private get mpWidgetCssUrl(): string {
-    // Prefer hashed URL set by the cache-busting loader
-    if (window.__nextEmbedCSSUrl) {
-      return window.__nextEmbedCSSUrl;
-    }
-    return `${this.apiHost}/embed-sdk/mp-widget-overrides.css`;
-  }
-
   private get shouldPreventLoginWidget(): boolean {
     return this.hasAttribute("prevent-login-widget");
   }
 
+  /** True once the auth mode is known and is `dual` or `hardened`. */
+  private get isHardenedMode(): boolean {
+    return this.authMode === "dual" || this.authMode === "hardened";
+  }
+
+  /**
+   * In `dual` mode with the `prefer-mp-login` attribute, the host keeps using
+   * MP's own <mpp-user-login> (when MPWidgets.js is loaded); the SDK then
+   * silently upgrades the resulting MP token to a server session.
+   */
+  private get shouldUseMpLoginInDual(): boolean {
+    return (
+      this.authMode === "dual" &&
+      this.hasAttribute("prefer-mp-login") &&
+      typeof customElements !== "undefined" &&
+      !!customElements.get("mpp-user-login")
+    );
+  }
+
   private get isAuthenticated(): boolean {
+    if (this.isHardenedMode) return this.authSession.isAuthenticated();
     return this.hasLocalStorageAuth();
   }
 
   /**
-   * Resolve user info from: element attributes → cached userinfo → ID token → sessionStorage
+   * Resolve user info.
+   *   legacy:          element attributes → cached userinfo → ID token → sessionStorage
+   *   dual/hardened:   element attributes → /api/embed/auth/me (cached)
    */
   private getUserInfo(): UserInfo {
+    if (this.isHardenedMode) return this.getUserInfoHardened();
+    return this.getUserInfoLegacy();
+  }
+
+  private getUserInfoHardened(): UserInfo {
+    const attrFirst = this.getAttribute("first-name") || "";
+    const attrLast = this.getAttribute("last-name") || "";
+    if (attrFirst || attrLast) {
+      return {
+        firstName: attrFirst,
+        lastName: attrLast,
+        email: this.getAttribute("email") || "",
+        imageUrl: this.getAttribute("image-url") || "",
+      };
+    }
+    if (this.meInfo) return this.meInfo;
+    return {
+      firstName: "",
+      lastName: "",
+      email: this.getAttribute("email") || "",
+      imageUrl: this.getAttribute("image-url") || "",
+    };
+  }
+
+  private getUserInfoLegacy(): UserInfo {
     const attrFirst = this.getAttribute("first-name") || "";
     const attrLast = this.getAttribute("last-name") || "";
     if (attrFirst || attrLast) {
@@ -194,14 +256,15 @@ export class UserMenuWidget extends MPNextWidget {
         this.fetchingUserInfo = false;
         this.userInfoFetchExhausted = true;
 
-        // If userinfo failed AND we have no ID token claims, the token is invalid
-        // (e.g. MP login widget wrote a partial token before login completed).
-        // Clear tokens and re-render to show the login widget.
-        const user = this.getUserInfo();
-        if (!user.firstName && !user.lastName) {
+        // A failed userinfo fetch (e.g. CORS-blocked cross-origin call to MP, or a
+        // transiently unreachable host) must NOT invalidate an otherwise valid auth
+        // token — doing so bounces the user straight back to the login widget.
+        // Only clear tokens when the auth token is genuinely missing or expired;
+        // otherwise keep the session and render with whatever display name we have.
+        if (this.hasExpiredToken() || !localStorage.getItem("mpp-widgets_AuthToken")) {
           this.clearAllMppTokens();
-          this.render();
         }
+        this.render();
       }
     }
   }
@@ -230,12 +293,50 @@ export class UserMenuWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
+    this.applySessionScope();
+    // Neutral placeholder until the auth mode is known; render() no-ops into
+    // the placeholder while authMode is null.
     this.render();
     document.addEventListener("click", this.documentClickHandler, true);
     document.addEventListener("keydown", this.escapeHandler);
     window.addEventListener("storage", this.storageHandler);
     window.addEventListener("hashchange", this.hashChangeHandler);
+    void this.resolveAuthMode();
+  }
+
+  /**
+   * Discover the auth mode once (legacy on any failure), then do the first real
+   * render. In dual/hardened, re-render whenever the session changes.
+   */
+  private async resolveAuthMode(): Promise<void> {
+    let mode: EmbedAuthMode = "legacy";
+    try {
+      mode = (await this.authSession.getConfig()).mode;
+    } catch {
+      mode = "legacy";
+    }
+    if (!this.isConnected) return;
+    this.authMode = mode;
+    if (mode !== "legacy") {
+      if (!this.unsubscribeAuth) {
+        this.unsubscribeAuth = this.authSession.onChange(() => {
+          if (this.isConnected) this.render();
+        });
+      }
+      // Returned from the OAuth callback: exchange the one-time handoff code
+      // now (60s TTL) rather than waiting for the first widget fetch. The
+      // resulting sid change re-renders us through onChange.
+      if (this.authSession.hasPendingHandoff()) {
+        void this.authSession.getToken("user-menu").catch(() => {});
+      }
+    }
+    this.render();
     this.checkHashDeepLink();
+  }
+
+  private applySessionScope(): void {
+    const scope = this.getAttribute("session-scope");
+    this.authSession.setStorageScope(scope === "tab" ? "tab" : "local");
   }
 
   disconnectedCallback() {
@@ -243,6 +344,10 @@ export class UserMenuWidget extends MPNextWidget {
     document.removeEventListener("keydown", this.escapeHandler);
     window.removeEventListener("storage", this.storageHandler);
     window.removeEventListener("hashchange", this.hashChangeHandler);
+    if (this.unsubscribeAuth) {
+      this.unsubscribeAuth();
+      this.unsubscribeAuth = null;
+    }
     this.stopAuthPoll();
     this.clearExpiryTimer();
     this.clearUserInfoRetry();
@@ -253,7 +358,10 @@ export class UserMenuWidget extends MPNextWidget {
     }
   }
 
-  attributeChangedCallback() {
+  attributeChangedCallback(name?: string) {
+    if (name === "session-scope" && this.isConnected) {
+      this.applySessionScope();
+    }
     if (this.root) {
       this.render();
     }
@@ -284,10 +392,185 @@ export class UserMenuWidget extends MPNextWidget {
   }
 
   render() {
+    if (this.authMode === null) {
+      this.renderPlaceholder();
+      return;
+    }
+    if (this.isHardenedMode) {
+      this.renderHardened();
+      return;
+    }
+    this.renderLegacy();
+  }
+
+  /** Neutral avatar-sized placeholder shown until the auth mode resolves. */
+  private renderPlaceholder() {
+    this.setContent('<span class="nw-placeholder" aria-hidden="true"></span>');
+  }
+
+  /** Replace the widget's Shadow DOM content (creating the wrapper on first use). */
+  private setContent(html: string) {
+    const container = this.root.querySelector(".nw-user-menu") as HTMLElement;
+    if (container) {
+      container.innerHTML = html;
+    } else {
+      const wrapper = document.createElement("div");
+      wrapper.className = "nw-user-menu";
+      wrapper.innerHTML = html;
+      this.root.appendChild(wrapper);
+    }
+  }
+
+  // ── dual / hardened render ───────────────────────────────────
+  //
+  // No mpp-widgets_* writes, no REAUTH, no expiry timer. The server session is
+  // the source of truth: when it ends, the next token mint returns
+  // invalid_session, AuthSession clears the sid and notifies us via onChange.
+
+  private renderHardened() {
+    const authenticated = this.authSession.isAuthenticated();
+    const useMpLogin = !authenticated && this.shouldUseMpLoginInDual;
+
+    if (authenticated) {
+      this.removeLightDOMLogin();
+      this.stopAuthPoll();
+      this.fetchMe();
+      this.fetchAvatarPhoto();
+
+      if (this.pendingDeepLinkTab) {
+        const tab = this.pendingDeepLinkTab;
+        this.pendingDeepLinkTab = null;
+        setTimeout(() => this.openModal(tab), 0);
+      }
+    } else {
+      this.meInfo = null;
+      this.meSid = null;
+      if (this.avatarPhotoUrl) {
+        URL.revokeObjectURL(this.avatarPhotoUrl);
+        this.avatarPhotoUrl = null;
+      }
+      this.fetchingPhoto = false;
+      if (useMpLogin) {
+        this.ensureLightDOMLogin();
+        // MPWidgets.js stores its tokens after the OAuth return; the storage
+        // event is cross-tab only, so a read-only poll picks up the same-tab login.
+        this.startAuthPoll();
+      } else {
+        this.removeLightDOMLogin();
+        this.stopAuthPoll();
+      }
+    }
+
+    let html: string;
+    if (authenticated) {
+      html = this.renderAuthenticated();
+    } else if (useMpLogin || this.shouldPreventLoginWidget) {
+      html = `<slot></slot>`;
+    } else {
+      html = this.renderSignInButton();
+    }
+    this.setContent(html);
+
+    if (authenticated) {
+      this.attachShadowListeners();
+    } else {
+      const btn = this.root.querySelector(".nw-login-btn");
+      if (btn) {
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          // Cancelable `loginRequired` first (host hook), then SDK-driven login.
+          this.requestLogin("user-menu");
+        });
+      }
+    }
+  }
+
+  private renderSignInButton(): string {
+    return `
+      <button class="nw-login-btn" type="button">
+        <svg class="nw-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Sign In
+      </button>
+    `;
+  }
+
+  /** Load display info from /api/embed/auth/me once per sid. */
+  private async fetchMe(): Promise<void> {
+    const sid = this.authSession.getSid();
+    if (!sid) return;
+    if (this.meInfo && this.meSid === sid) return;
+    if (this.fetchingMe || this.meExhaustedForSid === sid) return;
+    this.fetchingMe = true;
+    try {
+      const res = await this.authSession.me("user-menu");
+      if (res.authenticated && res.user) {
+        this.meInfo = {
+          firstName: res.user.firstName || "",
+          lastName: res.user.lastName || "",
+          email: res.user.email || "",
+          imageUrl: "",
+        };
+        this.meSid = sid;
+        this.fetchingMe = false;
+        if (this.isConnected) this.render();
+        return;
+      }
+      this.meExhaustedForSid = sid;
+    } catch {
+      this.meExhaustedForSid = sid;
+    }
+    this.fetchingMe = false;
+  }
+
+  private async handleLogoutHardened(): Promise<void> {
+    if (this.loggingOut) return;
+    this.loggingOut = true;
+    this.closeDropdown();
+    this.closeModal();
+
+    const postLogoutRedirectUri = this.getAttribute("post-logout-redirect-uri") || window.location.href;
+    let endSessionUrl: string | null = null;
+    try {
+      endSessionUrl = await this.authSession.logout({ postLogoutRedirectUri });
+    } catch {
+      endSessionUrl = null;
+    }
+
+    this.meInfo = null;
+    this.meSid = null;
+    this.meExhaustedForSid = null;
+    if (this.avatarPhotoUrl) {
+      URL.revokeObjectURL(this.avatarPhotoUrl);
+      this.avatarPhotoUrl = null;
+    }
+    this.fetchingPhoto = false;
+    this.loggingOut = false;
+
+    // Cancelable — a host page may preventDefault() to handle the redirect itself.
+    const event = new CustomEvent("userLogout", {
+      detail: { endSessionUrl, postLogoutRedirectUri },
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    });
+    const handled = !this.dispatchEvent(event);
+
+    if (!handled && endSessionUrl) {
+      window.location.href = endSessionUrl;
+      return;
+    }
+    this.render();
+  }
+
+  // ── legacy render (unchanged behavior) ───────────────────────
+
+  private renderLegacy() {
     const authenticated = this.isAuthenticated;
 
     // Manage light DOM login widget and userinfo fetch
     if (authenticated) {
+      // Fresh, non-expired session detected — re-arm renewal for the next cycle.
+      this.tokenRenewalExhausted = false;
       this.removeLightDOMLogin();
       this.stopAuthPoll();
       this.scheduleExpiryTimer();
@@ -356,6 +639,24 @@ export class UserMenuWidget extends MPNextWidget {
 
   private ensureLightDOMLogin() {
     if (this.querySelector("mpp-user-login")) return;
+    // We never inject MPWidgets.js — the host church site is expected to load it.
+    // If <mpp-user-login> isn't a registered custom element, MPWidgets.js is
+    // absent, so the element below stays inert (no login button, and the OAuth
+    // return handler that populates mpp-widgets_* won't run). Warn loudly rather
+    // than failing silently. We still append it in case the script loads later.
+    if (
+      typeof customElements !== "undefined" &&
+      !customElements.get("mpp-user-login") &&
+      !this.mpWidgetsWarned
+    ) {
+      this.mpWidgetsWarned = true;
+      console.warn(
+        "[next-user-menu] <mpp-user-login> is not registered — MPWidgets.js does " +
+          "not appear to be loaded on this page. The host site must include it for " +
+          'login to work, e.g. <script id="MPWidgets" ' +
+          'src="<MP_HOST>/widgets/dist/MPWidgets.js"></script>.',
+      );
+    }
     const login = document.createElement("mpp-user-login");
     this.appendChild(login);
   }
@@ -408,38 +709,163 @@ export class UserMenuWidget extends MPNextWidget {
     }
   }
 
+  /**
+   * Renewal ladder, tried in order until one succeeds:
+   *   1. Better Auth session-tokens — works only same-origin to our app/demo.
+   *   2. MP silent REAUTH — replicates MPWidgets.js's own credentialed renew;
+   *      works only when the embed host is same-site to the MP host (the MP SSO
+   *      cookie rides along). The browser blocks it cross-site.
+   * If both fail, tokens are left intact (Layer 0) and the widget renders its
+   * logged-out state; MP's <mpp-user-login> then provides the reactive top-level
+   * SignIn redirect on click (silent if the MP SSO session is still alive).
+   */
   private async handleTokenExpiry(): Promise<void> {
-    if (this.isRefreshingToken) return;
+    // `tokenRenewalExhausted` prevents a tight retry loop: once renewal is
+    // known to be unavailable, render()/authPoll/storage events must not keep
+    // re-invoking this. It is reset when a fresh session is detected (render's
+    // authenticated branch) or on logout.
+    if (this.isRefreshingToken || this.tokenRenewalExhausted) return;
     this.isRefreshingToken = true;
+
+    const renewed =
+      (await this.tryBetterAuthRenewal()) || (await this.attemptSilentReauth());
+
+    this.isRefreshingToken = false;
+    if (renewed) {
+      this.tokenRenewalExhausted = false;
+      this.scheduleExpiryTimer();
+      this.render();
+      return;
+    }
+
+    // No silent path available (cross-site embed, or the MP SSO session ended).
+    //
+    // Do NOT clear MP tokens here. Wiping mpp-widgets_AuthToken / IdToken /
+    // ExpiresAfter destroys the exact precondition MP's own silent renew (the
+    // credentialed state=REAUTH authorize fetch) requires, and forces a fresh
+    // manual login — the "sometimes I have to click twice" bug. Leave them: the
+    // widget renders logged-out because the access token is expired, but the
+    // session markers survive. Tokens clear only on explicit logout or a
+    // confirmed hard 401.
+    this.tokenRenewalExhausted = true;
+    this.render();
+  }
+
+  /**
+   * Layer: same-origin renewal via Better Auth. The session cookie is sent only
+   * with default same-origin credentials, so this succeeds when the widget runs
+   * on our own Next.js origin (app / demo) and no-ops on a cross-origin embed.
+   */
+  private async tryBetterAuthRenewal(): Promise<boolean> {
     try {
       const res = await fetch(`${this.apiHost}/api/auth/session-tokens`);
-      if (res.ok) {
-        const data = await res.json() as {
-          authenticated?: boolean;
-          accessToken?: string;
-          idToken?: string;
-          refreshToken?: string;
-          expiresAt?: number;
-        };
-        if (data.authenticated && data.accessToken) {
-          localStorage.setItem("mpp-widgets_AuthToken", data.accessToken);
-          if (data.idToken) localStorage.setItem("mpp-widgets_IdToken", data.idToken);
-          if (data.refreshToken) localStorage.setItem("mpp-widgets_Refresh", data.refreshToken);
-          if (data.expiresAt) {
-            const d = new Date(data.expiresAt * 1000);
-            localStorage.setItem("mpp-widgets_ExpiresAfter", d.toString());
-          }
-          this.isRefreshingToken = false;
-          this.scheduleExpiryTimer();
-          this.render();
-          return;
-        }
+      if (!res.ok) return false;
+      const data = (await res.json()) as {
+        authenticated?: boolean;
+        accessToken?: string;
+        idToken?: string;
+        refreshToken?: string;
+        expiresAt?: number;
+      };
+      if (data.authenticated && data.accessToken) {
+        this.saveMppTokens(data);
+        return true;
       }
-    } catch {}
-    // Refresh failed or session expired — clear tokens and show login
-    this.isRefreshingToken = false;
-    this.clearAllMppTokens();
-    this.render();
+    } catch {
+      // network/CORS failure — fall through to the next renewal path
+    }
+    return false;
+  }
+
+  /**
+   * Layer 1 — MP silent renew, replicating MPWidgets.js's RefreshTokensAsync:
+   * a credentialed fetch to MP's authorize endpoint in state=REAUTH mode, which
+   * returns fresh tokens as JSON when the MP SSO cookie is present. We rebuild
+   * the request from MP's own /widgets/Api/Auth config (signInUrl, clientId,
+   * scope, redirectUrl, nonce) so we stay blind to the tenant's DNS topology —
+   * the browser decides whether the cookie rides along (same-site) or is blocked
+   * (cross-site, where this returns false and the caller falls back).
+   */
+  private async attemptSilentReauth(): Promise<boolean> {
+    const cfg = await this.getMpAuthConfig();
+    if (!cfg) return false;
+    const url =
+      `${cfg.signInUrl}?response_type=${encodeURIComponent(cfg.responseType)}` +
+      `&scope=${encodeURIComponent(cfg.scope)}` +
+      `&client_id=${encodeURIComponent(cfg.clientId)}` +
+      `&redirect_uri=${encodeURIComponent(cfg.redirectUrl)}` +
+      `&nonce=${encodeURIComponent(cfg.nonce)}` +
+      `&state=REAUTH`;
+    try {
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) return false;
+      // REAUTH mode returns tokens as JSON; a missing cookie yields a login
+      // redirect/HTML instead, so json() throws and we treat it as "no renew".
+      const tok = (await res.json()) as {
+        accessToken?: string;
+        idToken?: string;
+        expiresIn?: number;
+      };
+      if (!tok?.accessToken) return false;
+      this.saveMppTokens(tok);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Fetch MP's widget auth config (signInUrl, clientId, scope, redirectUrl,
+   * nonce) from {mpHost}/widgets/Api/Auth. Returns null if unavailable.
+   */
+  private async getMpAuthConfig(): Promise<{
+    signInUrl: string;
+    responseType: string;
+    scope: string;
+    clientId: string;
+    redirectUrl: string;
+    nonce: string;
+  } | null> {
+    const base = this.mpBaseUrl;
+    if (!base) return null;
+    const root = base.replace(/\/+$/, "").replace(/\/ministryplatformapi$/i, "");
+    try {
+      const res = await fetch(`${root}/widgets/Api/Auth`);
+      if (!res.ok) return null;
+      const cfg = await res.json();
+      if (!cfg?.signInUrl || !cfg?.clientId) return null;
+      return cfg;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Persist tokens in the mpp-widgets_ localStorage keys MP's MPWidgets.js
+   * reads/writes, matching MP's own serialization: raw token strings, and
+   * ExpiresAfter as a Date.toString() (MP applies a 60s safety margin to
+   * expiresIn; we mirror that). Accepts either expiresIn (seconds, REAUTH) or
+   * expiresAt (epoch seconds, Better Auth).
+   */
+  private saveMppTokens(tok: {
+    accessToken?: string;
+    idToken?: string;
+    refreshToken?: string;
+    expiresIn?: number;
+    expiresAt?: number;
+  }): void {
+    if (tok.accessToken) localStorage.setItem("mpp-widgets_AuthToken", tok.accessToken);
+    if (tok.idToken) localStorage.setItem("mpp-widgets_IdToken", tok.idToken);
+    if (tok.refreshToken) localStorage.setItem("mpp-widgets_Refresh", tok.refreshToken);
+    let expiry: Date | null = null;
+    if (typeof tok.expiresIn === "number") {
+      expiry = new Date(Date.now() + (tok.expiresIn - 60) * 1000);
+    } else if (typeof tok.expiresAt === "number") {
+      expiry = new Date(tok.expiresAt * 1000);
+    }
+    if (expiry && !isNaN(expiry.getTime())) {
+      localStorage.setItem("mpp-widgets_ExpiresAfter", expiry.toString());
+    }
   }
 
   private clearUserInfoRetry() {
@@ -549,7 +975,11 @@ export class UserMenuWidget extends MPNextWidget {
     const logoutBtn = this.root.querySelector('[data-action="logout"]');
     if (logoutBtn) {
       logoutBtn.addEventListener("click", () => {
-        this.handleLogout();
+        if (this.isHardenedMode) {
+          void this.handleLogoutHardened();
+        } else {
+          this.handleLogout();
+        }
       });
     }
   }
@@ -597,7 +1027,6 @@ export class UserMenuWidget extends MPNextWidget {
     this.suppressHashChange = false;
 
     this.createPortal();
-    this.loadMPWidgets();
 
     this.emit("accountModalOpen", { tab: this.state.activeTab });
   }
@@ -691,15 +1120,24 @@ export class UserMenuWidget extends MPNextWidget {
         </div>`;
       case "family":
         return `<div class="nw-tab-panel" data-panel="family">
-          <mpp-household hideaddhouseholdmember="false" customcss="${this.mpWidgetCssUrl}"></mpp-household>
+          <next-my-household hideaddhouseholdmember="false" api-host="${this.escapeHtml(this.apiHost)}"></next-my-household>
+        </div>`;
+      case "groups":
+        return `<div class="nw-tab-panel" data-panel="groups">
+          <next-my-groups api-host="${this.escapeHtml(this.apiHost)}"></next-my-groups>
         </div>`;
       case "giving": {
         const statementOnTop = this.isTaxSeason();
 
-        const css = this.mpWidgetCssUrl;
-        const statement = `<mpp-my-contribution-statement customcss="${css}"></mpp-my-contribution-statement>`;
-        const giving = `<mpp-my-giving hidesoftcredits="true" customcss="${css}"></mpp-my-giving>`;
-        const pledges = `<mpp-my-pledges hidecancelbutton="true" customcss="${css}"></mpp-my-pledges>`;
+        const host = this.escapeHtml(this.apiHost);
+        // Native statement list + the paperless toggle (the legacy contribution
+        // statement widget bundled both into one), giving history, and pledges.
+        // The entire Giving tab is now native — no legacy MP widgets remain.
+        const statement =
+          `<next-my-contribution-statement api-host="${host}"></next-my-contribution-statement>` +
+          `<next-statement-preferences api-host="${host}"></next-statement-preferences>`;
+        const giving = `<next-my-giving hidesoftcredits="true" api-host="${host}"></next-my-giving>`;
+        const pledges = `<next-my-pledges hidecancelbuttonpledge="true" api-host="${host}"></next-my-pledges>`;
 
         return statementOnTop
           ? `<div class="nw-tab-panel" data-panel="giving">${statement}${giving}${pledges}</div>`
@@ -761,33 +1199,6 @@ export class UserMenuWidget extends MPNextWidget {
     }
   }
 
-  // ── MP Widget Scripts ────────────────────────────────────────
-
-  private loadMPWidgets() {
-    if (this.state.scriptsLoaded || document.getElementById("MPWidgets")) {
-      return;
-    }
-
-    const base = `${this.mpBaseUrl}/widgets/dist`;
-    const scripts = [
-      "MPWidgets.js",
-      "MyGiving.js",
-      "MyPledges.js",
-      "MyContributionStatement.js",
-      "Household.js",
-    ];
-
-    scripts.forEach((file, i) => {
-      const script = document.createElement("script");
-      if (i === 0) script.id = "MPWidgets";
-      script.src = `${base}/${file}`;
-      script.async = true;
-      document.head.appendChild(script);
-    });
-
-    this.state.scriptsLoaded = true;
-  }
-
   // ── Auth Helpers ─────────────────────────────────────────────
 
   private hasLocalStorageAuth(): boolean {
@@ -842,6 +1253,7 @@ export class UserMenuWidget extends MPNextWidget {
     this.cachedUserInfo = null;
     this.deferredRenderDone = false;
     this.userInfoFetchExhausted = false;
+    this.tokenRenewalExhausted = false;
     this.clearUserInfoRetry();
     this.closeDropdown();
     this.closeModal();
@@ -996,6 +1408,43 @@ export class UserMenuWidget extends MPNextWidget {
         width: 16px;
         height: 16px;
         flex-shrink: 0;
+      }
+
+      /* Placeholder while the auth mode resolves */
+      .nw-placeholder {
+        display: inline-block;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: #e5e7eb;
+      }
+
+      /* Own Sign In button (dual / hardened modes) */
+      .nw-login-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 36px;
+        padding: 0 14px;
+        border: none;
+        border-radius: 6px;
+        background: #004C97;
+        color: white;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1;
+        cursor: pointer;
+        outline: none;
+        transition: box-shadow 0.15s, opacity 0.15s;
+      }
+
+      .nw-login-btn:hover {
+        opacity: 0.9;
+      }
+
+      .nw-login-btn:focus-visible {
+        box-shadow: 0 0 0 2px white, 0 0 0 4px #004C97;
       }
     `;
   }

@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MPNext Full Calendar Widget - Demo</title>
+  <!-- MP Widgets base script (provides mpp-user-login used by next-user-menu) -->
+  <script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -233,6 +235,11 @@
       color: #92400e;
       font-weight: 500;
     }
+
+    /* Optional sign-in bar */
+    .auth-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; background: #002855; border-radius: 8px; }
+    .auth-header span { color: white; font-weight: 600; font-size: 16px; }
+    .auth-header .hint { color: #9fb3c8; font-weight: 400; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -243,6 +250,14 @@
     <code class="tag-code">&lt;next-full-calendar&gt;</code>
 
     <div class="space-y">
+      <!-- Optional sign-in. The calendar shows public events and works
+           anonymously; the User Menu is provided for a consistent header.
+           Login is NOT required. -->
+      <div class="auth-header">
+        <span>Sign in <span class="hint">(optional)</span></span>
+        <next-user-menu mp-base-url="__MP_BASE_URL__" api-host="__API_HOST__"></next-user-menu>
+      </div>
+
       <!-- Controls -->
       <div class="controls-card">
         <div class="control-group">
@@ -260,15 +275,6 @@
           <select id="toolbar-toggle">
             <option value="true">Show</option>
             <option value="false">Hide</option>
-          </select>
-        </div>
-        <div class="control-group">
-          <label for="congregation-select">Congregation ID</label>
-          <select id="congregation-select">
-            <option value="">All Campuses</option>
-            <option value="1">Campus 1</option>
-            <option value="2">Campus 2</option>
-            <option value="3">Campus 3</option>
           </select>
         </div>
         <button class="apply-btn" id="apply-filter">Apply</button>
@@ -337,8 +343,7 @@
           <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
           <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
         </div>
-        <pre><code id="setup-code">&lt;!-- Load MPNext Embed SDK (auto-initializes) --&gt;
-&lt;script type="module" src="https://your-host.com/embed-sdk/next-embed.js"&gt;&lt;/script&gt;</code></pre>
+        <pre><code id="setup-code">__UNIVERSAL_SETUP__</code></pre>
       </div>
     </div>
   </div>
@@ -351,7 +356,6 @@
     const statusEl = document.getElementById("status");
     const eventLog = document.getElementById("event-log");
     const mainCalendar = document.getElementById("main-calendar");
-    const congregationSelect = document.getElementById("congregation-select");
     const viewSelect = document.getElementById("view-select");
     const toolbarToggle = document.getElementById("toolbar-toggle");
     const applyBtn = document.getElementById("apply-filter");
@@ -373,18 +377,11 @@
     applyBtn.addEventListener("click", () => {
       const view = viewSelect.value;
       const toolbar = toolbarToggle.value;
-      const congId = congregationSelect.value;
 
       mainCalendar.setAttribute("view", view);
       mainCalendar.setAttribute("show-toolbar", toolbar);
 
-      if (congId) {
-        mainCalendar.setAttribute("congregation-id", congId);
-      } else {
-        mainCalendar.removeAttribute("congregation-id");
-      }
-
-      logEvent("controls", { view, showToolbar: toolbar, congregationId: congId || "all" });
+      logEvent("controls", { view, showToolbar: toolbar });
     });
 
     // Listen to widget events — all calendar instances
@@ -409,6 +406,17 @@
     });
 
     logEvent("info", "Widgets initialized");
+
+    // Optional auth: next-user-menu writes the MP token to localStorage on
+    // sign-in/out. Calendar data is public, so we just log the change — no
+    // reload is needed for this widget.
+    let lastAuthToken = localStorage.getItem("mpp-widgets_AuthToken");
+    setInterval(() => {
+      const token = localStorage.getItem("mpp-widgets_AuthToken");
+      if (token === lastAuthToken) return;
+      lastAuthToken = token;
+      logEvent("auth", token ? "Signed in" : "Signed out");
+    }, 1000);
   </script>
 </body>
 </html>

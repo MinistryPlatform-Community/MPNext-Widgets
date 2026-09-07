@@ -11,7 +11,9 @@ export async function GET(req: NextRequest) {
   const headers = corsHeaders(origin);
 
   try {
-    const claims = await requireWidgetAuth(req, { widget: ["profile", "user-menu"] });
+    // Avatar reads are shared user-menu chrome rendered alongside any widget,
+    // so accept any authenticated widget token (still enforces non-public sub).
+    const claims = await requireWidgetAuth(req, { widget: "*" });
 
     const tenantHeaders = getCorsHeaders(origin);
 

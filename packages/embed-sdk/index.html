@@ -43,6 +43,46 @@
       border-radius: 4px;
       font-size: 13px;
     }
+    /* Auth mode banner (resolved from /api/embed/auth/config) */
+    .auth-mode {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-left: 4px solid #F1BE48;
+      padding: 10px 16px;
+      border-radius: 8px;
+      margin: -16px 0 32px;
+      font-size: 13px;
+      color: #6b7280;
+      line-height: 1.5;
+    }
+    .auth-mode-label {
+      font-weight: 600;
+      color: #002855;
+    }
+    .auth-mode-pill {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 9999px;
+      border: 1px solid #e5e7eb;
+      background: #f3f4f6;
+      color: #2D2926;
+    }
+    .auth-mode-pill[data-mode="legacy"]   { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+    .auth-mode-pill[data-mode="dual"]     { background: #e0f2fe; border-color: #bae6fd; color: #004C97; }
+    .auth-mode-pill[data-mode="hardened"] { background: #ecfdf5; border-color: #d1fae5; color: #047857; }
+    .auth-mode code {
+      background: #f3f4f6;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #004C97;
+    }
     h2 {
       color: #002855;
       margin-bottom: 16px;
@@ -100,9 +140,8 @@
       padding: 2px 10px;
       border-radius: 9999px;
       border: 1px solid;
+      white-space: nowrap;
     }
-    .tag-public { background: #ecfdf5; color: #047857; border-color: #d1fae5; }
-    .tag-auth { background: #faf5ff; color: #7e22ce; border-color: #e9d5ff; }
     .card p {
       font-size: 14px;
       line-height: 1.5;
@@ -172,65 +211,16 @@
       <strong>Prerequisites:</strong> Run <code>pnpm dev</code> in the project root to start the Next.js API backend on port 3000.
     </div>
 
-    <div class="section">
-      <h2>Public</h2>
-      <div class="grid">
-        <a href="/demo-add-to-calendar.html" class="card">
-          <div class="card-top">
-            <h3>Add to Calendar</h3>
-            <span class="card-tag tag-public">Public</span>
-          </div>
-          <p>iCal/calendar export button for a single event.</p>
-          <code>&lt;next-add-to-calendar&gt;</code>
-        </a>
-
-        <a href="/demo-full-calendar.html" class="card">
-          <div class="card-top">
-            <h3>Full Calendar</h3>
-            <span class="card-tag tag-public">Public</span>
-          </div>
-          <p>Multi-view calendar with month, week, list, cards, and mini-cal views.</p>
-          <code>&lt;next-full-calendar&gt;</code>
-        </a>
-      </div>
+    <!-- Widget auth mode, as resolved by the API for this page's origin -->
+    <div class="auth-mode" id="auth-mode" role="status">
+      <span class="auth-mode-label">Widget auth mode</span>
+      <span class="auth-mode-pill" id="auth-mode-pill">checking…</span>
+      <span id="auth-mode-note">Set <code>EMBED_AUTH_MODE</code> (legacy | dual | hardened) in <code>.env.local</code>, or override just this origin with <code>EMBED_AUTH_MODE_ORIGINS=http://localhost:5173=dual</code>. See README “Widget Authentication”.</span>
     </div>
 
-    <div class="section">
-      <h2>Authenticated</h2>
-      <div class="grid">
-        <a href="/demo-profile.html" class="card">
-          <div class="card-top">
-            <h3>Profile Editor</h3>
-            <span class="card-tag" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Authenticated</span>
-          </div>
-          <p>Edit user profile fields including name, email, phone, and address.</p>
-          <code>&lt;next-profile&gt;</code>
-        </a>
-
-        <a href="/demo-my-invoices.html" class="card">
-          <div class="card-top">
-            <h3>My Invoices</h3>
-            <span class="card-tag" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Authenticated</span>
-          </div>
-          <p>View and manage user invoices with line item details.</p>
-          <code>&lt;next-my-invoices&gt;</code>
-        </a>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Authentication</h2>
-      <div class="grid">
-        <a href="/demo-user-menu.html" class="card">
-          <div class="card-top">
-            <h3>User Menu</h3>
-            <span class="card-tag tag-auth">Authentication</span>
-          </div>
-          <p>Authentication widget with avatar dropdown and account modal. Deep-link via hash.</p>
-          <code>&lt;next-user-menu&gt;</code>
-        </a>
-      </div>
-    </div>
+    <!-- Widget sections are rendered from the shared @mpnext/types widget registry
+         (packages/types/src/widgets.ts) so this page never drifts from /demo. -->
+    <div id="widget-sections"></div>
 
     <div class="section">
       <div class="code-card">
@@ -251,10 +241,83 @@
         <div class="code-card-header">
           <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
         </div>
-        <pre><code>&lt;!-- Load MPNext Embed SDK (auto-initializes) --&gt;
-&lt;script type="module" src="https://your-host.com/embed-sdk/next-embed.js"&gt;&lt;/script&gt;</code></pre>
+        <pre><code>__UNIVERSAL_SETUP__</code></pre>
       </div>
     </div>
   </div>
+
+  <script type="module">
+    // Widget auth mode banner. The SDK resolves the same endpoint at boot and
+    // falls back to legacy whenever it is unreachable, so mirror that here.
+    (async () => {
+      const pill = document.getElementById("auth-mode-pill");
+      const apiHost = "__API_HOST__";
+      try {
+        const res = await fetch(`${apiHost}/api/embed/auth/config`, { mode: "cors", credentials: "omit" });
+        if (!res.ok) throw new Error(String(res.status));
+        const cfg = await res.json();
+        const mode = ["legacy", "dual", "hardened"].includes(cfg?.mode) ? cfg.mode : null;
+        if (!mode) throw new Error("unknown mode");
+        pill.textContent = mode;
+        pill.dataset.mode = mode;
+        pill.title = `Resolved by ${apiHost}/api/embed/auth/config for ${location.origin}`;
+      } catch {
+        pill.textContent = "legacy (config unavailable)";
+        pill.dataset.mode = "legacy";
+        pill.title = `${apiHost}/api/embed/auth/config did not answer — the SDK falls back to legacy. Is pnpm dev running and this origin in EMBED_ALLOWED_ORIGINS?`;
+      }
+    })();
+
+    // Single source of truth — shared with the Next.js /demo catalog.
+    import { widgetRegistry, widgetCategoryOrder, widgetAccessLevel } from "../types/src/widgets";
+
+    // Badge = access level (Public / Authenticated / Authentication); the
+    // section header carries the finer grouping.
+    const accessColors = {
+      Public: { bg: "#ecfdf5", color: "#047857", border: "#d1fae5" },
+      Authenticated: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+      Authentication: { bg: "#faf5ff", color: "#7e22ce", border: "#e9d5ff" },
+    };
+
+    const container = document.getElementById("widget-sections");
+
+    for (const category of widgetCategoryOrder) {
+      const widgets = widgetRegistry.filter((w) => w.category === category);
+      if (!widgets.length) continue;
+
+      const section = document.createElement("section");
+      section.className = "section";
+
+      const h2 = document.createElement("h2");
+      h2.textContent = category;
+      section.appendChild(h2);
+
+      const grid = document.createElement("div");
+      grid.className = "grid";
+
+      for (const w of widgets) {
+        const access = widgetAccessLevel(w);
+        const c = accessColors[access] || accessColors.Public;
+        const a = document.createElement("a");
+        a.href = `/demo-${w.slug}.html`;
+        a.className = "card";
+        a.innerHTML = `
+          <div class="card-top">
+            <h3></h3>
+            <span class="card-tag" style="background:${c.bg};color:${c.color};border-color:${c.border}"></span>
+          </div>
+          <p></p>
+          <code></code>`;
+        a.querySelector("h3").textContent = w.title;
+        a.querySelector(".card-tag").textContent = access;
+        a.querySelector("p").textContent = w.description;
+        a.querySelector("code").textContent = `<${w.tag}>`;
+        grid.appendChild(a);
+      }
+
+      section.appendChild(grid);
+      container.appendChild(section);
+    }
+  </script>
 </body>
 </html>

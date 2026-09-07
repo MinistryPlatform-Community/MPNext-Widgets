@@ -1,14 +1,10 @@
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { getWidgetsByCategory, type WidgetCategory } from "./_lib/widget-catalog";
+import { widgetCategoryOrder } from "@mpnext/types";
+import { getWidgetsByCategory } from "./_lib/widget-catalog";
 import { DemoCard } from "./_components/demo-card";
 
-const categoryOrder: WidgetCategory[] = [
-  "Public",
-  "Authenticated",
-  "Authentication",
-  "Staff / Admin",
-];
+const categoryOrder = widgetCategoryOrder;
 
 export default async function DemoCatalogPage() {
   const session = await auth.api.getSession({ headers: await headers() });

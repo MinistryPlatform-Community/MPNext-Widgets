@@ -118,7 +118,7 @@ describe('AddToCalendarService', () => {
       expect(mockGetTableRecords).toHaveBeenCalledTimes(3);
       expect(mockGetTableRecords).toHaveBeenNthCalledWith(3, {
         table: 'Addresses',
-        select: 'Address_ID,Address_Line_1,City,State/Region,Postal_Code',
+        select: 'Address_ID,Address_Line_1,City,[State/Region],Postal_Code',
         filter: 'Address_ID = 99',
         top: 1,
       });

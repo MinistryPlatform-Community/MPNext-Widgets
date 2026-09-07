@@ -1,15 +1,18 @@
 import Link from "next/link";
+import { widgetAccessLevel } from "@mpnext/types";
 import type { WidgetConfig } from "../_lib/widget-catalog";
 
-const categoryColors: Record<string, { bg: string; text: string; border: string }> = {
+// Per-card badge reflects the access level (Public / Authenticated /
+// Authentication), not the section grouping.
+const accessColors: Record<string, { bg: string; text: string; border: string }> = {
   Public: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
   Authenticated: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200" },
-  "Staff / Admin": { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
   Authentication: { bg: "bg-purple-50", text: "text-purple-700", border: "border-purple-200" },
 };
 
 export function DemoCard({ widget }: { widget: WidgetConfig }) {
-  const colors = categoryColors[widget.category] ?? categoryColors.Public;
+  const access = widgetAccessLevel(widget);
+  const colors = accessColors[access] ?? accessColors.Public;
 
   return (
     <Link
@@ -23,7 +26,7 @@ export function DemoCard({ widget }: { widget: WidgetConfig }) {
         <span
           className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${colors.bg} ${colors.text} ${colors.border}`}
         >
-          {widget.category}
+          {access}
         </span>
       </div>
       <p className="mb-3 text-sm text-gray-600 line-clamp-2">{widget.description}</p>

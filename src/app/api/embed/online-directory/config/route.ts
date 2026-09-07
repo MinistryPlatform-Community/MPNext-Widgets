@@ -1,0 +1,60 @@
+/**
+ * Search-form configuration for the next-online-directory widget.
+ * GET /api/embed/online-directory/config
+ *   -> { congregations, minimumSearchLength, searchInputTimeout, householdPrefix }
+ *
+ * Authentication + directory access required.
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import {
+  requireWidgetAuth,
+  getCorsHeaders,
+  resolveRequestOrigin,
+  buildOptionsResponse,
+  buildFallbackCorsHeaders,
+} from "@/lib/embed/auth";
+import { OnlineDirectoryService } from "@/services/onlineDirectoryService";
+
+export async function GET(req: NextRequest) {
+  const origin = resolveRequestOrigin(req);
+
+  try {
+    const claims = await requireWidgetAuth(req, { widget: "*" });
+    if (claims.sub === "public") {
+      return NextResponse.json(
+        { error: "Authentication required. Please sign in." },
+        { status: 401, headers: getCorsHeaders(origin) }
+      );
+    }
+
+    const service = await OnlineDirectoryService.getInstance();
+    const user = await service.getUserByGuid(claims.sub);
+    if (!user || !(await service.canAccessDirectory(user.Contact_ID))) {
+      return NextResponse.json(
+        { error: "You do not have access to the directory." },
+        { status: 403, headers: getCorsHeaders(origin) }
+      );
+    }
+
+    const config = await service.getConfig();
+
+    return NextResponse.json(config, {
+      status: 200,
+      headers: { ...getCorsHeaders(origin), "Cache-Control": "private, max-age=300" },
+    });
+  } catch (error) {
+    console.error("Error loading directory configuration:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Internal server error" },
+      {
+        status: error instanceof Error && error.message.includes("Token") ? 403 : 500,
+        headers: buildFallbackCorsHeaders(origin),
+      }
+    );
+  }
+}
+
+export async function OPTIONS(req: NextRequest) {
+  return buildOptionsResponse(req);
+}
