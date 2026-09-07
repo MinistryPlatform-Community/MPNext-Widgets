@@ -27,7 +27,7 @@ match the Node 24 runtime (Vercel runs 24).
 
 | # | File | Risk | Rough size |
 |---|------|------|-----------|
-| 3 | `03-typescript-7.md` | high | half–full day |
+| 3 | `03-typescript-7.md` | **blocked upstream** — attempted 2026-09-07, not merged | wait for TS 7.1 |
 | 7 | `07-fullcalendar-7.md` | medium | needs visual QA |
 | 13 | `13-token-bridge-never-mounts.md` | medium — server sign-out is a no-op today | ~1 hour |
 | 14 | `14-better-auth-no-database.md` | medium — app sessions are lost on any restart | half a day |
@@ -35,6 +35,19 @@ match the Node 24 runtime (Vercel runs 24).
 | 16 | `16-copy-sdk-stale-cleanup.md` | none in prod; misleads local verification | 15 min |
 | 17 | `17-better-auth-vitest5-peer.md` | none — a warning, not a failure | 10 min |
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire | 15 min |
+| 19 | `19-embed-sdk-declarations-never-emitted.md` | none today — nothing imports the package | 20 min |
+
+Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
+do not simply retry it.** The bump itself is clean (0 type errors in all three
+packages, 832/832 tests, identical `tsc --listFiles` programs, a bit-identical SDK
+bundle, `next build` green), but `pnpm lint` fails outright: `typescript-eslint`
+throws `typescript-eslint does not support TS 7.0` at module load inside
+`eslint-config-next`'s import chain. No published or canary `typescript-eslint`
+accepts TS 7 — upstream is targeting TS **7.1**, because TS 7.0 ships no compiler
+API at all. The documented `@typescript/typescript6` side-by-side install makes
+the gate green but leaves `next build` and the IDE on TS 6, so it is not an
+upgrade. See `03-typescript-7.md` for the diagnostics, the measured baselines, and
+the retry criteria. Item 19 was filed from that attempt.
 
 Items 13 and 14 are **not** dependency upgrades. 13 is a pre-existing wiring bug
 found while browser-testing former item 9 on 2026-09-07: `TokenBridge` is not
@@ -47,6 +60,12 @@ peer-dependency warnings left in the tree. 17 was surfaced by item 2 moving to
 `vitest@5`; 18 was surfaced by item 4 moving to `eslint@10`, whose plugin chain
 (`eslint-plugin-react` / `-import` / `-jsx-a11y`, via `eslint-config-next`) still
 peers at ESLint 9. 18 also carries the one workaround item 4 had to add.
+
+Item 19 is not a dependency upgrade either — it was found while inspecting
+`packages/embed-sdk/dist/` during the item 3 attempt: Vite's default
+`emptyOutDir` wipes the declarations tsc emits, so the `dist/index.d.ts` that
+`packages/embed-sdk/package.json` advertises in `types`/`exports` has never
+existed.
 
 Items 15 and 16 are also not dependency upgrades — both were found while doing
 item 10 on 2026-09-07. 15: `dist/atcb.min.js` does not exist in the npm tarball,
@@ -84,6 +103,7 @@ plus a `console.error`), so no sign-in state can bounce between `/demo` and
 pnpm install
 npx tsc --noEmit
 pnpm --filter @mpnext/embed-sdk exec tsc --noEmit
+pnpm --filter @mpnext/types exec tsc --noEmit
 pnpm test:run
 pnpm lint
 pnpm build
