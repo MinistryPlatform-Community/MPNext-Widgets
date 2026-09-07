@@ -40,18 +40,13 @@ so a clean `pnpm install` is not evidence it works. You must actually run `pnpm 
 
 ## Known lint baseline (as of 2026-09-07)
 
-`pnpm lint` = **0 errors, 1 warning**. The one warning is tracked separately in
-`09-token-bridge-lint-warning.md`:
+`pnpm lint` = **0 errors, 0 warnings**. The repo is clean — the last finding
+(`@next/next/no-location-assign-relative-destination` in `token-bridge.tsx`) was
+fixed by former item 9.
 
-```
-src/components/token-bridge/token-bridge.tsx
-  71:9  warning  Do not use `window.location.href` to navigate to internal Next.js pages
-                 @next/next/no-location-assign-relative-destination
-```
-
-If ESLint 10 reports anything beyond that one warning, it's new — triage before merging.
+If ESLint 10 reports **anything at all**, it's new — triage before merging.
 
 ## Done when
 
-Standard verification gate passes, `pnpm lint` still reports 0 errors and no
-warnings other than the tracked one, and both overrides are deleted with a clean audit.
+Standard verification gate passes, `pnpm lint` still reports 0 errors and
+0 warnings, and both overrides are deleted with a clean audit.
