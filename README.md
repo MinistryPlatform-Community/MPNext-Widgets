@@ -239,17 +239,17 @@ Add these authorized redirect URIs where users will be sent after authentication
 
 **Development:**
 ```
-http://localhost:3000/api/auth/oauth2/callback/ministry-platform;
+http://localhost:3000/api/auth/callback/ministryplatform;
 http://localhost:3000/api/embed/auth/callback
 ```
 
 **Production:**
 ```
-https://yourdomain.com/api/auth/oauth2/callback/ministry-platform;
+https://yourdomain.com/api/auth/callback/ministryplatform;
 https://yourdomain.com/api/embed/auth/callback
 ```
 
-> **Important**: The redirect URI must match exactly (including protocol, domain, port, and path). Ministry Platform will reject any OAuth requests with mismatched redirect URIs. The first path uses Better Auth's `genericOAuth` plugin convention (`/api/auth/oauth2/callback/{providerId}`) and signs users into the Next.js app. The second (`/api/embed/auth/callback`) is the **widget** login callback; it is only exercised when `EMBED_AUTH_MODE` (or a per-origin override) is `dual` or `hardened`, but registering it up front costs nothing and is step 1 of the [cutover runbook](#cutover-runbook).
+> **Important**: The redirect URI must match exactly (including protocol, domain, port, and path). Ministry Platform will reject any OAuth requests with mismatched redirect URIs. The first path uses Better Auth's core social-callback convention (`/api/auth/callback/{providerId}`, where `providerId` is `ministryplatform`) and signs users into the Next.js app. The second (`/api/embed/auth/callback`) is the **widget** login callback; it is only exercised when `EMBED_AUTH_MODE` (or a per-origin override) is `dual` or `hardened`, but registering it up front costs nothing and is step 1 of the [cutover runbook](#cutover-runbook).
 
 ##### Post-Logout Redirect URIs (Required)
 Add these URIs where users will be redirected after signing out:
@@ -351,7 +351,7 @@ pnpm dev
 When deploying to production:
 
 1. Update `BETTER_AUTH_URL` to your production domain
-2. Add production redirect URIs (`https://yourdomain.com/api/auth/oauth2/callback/ministry-platform` and `https://yourdomain.com/api/embed/auth/callback`) to the MP OAuth client
+2. Add production redirect URIs (`https://yourdomain.com/api/auth/callback/ministryplatform` and `https://yourdomain.com/api/embed/auth/callback`) to the MP OAuth client
 3. Add production post-logout redirect URIs (the app origin plus every host site origin that uses widget logout)
 4. Add the external host site origin(s) to `EMBED_ALLOWED_ORIGINS`
 5. Ensure all environment variables are set in your hosting provider. For `dual` / `hardened` widget auth also set `EMBED_SESSION_ENC_KEY` and an Upstash session store (`EMBED_SESSION_STORE_URL` / `_TOKEN`); the in-memory store is dev-only

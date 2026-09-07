@@ -24,8 +24,8 @@ function SignInContent() {
           window.location.href = callbackUrl;
           return;
         }
-        await authClient.signIn.oauth2({
-          providerId: "ministry-platform",
+        await authClient.signIn.social({
+          provider: "ministryplatform",
           callbackURL: callbackUrl,
         });
       } catch (err) {
