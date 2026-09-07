@@ -60,9 +60,7 @@
       "defu": ">=6.1.7",
       "minimatch@3>brace-expansion": ">=1.1.18 <2",
       "postcss": ">=8.5.28",
-      "kysely": "^0.28.17",
-      "js-yaml@4": ">=4.3.1 <5",
-      "@humanfs/node": ">=0.16.8"
+      "kysely": "^0.28.17"
     },
     "patchedDependencies": {
       "@better-auth/core@1.7.3": "patches/@better-auth__core@1.7.3.patch"
@@ -82,7 +80,7 @@
     "autoprefixer": "^10.5.5",
     "chalk": "^6.0.0",
     "concurrently": "^10.0.5",
-    "eslint": "^9",
+    "eslint": "^10.10.0",
     "eslint-config-next": "^16.3.4",
     "jsdom": "^30.0.1",
     "playwright": "^1.63.0",
