@@ -15,7 +15,16 @@ export default defineConfig({
     exclude: ['node_modules', '.next', 'e2e', 'playwright-report', 'test-results'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      reporter: ['text', 'json', 'json-summary', 'html'],
+      reportOnFailure: true,
+      // Measure the whole codebase, not just the files the tests happen to
+      // import. Vitest 3+ dropped `coverage.all`, so without an explicit
+      // `include` an untested file is absent from the report rather than
+      // counted as 0% -- which inflates the headline number.
+      include: [
+        'src/**/*.{ts,tsx}',
+        'packages/*/src/**/*.{ts,tsx}',
+      ],
       exclude: [
         'node_modules/',
         '.next/',
@@ -24,13 +33,26 @@ export default defineConfig({
         'test-results/',
         'scripts/',
         'src/test-setup.ts',
+        '**/*.{test,spec}.{ts,tsx}',
         '**/*.d.ts',
         '**/*.config.{ts,js,mjs}',
         'packages/embed-sdk/demo-*.html',
         'src/lib/providers/ministry-platform/models/', // Auto-generated files
         'src/lib/providers/ministry-platform/scripts/', // Generator scripts
-        'packages/types/src/index.ts', // Re-exports only
+        // Type-only modules and re-export barrels: no runtime code to cover.
+        'packages/types/src/index.ts',
+        'src/lib/embed/types.ts',
+        'src/lib/providers/ministry-platform/index.ts',
+        'src/lib/providers/ministry-platform/*/index.ts',
+        'src/lib/providers/ministry-platform/types/**',
+        'src/lib/providers/ministry-platform/auth/types.ts',
+        'src/components/token-bridge/index.ts',
+        // Next.js RSC shells -- JSX wiring only, covered by e2e instead.
+        'src/app/**/layout.tsx',
+        'src/app/providers.tsx',
       ],
+      // Enable once the missing unit tests land, to ratchet instead of drift:
+      // thresholds: { statements: 80, branches: 70, functions: 80, lines: 80 },
     },
   },
   resolve: {
