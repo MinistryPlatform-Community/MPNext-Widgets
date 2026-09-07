@@ -22,6 +22,13 @@ interface CalendarEventData {
 // `FC_VERSION` in full-calendar.ts. Bump deliberately; `latest` is 3.x, but the
 // element config below is schema VERSION:2.0, so stay on the 2.x line.
 const ATCB_VERSION = "2.15.0";
+// Subresource Integrity for the pinned bytes above. BUMPING ATCB_VERSION
+// REQUIRES RECOMPUTING THIS HASH — a stale hash makes the browser refuse the
+// script and this widget silently degrades to the ICS fallback (buttons render,
+// no dropdown). Recompute with:
+//   curl -sL "https://cdn.jsdelivr.net/npm/add-to-calendar-button@<ver>/dist/atcb.min.js" \
+//     | openssl dgst -sha384 -binary | openssl base64 -A
+const ATCB_SRI = "sha384-80vV/KEhBwD5tKGZUNJIP8v35xgzoh4G8XSqB97o794UbhhHRhOfKhrNGPFrhRwY";
 const ATCB_CDN_URL = `https://cdn.jsdelivr.net/npm/add-to-calendar-button@${ATCB_VERSION}/dist/atcb.min.js`;
 
 const BRAND = {
@@ -170,7 +177,7 @@ export class AddToCalendarWidget extends MPNextWidget {
 
       // Try loading the CDN script concurrently with rendering the fallback
       try {
-        await loadScript(ATCB_CDN_URL);
+        await loadScript(ATCB_CDN_URL, ATCB_SRI);
         this.state.cdnLoaded = true;
       } catch {
         // CDN failed — use ICS fallback

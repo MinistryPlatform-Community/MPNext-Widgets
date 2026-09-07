@@ -103,6 +103,57 @@ describe("cdn-loader", () => {
       await expect(promise).resolves.toBeUndefined();
     });
 
+    it("sets integrity and crossOrigin=anonymous when a hash is passed", async () => {
+      const { loadScript } = await loadFresh();
+      const sri = "sha384-80vV/KEhBwD5tKGZUNJIP8v35xgzoh4G8XSqB97o794UbhhHRhOfKhrNGPFrhRwY";
+
+      const promise = loadScript("https://cdn.example.com/pinned.js", sri);
+
+      const scriptEl = document.head.querySelector(
+        'script[src="https://cdn.example.com/pinned.js"]',
+      ) as HTMLScriptElement | null;
+      expect(scriptEl).not.toBeNull();
+      expect(scriptEl!.getAttribute("integrity")).toBe(sri);
+      expect(scriptEl!.getAttribute("crossorigin")).toBe("anonymous");
+
+      scriptEl!.onload?.(new Event("load"));
+      await expect(promise).resolves.toBeUndefined();
+    });
+
+    it("omits integrity and crossOrigin when no hash is passed", async () => {
+      const { loadScript } = await loadFresh();
+
+      const promise = loadScript("https://cdn.example.com/unpinned.js");
+
+      const scriptEl = document.head.querySelector(
+        'script[src="https://cdn.example.com/unpinned.js"]',
+      ) as HTMLScriptElement | null;
+      expect(scriptEl).not.toBeNull();
+      expect(scriptEl!.hasAttribute("integrity")).toBe(false);
+      expect(scriptEl!.hasAttribute("crossorigin")).toBe(false);
+
+      scriptEl!.onload?.(new Event("load"));
+      await expect(promise).resolves.toBeUndefined();
+    });
+
+    it("rejects when an integrity-guarded script fails (hash mismatch fires onerror)", async () => {
+      const { loadScript } = await loadFresh();
+
+      const promise = loadScript(
+        "https://cdn.example.com/tampered.js",
+        "sha384-deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      );
+
+      const scriptEl = document.head.querySelector(
+        'script[src="https://cdn.example.com/tampered.js"]',
+      ) as HTMLScriptElement;
+      scriptEl.onerror?.(new Event("error"));
+
+      await expect(promise).rejects.toThrow(
+        "Failed to load script: https://cdn.example.com/tampered.js",
+      );
+    });
+
     it("treats different URLs as separate cache entries", async () => {
       const { loadScript } = await loadFresh();
 
