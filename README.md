@@ -45,7 +45,7 @@ Embeddable Web Component widgets for [Ministry Platform](https://www.ministrypla
 ## Features
 
 - **Five embeddable widgets**: `next-user-menu`, `next-add-to-calendar`, `next-full-calendar`, `next-profile`, `next-my-invoices` — each a framework-agnostic Web Component rendered in Shadow DOM
-- **Framework-agnostic SDK**: Single `<script type="module">` tag loads `next-embed.es.js`; no React, jQuery, or build tooling required on the host site
+- **Framework-agnostic SDK**: Single `<script type="module">` tag loads `next-embed.js` (the loader); no React, jQuery, or build tooling required on the host site
 - **Hardened widget auth**: Short-lived (5-min) widget JWTs (HS256 via `jose`, `iss`/`aud`, origin-bound) gated by a CORS origin allowlist, with automatic refresh on 401. MP tokens live in an encrypted server session; the browser holds only an opaque, revocable session id. Three server-selected modes (`legacy` / `dual` / `hardened`) let each customer move at their own pace — see [Widget Authentication](#widget-authentication)
 - **Authentication**: Better Auth with Ministry Platform OAuth (via `genericOAuth` plugin) and OIDC RP-initiated logout
 - **Type-Safe API**: Shared `@mpnext/types` package with Zod schemas + TypeScript types used on both sides of the wire

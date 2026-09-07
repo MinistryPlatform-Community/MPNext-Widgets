@@ -50,7 +50,7 @@ Manual widget testing via `pnpm test:widget` (opens http://localhost:5173). Play
 
 ## Widget Architecture
 
-1. External site loads `next-embed.es.js` via `<script type="module">`
+1. External site loads `/embed-sdk/next-embed.js` (the stable loader; it imports the content-hashed `next-embed.<hash>.es.js`) via `<script type="module">`
 2. SDK auto-wires a token provider backed by the page-wide `AuthSession` (`MPNextEmbed.init()` overrides it)
 3. `AuthSession` fetches `GET /api/embed/auth/config` once → mode for this origin (`legacy` on any failure)
 4. Token ladder: `#nw_auth` handoff code → `POST /api/embed/auth/exchange` → `sid` (localStorage `nw_sid`; sessionStorage with `session-scope="tab"`); then `POST /api/embed/session { wid, sid }` → JWT v2; `401 invalid_session` clears the sid. Outside `hardened`, a valid legacy `mpp-widgets_AuthToken` is sent as `mpUserToken` (v1 in `legacy`; silent upgrade to a `sid` in `dual`). Otherwise a public JWT.

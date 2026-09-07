@@ -36,9 +36,9 @@ match the Node 24 runtime (Vercel runs 24).
 | 19 | `19-embed-sdk-declarations-never-emitted.md` | none today — nothing imports the package | 20 min |
 | 20 | `20-fullcalendar-toolbar-toggle-blanks-view.md` | medium — silent blank widget, no error | 30 min |
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
-| 22 | `22-demo-loads-unhashed-sdk-filename.md` | high on a clean deploy — every widget demo 404s the SDK | 30 min |
 | 23 | `23-access-denied-dashboard-link-loops.md` | low — dead-end button | 15 min |
 | 24 | `24-cookie-cache-outlives-signout.md` | low-medium — a replayed cookie authorizes `/demo` for 5 min after sign-out | ~1 hour |
+| 25 | `25-proxy-gates-embed-sdk-assets.md` | high if any host site is off-origin — `/embed-sdk/*` 307s to `/signin` without a session | 20 min |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -102,13 +102,15 @@ than author-published ones. 16: `scripts/copy-sdk.js` never deletes
 pre-content-hashing bundles, so a months-old `next-embed.es.js` sits next to the
 real hashed bundle and makes "did my change land?" greps lie.
 
-Items 22 and 23 are not dependency upgrades either — both were found while doing
-item 13 on 2026-09-07. 22: `/demo/<slug>` injects
-`/embed-sdk/next-embed.es.js`, a filename `hash-sdk.js` stopped emitting, so on
-a clean deploy every widget demo 404s the SDK — it only appears to work locally
-because of the leftover item 16 describes. 23: `AccessDenied`'s "Go to
-Dashboard" button links to `/`, which redirects to `/demo`, which re-renders
-`AccessDenied`.
+Item 23 is not a dependency upgrade either — it was found while doing item 13
+on 2026-09-07: `AccessDenied`'s "Go to Dashboard" button links to `/`, which
+redirects to `/demo`, which re-renders `AccessDenied`.
+
+Item 25 is not a dependency upgrade either — it was found while browser-verifying
+item 22 on 2026-09-07: `src/proxy.ts` neither excludes `/embed-sdk/` from its
+matcher nor lists it as a public prefix, so every unauthenticated request for the
+SDK bundle or its CSS 307s to `/signin`. Same-origin `/demo` pages are unaffected
+(they carry the session cookie), which is why nothing has noticed.
 
 Item 10 (Subresource Integrity on the two pinned CDN scripts) is **done** —
 `loadScript(url, integrity?)` sets `integrity` + `crossorigin="anonymous"`, with
@@ -141,6 +143,15 @@ comes back `defaultPrevented === true`, exactly one `POST /api/auth/logout`,
 `GET /api/auth/get-session` returns `null` afterwards with no server restart in
 between, and the MP end-session redirect still happens. Items 22 and 23 were
 filed from that work.
+
+Item 22 (`/demo/<slug>` loaded `next-embed.es.js`, a filename the build stopped
+emitting) is **done** — `widget-demo.tsx`, the `implementation-code.tsx`
+copy-paste snippet, `README.md` and `CLAUDE.md` all name the stable loader
+`/embed-sdk/next-embed.js` now, and `sdk-loader-reference.test.ts` fails the
+build if any `src/` file or README URL names the unhashed Vite output or a
+hardcoded hash. Verified against a wiped `public/embed-sdk/` + full `pnpm build`:
+loader and hashed bundle both 200 on all five `/demo/<slug>` pages,
+`/embed-sdk/next-embed.es.js` 404s. Item 25 was filed from that verification.
 
 **Standard verification gate** for every branch below:
 
