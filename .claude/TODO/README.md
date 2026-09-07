@@ -27,17 +27,14 @@ match the Node 24 runtime (Vercel runs 24).
 | 4 | `04-eslint-10.md` | medium | 1–3 hours |
 | 7 | `07-fullcalendar-7.md` | medium | needs visual QA |
 | 10 | `10-sri-cdn-scripts.md` | low change, breaks a widget if the hash is wrong | 45 min |
-| 12 | `12-demo-layout-redirect-loop.md` | low | 30 min |
 | 13 | `13-token-bridge-never-mounts.md` | medium — server sign-out is a no-op today | ~1 hour |
 | 14 | `14-better-auth-no-database.md` | medium — app sessions are lost on any restart | half a day |
 
-Items 12, 13 and 14 are **not** dependency upgrades. 12 is a pre-existing bug found
-while live-testing the better-auth 1.7 upgrade (item 5) on 2026-09-07 and
-confirmed against a 1.6.30 baseline. 13 is a pre-existing wiring bug found while
-browser-testing former item 9 on the same day: `TokenBridge` is not mounted on
-any reachable route, so widget sign-out never clears the Better Auth session.
-14 was found while browser-testing item 11 on the same day: Better Auth has no
-`database` configured and silently runs on the in-memory adapter.
+Items 13 and 14 are **not** dependency upgrades. 13 is a pre-existing wiring bug
+found while browser-testing former item 9 on 2026-09-07: `TokenBridge` is not
+mounted on any reachable route, so widget sign-out never clears the Better Auth
+session. 14 was found while browser-testing item 11 on the same day: Better Auth
+has no `database` configured and silently runs on the in-memory adapter.
 
 Item 9 (`no-location-assign-relative-destination` in `token-bridge.tsx`) is
 **done** — `pnpm lint` is now 0 errors, 0 warnings, which is the baseline item 4
@@ -45,8 +42,13 @@ assumes.
 
 Item 11 (`userGuid`/`imageGuid` dropped from the Better Auth session) is
 **done** — populated server-side by `databaseHooks.user.create/update.before`
-in `src/lib/auth.ts`, so `/demo` no longer trips item 12's loop. The loop itself
-is still latent; item 12 remains open.
+in `src/lib/auth.ts`.
+
+Item 12 (`/demo` infinite redirect loop when a session field is missing) is
+**done** — `src/app/(demo)/layout.tsx` now splits "not signed in" (redirect to
+`/signin`) from "signed in but no `userGuid`" (explanatory `AccessDenied` render
+plus a `console.error`), so no sign-in state can bounce between `/demo` and
+`/signin`.
 
 **Standard verification gate** for every branch below:
 
