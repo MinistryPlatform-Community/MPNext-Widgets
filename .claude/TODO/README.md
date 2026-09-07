@@ -38,7 +38,7 @@ match the Node 24 runtime (Vercel runs 24).
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
 | 23 | `23-access-denied-dashboard-link-loops.md` | low — dead-end button | 15 min |
 | 24 | `24-cookie-cache-outlives-signout.md` | low-medium — a replayed cookie authorizes `/demo` for 5 min after sign-out | ~1 hour |
-| 25 | `25-proxy-gates-embed-sdk-assets.md` | high if any host site is off-origin — `/embed-sdk/*` 307s to `/signin` without a session | 20 min |
+| 26 | `26-favicon-and-site-chrome-404.md` | low — cosmetic 404 on every page load | 15 min |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -106,11 +106,19 @@ Item 23 is not a dependency upgrade either — it was found while doing item 13
 on 2026-09-07: `AccessDenied`'s "Go to Dashboard" button links to `/`, which
 redirects to `/demo`, which re-renders `AccessDenied`.
 
-Item 25 is not a dependency upgrade either — it was found while browser-verifying
-item 22 on 2026-09-07: `src/proxy.ts` neither excludes `/embed-sdk/` from its
-matcher nor lists it as a public prefix, so every unauthenticated request for the
-SDK bundle or its CSS 307s to `/signin`. Same-origin `/demo` pages are unaffected
-(they carry the session cookie), which is why nothing has noticed.
+Item 25 (`src/proxy.ts` 307'd every unauthenticated `/embed-sdk/*` request to
+`/signin`, so no external site could ever load the SDK) is **done** —
+`/embed-sdk` is now both a matcher exclusion and a public prefix, the prefix
+allowlist matches on path segments instead of bare `startsWith`, and
+`src/proxy.test.ts` pins the whole boundary in both directions. Verified against
+`pnpm build` + `next start` with no cookies: the loader, the hashed bundle, its
+sourcemap and both stylesheets all 200 with JS/JSON/CSS content-types, a
+`localhost:5173` page renders `next-full-calendar` end-to-end off the
+`localhost:3000` loader, and `/`, `/demo`, `/dashboard` still 307 to `/signin`.
+
+Item 26 is not a dependency upgrade either — it was found while doing item 25 on
+2026-09-07: the root layout points `icons.icon` at `/assets/icons/favicon.ico`,
+which does not exist, so every page load logs a 404.
 
 Item 10 (Subresource Integrity on the two pinned CDN scripts) is **done** —
 `loadScript(url, integrity?)` sets `integrity` + `crossorigin="anonymous"`, with
