@@ -64,6 +64,9 @@
       "undici": ">=7.29.0 <8",
       "js-yaml@4": ">=4.3.1 <5",
       "@humanfs/node": ">=0.16.8"
+    },
+    "patchedDependencies": {
+      "@better-auth/core@1.7.3": "patches/@better-auth__core@1.7.3.patch"
     }
   },
   "devDependencies": {
