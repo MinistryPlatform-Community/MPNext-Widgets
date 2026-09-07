@@ -34,6 +34,7 @@
   },
   "include": [
     "**/*.ts",
+    "**/*.mts",
     "**/*.tsx",
     ".next/types/**/*.ts",
     "next-env.d.ts",

@@ -1,6 +1,8 @@
 # 3. TypeScript 6→7
 
-**Depends on:** #2 (do the test stack first, so test failures aren't ambiguous).
+**Depends on:** #2 — **done** (PR #26). The test stack is now `vitest` +
+`@vitest/coverage-v8` 5.0.0 on `jsdom` 30.0.1, 50 files / 832 tests green, so any
+failure here is TS 7's.
 **Risk:** high. **Size:** half to a full day.
 
 ## Why
@@ -39,6 +41,10 @@ Do not combine with #2 or #4. If the build breaks you want one variable.
 
 - `tsconfig.tsbuildinfo` is checked in at the repo root. Delete it before the
   first TS 7 run so you're not reading a stale incremental cache.
+- The root `tsconfig.json` `include` now carries `**/*.mts` (added in #2 so the
+  renamed `vitest.config.mts` stays in the type-check program — `**/*.ts` does
+  not match `.mts`). If TS 7 changes glob or `.mts` module-resolution behavior,
+  that config file is the canary.
 - Zod 4 schema inference in `@mpnext/types` and `MPHelper`'s generic
   `createTableRecords(..., { schema })` surface — the most inference-heavy code
   in the repo and the most likely place a compiler port changes behavior.
