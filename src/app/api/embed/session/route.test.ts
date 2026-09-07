@@ -325,7 +325,13 @@ describe('POST /api/embed/session', () => {
       expect(body.sid).toBeUndefined();
       const claims = await verifyWidgetToken(body.token);
       expect(claims).toMatchObject({ sub: 'guid-ba', ver: 1, mpAccessToken: 'ba-access' });
-      expect(getSessionMock).toHaveBeenCalledWith({ headers: expect.any(Headers) });
+      // TODO 24: this branch mints a widget JWT and (below) an embed session
+      // with its own TTL, so the app session behind it must be read from the
+      // store, not from a cache cookie a revoked caller could still present.
+      expect(getSessionMock).toHaveBeenCalledWith({
+        headers: expect.any(Headers),
+        query: { disableCookieCache: true },
+      });
     });
 
     it.each(['dual', 'hardened'] as const)(

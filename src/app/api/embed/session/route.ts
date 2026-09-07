@@ -30,7 +30,7 @@ import { checkRateLimit } from "@/lib/embed/rate-limit";
 import { createEmbedSession, getEmbedSession } from "@/lib/embed/embed-session";
 import { fetchMpUserinfo, mapUserinfoToSessionUser } from "@/lib/embed/mp-oauth";
 import type { EmbedAuthMode, SessionRequest, SessionResponse, WidgetClaims } from "@/lib/embed/types";
-import { auth } from "@/lib/auth";
+import { getAuthoritativeSession } from "@/lib/auth-session";
 
 type MintableClaims = Omit<WidgetClaims, "iat" | "exp" | "jti" | "iss" | "aud">;
 
@@ -153,7 +153,10 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Better Auth same-origin session (host app pages)
-    const session = await auth.api.getSession({ headers: req.headers });
+    // Authoritative: what follows mints a widget JWT and opens a server-side
+    // embed session carrying the MP tokens, with its own idle + absolute TTL.
+    // Both outlive this request, so a revoked app session must not reach here.
+    const session = await getAuthoritativeSession(req.headers);
     const accessToken = session?.session?.accessToken ?? null;
     const userGuid = session?.user?.userGuid || "";
 

@@ -37,8 +37,8 @@ match the Node 24 runtime (Vercel runs 24).
 | 20 | `20-fullcalendar-toolbar-toggle-blanks-view.md` | medium — silent blank widget, no error | 30 min |
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
 | 23 | `23-access-denied-dashboard-link-loops.md` | low — dead-end button | 15 min |
-| 24 | `24-cookie-cache-outlives-signout.md` | low-medium — a replayed cookie authorizes `/demo` for 5 min after sign-out | ~1 hour |
 | 26 | `26-favicon-and-site-chrome-404.md` | low — cosmetic 404 on every page load | 15 min |
+| 27 | `27-demo-sign-out-link-404s.md` | low — the demo header's only Sign Out control 404s | 20 min |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -115,6 +115,25 @@ allowlist matches on path segments instead of bare `startsWith`, and
 sourcemap and both stylesheets all 200 with JS/JSON/CSS content-types, a
 `localhost:5173` page renders `next-full-calendar` end-to-end off the
 `localhost:3000` loader, and `/`, `/demo`, `/dashboard` still 307 to `/signin`.
+
+Item 24 (a session cookie captured before sign-out kept authorizing for up to
+`cookieCache.maxAge`) is **done** — the cookie cache is kept as a read
+optimisation but is now bypassed wherever staleness is a security property,
+which is the split better-auth itself makes (`getAuthoritativeSessionFromCtx`
+passes `disableCookieCache: isStateful(ctx)`). `getAuthoritativeSession` /
+`getCachedSession` in `src/lib/auth-session.ts` make the choice explicit, and
+`forceAuthoritativeSessionRead` applies it to `GET /api/auth/get-session` — that
+endpoint turned out to be *worse* than the item's write-up recorded: because
+`customSession` decorates it from the account cookie, a replayed pre-sign-out
+cookie got 200 **with the MP access, refresh and id tokens**. Authoritative now:
+the `(demo)` layout, `/api/auth/session-tokens`, `/api/embed/session`, the
+`get-session` endpoint and `/signin`'s own check. Still cached: the `/demo`
+catalog page's display name and `/api/auth/logout`'s `id_token` read. Cost,
+measured against a loopback Redis: **+1 store GET per gated request** (0 → 1);
+the cached reads stay at 0. Verified in the browser — after sign-out *and* after
+deleting the session row out of band, the replayed cookie gets `null` from
+`get-session`, 401 from `session-tokens`, a public token from `/api/embed/session`
+and a 307 to `/signin` from `/demo`. Item 27 was filed from that verification.
 
 Item 26 is not a dependency upgrade either — it was found while doing item 25 on
 2026-09-07: the root layout points `icons.icon` at `/assets/icons/favicon.ico`,

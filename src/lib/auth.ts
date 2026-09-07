@@ -37,8 +37,16 @@ const options = {
       // find it -- the cache WAS the session. With a shared store the cache is
       // just a read optimisation, and its real cost is revocation lag: a
       // signed-out or revoked session keeps authorizing until the cached
-      // cookie expires. 5 minutes bounds that to the same window as the widget
-      // JWT, at the price of one Redis GET per user per 5 minutes.
+      // cookie expires.
+      //
+      // 5 minutes bounds that for the reads that are still allowed to use the
+      // cache. It is NOT what bounds it for an access decision: every
+      // authorization path goes through `getAuthoritativeSession`
+      // (`src/lib/auth-session.ts`), which passes `disableCookieCache` and so
+      // reads the store, exactly as better-auth's own
+      // `getAuthoritativeSessionFromCtx` / `sensitiveSessionMiddleware` do.
+      // Shortening this further would not have closed that window; bypassing
+      // it where staleness is a security property does (TODO 24).
       maxAge: 60 * 5,
       strategy: "jwt" as const,
     },
@@ -230,7 +238,9 @@ export const auth = betterAuth({
       async ({ user, session }, ctx) => {
         // Surface OAuth tokens from the account cookie onto the session
         // so API routes (session-tokens, embed/session) can access them.
-        // With cookieCache enabled (1hr), this only runs when cache expires.
+        // This runs on every uncached read -- i.e. whenever the cookie cache
+        // has expired, and on every `getAuthoritativeSession` call. It reads a
+        // cookie, not the store, so it adds no round trip.
         let accessToken: string | null = null;
         let refreshToken: string | null = null;
         let idToken: string | null = null;

@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
+import { getAuthoritativeSession } from "@/lib/auth-session";
 
 export async function GET() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  // Authoritative: this route hands the caller live MP access / refresh / id
+  // tokens. A session that has been signed out or revoked must not be able to
+  // collect credentials from the cookie cache on its way out.
+  const session = await getAuthoritativeSession(await headers());
 
   if (!session?.session?.accessToken) {
     return NextResponse.json({ authenticated: false }, { status: 401 });

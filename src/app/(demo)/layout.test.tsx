@@ -95,6 +95,37 @@ describe('DemoLayout access guard', () => {
     consoleError.mockRestore();
   });
 
+  // TODO 24: the gate used to read the cookie cache, so a session cookie
+  // captured before sign-out rendered the whole catalog until the cached JWT
+  // expired (measured: 5 minutes). The guard is only as fresh as its read.
+  it('reads the session store, not the cookie cache', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', userGuid: 'guid-123' },
+    });
+    checkDemoAccess.mockResolvedValue(true);
+
+    await renderLayout();
+
+    expect(getSession).toHaveBeenCalledWith(
+      expect.objectContaining({ query: { disableCookieCache: true } }),
+    );
+  });
+
+  it('refuses a revoked session even when a cache cookie is presented', async () => {
+    // The store is the authority: it says the session is gone, so it is gone,
+    // whatever the replayed cookie claims.
+    getSession.mockResolvedValue(null);
+
+    await expect(
+      renderLayout(),
+    ).rejects.toThrow('NEXT_REDIRECT:/signin?callbackUrl=/demo');
+
+    expect(getSession).toHaveBeenCalledWith(
+      expect.objectContaining({ query: { disableCookieCache: true } }),
+    );
+    expect(checkDemoAccess).not.toHaveBeenCalled();
+  });
+
   it('redirects a signed-out request to /signin with a callbackUrl', async () => {
     getSession.mockResolvedValue(null);
 
