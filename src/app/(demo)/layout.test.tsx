@@ -50,6 +50,13 @@ vi.mock('./demo/_components/mp-widgets-loader', () => ({
   MPWidgetsLoader: () => null,
 }));
 
+// Client component: its behaviour is covered by token-bridge.test.tsx. Here we
+// only care *that* it renders, and exactly once -- it used to be mounted by the
+// unreachable `(app)` layout, which silently disabled server-side sign-out.
+vi.mock('@/components/token-bridge', () => ({
+  TokenBridge: () => <div data-testid="token-bridge" />,
+}));
+
 vi.mock('next/link', () => ({
   default: ({
     href,
@@ -148,6 +155,40 @@ describe('DemoLayout access guard', () => {
     expect(screen.getByTestId('demo-catalog')).toBeTruthy();
     expect(screen.queryByText('Access Denied')).toBeNull();
     expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  // `/demo` is the only page a signed-in user renders (`/` just redirects
+  // here), so this layout is the one place `TokenBridge` can mount -- and it
+  // must mount exactly once, or widget sign-out fires `POST /api/auth/logout`
+  // twice.
+  it('mounts exactly one TokenBridge for a signed-in user with access', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', userGuid: 'guid-123' },
+    });
+    checkDemoAccess.mockResolvedValue(true);
+
+    await renderLayout();
+
+    expect(screen.getAllByTestId('token-bridge')).toHaveLength(1);
+  });
+
+  it('does not mount TokenBridge when access is refused', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'user-1', userGuid: 'guid-123' },
+    });
+    checkDemoAccess.mockResolvedValue(false);
+
+    await renderLayout();
+
+    expect(screen.queryByTestId('token-bridge')).toBeNull();
+  });
+
+  it('does not mount TokenBridge when the session has no userGuid', async () => {
+    getSession.mockResolvedValue({ user: { id: 'user-1' } });
+
+    await renderLayout();
+
+    expect(screen.queryByTestId('token-bridge')).toBeNull();
   });
 
   it('still renders Access Denied for a signed-in user without demo access', async () => {

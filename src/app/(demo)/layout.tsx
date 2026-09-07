@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { SessionProvider } from "@/components/session-provider";
+import { TokenBridge } from "@/components/token-bridge";
 import { checkDemoAccess } from "./demo/_lib/check-demo-access";
 import { AccessDenied } from "./demo/_components/access-denied";
 import { MPWidgetsLoader } from "./demo/_components/mp-widgets-loader";
@@ -59,10 +61,19 @@ export default async function DemoLayout({
   const mpBaseUrl = (process.env.MINISTRY_PLATFORM_BASE_URL || "")
     .replace(/\/ministryplatformapi\/?$/, "");
 
+  // `TokenBridge` mounts here and nowhere else. It is the only layout a
+  // signed-in user actually renders (`/` just redirects here), and it is what
+  // makes widget sign-out end the Better Auth session as well as the MP one:
+  // the bridge cancels `next-user-menu`'s cancelable `userLogout` event and
+  // routes logout through `POST /api/auth/logout`. Mounting a second copy
+  // elsewhere would double that request — keep it to this one place.
   return (
-    <div className="min-h-screen bg-gray-50">
-      <MPWidgetsLoader mpBaseUrl={mpBaseUrl} />
-      {children}
-    </div>
+    <SessionProvider session={session}>
+      <div className="min-h-screen bg-gray-50">
+        <TokenBridge />
+        <MPWidgetsLoader mpBaseUrl={mpBaseUrl} />
+        {children}
+      </div>
+    </SessionProvider>
   );
 }
