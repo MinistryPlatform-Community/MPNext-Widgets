@@ -17,8 +17,12 @@ interface CalendarEventData {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const ATCB_CDN_URL =
-  "https://cdn.jsdelivr.net/npm/add-to-calendar-button@2/dist/atcb.min.js";
+// Pin the exact version -- a floating range (`@2`) lets jsDelivr serve whatever
+// 2.x is current at page load on host sites we do not control. Mirrors
+// `FC_VERSION` in full-calendar.ts. Bump deliberately; `latest` is 3.x, but the
+// element config below is schema VERSION:2.0, so stay on the 2.x line.
+const ATCB_VERSION = "2.15.0";
+const ATCB_CDN_URL = `https://cdn.jsdelivr.net/npm/add-to-calendar-button@${ATCB_VERSION}/dist/atcb.min.js`;
 
 const BRAND = {
   blue: "#004C97",
