@@ -4,6 +4,10 @@ import { customSession } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { getAccountCookie } from "better-auth/cookies";
 import { MPHelper } from "@/lib/providers/ministry-platform";
+import {
+  captureMpProfile,
+  getCapturedMpProfile,
+} from "@/lib/auth-profile-capture";
 import { getEnv } from "@/lib/env";
 
 const mpBaseUrl = getEnv("MINISTRY_PLATFORM_BASE_URL");
@@ -24,6 +28,13 @@ const options = {
   },
   user: {
     additionalFields: {
+      // `input: false` keeps both fields non-writable from the client:
+      // Better Auth's `parseUserInput` rejects them outright on `updateUser`
+      // (FIELD_NOT_ALLOWED). `userGuid` is an authorization input --
+      // `src/app/(demo)/layout.tsx` feeds it to `checkDemoAccess`, which
+      // resolves it to a `dp_Users.User_ID` and checks group membership -- so
+      // a client that could set its own `userGuid` could impersonate another
+      // MP user. They are populated server-side by the `databaseHooks` below.
       userGuid: {
         type: "string" as const,
         required: false,
@@ -33,6 +44,46 @@ const options = {
         type: "string" as const,
         required: false,
         input: false,
+      },
+    },
+  },
+  // Write the MP identity captured in `mapProfileToUser` straight onto the
+  // user record. A `databaseHooks` `before` hook's returned `data` is merged
+  // into the row after `parseAdditionalUserInputFromProviderProfile` has
+  // already stripped every `input: false` field out of the provider profile,
+  // so this is the only place the values survive -- and it is server-side
+  // only, so the fields stay unsettable by a client. Both hooks no-op unless
+  // an MP OAuth profile was captured earlier in the same request, which means
+  // an ordinary `updateUser` call cannot reach them.
+  databaseHooks: {
+    user: {
+      create: {
+        before: async () => {
+          const profile = getCapturedMpProfile();
+          if (!profile) return;
+          return {
+            data: {
+              userGuid: profile.userGuid,
+              imageGuid: profile.imageGuid,
+            },
+          };
+        },
+      },
+      update: {
+        // Refreshes an existing row on every sign-in. Requires
+        // `overrideUserInfo: true` on the provider below -- without it Better
+        // Auth never calls `updateUser` for a returning OAuth user, so a row
+        // created before this fix would keep its NULL `userGuid` forever.
+        before: async () => {
+          const profile = getCapturedMpProfile();
+          if (!profile) return;
+          return {
+            data: {
+              userGuid: profile.userGuid,
+              imageGuid: profile.imageGuid,
+            },
+          };
+        },
       },
     },
   },
@@ -55,6 +106,11 @@ const options = {
           // MP rejects PKCE. Must stay explicit: Better Auth 1.7 flipped the
           // default to true.
           pkce: false,
+          // Re-run the profile mapping (and therefore the `user.update.before`
+          // hook) on every sign-in, not just at sign-up. MP is the source of
+          // truth for name/email, and this is what lets an existing user row
+          // pick up a `userGuid`/`imageGuid` it was created without.
+          overrideUserInfo: true,
           // Better Auth 1.7 drives RP-initiated logout from the discovery
           // document's end_session_endpoint on signOut(). We already hand-roll
           // that in /api/auth/logout, so leave it to us and avoid two redirects.
@@ -97,15 +153,35 @@ const options = {
               emailVerified: true,
             };
           },
+          // Resolves the MP identity for this sign-in and hands it to the
+          // `databaseHooks` above. Returning the fields from here does NOT
+          // work: `parseAdditionalUserInputFromProviderProfile`
+          // (better-auth/db) drops every additional field declared
+          // `input: false` from the provider profile before the user row is
+          // built, which is why `userGuid`/`imageGuid` used to arrive on the
+          // session as `undefined` with nothing logged. Return an empty object
+          // so no `input: false` field is ever offered as input.
           mapProfileToUser: async (profile) => {
-            // Fetch Image_GUID from dp_Users during initial sign-in
+            const userGuid =
+              typeof profile.id === "string" && profile.id.length > 0
+                ? profile.id
+                : null;
+
+            if (!userGuid) {
+              console.error(
+                "mapProfileToUser - MP profile has no subject; userGuid unavailable",
+              );
+              return {};
+            }
+
+            // Fetch Image_GUID from dp_Users during sign-in
             const mp = new MPHelper();
             let imageGuid: string | null = null;
 
             try {
               const records = await mp.getTableRecords<{ Image_GUID: string }>({
                 table: "dp_Users",
-                filter: `User_GUID = '${profile.id}'`,
+                filter: `User_GUID = '${userGuid}'`,
                 select:
                   "Contact_ID_TABLE.dp_fileUniqueId AS Image_GUID",
                 top: 1,
@@ -115,10 +191,9 @@ const options = {
               console.error("mapProfileToUser - Error fetching image GUID:", error);
             }
 
-            return {
-              userGuid: profile.id,
-              imageGuid,
-            } as Record<string, unknown>;
+            captureMpProfile({ userGuid, imageGuid });
+
+            return {};
           },
         },
       ],

@@ -1,6 +1,7 @@
 # 12. `/demo` infinite redirect loop when a session field is missing
 
-**Depends on:** item 11 fixes the current trigger; this item is the failure mode.
+**Depends on:** nothing. Item 11 (now **done**) removed the current trigger;
+this item is the underlying failure mode, still latent.
 **Risk:** low. **Size:** 30 min.
 
 > Found while live-testing item 5 on 2026-09-07. **Pre-existing** — reproduced
@@ -41,9 +42,11 @@ The guard conflates two different states:
 - **signed in, but `userGuid` is missing** → redirecting to `/signin` is a loop,
   because `/signin` sees a valid session and sends the user straight back
 
-Today the second state is always true, because of item 11. But the loop is a
-latent bug in its own right: any future gap in that field reproduces it, and the
-failure mode is a hang with no diagnostic rather than a message.
+Item 11 has since made `userGuid` reliably present, so the loop no longer fires
+on a normal sign-in (it was reproduced on demand during that fix by suppressing
+the field). But the loop is a latent bug in its own right: any future gap in
+that field reproduces it, and the failure mode is a hang with no diagnostic
+rather than a message.
 
 Note `src/proxy.ts` is **not** involved — it early-returns for any path starting
 with `/demo` (`src/proxy.ts:8`), so this is entirely the route group's own guard.
@@ -63,9 +66,10 @@ check — grep for `redirect("/signin` before assuming this is the only one.
 
 ## Testing
 
-- With item 11 unfixed, confirm `/demo` renders an explanatory page instead of
+- With `userGuid` artificially suppressed (item 11 is fixed, so force the
+  field to null), confirm `/demo` renders an explanatory page instead of
   looping.
-- With item 11 fixed, confirm `/demo` renders the catalog normally.
+- Normally, confirm `/demo` renders the catalog.
 - Signed out, confirm `/demo` still redirects to `/signin?callbackUrl=/demo`.
 - Signed in without demo group membership (and `DEMO_PUBLIC_ACCESS` unset),
   confirm `AccessDenied` still renders — that path must not regress.
