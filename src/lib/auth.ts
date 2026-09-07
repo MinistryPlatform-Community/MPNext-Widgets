@@ -9,16 +9,37 @@ import {
   getCapturedMpProfile,
 } from "@/lib/auth-profile-capture";
 import { getEnv } from "@/lib/env";
+import { betterAuthSecondaryStorage } from "@/lib/auth-secondary-storage";
 
 const mpBaseUrl = getEnv("MINISTRY_PLATFORM_BASE_URL");
 
 const options = {
   baseURL: process.env.BETTER_AUTH_URL,
   secret: process.env.BETTER_AUTH_SECRET,
+  // No `database`, on purpose. Better Auth 1.7 serves the entire session path
+  // -- create / find / update / delete / list, with a denormalised copy of the
+  // user row (additional fields included) -- from `secondaryStorage` when one
+  // is set, and never reads the adapter for it. That is what makes a sign-in
+  // outlive a restart or an instance switch, which the in-process memory
+  // adapter could not. The remaining `user` / `account` rows stay ephemeral
+  // and that is correct here; the full argument, with the better-auth source
+  // it rests on, is in `src/lib/auth-secondary-storage.ts`.
+  //
+  // This is the same Upstash Redis the widget sessions use
+  // (`EMBED_SESSION_STORE_URL` / `_TOKEN`); unset, it degrades to the same
+  // in-memory store, which is dev-only.
+  secondaryStorage: betterAuthSecondaryStorage(),
   session: {
     cookieCache: {
       enabled: true,
-      maxAge: 60 * 60, // 1 hour cache
+      // Better Auth's own default. It was 1h while the store was in-process
+      // memory, because a store read was as likely to lose the session as to
+      // find it -- the cache WAS the session. With a shared store the cache is
+      // just a read optimisation, and its real cost is revocation lag: a
+      // signed-out or revoked session keeps authorizing until the cached
+      // cookie expires. 5 minutes bounds that to the same window as the widget
+      // JWT, at the price of one Redis GET per user per 5 minutes.
+      maxAge: 60 * 5,
       strategy: "jwt" as const,
     },
   },

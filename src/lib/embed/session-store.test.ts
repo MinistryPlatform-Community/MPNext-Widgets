@@ -140,6 +140,59 @@ describe('MemorySessionStore', () => {
     });
   });
 
+  describe('generic kv (Better Auth secondaryStorage substrate)', () => {
+    it('round-trips a value under the nw:kv namespace', async () => {
+      await store.kvSet('ba:token-1', '{"session":1}', 60);
+      expect(await store.kvGet('ba:token-1')).toBe('{"session":1}');
+      await store.kvDelete('ba:token-1');
+      expect(await store.kvGet('ba:token-1')).toBeNull();
+    });
+
+    it('does not collide with a session of the same key', async () => {
+      await store.set(makeRecord({ sidHash: 'shared' }), 60);
+      await store.kvSet('shared', 'kv-value', 60);
+      expect((await store.get('shared'))?.origin).toBe('https://example.com');
+      expect(await store.kvGet('shared')).toBe('kv-value');
+    });
+
+    it('expires a value after its ttl', async () => {
+      await store.kvSet('k', 'v', 10);
+      vi.advanceTimersByTime(9_999);
+      expect(await store.kvGet('k')).toBe('v');
+      vi.advanceTimersByTime(2);
+      expect(await store.kvGet('k')).toBeNull();
+    });
+
+    it('stores without expiry when no ttl is given', async () => {
+      await store.kvSet('forever', 'v');
+      vi.advanceTimersByTime(10 * 365 * 24 * 60 * 60 * 1000);
+      expect(await store.kvGet('forever')).toBe('v');
+    });
+
+    it('kvGetDelete reads once and is empty afterwards', async () => {
+      await store.kvSet('once', 'v', 60);
+      expect(await store.kvGetDelete('once')).toBe('v');
+      expect(await store.kvGetDelete('once')).toBeNull();
+    });
+
+    it('kvIncrement counts in a fixed window', async () => {
+      expect(await store.kvIncrement('rl', 10)).toBe(1);
+      expect(await store.kvIncrement('rl', 10)).toBe(2);
+      vi.advanceTimersByTime(9_000);
+      expect(await store.kvIncrement('rl', 10)).toBe(3);
+      // The window is anchored to the first call, so a later increment cannot
+      // extend it -- otherwise a steady caller never resets and never expires.
+      vi.advanceTimersByTime(1_001);
+      expect(await store.kvIncrement('rl', 10)).toBe(1);
+    });
+
+    it('kvIncrement is separate from the embed rate-limit counter', async () => {
+      await store.incr('same', 10);
+      await store.incr('same', 10);
+      expect(await store.kvIncrement('same', 10)).toBe(1);
+    });
+  });
+
   it('exposes size and clear for tests', async () => {
     await store.set(makeRecord(), 60);
     await store.setHandoff('c', { sid: 's', origin: 'o', wid: 'w' }, 60);
@@ -285,6 +338,56 @@ describe('UpstashSessionStore', () => {
       vi.fn(async () => new Response(JSON.stringify({ error: 'WRONGTYPE' }), { status: 200 })),
     );
     await expect(store.get('h')).rejects.toThrow(/WRONGTYPE/);
+  });
+
+  describe('generic kv (Better Auth secondaryStorage substrate)', () => {
+    it('kvSet sends SET with EX, and omits EX when no ttl is given', async () => {
+      const store = new UpstashSessionStore(url, token);
+      responder = () => ({ result: 'OK' });
+      await store.kvSet('ba:tok', 'payload', 300);
+      expect(JSON.parse(String(calls[0].init.body))).toEqual([
+        'SET',
+        'nw:kv:ba:tok',
+        'payload',
+        'EX',
+        300,
+      ]);
+
+      await store.kvSet('ba:tok', 'payload');
+      expect(JSON.parse(String(calls[1].init.body))).toEqual(['SET', 'nw:kv:ba:tok', 'payload']);
+    });
+
+    it('kvGet returns the raw string, or null when absent', async () => {
+      const store = new UpstashSessionStore(url, token);
+      responder = () => ({ result: 'payload' });
+      expect(await store.kvGet('ba:tok')).toBe('payload');
+      expect(JSON.parse(String(calls[0].init.body))).toEqual(['GET', 'nw:kv:ba:tok']);
+
+      responder = () => ({ result: null });
+      expect(await store.kvGet('ba:tok')).toBeNull();
+    });
+
+    it('kvDelete uses DEL and kvGetDelete uses GETDEL', async () => {
+      const store = new UpstashSessionStore(url, token);
+      responder = () => ({ result: 'payload' });
+      await store.kvDelete('ba:tok');
+      expect(JSON.parse(String(calls[0].init.body))).toEqual(['DEL', 'nw:kv:ba:tok']);
+      expect(await store.kvGetDelete('ba:tok')).toBe('payload');
+      expect(JSON.parse(String(calls[1].init.body))).toEqual(['GETDEL', 'nw:kv:ba:tok']);
+    });
+
+    it('kvIncrement pipelines INCR + EXPIRE NX so the window never slides', async () => {
+      const store = new UpstashSessionStore(url, token);
+      responder = (_body, path) => {
+        expect(path).toBe('/pipeline');
+        return [{ result: 4 }, { result: 0 }];
+      };
+      expect(await store.kvIncrement('ba:rl:key', 60)).toBe(4);
+      expect(JSON.parse(String(calls[0].init.body))).toEqual([
+        ['INCR', 'nw:kv:ba:rl:key'],
+        ['EXPIRE', 'nw:kv:ba:rl:key', 60, 'NX'],
+      ]);
+    });
   });
 
   it('never puts the token in the URL', async () => {

@@ -105,6 +105,29 @@ Two layers, used by different surfaces:
 
 The widget flow, its three modes, and the per-customer migration are described in [Widget Authentication](#widget-authentication).
 
+**App session storage.** `betterAuth()` runs with **no `database` adapter, on
+purpose**, and a `secondaryStorage` pointed at the same Upstash Redis the widget
+sessions use (`EMBED_SESSION_STORE_URL` / `EMBED_SESSION_STORE_TOKEN`, wired in
+`src/lib/auth-secondary-storage.ts` under the `nw:kv:ba:*` key prefix). Better
+Auth 1.7 serves the entire session path — create, find, update, delete, list,
+with a denormalised copy of the user row and its additional fields — from
+`secondaryStorage` and never reads the adapter for it, so a sign-in survives a
+restart, a cold start, and a request landing on another serverless instance.
+Rate limiting moves to the same store automatically. Only the `user` and
+`account` rows stay in Better Auth's in-process memory adapter; nothing here
+persists data keyed by the Better Auth `user.id` (`checkDemoAccess` authorises
+on `userGuid`, re-read from MP on every sign-in), so the sole visible effect is
+that a returning user signing in on a cold instance gets a fresh `user.id` —
+sessions already minted stay valid. Anything that needs a durable `user.id`
+needs a real `database` adapter first.
+
+**Set `EMBED_SESSION_STORE_URL` / `_TOKEN` in production even if every widget
+origin is in `legacy` mode** — without them Better Auth falls back to the
+in-memory store and app sign-ins are lost on every restart and not shared
+between instances. `session.cookieCache` is 5 minutes: with a shared store the
+cache is only a read optimisation, and its cost is how long a signed-out
+session keeps authorizing.
+
 ## Prerequisites
 
 - **Node.js**: v20.9 or higher (required by Next.js 16; CI runs on Node 22)
@@ -354,7 +377,7 @@ When deploying to production:
 2. Add production redirect URIs (`https://yourdomain.com/api/auth/callback/ministryplatform` and `https://yourdomain.com/api/embed/auth/callback`) to the MP OAuth client
 3. Add production post-logout redirect URIs (the app origin plus every host site origin that uses widget logout)
 4. Add the external host site origin(s) to `EMBED_ALLOWED_ORIGINS`
-5. Ensure all environment variables are set in your hosting provider. For `dual` / `hardened` widget auth also set `EMBED_SESSION_ENC_KEY` and an Upstash session store (`EMBED_SESSION_STORE_URL` / `_TOKEN`); the in-memory store is dev-only
+5. Ensure all environment variables are set in your hosting provider. **Always set the Upstash session store (`EMBED_SESSION_STORE_URL` / `EMBED_SESSION_STORE_TOKEN`)** — it backs both the Better Auth app session and the widget sessions, and the in-memory fallback is dev-only (users get signed out on every restart and instance switch). For `dual` / `hardened` widget auth also set `EMBED_SESSION_ENC_KEY`
 6. Enable HTTPS/SSL certificates
 7. Run `pnpm build` to produce a hashed SDK bundle in `public/embed-sdk/`
 8. Test the complete embed flow against a staging host page before going live
@@ -641,7 +664,7 @@ All JSON routes send CORS headers for allowed origins and never log token materi
 | `POST /api/embed/auth/logout` `{ sid, postLogoutRedirectUri? }` | Deletes the session (idempotent) → `{ endSessionUrl }` (MP end-session with `id_token_hint`). `postLogoutRedirectUri` must be same-origin with the request origin or it is dropped. |
 | `GET /api/embed/auth/me` (Bearer widget JWT) | `{ authenticated: true, user: { userGuid, firstName, lastName, email, imageGuid } }` for a `sid`-backed token; `{ authenticated: false }` otherwise (401 for public tokens). |
 
-Server-side building blocks live in `src/lib/embed/`: `auth-mode.ts` (mode resolution), `crypto.ts` (AES-256-GCM via WebCrypto, keyed by `EMBED_SESSION_ENC_KEY`), `session-store.ts` (Upstash Redis REST or in-memory; keys `nw:sess:<sha256(sid)>`, `nw:handoff:*`, `nw:lock:*`, `nw:rl:*`), `embed-session.ts` (create/get/delete, handoff codes, refresh under a store lock), `mp-oauth.ts` (authorize/token/userinfo/endsession URLs, PKCE), `rate-limit.ts`.
+Server-side building blocks live in `src/lib/embed/`: `auth-mode.ts` (mode resolution), `crypto.ts` (AES-256-GCM via WebCrypto, keyed by `EMBED_SESSION_ENC_KEY`), `session-store.ts` (Upstash Redis REST or in-memory; keys `nw:sess:<sha256(sid)>`, `nw:handoff:*`, `nw:lock:*`, `nw:rl:*`, and a generic `nw:kv:*` namespace the Better Auth app session borrows), `embed-session.ts` (create/get/delete, handoff codes, refresh under a store lock), `mp-oauth.ts` (authorize/token/userinfo/endsession URLs, PKCE), `rate-limit.ts`.
 
 ### MP OAuth Client Setup for Widgets
 
@@ -651,7 +674,7 @@ Nothing works in `dual` or `hardened` until the OAuth client referenced by `OIDC
 2. **Post-logout redirect URIs**: add each church site origin that will use widget logout (the widget's `post-logout-redirect-uri`, defaulting to the current page).
 3. **PKCE**: off by default (`EMBED_OAUTH_PKCE=false`, matching the app's Better Auth config). Set `EMBED_OAUTH_PKCE=true` only if the client accepts a `code_challenge`; the flow is otherwise identical.
 4. **Scopes** requested: `openid offline_access http://www.thinkministry.com/dataplatform/scopes/all` (`offline_access` supplies the refresh token that keeps long sessions alive).
-5. **Server secrets**: set `EMBED_SESSION_ENC_KEY` (32 random bytes, base64url — distinct from `EMBED_JWT_SECRET`) and, in production, an Upstash Redis store (`EMBED_SESSION_STORE_URL` / `EMBED_SESSION_STORE_TOKEN`). Without a store URL the host uses an in-memory store that loses sessions on restart and is not shared across serverless instances.
+5. **Server secrets**: set `EMBED_SESSION_ENC_KEY` (32 random bytes, base64url — distinct from `EMBED_JWT_SECRET`) and, in production, an Upstash Redis store (`EMBED_SESSION_STORE_URL` / `EMBED_SESSION_STORE_TOKEN`). Without a store URL the host uses an in-memory store that loses sessions on restart and is not shared across serverless instances. The same store backs the Better Auth app session (`src/lib/auth-secondary-storage.ts`), so it is required in production regardless of the widget auth mode.
 
 ### Host Page API
 
@@ -711,7 +734,7 @@ Per customer, in this order (details in [WIDGET-AUTH-MIGRATION-PLAN.md §4 Phase
 - **`400 { error: "invalid_code" }` on `/auth/exchange`**: the handoff code was already redeemed (two SDK copies on one page), expired (60 s), or the page origin differs from the one that started login.
 - **Signed out but MP signs you straight back in**: the church origin is not in the OAuth client's post-logout redirect URIs, so MP ignores the end-session redirect.
 - **`EMBED_SESSION_ENC_KEY` errors at startup**: the key must decode to exactly 32 bytes of base64url. It is required in production for any non-legacy mode.
-- **Sessions vanish on every deploy**: no `EMBED_SESSION_STORE_URL` — the in-memory store is for development only.
+- **Sessions vanish on every deploy**: no `EMBED_SESSION_STORE_URL` — the in-memory store is for development only. This hits the Better Auth app session too (signed-in users bounced back to `/signin` after a deploy or a cold start), since `src/lib/auth.ts` uses the same store as its `secondaryStorage`.
 
 ## Testing
 

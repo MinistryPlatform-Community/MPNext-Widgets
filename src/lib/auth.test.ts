@@ -61,6 +61,36 @@ function userHooks() {
   return hooks as NonNullable<typeof hooks>;
 }
 
+describe('session store wiring (TODO 14)', () => {
+  it('configures a secondaryStorage so sessions outlive the process', () => {
+    // Without this, betterAuth() falls back to the in-process memory adapter
+    // (better-auth/dist/db/adapter-base.mjs) and a restart, cold start, or
+    // instance switch signs the user out.
+    const storage = options.secondaryStorage;
+    expect(storage).toBeDefined();
+    for (const method of ['get', 'set', 'delete', 'getAndDelete', 'increment'] as const) {
+      expect(storage?.[method]).toBeTypeOf('function');
+    }
+  });
+
+  it('deliberately configures no database adapter', () => {
+    // Better Auth 1.7 serves the whole session path from secondaryStorage, so
+    // the only rows left on the memory adapter are `user` / `account`, which
+    // nothing here persists anything against. See
+    // src/lib/auth-secondary-storage.ts for the full argument -- if this ever
+    // needs to change, that reasoning is what changed.
+    expect(options.database).toBeUndefined();
+  });
+
+  it('caps the cookie cache at 5 minutes, bounding revocation lag', () => {
+    // The cache was 1h while the store was in-process memory (the cache WAS
+    // the session). With a shared store it is only a read optimisation, and
+    // its cost is how long a signed-out session keeps authorizing.
+    expect(options.session?.cookieCache?.enabled).toBe(true);
+    expect(options.session?.cookieCache?.maxAge).toBe(300);
+  });
+});
+
 describe('better-auth user schema: userGuid / imageGuid', () => {
   it('declares both fields non-writable from input', () => {
     const fields = options.user?.additionalFields ?? {};

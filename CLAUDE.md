@@ -99,6 +99,7 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 
 ## Authentication
 
+- **App auth (Better Auth)**: no `database` adapter on purpose; `secondaryStorage` points at the same Upstash Redis as the widget sessions (`src/lib/auth-secondary-storage.ts`, keys `nw:kv:ba:*`). Better Auth 1.7 serves the whole session path from there, so a sign-in survives a restart / cold start / instance switch; `user` + `account` rows stay ephemeral, which is fine because nothing persists data keyed by the Better Auth `user.id`. `session.cookieCache` is 5 min. Set `EMBED_SESSION_STORE_URL` / `_TOKEN` in production even in `legacy` widget mode.
 - **Widget auth**: JWT (jose HS256, `iss`/`aud`, 5-min expiry, `origin` claim must match the request origin) with tenant-based CORS. `requireWidgetAuth(req, { widget: 'name' })` in API routes. Claims `ver: 2` carry an opaque `sid` (server session); `ver: 1` (legacy) carry `mpAccessToken`. Routes only read `claims.sub`; the two that need the user's own MP token call `getMpUserAccessToken(claims)` (`src/lib/embed/embed-session.ts`), which handles both versions and refreshes via MP under a store lock.
 - **Auth mode**: `resolveAuthMode(origin)` (`src/lib/embed/auth-mode.ts`) from `EMBED_AUTH_MODE` (`legacy` default | `dual` | `hardened`) with `EMBED_AUTH_MODE_ORIGINS` per-origin overrides. `legacy`: `mpUserToken` only. `dual`: `sid` or `mpUserToken` (silent upgrade returns a `sid`). `hardened`: `sid` only. Server setting; the SDK discovers it via `GET /api/embed/auth/config`.
 - **Server sessions**: `EmbedSessionRecord` keyed by `sha256(sid)` in `EmbedSessionStore` (Upstash Redis REST via `EMBED_SESSION_STORE_URL`, else in-memory). MP access/refresh/id tokens sealed with AES-256-GCM (`EMBED_SESSION_ENC_KEY`). Sliding idle + absolute TTLs. One-time 60s handoff codes bridge the OAuth callback to the SDK (`#nw_auth` fragment, never a query string).
@@ -127,7 +128,8 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `src/lib/embed/config.ts` | Tenant configs & allowed origins |
 | `src/lib/embed/jwt.ts` | Widget JWT (jose) create/verify + `signStateToken`/`verifyStateToken` for the OAuth state cookie |
 | `src/lib/embed/crypto.ts` | AES-256-GCM `seal`/`open`, `randomToken`, `sha256Hex`, `timingSafeEqualStr` |
-| `src/lib/embed/session-store.ts` | `EmbedSessionStore` interface; `MemorySessionStore`, `UpstashSessionStore`, `getSessionStore()` |
+| `src/lib/embed/session-store.ts` | `EmbedSessionStore` interface; `MemorySessionStore`, `UpstashSessionStore`, `getSessionStore()`; generic `kv*` KV under `nw:kv:` |
+| `src/lib/auth-secondary-storage.ts` | Better Auth `secondaryStorage` over that same store (`nw:kv:ba:*`) -- why the app runs with no `database` adapter |
 | `src/lib/embed/embed-session.ts` | `createEmbedSession`/`getEmbedSession`/`deleteEmbedSession`, handoff codes, `getMpUserAccessToken(claims)` with refresh lock |
 | `src/lib/embed/mp-oauth.ts` | MP OpenID endpoints, `buildAuthorizeUrl`, `exchangeAuthorizationCode`, `fetchMpUserinfo` (60s cache), `buildEndSessionUrl`, PKCE |
 | `src/lib/embed/rate-limit.ts` | `checkRateLimit(key)` fixed 60s window on the session store |
