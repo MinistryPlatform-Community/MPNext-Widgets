@@ -8,7 +8,8 @@
  * - `UpstashSessionStore` — Upstash Redis REST via `fetch`, no SDK dependency.
  *
  * Key layout: `nw:sess:<sidHash>`, `nw:handoff:<codeHash>`, `nw:lock:<key>`,
- * `nw:rl:<key>` (callers append the window start to the rate-limit key).
+ * `nw:rl:<key>` (callers append the window start to the rate-limit key),
+ * `nw:kv:<key>` (generic namespace; see the `kv*` methods).
  */
 
 import type { EmbedSessionRecord } from "./types";
@@ -33,6 +34,25 @@ export interface EmbedSessionStore {
   releaseLock(key: string): Promise<void>;
   // fixed-window counter for rate limiting
   incr(key: string, ttlSeconds: number): Promise<number>;
+  // ---------------------------------------------------------------------
+  // Generic string KV, namespaced under `nw:kv:`. Kept deliberately dumb --
+  // it is the substrate for callers that bring their own key layout and
+  // serialisation, currently Better Auth's `secondaryStorage`
+  // (`src/lib/auth-secondary-storage.ts`). Values are opaque strings; nothing
+  // here parses or validates them.
+  // ---------------------------------------------------------------------
+  /** Value, or null when absent/expired. */
+  kvGet(key: string): Promise<string | null>;
+  /** Store a value. No `ttlSeconds` (or <= 0) means no expiry. */
+  kvSet(key: string, value: string, ttlSeconds?: number): Promise<void>;
+  kvDelete(key: string): Promise<void>;
+  /** Atomic single-use read (GETDEL on redis). */
+  kvGetDelete(key: string): Promise<string | null>;
+  /**
+   * Atomic increment. The key is created at 1 with `ttlSeconds` on first call;
+   * later increments never extend the window (fixed window, like `incr`).
+   */
+  kvIncrement(key: string, ttlSeconds: number): Promise<number>;
 }
 
 const KEY = {
@@ -40,6 +60,7 @@ const KEY = {
   handoff: (codeHash: string) => `nw:handoff:${codeHash}`,
   lock: (key: string) => `nw:lock:${key}`,
   rateLimit: (key: string) => `nw:rl:${key}`,
+  kv: (key: string) => `nw:kv:${key}`,
 } as const;
 
 function ttlMs(ttlSeconds: number): number {
@@ -170,6 +191,45 @@ export class MemorySessionStore implements EmbedSessionStore {
     }
     const next = (parseInt(current, 10) || 0) + 1;
     // Keep the original expiry (fixed window): update value in place.
+    const entry = this.map.get(k);
+    if (entry) entry.value = String(next);
+    return next;
+  }
+
+  async kvGet(key: string): Promise<string | null> {
+    return this.read(KEY.kv(key));
+  }
+
+  async kvSet(key: string, value: string, ttlSeconds?: number): Promise<void> {
+    const k = KEY.kv(key);
+    if (ttlSeconds === undefined || ttlSeconds <= 0) {
+      // No expiry. Mirrors redis `SET` without `EX`.
+      this.map.set(k, { value, expiresAt: Number.POSITIVE_INFINITY });
+      return;
+    }
+    this.write(k, value, ttlSeconds);
+  }
+
+  async kvDelete(key: string): Promise<void> {
+    this.map.delete(KEY.kv(key));
+  }
+
+  async kvGetDelete(key: string): Promise<string | null> {
+    const k = KEY.kv(key);
+    const raw = this.read(k);
+    this.map.delete(k);
+    return raw;
+  }
+
+  async kvIncrement(key: string, ttlSeconds: number): Promise<number> {
+    const k = KEY.kv(key);
+    const current = this.read(k);
+    if (current === null) {
+      this.write(k, "1", ttlSeconds);
+      return 1;
+    }
+    const next = (parseInt(current, 10) || 0) + 1;
+    // Fixed window: keep the original expiry, update the value in place.
     const entry = this.map.get(k);
     if (entry) entry.value = String(next);
     return next;
@@ -305,6 +365,39 @@ export class UpstashSessionStore implements EmbedSessionStore {
     const [count] = await this.pipeline([
       ["INCR", k],
       ["EXPIRE", k, Math.max(1, Math.floor(ttlSeconds))],
+    ]);
+    return typeof count === "number" ? count : parseInt(String(count), 10) || 0;
+  }
+
+  async kvGet(key: string): Promise<string | null> {
+    const raw = await this.command(["GET", KEY.kv(key)]);
+    return typeof raw === "string" ? raw : null;
+  }
+
+  async kvSet(key: string, value: string, ttlSeconds?: number): Promise<void> {
+    const cmd: RedisCommand = ["SET", KEY.kv(key), value];
+    if (ttlSeconds !== undefined && ttlSeconds > 0) {
+      cmd.push("EX", Math.max(1, Math.floor(ttlSeconds)));
+    }
+    await this.command(cmd);
+  }
+
+  async kvDelete(key: string): Promise<void> {
+    await this.command(["DEL", KEY.kv(key)]);
+  }
+
+  async kvGetDelete(key: string): Promise<string | null> {
+    const raw = await this.command(["GETDEL", KEY.kv(key)]);
+    return typeof raw === "string" ? raw : null;
+  }
+
+  async kvIncrement(key: string, ttlSeconds: number): Promise<number> {
+    const k = KEY.kv(key);
+    // NX so the window is anchored to the first increment: a later EXPIRE
+    // would slide the window and let a caller outrun a fixed-window limit.
+    const [count] = await this.pipeline([
+      ["INCR", k],
+      ["EXPIRE", k, Math.max(1, Math.floor(ttlSeconds)), "NX"],
     ]);
     return typeof count === "number" ? count : parseInt(String(count), 10) || 0;
   }

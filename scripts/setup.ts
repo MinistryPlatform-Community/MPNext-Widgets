@@ -167,6 +167,26 @@ const ENV_VARS: EnvVar[] = [
   },
   // Optional variables
   {
+    name: 'EMBED_SESSION_STORE_URL',
+    required: false,
+    sensitive: false,
+    description:
+      'Upstash Redis REST URL. Backs BOTH the widget sessions and the Better Auth app session (src/lib/auth.ts secondaryStorage). Unset = in-memory: dev only, sessions die on restart',
+  },
+  {
+    name: 'EMBED_SESSION_STORE_TOKEN',
+    required: false,
+    sensitive: true,
+    description: 'Upstash Redis REST token (required alongside EMBED_SESSION_STORE_URL)',
+  },
+  {
+    name: 'EMBED_SESSION_ENC_KEY',
+    required: false,
+    sensitive: true,
+    description:
+      'AES-256-GCM key (32 bytes, base64url) encrypting MP tokens at rest in the session store; required in production for dual/hardened widget auth',
+  },
+  {
     name: 'NEXT_PUBLIC_MINISTRY_PLATFORM_FILE_URL',
     required: false,
     sensitive: false,
