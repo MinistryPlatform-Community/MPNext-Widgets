@@ -40,7 +40,7 @@ match the Node 24 runtime (Vercel runs 24).
 | 28 | `28-jest-dom-matcher-types-missing.md` | none — a matcher no test can use | 10 min |
 | 30 | `30-demo-auth-mode-banner-always-unavailable.md` | none in prod — misleads local verification | 15 min |
 | 31 | `31-memory-session-store-split-module-graph.md` | dev-experience blocker — cannot sign in locally without a store URL | 15 min-2 h |
-| 32 | `32-full-calendar-double-init-on-view-attribute.md` | low-medium — one leaked FullCalendar per mount | 30 min |
+| 33 | `33-next-env-dts-churn-between-dev-and-build.md` | none in prod — a generated file that dirties the tree | 15 min |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -109,6 +109,31 @@ bound to the in-DOM mount) in both toggle directions on both views, plus a
 six-view `switchView()` round trip; 5 of its 10 tests fail on the unfixed
 component. Verified in the browser on `demo-full-calendar.html` against live MP
 data. Item 32 was filed from that work.
+
+Item 32 (`<next-full-calendar view="grid|week">` constructed two FullCalendars
+and leaked one) is **done** — markup attributes are delivered to
+`attributeChangedCallback` during custom-element *upgrade*, before
+`connectedCallback`, so `view="grid"` ran `switchView()` → `loadFullCalendar()`
+→ `render()` → `initCalendar()` and then `connectedCallback` did the whole thing
+again; `render()` replaced the mount the first instance was bound to, and
+`destroyCalendar()` could only ever reach `this.calendarInstance`, the survivor.
+Measured in the browser against live MP data on the unfixed component:
+`constructed 2 / live 2 / bound-to-current-mount 1`, and **1 still live after
+the element was removed from the page**. `connectedCallback` is now the single
+initialisation path — `attributeChangedCallback` returns early until it has
+finished (it already read `view` and `show-toolbar` itself), a `finally` opens
+the gate and replays any attribute that changed during the CDN load, and
+`disconnectedCallback` re-arms it so a re-inserted element gets one fresh init.
+The same measurement after the fix: `1 / 1 / 1`, and **0 live after removal**,
+on both `grid` and `week`. `full-calendar.test.ts` grew from 10 to 18 tests and
+its `expectLiveCalendar()` now asserts the live count **globally** rather than
+per-mount, so a leaked orphan fails wherever it is created — 12 of the 18 fail
+on the unfixed component. The other widgets were checked and are **not**
+affected: `base-widget.ts` defines no `attributeChangedCallback` at all, so this
+was never a base-class bug, and every other widget's callback already guards on
+post-load state that is falsy before connection (`this.event` / `this.group` /
+`this.campaign` null, `oldValue !== null`, `!this.loading` with `loading = true`
+initial, `access === "checking"`). Item 33 was filed from that verification.
 
 Items 15 and 16 are also not dependency upgrades — both were found while doing
 item 10 on 2026-09-07. 15: `dist/atcb.min.js` does not exist in the npm tarball,
