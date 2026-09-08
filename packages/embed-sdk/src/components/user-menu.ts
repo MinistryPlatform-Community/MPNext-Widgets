@@ -23,6 +23,14 @@ const TABS = [
   { id: "invoices", label: "Invoices" },
 ] as const;
 
+/**
+ * Cadence and budget for the <mpp-user-login> registration watch
+ * (see `watchMpLoginRegistration`): 300ms x 20 ≈ 6s, comfortably longer than
+ * MPWidgets.js's own DOMContentLoaded work plus the UserLogin.js fetch.
+ */
+const MP_LOGIN_WATCH_INTERVAL_MS = 300;
+const MP_LOGIN_WATCH_MAX_ATTEMPTS = 20;
+
 export class UserMenuWidget extends MPNextWidget {
   private state: UserMenuState = {
     isDropdownOpen: false,
@@ -37,6 +45,9 @@ export class UserMenuWidget extends MPNextWidget {
   private isRefreshingToken = false;
   private tokenRenewalExhausted = false;
   private mpWidgetsWarned = false;
+  private mpLoginWatchTimer: ReturnType<typeof setInterval> | null = null;
+  private mpLoginWatchAttempts = 0;
+  private mpLoginWhenDefinedHooked = false;
   private cachedUserInfo: UserInfo | null = null;
   private fetchingUserInfo = false;
   private userInfoFetchExhausted = false;
@@ -349,6 +360,7 @@ export class UserMenuWidget extends MPNextWidget {
       this.unsubscribeAuth = null;
     }
     this.stopAuthPoll();
+    this.stopMpLoginWatch();
     this.clearExpiryTimer();
     this.clearUserInfoRetry();
     this.destroyPortal();
@@ -644,30 +656,106 @@ export class UserMenuWidget extends MPNextWidget {
   // ── Unauthenticated: MP Login Widget via light DOM + slot ────
 
   private ensureLightDOMLogin() {
-    if (this.querySelector("mpp-user-login")) return;
     // We never inject MPWidgets.js — the host church site is expected to load it.
-    // If <mpp-user-login> isn't a registered custom element, MPWidgets.js is
-    // absent, so the element below stays inert (no login button, and the OAuth
-    // return handler that populates mpp-widgets_* won't run). Warn loudly rather
-    // than failing silently. We still append it in case the script loads later.
-    if (
-      typeof customElements !== "undefined" &&
-      !customElements.get("mpp-user-login") &&
-      !this.mpWidgetsWarned
-    ) {
-      this.mpWidgetsWarned = true;
-      console.warn(
-        "[next-user-menu] <mpp-user-login> is not registered — MPWidgets.js does " +
-          "not appear to be loaded on this page. The host site must include it for " +
-          'login to work, e.g. <script id="MPWidgets" ' +
-          'src="<MP_HOST>/widgets/dist/MPWidgets.js"></script>.',
-      );
+    if (!this.querySelector("mpp-user-login")) {
+      this.appendChild(document.createElement("mpp-user-login"));
     }
-    const login = document.createElement("mpp-user-login");
-    this.appendChild(login);
+    this.watchMpLoginRegistration();
+  }
+
+  /**
+   * Make sure MPWidgets.js actually upgrades the <mpp-user-login> we appended.
+   *
+   * MPWidgets.js is a *loader*: on its own DOMContentLoaded handler it scans the
+   * document for the widget tags it knows and only then fetches the per-widget
+   * bundle (`/widgets/dist/UserLogin.js`) that calls `customElements.define()`.
+   * It re-scans from a MutationObserver on `document`, but installs that
+   * observer *after* the async work in the same handler (a CSRF round-trip to
+   * the MP host), which leaves a ~100ms window where a tag inserted into the
+   * page is seen by neither the initial scan nor the observer.
+   *
+   * We append <mpp-user-login> once `GET /api/embed/auth/config` resolves, which
+   * lands squarely in that window: measured on the demo pages, the append is
+   * ~10ms after DOMContentLoaded and ~100ms before the observer exists, so
+   * UserLogin.js is never fetched, the element never upgrades (0x0, no shadow
+   * root) and there is no Sign In button at all. Nothing recovers on its own,
+   * because `customElements.whenDefined()` never resolves for an element MP has
+   * not been told to load.
+   *
+   * So re-insert the element on a bounded interval until MP registers it: each
+   * re-insertion is a childList mutation, which triggers MP's re-scan the moment
+   * its observer is live. `whenDefined` then ends the watch and re-renders.
+   */
+  private watchMpLoginRegistration() {
+    if (typeof customElements === "undefined") return;
+    if (customElements.get("mpp-user-login")) return;
+    if (this.mpLoginWatchTimer) return;
+
+    if (!this.mpLoginWhenDefinedHooked) {
+      this.mpLoginWhenDefinedHooked = true;
+      customElements
+        .whenDefined("mpp-user-login")
+        .then(() => {
+          this.stopMpLoginWatch();
+          if (this.isConnected) this.render();
+        })
+        .catch(() => {});
+    }
+
+    this.mpLoginWatchAttempts = 0;
+    this.mpLoginWatchTimer = setInterval(() => {
+      if (customElements.get("mpp-user-login")) {
+        this.stopMpLoginWatch();
+        return;
+      }
+      this.mpLoginWatchAttempts += 1;
+      if (this.mpLoginWatchAttempts > MP_LOGIN_WATCH_MAX_ATTEMPTS) {
+        this.stopMpLoginWatch();
+        this.warnMpLoginUnregistered();
+        return;
+      }
+      const login = this.querySelector("mpp-user-login");
+      // Re-appending an existing child moves it to the same position: no visual
+      // change, but it produces the childList mutation MP's re-scan needs.
+      if (login) this.appendChild(login);
+    }, MP_LOGIN_WATCH_INTERVAL_MS);
+  }
+
+  private stopMpLoginWatch() {
+    if (this.mpLoginWatchTimer) {
+      clearInterval(this.mpLoginWatchTimer);
+      this.mpLoginWatchTimer = null;
+    }
+  }
+
+  /**
+   * Only reached after the watch above has given up, so the message can state
+   * what was actually observed rather than guessing that the script is missing —
+   * a 200 response for MPWidgets.js used to contradict the old warning.
+   */
+  private warnMpLoginUnregistered() {
+    if (this.mpWidgetsWarned) return;
+    this.mpWidgetsWarned = true;
+    const scriptPresent =
+      typeof document !== "undefined" &&
+      !!document.querySelector('script#MPWidgets, script[src*="MPWidgets.js"]');
+    const waited = Math.round((MP_LOGIN_WATCH_INTERVAL_MS * MP_LOGIN_WATCH_MAX_ATTEMPTS) / 1000);
+    console.warn(
+      scriptPresent
+        ? `[next-user-menu] MPWidgets.js is on this page, but it did not register ` +
+            `<mpp-user-login> within ${waited}s, so the MP login widget cannot render. ` +
+            `MPWidgets.js only loads its per-widget bundles for the tags it finds when ` +
+            `it scans the page; check that it loaded successfully and that its host ` +
+            `is reachable.`
+        : `[next-user-menu] <mpp-user-login> was not registered within ${waited}s and no ` +
+            `MPWidgets.js script tag is on this page. The host site must include it for ` +
+            `legacy login to work, e.g. <script id="MPWidgets" ` +
+            `src="<MP_HOST>/widgets/dist/MPWidgets.js"></script>.`,
+    );
   }
 
   private removeLightDOMLogin() {
+    this.stopMpLoginWatch();
     const login = this.querySelector("mpp-user-login");
     if (login) login.remove();
   }

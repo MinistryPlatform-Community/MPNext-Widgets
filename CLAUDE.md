@@ -146,6 +146,17 @@ in the same edit** — a stale hash blocks the script with no visible error.
 
 **MP widget styling**: `public/embed-sdk/mp-widget-overrides.css` injected into MP Shadow DOM widgets via `customcss` attribute. User-menu applies this automatically.
 
+**MPWidgets.js is a loader, not a bundle.** On its own `DOMContentLoaded` handler it
+scans the document for the widget tags it knows, fetches `/widgets/dist/<Widget>.js`
+(the script that calls `customElements.define`) only for the tags it found, and
+installs the `MutationObserver` that re-scans **after** an awaited CSRF round-trip in
+that same handler. A tag inserted between those two is seen by neither, and
+`customElements.whenDefined()` never resolves for it because MP was never told to load
+it. Anything in this repo that injects an `mpp-*` tag after an async step must keep
+poking the DOM until MP registers it -- `watchMpLoginRegistration()` in `user-menu.ts`
+is the reference implementation (re-insert every 300ms, 6s budget, then warn). This is
+not an origin/allowlist matter: MP paints on any origin, `localhost:5173` included.
+
 ## Services (src/services/)
 
 One service per widget domain, all following the same singleton pattern:
@@ -240,7 +251,7 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `packages/embed-sdk/src/shared/base-widget.ts` | Abstract base class (Shadow DOM, token mgmt, fetch, `requestLogin()` → cancelable `loginRequired` then `authSession.login`) |
 | `packages/embed-sdk/src/shared/cdn-loader.ts` | `loadScript(url, integrity?)` -- SRI + `crossOrigin="anonymous"` for the two CDN scripts |
 | `packages/embed-sdk/src/shared/form-validation.ts` | Shared widget form validation (no native `reportValidity` popup) |
-| `packages/embed-sdk/src/components/user-menu.ts` | Mode branches: `legacy` (MPWidgets.js `<mpp-user-login>`, REAUTH) vs `dual`/`hardened` (own Sign In, `/auth/me`, `/auth/logout`) |
+| `packages/embed-sdk/src/components/user-menu.ts` | Mode branches: `legacy` (MPWidgets.js `<mpp-user-login>`, REAUTH) vs `dual`/`hardened` (own Sign In, `/auth/me`, `/auth/logout`). `watchMpLoginRegistration()` re-inserts `<mpp-user-login>` until MPWidgets.js registers it -- see MP widget styling below |
 | `packages/embed-sdk/src/components/full-calendar.ts` | Largest widget; composes the five `full-calendar-*` sub-modules and pins the FullCalendar CDN version + SRI |
 | `packages/embed-sdk/vite.config.ts` | Vite library mode (ES output only) + the canonical customer setup snippet injected into every demo page |
 | `scripts/hash-sdk.js`, `scripts/copy-sdk.js` | Content-hash the SDK bundle and publish it plus the stable `next-embed.js` loader into `public/embed-sdk/` |
