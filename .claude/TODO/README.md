@@ -12,7 +12,7 @@ Also already done (do not redo): `next` 16.3.4, `better-auth` 1.7.3 (item 5,
 PR #20), `chalk` 6.0.0 (item 6), `vite` 8.2.2, `postcss` 8.5.28, all
 `@radix-ui/*`, `jose` 6.2.12, `zod` 4.5.4 (incl. `@mpnext/types`),
 `react`/`react-dom` 19.2.8, `playwright` 1.63.0, `eslint-config-next` 16.3.4,
-FullCalendar CDN pin 6.1.21 (add-to-calendar-button, also pinned under item 8 /
+FullCalendar CDN pin 7.1.0 (item 7; add-to-calendar-button, also pinned under item 8 /
 PR #19, has since been **removed entirely** — see item 15 below), the test stack — `vitest` + `@vitest/coverage-v8` 5.0.0 and `jsdom`
 30.0.1 (item 2, PR #26) — `eslint` 10.10.0 (item 4, PR #27), all four GitHub
 Actions majors, and the `brace-expansion` security override. Three overrides are
@@ -28,12 +28,11 @@ match the Node 24 runtime (Vercel runs 24).
 | # | File | Risk | Rough size |
 |---|------|------|-----------|
 | 3 | `03-typescript-7.md` | **blocked upstream** — attempted 2026-09-07, not merged | wait for TS 7.1 |
-| 7 | `07-fullcalendar-7.md` | **attempted 2026-09-07, not merged** — v7 is a rewrite, not a bump | 1-2 days + a design decision |
 | 17 | `17-better-auth-vitest5-peer.md` | **suppressed 2026-09-08** — warning gone; remove the rule when upstream widens | 5 min to retire |
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire. **Now the sole gate on a warning-free `pnpm install`** | 15 min |
-| 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
 | 37 | `37-playwright-local-network-access-blocks-widget-e2e.md` | none in prod — but every widget E2E run tests a silently de-authenticated widget | 20 min |
 | 38 | `38-mp-widget-overrides-css-never-injected.md` | either MP widgets render unbranded in prod, or the build maintains dead plumbing — read the file, it is one browser check | 30 min to triage |
+| 39 | `39-full-calendar-density-dots-first-paint.md` | none — a decoration that has never rendered on its intended view; decide whether to keep it | 1 hour |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -47,25 +46,125 @@ the gate green but leaves `next build` and the IDE on TS 6, so it is not an
 upgrade. See `03-typescript-7.md` for the diagnostics, the measured baselines, and
 the retry criteria. Item 19 was filed from that attempt.
 
-Item 7 (FullCalendar CDN pin `6.1.21` → `7.1.0`) was **attempted on 2026-09-07
-and abandoned — do not simply retry it.** The mechanical part is solved and
-written down in `07-fullcalendar-7.md`: the global bundle moved
-(`index.global.min.js` 404s; it is `all/global.js` now, with no published
-minified variant) and the recomputed `FC_SRI` is
-`sha384-yWkgABI02aCf8JCYAEQvzSyenUdhkerT0PnFLYOT4ldOYQiZIjZBE0gyAUfNbnRx`.
-`window.FullCalendar` / `new FullCalendar.Calendar()` / the `dayGridMonth` +
-`timeGridWeek` view names all still work, the `temporal-polyfill` peer dep does
-not apply to the global bundle, and **dates are correct** — v7 rendered the same
-wall-clock times as v6 for the same MP rows under `UTC`, `America/New_York` and
-`Australia/Sydney`. What blocks it is styling: v7 bundles **no CSS** (so
-`adoptCalendarStyles()` finds nothing and `grid` renders as unstyled text), the
-theme is a separate plugin script plus three stylesheets, and v7's DOM emits
-**hash-generated class names** (`fc-pp`, `fc-1q`, …) instead of `fc-event` /
-`fc-day-today` / `fc-daygrid-day-frame` — every one of the 23 `.fc-*` brand
-rules in `full-calendar-styles.ts` matches **0 nodes**, and `addDensityDots()`
-silently stops working. 6.x is still maintained; staying on `6.1.21` is the
-right call until someone budgets the port. Items 20 and 21 were filed from that
-attempt.
+Item 7 (FullCalendar CDN pin `6.1.21` → `7.1.0`) is **done (2026-09-08)** — and
+the blocker the 2026-09-07 attempt recorded was a **misdiagnosis**, which is why
+the second attempt is a day's work rather than the rewrite the file predicted.
+
+That attempt loaded `skeleton.css` + `themes/classic/theme.css` +
+`themes/classic/palette.css` into the Shadow DOM and measured "layout returns,
+but no borders, no today highlight, no event chips, no brand colour, no
+now-indicator", concluding that v7 had deleted the styling contract. The real
+cause: `palette.css` declares all 26 theme custom properties on **`:root`**, a
+selector that matches the document root element and therefore **nothing inside a
+shadow tree**, while `theme.css` has no `:root` rule of its own and consumes
+those properties in **67 of its 68 `var()` uses with no fallback**. Every
+variable resolved to nothing, and the five things that vanished are exactly five
+dead variables — `--fc-classic-border`, `-today`, `-event`, `-primary`, `-now`.
+`skeleton.css` has the same problem with its one `:root` block
+(`--fc-popover-z`, `--fc-sticky-header-footer-z`).
+
+So `palette.css` is deliberately **not** loaded. The `:host` block at the top of
+`full-calendar-styles.ts` supplies the whole contract instead, in brand colours,
+which fixes the layout and delivers the palette in one move. It is checked
+complete: the 28 properties the theme reads with no fallback are the 28 the
+block declares, nothing missing and nothing spare.
+
+Three more of the file's findings did not survive contact with the 7.1.0 bundle:
+
+- **`dayCellDidMount` was not removed.** It is still an option
+  (`didMount: options.dayCellDidMount`) and still fires — 42 times on
+  `dayGridMonth`, 7 on `timeGridWeek`. What broke was `addDensityDots()`'s
+  `cell.querySelector(".fc-daygrid-day-frame")`; the hook's `el` is the
+  `role="gridcell"` day cell itself, so the dots now append straight to it,
+  which is both the fix and less fragile than the old lookup. The dots were
+  nonetheless **already absent on first paint under 6.1.21** for an unrelated
+  ordering reason — filed as item 39.
+- **`eventColor` did not become background-only.** The bundle resolves
+  `color: eventUi.color || options.eventColor` for normal events, with a
+  separate `options.backgroundEventColor`. Both `eventColor: "#004C97"` and the
+  per-event `color: getEventColor(...)` work unchanged. (`eventTextColor` ->
+  `eventContrastColor` is a real rename, but this widget never set it.)
+- **Eight of the 21 live `.fc-*` rules were already dead on 6.1.21.** They style
+  FullCalendar's own toolbar — `.fc-toolbar-title`, `.fc-button` and its four
+  states, plus the three `max-width: 600px` overrides — and this widget passes
+  `headerToolbar: false` and renders `.nw-fc-toolbar` itself.
+  `.fc-list-event:hover td` was dead too: the `list` view is
+  `full-calendar-list.ts`, not FullCalendar's. Deleting them was owed regardless
+  of the version.
+
+What was real: v7 emits build-generated class names (`fc-classic-wsy`, `fc-1h`,
+`fc-MA`, ...) that are not a public API, so no `.fc-*` selector survives. The
+brand rules they carried are now variables — today to `--fc-classic-today`,
+event chips and both dot styles to `--fc-classic-event` plus
+`--fc-classic-small/large-dot-width`, the now-indicator line and arrow to
+`--fc-classic-now`, the popover to `--fc-classic-background`/`-border`/`-faint`,
+column headers to `--fc-classic-muted-foreground` — and the chip geometry that
+has no variable (4px radius, hover lift) hangs off `.nw-fc-event`, applied
+through `eventClass`, v7's rename of `eventClassNames`. `view.title` on
+`timeGridWeek` really did collapse from "Sep 6 - 12, 2026" to "September 2026",
+so `datesSet` now builds the week title from `info.start`/`info.end` via
+`formatWeekTitle()`, which also names both months across a month boundary and
+both years across a year boundary; `dayGridMonth`'s title is unchanged and still
+passed through.
+
+The pin went from one URL to **four**, each with its own SRI hash, in
+`FC_ASSETS`: `all/global.js` and `themes/classic/global.js` (ordered — the theme
+is an IIFE that destructures `FullCalendar.Shared` and self-registers into
+`globalPlugins`), then `skeleton.css` and `themes/classic/theme.css`. All four
+jsDelivr responses were verified **byte-identical to the npm tarball's own
+copies**, so none of them repeats item 15's CDN-generated-bytes trap — and
+`all/global.js` is used rather than `all/global.min.js` precisely because v7
+publishes no minified global bundle and jsDelivr would mint one on the fly.
+Item 10's SRI invariant now covers `<link>` as well: `injectExternalCSS()` took
+the `integrity` parameter its docstring had been reserving for "the first real
+caller", and sets `crossOrigin="anonymous"` alongside it for the same reason
+`loadScript` does. `adoptCalendarStyles()` is gone — there is no longer a
+`document.head` `<style>` to clone — and the stylesheet injection moved into
+`loadFullCalendar()`, which is awaited before every `initCalendar()`, so the
+calendar's first paint is styled.
+
+`classic` is the theme, of the five on offer (`classic` / `monarch` / `forma` /
+`breezy` / `pulse`). Because the palette is ours, that choice no longer decides
+the colours — only geometry, typography and density — which is what turned the
+file's "forces a visual-design decision" into a one-constant preference;
+`FC_THEME` and two hashes are the whole cost of changing it.
+
+Verified in the browser against live MP data on `demo-full-calendar.html`, all
+six `ViewType` values, under `UTC`, `America/New_York` and `Australia/Sydney`.
+Both stylesheets load with `integrity` + `crossorigin` and report 100 and 200
+parsed rules (a blocked hash reports none), `window.FullCalendar.version` is
+`7.1.0`, and there is no "Failed to find a valid digest" or "Failed to load
+calendar library." on any view. `grid` renders the full month grid — 610
+characters of shadow text, the same figure `full-calendar.test.ts` records as the
+healthy 6.x baseline — with 13 brand-blue 8px event dots and the today wash;
+`week` renders the time grid with 100 bordered nodes, brand-filled event blocks
+and the coral now-indicator, titled "Sep 6 - 12, 2026". Event times are
+**identical in all three zones** — 9:00am, 6:05pm, 10:00am — matching MP's
+wall-clock values, so the file's "no off-by-one-day regression" finding holds on
+the shipped port. `full-calendar.test.ts` grew from 18 to 23 tests, covering the
+four-asset pin table and its hashes, single-injection of the stylesheets across
+re-inits, the week/grid title split, the day-cell append, and `eventClass`.
+1149/1149 tests, lint clean, `tsc --noEmit` clean, and the four hashes were
+re-grepped out of the freshly content-hashed bundle (item 16).
+
+One deliberate visual delta: today's **day number** no longer gets 6.x's 26px
+white-on-blue circle. The number is rendered inside the day cell with only
+hashed classes, so recovering it would mean taking over `dayCellTopContent` and
+owning day-number rendering (nav links included) permanently. The cell still
+carries the brand `#D6F0FC` wash and `aria-current="date"`, which reads
+unmistakably as today, so the circle was let go rather than paid for with a
+permanent rendering surface. Items 21 and 39 came out of this work.
+
+Item 21 (`demo-full-calendar.html` could not select the `grid` view) is
+**done (2026-09-08)** — `<option value="grid">Grid</option>` was added and the
+six options reordered to match the widget's own toolbar
+(Month / Grid / Week / List / Cards / Calendar), which also fixed the second
+half of the file: the select opened on `cards` while the widget's initial
+`currentView` is `month`, so the control disagreed with the screen until the
+first Apply. `month` is now the selected option, and `#main-calendar` carries no
+`view` attribute, so the two agree on load. `grid` is one of the two views that
+actually mount FullCalendar, and it was driven from the console throughout item
+7's first attempt; it is now selectable from the page.
 
 Item 14 is **not** a dependency upgrade — it was found while browser-testing
 item 11 on 2026-09-07: Better Auth has no `database` configured and silently
@@ -99,11 +198,6 @@ with no `main`/`module`/`types`/`exports`/`files`, `build` is
 and fails if any entry-point field returns without resolving to a file a clean
 build really emits. The shipped bytes are untouched: the bundle content hash is
 `8ed9c4be` before and after, and `public/embed-sdk/` stages the same four files.
-
-Item 21 is not a dependency upgrade either — it was found while browser-testing
-item 7 on 2026-09-07 and reproduces on the shipping `6.1.21` pin: the demo
-page's View `<select>` omits `grid`, one of the two views that actually mount
-FullCalendar.
 
 Item 20 (toggling `show-toolbar` on `grid`/`week` blanked the widget) is
 **done** — `render()` replaces the `#nw-fc-mount` element a live FullCalendar
@@ -197,8 +291,9 @@ contributed was a dropdown over four query-string templates and an `.ics` file.
 `packages/embed-sdk/src/shared/calendar-links.ts` now builds those in-repo
 (Google / Outlook.com / Microsoft 365 / Yahoo URLs + RFC 5545 `.ics`, 51 unit
 tests) and `next-add-to-calendar` renders its own menu. The CDN load, the SRI
-hash and the licence question are all gone; FullCalendar is the only CDN script
-left. Two latent bugs went with it: the widget hardcoded `America/Chicago` (the
+hash and the licence question are all gone; FullCalendar is the only CDN
+dependency left — two scripts and two stylesheets since item 7 (v7 bundles no
+CSS of its own), each with its own hash. Two latent bugs went with it: the widget hardcoded `America/Chicago` (the
 domain zone now ships in the API payload as `Time_Zone`), and its date parser ran
 `new Date(mpWallClock).getUTCHours()`, which shifts by the *browser's* offset on
 any non-UTC visitor.
