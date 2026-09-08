@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AddToCalendarService } from '@/services/addToCalendarService';
 
 const mockGetTableRecords = vi.fn();
+const mockGetMpTimezone = vi.fn<() => Promise<string>>();
 
 vi.mock('@/lib/providers/ministry-platform', () => {
   return {
@@ -11,9 +12,22 @@ vi.mock('@/lib/providers/ministry-platform', () => {
   };
 });
 
+// `domainTimezoneService.ts` instantiates its own singleton (and an MPHelper
+// with it) at module scope, which runs before the MPHelper mock's factory has
+// initialised `mockGetTableRecords`. Mocking the module keeps this suite about
+// the MP reads it is actually testing.
+vi.mock('@/services/domainTimezoneService', () => {
+  return {
+    DomainTimezoneService: {
+      getInstance: () => ({ getMpTimezone: mockGetMpTimezone }),
+    },
+  };
+});
+
 describe('AddToCalendarService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetMpTimezone.mockResolvedValue('America/Chicago');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (AddToCalendarService as any).instance = undefined;
   });
@@ -71,6 +85,7 @@ describe('AddToCalendarService', () => {
         City: null,
         State: null,
         Postal_Code: null,
+        Time_Zone: 'America/Chicago',
       });
     });
 
@@ -133,6 +148,7 @@ describe('AddToCalendarService', () => {
         City: 'Springfield',
         State: 'IL',
         Postal_Code: '62701',
+        Time_Zone: 'America/Chicago',
       });
     });
 
@@ -152,6 +168,29 @@ describe('AddToCalendarService', () => {
       expect(result?.City).toBeNull();
       expect(result?.State).toBeNull();
       expect(result?.Postal_Code).toBeNull();
+    });
+
+    it('should ship the MP domain timezone so the widget need not guess', async () => {
+      mockGetMpTimezone.mockResolvedValueOnce('America/New_York');
+      mockGetTableRecords.mockResolvedValueOnce([{ ...baseEvent, Location_ID: null }]);
+
+      const service = await AddToCalendarService.getInstance();
+      const result = await service.getEventForCalendar(42);
+
+      expect(result?.Time_Zone).toBe('America/New_York');
+    });
+
+    it('should return a null timezone rather than fail when the domain lookup throws', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mockGetMpTimezone.mockRejectedValueOnce(new Error('domain unavailable'));
+      mockGetTableRecords.mockResolvedValueOnce([{ ...baseEvent, Location_ID: null }]);
+
+      const service = await AddToCalendarService.getInstance();
+      const result = await service.getEventForCalendar(42);
+
+      expect(result?.Time_Zone).toBeNull();
+      expect(result?.Event_Title).toBe('Easter Service');
+      warn.mockRestore();
     });
 
     it('should propagate errors from MPHelper on the initial event query', async () => {

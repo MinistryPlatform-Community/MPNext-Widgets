@@ -67,11 +67,16 @@ export const widgetRegistry: WidgetMeta[] = [
     slug: "add-to-calendar",
     tag: "next-add-to-calendar",
     title: "Add to Calendar",
-    description: "iCal/calendar export button for a single event.",
+    description:
+      "Add-to-calendar menu for a single event: Google, Apple, Outlook, Yahoo, or a downloaded .ics file.",
     category: "Public",
     needsUserMenu: false,
     needsMpWidgets: false,
-    events: ["calendarEventLoaded", "addToCalendarError"],
+    events: [
+      "calendarEventLoaded",
+      "calendarProviderSelected",
+      "addToCalendarError",
+    ],
   },
   {
     slug: "full-calendar",
