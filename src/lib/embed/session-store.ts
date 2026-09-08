@@ -461,13 +461,55 @@ interface StoreRegistry {
   /** Shared backing storage for `MemorySessionStore`; outlives HMR re-evaluation. */
   memory: Map<string, Entry> | null;
   warned: boolean;
+  legacyNamesWarned: boolean;
 }
 
 type GlobalWithRegistry = typeof globalThis & { [REGISTRY]?: StoreRegistry };
 
 function registry(): StoreRegistry {
   const g = globalThis as GlobalWithRegistry;
-  return (g[REGISTRY] ??= { instance: null, memory: null, warned: false });
+  return (g[REGISTRY] ??= {
+    instance: null,
+    memory: null,
+    warned: false,
+    legacyNamesWarned: false,
+  });
+}
+
+/**
+ * Redis connection env, new names first, legacy `EMBED_SESSION_STORE_*` names
+ * as a fallback.
+ *
+ * The store stopped being an embed-session detail once Better Auth's whole
+ * session path moved into it (`src/lib/auth-secondary-storage.ts`) and the
+ * generic `kv*` namespace opened it to anything else that wants a shared cache,
+ * so it is named for what it is: an Upstash Redis REST endpoint. The names are
+ * Upstash's own, which is also what the Upstash integration injects on Vercel
+ * and what `@upstash/redis`'s `Redis.fromEnv()` reads — a deploy wired through
+ * the integration needs no manual entry at all.
+ *
+ * The legacy names still work; drop them once every deploy has been migrated.
+ */
+const REDIS_URL_VARS = ["UPSTASH_REDIS_REST_URL", "EMBED_SESSION_STORE_URL"] as const;
+const REDIS_TOKEN_VARS = ["UPSTASH_REDIS_REST_TOKEN", "EMBED_SESSION_STORE_TOKEN"] as const;
+
+/**
+ * First non-empty value among `names`, with the variable it came from. Read
+ * through explicit `process.env.X` lookups rather than a dynamic index so the
+ * bundler can see them.
+ */
+function readEnv(names: readonly string[]): { name: string; value: string } | null {
+  const env: Record<string, string | undefined> = {
+    UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+    UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+    EMBED_SESSION_STORE_URL: process.env.EMBED_SESSION_STORE_URL,
+    EMBED_SESSION_STORE_TOKEN: process.env.EMBED_SESSION_STORE_TOKEN,
+  };
+  for (const name of names) {
+    const value = env[name]?.trim();
+    if (value) return { name, value };
+  }
+  return null;
 }
 
 /**
@@ -475,26 +517,43 @@ function registry(): StoreRegistry {
  * default: see {@link getSessionStore}.
  */
 function memoryAllowedInProduction(): boolean {
-  const v = (process.env.EMBED_SESSION_STORE_ALLOW_MEMORY || "").trim().toLowerCase();
+  const raw =
+    process.env.REDIS_ALLOW_MEMORY_FALLBACK || process.env.EMBED_SESSION_STORE_ALLOW_MEMORY || "";
+  const v = raw.trim().toLowerCase();
   return v === "1" || v === "true" || v === "yes";
 }
 
+/** One deprecation warning per process when a legacy variable name supplied a value. */
+function warnOnLegacyNames(...names: string[]): void {
+  const legacy = names.filter((name) => name.startsWith("EMBED_SESSION_STORE_"));
+  if (legacy.length === 0) return;
+  const reg = registry();
+  if (reg.legacyNamesWarned) return;
+  reg.legacyNamesWarned = true;
+  console.warn(
+    `Redis store configured via deprecated ${legacy.join(" / ")}. ` +
+      "Rename to UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN " +
+      "(the names Upstash and the Vercel integration use); the old ones will be removed.",
+  );
+}
+
 const MISSING_STORE_MESSAGE =
-  "EMBED_SESSION_STORE_URL / EMBED_SESSION_STORE_TOKEN are required in production. " +
-  "The session store holds both the embed server sessions and the whole Better Auth " +
+  "UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are required in production. " +
+  "The Redis store holds both the embed server sessions and the whole Better Auth " +
   "session path (src/lib/auth-secondary-storage.ts), so the in-memory fallback signs " +
   "users out on every cold start and whenever a request lands on another instance. " +
-  "Configure an Upstash Redis REST endpoint, or set EMBED_SESSION_STORE_ALLOW_MEMORY=1 " +
+  "Configure an Upstash Redis REST endpoint, or set REDIS_ALLOW_MEMORY_FALLBACK=1 " +
   "to accept that behaviour deliberately.";
 
 const PARTIAL_STORE_MESSAGE =
-  "EMBED_SESSION_STORE_URL is set but EMBED_SESSION_STORE_TOKEN is missing, so the " +
-  "session store cannot be reached. " +
+  "A Redis REST URL is set but UPSTASH_REDIS_REST_TOKEN is missing, so the store " +
+  "cannot be reached. " +
   MISSING_STORE_MESSAGE;
 
 /**
- * Store chosen by env: Upstash when `EMBED_SESSION_STORE_URL` **and**
- * `EMBED_SESSION_STORE_TOKEN` are set, else the in-memory store.
+ * Store chosen by env: Upstash when `UPSTASH_REDIS_REST_URL` **and**
+ * `UPSTASH_REDIS_REST_TOKEN` are set (or their legacy `EMBED_SESSION_STORE_*`
+ * spellings), else the in-memory store.
  *
  * ## Production requires a real store
  *
@@ -510,7 +569,7 @@ const PARTIAL_STORE_MESSAGE =
  *
  * The throw is lazy (first *use*, not module load), so `next build` and any
  * code path that never touches a session are unaffected.
- * `EMBED_SESSION_STORE_ALLOW_MEMORY=1` opts back in explicitly for the rare
+ * `REDIS_ALLOW_MEMORY_FALLBACK=1` opts back in explicitly for the rare
  * deploy that genuinely wants it; it still warns.
  *
  * Outside production the memory store is used and warns **once**, in dev too —
@@ -521,11 +580,12 @@ export function getSessionStore(): EmbedSessionStore {
   const reg = registry();
   if (reg.instance) return reg.instance;
 
-  const url = process.env.EMBED_SESSION_STORE_URL;
-  const token = process.env.EMBED_SESSION_STORE_TOKEN;
+  const url = readEnv(REDIS_URL_VARS);
+  const token = readEnv(REDIS_TOKEN_VARS);
 
   if (url && token) {
-    reg.instance = new UpstashSessionStore(url, token);
+    warnOnLegacyNames(url.name, token.name);
+    reg.instance = new UpstashSessionStore(url.value, token.value);
     return reg.instance;
   }
 
@@ -541,8 +601,8 @@ export function getSessionStore(): EmbedSessionStore {
     reg.warned = true;
     console.warn(
       process.env.NODE_ENV === "production"
-        ? `${message} EMBED_SESSION_STORE_ALLOW_MEMORY is set, so continuing on the in-memory store.`
-        : "Using the in-memory session store (no EMBED_SESSION_STORE_URL). " +
+        ? `${message} A memory-fallback override is set, so continuing on the in-memory store.`
+        : "Using the in-memory session store (no UPSTASH_REDIS_REST_URL). " +
             "Fine for local development — sessions are process-local and reset with the dev server — " +
             "but production requires Upstash; see README \"Widget Authentication\".",
     );
@@ -556,5 +616,5 @@ export function getSessionStore(): EmbedSessionStore {
 /** Test hook: drop the singleton so the next `getSessionStore()` re-reads env. */
 export function __resetSessionStoreForTests(): void {
   const g = globalThis as GlobalWithRegistry;
-  g[REGISTRY] = { instance: null, memory: null, warned: false };
+  g[REGISTRY] = { instance: null, memory: null, warned: false, legacyNamesWarned: false };
 }

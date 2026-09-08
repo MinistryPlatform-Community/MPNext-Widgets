@@ -167,17 +167,17 @@ const ENV_VARS: EnvVar[] = [
   },
   // Optional variables
   {
-    name: 'EMBED_SESSION_STORE_URL',
+    name: 'UPSTASH_REDIS_REST_URL',
     required: false,
     sensitive: false,
     description:
-      'Upstash Redis REST URL. Backs BOTH the widget sessions and the Better Auth app session (src/lib/auth.ts secondaryStorage). Unset = in-memory: dev only, sessions die on restart',
+      'Upstash Redis REST URL. Backs the widget sessions, the Better Auth app session (src/lib/auth.ts secondaryStorage) and any other shared cache. Unset = in-memory: dev only, state dies on restart',
   },
   {
-    name: 'EMBED_SESSION_STORE_TOKEN',
+    name: 'UPSTASH_REDIS_REST_TOKEN',
     required: false,
     sensitive: true,
-    description: 'Upstash Redis REST token (required alongside EMBED_SESSION_STORE_URL)',
+    description: 'Upstash Redis REST token (required alongside UPSTASH_REDIS_REST_URL)',
   },
   {
     name: 'EMBED_SESSION_ENC_KEY',

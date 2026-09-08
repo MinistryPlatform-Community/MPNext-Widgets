@@ -202,7 +202,7 @@ Ship independently of the rest; every customer benefits immediately.
       and `embed_login_completed{mode}`. This is the data that tells you when a
       customer can be cut over.
 - [ ] Env: `EMBED_AUTH_MODE`, `EMBED_AUTH_MODE_ORIGINS`, `EMBED_SESSION_ENC_KEY`,
-      `EMBED_SESSION_STORE_URL` / token, `EMBED_SESSION_IDLE_TTL`,
+      `UPSTASH_REDIS_REST_URL` / token, `EMBED_SESSION_IDLE_TTL`,
       `EMBED_SESSION_ABSOLUTE_TTL`. Document in `.env.example` and README.
 - [ ] Per-tenant MP config step documented: register
       `https://<widget-host>/api/embed/auth/callback` as a redirect URI and

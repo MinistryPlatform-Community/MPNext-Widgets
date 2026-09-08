@@ -34,9 +34,12 @@ vi.stubEnv('OIDC_CLIENT_SECRET', 'test-client-secret');
 vi.stubEnv('BETTER_AUTH_SECRET', 'test-secret-key-for-testing');
 vi.stubEnv('BETTER_AUTH_URL', 'http://localhost:3000');
 vi.stubEnv('EMBED_JWT_SECRET', 'test-embed-jwt-secret-at-least-32-bytes-long-for-hs256');
-// Embed session store: leave EMBED_SESSION_STORE_URL unset so tests use the
-// in-memory store; leave EMBED_SESSION_ENC_KEY unset so the AES key derives
-// from EMBED_JWT_SECRET (non-production path).
+// Redis store: leave the connection vars unset — both the current
+// UPSTASH_REDIS_REST_* names and the deprecated EMBED_SESSION_STORE_* fallbacks
+// — so tests use the in-memory store; leave EMBED_SESSION_ENC_KEY unset so the
+// AES key derives from EMBED_JWT_SECRET (non-production path).
+vi.stubEnv('UPSTASH_REDIS_REST_URL', '');
+vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', '');
 vi.stubEnv('EMBED_SESSION_STORE_URL', '');
 vi.stubEnv('EMBED_SESSION_STORE_TOKEN', '');
 vi.stubEnv('EMBED_SESSION_ENC_KEY', '');

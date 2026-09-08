@@ -26,7 +26,7 @@ const options = {
   // it rests on, is in `src/lib/auth-secondary-storage.ts`.
   //
   // This is the same Upstash Redis the widget sessions use
-  // (`EMBED_SESSION_STORE_URL` / `_TOKEN`); unset, it degrades to the same
+  // (`UPSTASH_REDIS_REST_URL` / `_TOKEN`); unset, it degrades to the same
   // in-memory store, which is dev-only.
   secondaryStorage: betterAuthSecondaryStorage(),
   session: {

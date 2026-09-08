@@ -29,12 +29,12 @@ match the Node 24 runtime (Vercel runs 24).
 |---|------|------|-----------|
 | 3 | `03-typescript-7.md` | **blocked upstream** — attempted 2026-09-07, not merged | wait for TS 7.1 |
 | 7 | `07-fullcalendar-7.md` | **attempted 2026-09-07, not merged** — v7 is a rewrite, not a bump | 1-2 days + a design decision |
-| 16 | `16-copy-sdk-stale-cleanup.md` | none in prod; misleads local verification | 15 min |
 | 17 | `17-better-auth-vitest5-peer.md` | none — a warning, not a failure | 10 min |
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire | 15 min |
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
 | 33 | `33-next-env-dts-churn-between-dev-and-build.md` | none in prod — a generated file that dirties the tree | 15 min |
 | 37 | `37-playwright-local-network-access-blocks-widget-e2e.md` | none in prod — but every widget E2E run tests a silently de-authenticated widget | 20 min |
+| 38 | `38-mp-widget-overrides-css-never-injected.md` | either MP widgets render unbranded in prod, or the build maintains dead plumbing — read the file, it is one browser check | 30 min to triage |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -165,9 +165,45 @@ domain zone now ships in the API payload as `Time_Zone`), and its date parser ra
 `new Date(mpWallClock).getUTCHours()`, which shifts by the *browser's* offset on
 any non-UTC visitor.
 
-16: `scripts/copy-sdk.js` never deletes pre-content-hashing bundles, so a
-months-old `next-embed.es.js` sits next to the real hashed bundle and makes "did
-my change land?" greps lie.
+Item 16 (`scripts/copy-sdk.js` never deleted pre-content-hashing bundles, so a
+months-old `next-embed.es.js` sat next to the real hashed bundle and made "did
+my change land?" greps lie) is **done (2026-09-08)** — and the file's own
+premise had gone half-stale: `public/embed-sdk/` was already clean on the
+machine, so this landed as prevention, not cleanup. The fix is the
+manifest-driven one the file asked for: `vite build` empties `dist/` and
+`hash-sdk.js` writes only the current build's artifacts into it, so `dist/` *is*
+the set of files that belong in `public/embed-sdk/`, and `copy-sdk.js` now
+deletes every build-owned file there that the current build did not emit. The
+cleanup predicate is literally the same function as the publish predicate, so
+the two cannot drift the next time the naming scheme changes.
+
+Two things had to come with it. First, `public/embed-sdk/` is both an output
+directory *and* a source directory — `hash-sdk.js` reads
+`mp-widget-overrides.css` from it, that file is the only one there in git
+(`.gitignore` negates it), and it is a public URL churches point MP's
+`customcss` at (`vercel.json`, 300s cache, `ACAO: *`; asserted by
+`src/proxy.test.ts` and `src/app/site-chrome.test.ts`) — so a plain "delete what
+`dist/` did not emit" would wipe it. It is a one-entry `KEEP` exemption.
+Second — and this is what makes that exemption safe — `hash-sdk.js` used to
+only `console.warn` on a missing source CSS and then generate a loader with no
+`__nextEmbedCSSUrl` line, i.e. a silently CSS-less SDK that looks like a clean
+build. It now `exit 1`s, checked **before** the bundle rename so a failed build
+leaves `dist/` unmutated. `emptyOutDir: true` is pinned explicitly in
+`vite.config.ts` rather than inherited from Vite's default, because
+`copy-sdk.js` and `package-manifest.test.ts` both now reason about `dist/` on
+that basis.
+
+The guard is a new case in `packages/embed-sdk/src/package-manifest.test.ts`,
+which already asserted exactly one hashed bundle is staged; it now also asserts
+no `next-embed.(es|umd).js(.map)` survives. Verified by manufacturing the dirt —
+both legacy schemes, a stale hashed pair, and an unrelated file — then running
+`pnpm build:sdk`: 6 stale files removed, the tracked CSS untouched, the
+unrelated file untouched (the cleanup is scoped, not a directory wipe), the
+bundle hash unchanged, and the loader byte-identical. The hard-fail path was
+exercised separately with the CSS moved aside. 1144/1144 tests, lint clean.
+Item 38 was filed from this work: the CSS the exemption protects is
+content-hashed, staged, cache-headered and written into the loader as
+`window.__nextEmbedCSSUrl` — and **read by nothing in the SDK**.
 
 Item 23 (`AccessDenied`'s only control returned the user to the same screen) is
 **done** — it was a "Go to Dashboard" link to `/`, and there is no dashboard:

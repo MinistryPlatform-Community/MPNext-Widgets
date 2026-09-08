@@ -44,6 +44,8 @@ describe('embed-session', () => {
     vi.stubEnv('OIDC_CLIENT_ID', 'test-client-id');
     vi.stubEnv('OIDC_CLIENT_SECRET', 'test-client-secret');
     vi.stubEnv('EMBED_JWT_SECRET', 'test-embed-jwt-secret-at-least-32-bytes-long-for-hs256');
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', '');
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', '');
     vi.stubEnv('EMBED_SESSION_STORE_URL', '');
     vi.stubEnv('EMBED_SESSION_STORE_TOKEN', '');
     vi.stubEnv('EMBED_SESSION_ENC_KEY', '');

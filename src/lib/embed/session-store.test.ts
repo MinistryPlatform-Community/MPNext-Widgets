@@ -8,6 +8,20 @@ import {
 import type { Entry } from './session-store';
 import type { EmbedSessionRecord } from './types';
 
+/**
+ * Blank every name `getSessionStore()` reads — the new Upstash-standard pair and
+ * the deprecated `EMBED_SESSION_STORE_*` fallbacks — so a test starts with no
+ * store configured whichever spelling the ambient env happens to carry.
+ */
+function clearStoreEnv(): void {
+  vi.stubEnv('UPSTASH_REDIS_REST_URL', '');
+  vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', '');
+  vi.stubEnv('EMBED_SESSION_STORE_URL', '');
+  vi.stubEnv('EMBED_SESSION_STORE_TOKEN', '');
+  vi.stubEnv('REDIS_ALLOW_MEMORY_FALLBACK', '');
+  vi.stubEnv('EMBED_SESSION_STORE_ALLOW_MEMORY', '');
+}
+
 function makeRecord(overrides: Partial<EmbedSessionRecord> = {}): EmbedSessionRecord {
   const now = Math.floor(Date.now() / 1000);
   return {
@@ -404,8 +418,7 @@ describe('getSessionStore', () => {
     vi.unstubAllEnvs();
     vi.stubEnv('NODE_ENV', 'test');
     vi.stubEnv('EMBED_JWT_SECRET', 'test-embed-jwt-secret-at-least-32-bytes-long-for-hs256');
-    vi.stubEnv('EMBED_SESSION_STORE_URL', '');
-    vi.stubEnv('EMBED_SESSION_STORE_TOKEN', '');
+    clearStoreEnv();
     __resetSessionStoreForTests();
   });
 
@@ -424,8 +437,8 @@ describe('getSessionStore', () => {
   });
 
   it('returns an UpstashSessionStore when url + token are set', () => {
-    vi.stubEnv('EMBED_SESSION_STORE_URL', 'https://redis.example.upstash.io');
-    vi.stubEnv('EMBED_SESSION_STORE_TOKEN', 'tok');
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.example.upstash.io');
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'tok');
     __resetSessionStoreForTests();
     expect(getSessionStore()).toBeInstanceOf(UpstashSessionStore);
   });
@@ -433,35 +446,35 @@ describe('getSessionStore', () => {
   it('throws in production when no store is configured', () => {
     vi.stubEnv('NODE_ENV', 'production');
     __resetSessionStoreForTests();
-    expect(() => getSessionStore()).toThrow(/EMBED_SESSION_STORE_URL/);
-    expect(() => getSessionStore()).toThrow(/EMBED_SESSION_STORE_ALLOW_MEMORY/);
+    expect(() => getSessionStore()).toThrow(/UPSTASH_REDIS_REST_URL/);
+    expect(() => getSessionStore()).toThrow(/REDIS_ALLOW_MEMORY_FALLBACK/);
   });
 
   it('throws in production when the url is set but the token is missing', () => {
     vi.stubEnv('NODE_ENV', 'production');
-    vi.stubEnv('EMBED_SESSION_STORE_URL', 'https://redis.example.upstash.io');
-    vi.stubEnv('EMBED_SESSION_STORE_TOKEN', '');
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.example.upstash.io');
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', '');
     __resetSessionStoreForTests();
-    expect(() => getSessionStore()).toThrow(/EMBED_SESSION_STORE_TOKEN is missing/);
+    expect(() => getSessionStore()).toThrow(/UPSTASH_REDIS_REST_TOKEN is missing/);
   });
 
   it('does not cache the production failure, so fixing the env recovers', () => {
     vi.stubEnv('NODE_ENV', 'production');
     __resetSessionStoreForTests();
     expect(() => getSessionStore()).toThrow();
-    vi.stubEnv('EMBED_SESSION_STORE_URL', 'https://redis.example.upstash.io');
-    vi.stubEnv('EMBED_SESSION_STORE_TOKEN', 'tok');
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.example.upstash.io');
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'tok');
     expect(getSessionStore()).toBeInstanceOf(UpstashSessionStore);
   });
 
-  it('EMBED_SESSION_STORE_ALLOW_MEMORY opts back in, with a warning', () => {
+  it('REDIS_ALLOW_MEMORY_FALLBACK opts back in, with a warning', () => {
     vi.stubEnv('NODE_ENV', 'production');
-    vi.stubEnv('EMBED_SESSION_STORE_ALLOW_MEMORY', '1');
+    vi.stubEnv('REDIS_ALLOW_MEMORY_FALLBACK', '1');
     __resetSessionStoreForTests();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(getSessionStore()).toBeInstanceOf(MemorySessionStore);
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toMatch(/EMBED_SESSION_STORE_ALLOW_MEMORY is set/);
+    expect(warn.mock.calls[0][0]).toMatch(/memory-fallback override is set/);
     warn.mockRestore();
   });
 
@@ -477,13 +490,61 @@ describe('getSessionStore', () => {
   });
 
   it('does not warn when a real store is configured', () => {
-    vi.stubEnv('EMBED_SESSION_STORE_URL', 'https://redis.example.upstash.io');
-    vi.stubEnv('EMBED_SESSION_STORE_TOKEN', 'tok');
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.example.upstash.io');
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'tok');
     __resetSessionStoreForTests();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     getSessionStore();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  // The variables were renamed to Upstash's own spelling once the store stopped
+  // being an embed-session detail. Deploys still carrying the old names must
+  // keep working, loudly.
+  describe('legacy EMBED_SESSION_STORE_* names', () => {
+    it('still configure the Upstash store', () => {
+      vi.stubEnv('EMBED_SESSION_STORE_URL', 'https://redis.example.upstash.io');
+      vi.stubEnv('EMBED_SESSION_STORE_TOKEN', 'tok');
+      __resetSessionStoreForTests();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      expect(getSessionStore()).toBeInstanceOf(UpstashSessionStore);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toMatch(/deprecated EMBED_SESSION_STORE_URL/);
+      warn.mockRestore();
+    });
+
+    it('lose to the new names when both are set', async () => {
+      vi.stubEnv('EMBED_SESSION_STORE_URL', 'https://legacy.example.upstash.io');
+      vi.stubEnv('EMBED_SESSION_STORE_TOKEN', 'legacy-tok');
+      vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.example.upstash.io');
+      vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'tok');
+      __resetSessionStoreForTests();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ result: null })));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const store = getSessionStore();
+      expect(store).toBeInstanceOf(UpstashSessionStore);
+      await store.kvGet('k');
+
+      const [calledUrl, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+      expect(String(calledUrl)).toBe('https://redis.example.upstash.io');
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
+      expect(warn).not.toHaveBeenCalled();
+
+      vi.unstubAllGlobals();
+      warn.mockRestore();
+    });
+
+    it('EMBED_SESSION_STORE_ALLOW_MEMORY still opts back in', () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('EMBED_SESSION_STORE_ALLOW_MEMORY', 'true');
+      __resetSessionStoreForTests();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      expect(getSessionStore()).toBeInstanceOf(MemorySessionStore);
+      warn.mockRestore();
+    });
   });
 });
 
@@ -504,8 +565,7 @@ describe('getSessionStore across separate module graphs (TODO 31)', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     vi.stubEnv('NODE_ENV', 'test');
-    vi.stubEnv('EMBED_SESSION_STORE_URL', '');
-    vi.stubEnv('EMBED_SESSION_STORE_TOKEN', '');
+    clearStoreEnv();
     __resetSessionStoreForTests();
   });
 

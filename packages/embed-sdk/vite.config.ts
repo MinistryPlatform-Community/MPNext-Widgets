@@ -43,6 +43,11 @@ export default defineConfig(({ mode }) => {
       formats: ["es"],
       fileName: () => `next-embed.es.js`,
     },
+    // Pinned, not inherited: `dist/` being emptied on every build is what makes
+    // it an exact manifest of the current build, which `scripts/copy-sdk.js`
+    // relies on to delete stale artifacts from `public/embed-sdk/` and
+    // `src/package-manifest.test.ts` relies on when reasoning about `dist/`.
+    emptyOutDir: true,
     target: "es2019",
     sourcemap: true,
     minify: true,
