@@ -38,7 +38,8 @@ match the Node 24 runtime (Vercel runs 24).
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
 | 23 | `23-access-denied-dashboard-link-loops.md` | low — dead-end button | 15 min |
 | 26 | `26-favicon-and-site-chrome-404.md` | low — cosmetic 404 on every page load | 15 min |
-| 27 | `27-demo-sign-out-link-404s.md` | low — the demo header's only Sign Out control 404s | 20 min |
+| 28 | `28-jest-dom-matcher-types-missing.md` | none — a matcher no test can use | 10 min |
+| 29 | `29-widget-logout-stalls-on-mp-confirmation.md` | **medium** — MP session survives widget logout | 30 min + an MP client change |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -104,7 +105,9 @@ real hashed bundle and makes "did my change land?" greps lie.
 
 Item 23 is not a dependency upgrade either — it was found while doing item 13
 on 2026-09-07: `AccessDenied`'s "Go to Dashboard" button links to `/`, which
-redirects to `/demo`, which re-renders `AccessDenied`.
+redirects to `/demo`, which re-renders `AccessDenied`. Item 27 updated its
+step 1: the fix is to render `<SignOutButton />`, **not** to link
+`/api/auth/sign-out`, which a test now forbids.
 
 Item 25 (`src/proxy.ts` 307'd every unauthenticated `/embed-sdk/*` request to
 `/signin`, so no external site could ever load the SDK) is **done** —
@@ -179,6 +182,24 @@ build if any `src/` file or README URL names the unhashed Vite output or a
 hardcoded hash. Verified against a wiped `public/embed-sdk/` + full `pnpm build`:
 loader and hashed bundle both 200 on all five `/demo/<slug>` pages,
 `/embed-sdk/next-embed.es.js` 404s. Item 25 was filed from that verification.
+
+Item 27 (the `/demo` header's Sign Out was `<a href="/api/auth/sign-out">`, a
+GET at a POST-only Better Auth endpoint, so it 404'd and left the user signed
+in) is **done** — sign-out is now `<SignOutButton />`
+(`src/components/sign-out-button.tsx`), and both it and `TokenBridge` go
+through one shared client helper, `src/lib/app-logout.ts`, which POSTs
+`/api/auth/logout` — the route item 13 built, which ends the Better Auth
+session *and* returns MP's `end_session` URL with an `id_token_hint`. A bare
+`POST /api/auth/sign-out` was deliberately **not** the fix: it ends the app
+session only, and MP then signs the user straight back in with no prompt.
+`src/lib/app-logout.test.ts` fails the build if any source file names
+`/api/auth/sign-out`, puts an `/api/auth/*` route behind an `href`, or calls
+the logout endpoint from anywhere but the shared helper. Verified in the
+browser against a loopback Redis: one `POST /api/auth/logout` → 200, the
+`nw:kv:ba:*` session row gone, MP's `oauth/logout?id=…` auto-redirect, and —
+the test that matters — navigating back to `/demo` afterwards lands on **MP's
+login form**, not a silent re-authentication. Items 28 and 29 were filed from
+that verification; 29 is the same failure still live on the widget path.
 
 **Standard verification gate** for every branch below:
 

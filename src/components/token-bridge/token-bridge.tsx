@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { requestAppLogout } from "@/lib/app-logout";
 
 export function TokenBridge() {
   const router = useRouter();
@@ -42,36 +43,17 @@ export function TokenBridge() {
       const detail = (e as CustomEvent).detail as { postLogoutRedirectUri?: string } | undefined;
       const postLogoutRedirectUri = detail?.postLogoutRedirectUri;
 
-      const keys = [
-        "mpp-widgets_AuthToken",
-        "mpp-widgets_IdToken",
-        "mpp-widgets_ExpiresAfter",
-        "mpp-widgets_Refresh",
-      ];
-      keys.forEach((key) => localStorage.removeItem(key));
-      try {
-        sessionStorage.removeItem("userObj");
-      } catch {
-        // sessionStorage may be blocked
-      }
-
       (async () => {
-        try {
-          const res = await fetch("/api/auth/logout", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ postLogoutRedirectUri }),
-          });
-          const data = await res.json();
-          if (data.redirectUrl) {
-            // Cross-origin, top-level navigation to MinistryPlatform's OIDC end-session
-            // endpoint. Must stay a raw location assignment — router.push() cannot
-            // leave the origin.
-            window.location.href = data.redirectUrl;
-            return;
-          }
-        } catch {
-          // Logout API failed
+        // Shared with the `/demo` header's Sign Out button: clears the
+        // `mpp-widgets_*` copies, ends the Better Auth session and hands back
+        // MP's end-session URL. See `src/lib/app-logout.ts`.
+        const redirectUrl = await requestAppLogout({ postLogoutRedirectUri });
+        if (redirectUrl) {
+          // Cross-origin, top-level navigation to MinistryPlatform's OIDC end-session
+          // endpoint. Must stay a raw location assignment — router.push() cannot
+          // leave the origin.
+          window.location.href = redirectUrl;
+          return;
         }
 
         router.push("/signin");
