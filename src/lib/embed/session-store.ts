@@ -4,8 +4,13 @@
  * (one-time handoff codes, short locks, fixed-window counters).
  *
  * Two adapters:
- * - `MemorySessionStore` — Map with expiry; dev/test only (single process).
+ * - `MemorySessionStore` — Map with expiry; **development and unit tests only**
+ *   (single process). Its backing Map is hung off `globalThis` — see
+ *   "Singleton" at the bottom of this file for why that is load-bearing rather
+ *   than a style choice.
  * - `UpstashSessionStore` — Upstash Redis REST via `fetch`, no SDK dependency.
+ *   The only adapter that is correct in production; `getSessionStore()`
+ *   *requires* it there.
  *
  * Key layout: `nw:sess:<sidHash>`, `nw:handoff:<codeHash>`, `nw:lock:<key>`,
  * `nw:rl:<key>` (callers append the window start to the rate-limit key),
@@ -90,14 +95,27 @@ function isSessionRecord(value: unknown): value is EmbedSessionRecord {
 // In-memory adapter
 // ---------------------------------------------------------------------------
 
-interface Entry {
+/** One row in {@link MemorySessionStore}. Exported only because it appears in
+ * the store's constructor signature (the shared backing Map). */
+export interface Entry {
   value: string;
   expiresAt: number; // epoch ms
 }
 
 export class MemorySessionStore implements EmbedSessionStore {
-  private readonly map = new Map<string, Entry>();
+  private readonly map: Map<string, Entry>;
   private writes = 0;
+
+  /**
+   * @param backingMap Storage to adopt instead of a private one. `getSessionStore()`
+   * passes the process-wide Map kept on `globalThis` so that every module
+   * instance of this file — and every instance created after an HMR
+   * re-evaluation — reads and writes the same rows. Tests leave it undefined
+   * and get an isolated store.
+   */
+  constructor(backingMap?: Map<string, Entry>) {
+    this.map = backingMap ?? new Map<string, Entry>();
+  }
 
   private now(): number {
     return Date.now();
@@ -407,36 +425,136 @@ export class UpstashSessionStore implements EmbedSessionStore {
 // Singleton
 // ---------------------------------------------------------------------------
 
-let instance: EmbedSessionStore | null = null;
-let warnedMemoryInProduction = false;
+/**
+ * ## Why the singleton lives on `globalThis`
+ *
+ * A module-level `let instance` is not process-wide in the App Router. Next 16
+ * (Turbopack) builds the React Server Component graph and the route-handler
+ * graph as **separate bundles**, and each one evaluates this file separately.
+ * Measured on 2026-09-07 with `next dev`, a probe printing `process.pid`, a
+ * per-module-evaluation random id, and a `globalThis` id:
+ *
+ *   where=route-handler   pid=65364 module=8ixqsx global=nbnf4q
+ *   where=demo-layout-rsc pid=65364 module=72ctu2 global=nbnf4q
+ *
+ * One process, **two module instances, one `globalThis`**. So a module-level
+ * `MemorySessionStore` gave the two halves of the app two disjoint Maps:
+ * `POST /api/auth/...` wrote the Better Auth session into the route-handler
+ * Map (`secondaryStorage` is namespaced into this same store — see
+ * `src/lib/auth-secondary-storage.ts`), `src/app/(demo)/layout.tsx` read the
+ * RSC Map, found nothing, and redirected to `/signin`, which saw the session
+ * and redirected back. Signing in locally was impossible — 130 `/signin ↔
+ * /demo` round trips in 12 seconds (TODO 31).
+ *
+ * Hanging both the instance *and* its backing Map off `globalThis` fixes it,
+ * and also survives HMR: an edited file is re-evaluated into a fresh module
+ * instance, which would otherwise start with an empty Map and sign the
+ * developer out on every save.
+ *
+ * This is a **development** mechanism. It cannot help across processes or
+ * serverless instances, which is exactly why production must use Upstash.
+ */
+const REGISTRY = Symbol.for("mpnext.embed.session-store");
 
-/** Store chosen by env: Upstash when `EMBED_SESSION_STORE_URL` is set, else memory. */
+interface StoreRegistry {
+  instance: EmbedSessionStore | null;
+  /** Shared backing storage for `MemorySessionStore`; outlives HMR re-evaluation. */
+  memory: Map<string, Entry> | null;
+  warned: boolean;
+}
+
+type GlobalWithRegistry = typeof globalThis & { [REGISTRY]?: StoreRegistry };
+
+function registry(): StoreRegistry {
+  const g = globalThis as GlobalWithRegistry;
+  return (g[REGISTRY] ??= { instance: null, memory: null, warned: false });
+}
+
+/**
+ * Set to `1`/`true` to allow the in-memory store in production. Off by
+ * default: see {@link getSessionStore}.
+ */
+function memoryAllowedInProduction(): boolean {
+  const v = (process.env.EMBED_SESSION_STORE_ALLOW_MEMORY || "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+const MISSING_STORE_MESSAGE =
+  "EMBED_SESSION_STORE_URL / EMBED_SESSION_STORE_TOKEN are required in production. " +
+  "The session store holds both the embed server sessions and the whole Better Auth " +
+  "session path (src/lib/auth-secondary-storage.ts), so the in-memory fallback signs " +
+  "users out on every cold start and whenever a request lands on another instance. " +
+  "Configure an Upstash Redis REST endpoint, or set EMBED_SESSION_STORE_ALLOW_MEMORY=1 " +
+  "to accept that behaviour deliberately.";
+
+const PARTIAL_STORE_MESSAGE =
+  "EMBED_SESSION_STORE_URL is set but EMBED_SESSION_STORE_TOKEN is missing, so the " +
+  "session store cannot be reached. " +
+  MISSING_STORE_MESSAGE;
+
+/**
+ * Store chosen by env: Upstash when `EMBED_SESSION_STORE_URL` **and**
+ * `EMBED_SESSION_STORE_TOKEN` are set, else the in-memory store.
+ *
+ * ## Production requires a real store
+ *
+ * In production the in-memory branch **throws** rather than degrading
+ * silently. Item 14 moved Better Auth's entire session path into this store
+ * precisely because the in-process fallback it replaced meant "a restart, a
+ * cold start, or a request landing on another serverless instance signed the
+ * user out". Falling back to memory re-creates that bug, and the only signal
+ * it ever produced was one `console.warn` in a log nobody reads — which is how
+ * it went unnoticed long enough to become TODO 14. A 500 naming the missing
+ * variable is a better failure than an app that intermittently forgets who you
+ * are.
+ *
+ * The throw is lazy (first *use*, not module load), so `next build` and any
+ * code path that never touches a session are unaffected.
+ * `EMBED_SESSION_STORE_ALLOW_MEMORY=1` opts back in explicitly for the rare
+ * deploy that genuinely wants it; it still warns.
+ *
+ * Outside production the memory store is used and warns **once**, in dev too —
+ * the old warning was gated on production, the one environment where the
+ * branch was about to be removed.
+ */
 export function getSessionStore(): EmbedSessionStore {
-  if (instance) return instance;
+  const reg = registry();
+  if (reg.instance) return reg.instance;
 
   const url = process.env.EMBED_SESSION_STORE_URL;
   const token = process.env.EMBED_SESSION_STORE_TOKEN;
 
   if (url && token) {
-    instance = new UpstashSessionStore(url, token);
-    return instance;
+    reg.instance = new UpstashSessionStore(url, token);
+    return reg.instance;
   }
 
-  if (process.env.NODE_ENV === "production" && !warnedMemoryInProduction) {
-    warnedMemoryInProduction = true;
+  const message = url ? PARTIAL_STORE_MESSAGE : MISSING_STORE_MESSAGE;
+
+  if (process.env.NODE_ENV === "production" && !memoryAllowedInProduction()) {
+    // Not cached: a misconfigured process should fail the same way on every
+    // request, and should recover as soon as the env is fixed and it restarts.
+    throw new Error(message);
+  }
+
+  if (!reg.warned) {
+    reg.warned = true;
     console.warn(
-      url
-        ? "EMBED_SESSION_STORE_URL is set but EMBED_SESSION_STORE_TOKEN is missing; falling back to the in-memory session store."
-        : "EMBED_SESSION_STORE_URL is not set; using the in-memory session store. Sessions will not survive restarts or span instances.",
+      process.env.NODE_ENV === "production"
+        ? `${message} EMBED_SESSION_STORE_ALLOW_MEMORY is set, so continuing on the in-memory store.`
+        : "Using the in-memory session store (no EMBED_SESSION_STORE_URL). " +
+            "Fine for local development — sessions are process-local and reset with the dev server — " +
+            "but production requires Upstash; see README \"Widget Authentication\".",
     );
   }
 
-  instance = new MemorySessionStore();
-  return instance;
+  reg.memory ??= new Map<string, Entry>();
+  reg.instance = new MemorySessionStore(reg.memory);
+  return reg.instance;
 }
 
 /** Test hook: drop the singleton so the next `getSessionStore()` re-reads env. */
 export function __resetSessionStoreForTests(): void {
-  instance = null;
-  warnedMemoryInProduction = false;
+  const g = globalThis as GlobalWithRegistry;
+  g[REGISTRY] = { instance: null, memory: null, warned: false };
 }
