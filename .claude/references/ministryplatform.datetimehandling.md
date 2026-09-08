@@ -108,6 +108,8 @@ filter: `Contact_Date >= '2026-05-01' AND Contact_Date < '2026-06-01'`
 
 Do not convert filter values to UTC. If you have a `Date` instant or an ISO/Z-tagged string in JS, run it through `tz.toMpSqlDatetime(instant)` first.
 
+Keep the filter one template literal (or an array and `.join(...)`) — never a `+` chain of template literals, which the production minifier folds and truncates. See `.claude/references/nextjs.build-hazards.md`.
+
 ## Anti-patterns
 
 | ❌ Don't | ✅ Do |

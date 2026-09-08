@@ -15,6 +15,34 @@ The syntax is **SQL-style**, not OData. Most "weird" error messages from MP boil
 - **Subqueries**: strictly prohibited — no `SELECT` inside `$filter`. Use `_TABLE` traversal instead.
 - **Date functions**: `GETDATE()` is allowed in comparisons (e.g. `End_Date > GETDATE()`).
 
+## Building the filter string in code
+
+**Never join two template literals with `+`.** Write one template literal, or an array and `.join(...)`:
+
+```ts
+// ❌ the production minifier folds this chain and silently drops literal text
+filter:
+  `Pertains_To_Page_ID=${PAGE_ID} AND ` +
+  `Active=1 AND ` +
+  `From_Contact=${FROM_CONTACT_ID}`,
+
+// ✅ one literal
+filter: `Pertains_To_Page_ID=${PAGE_ID} AND Active=1 AND From_Contact=${FROM_CONTACT_ID}`,
+
+// ✅ an array and .join(" ") — better when the clauses are a list
+filter: [
+  `Pertains_To_Page_ID=${PAGE_ID}`,
+  "AND Active=1",
+  `AND From_Contact=${FROM_CONTACT_ID}`,
+].join(" "),
+```
+
+The `+` chain above reached MP as `Pertains_To_Page_ID=376From_Contact=142157` from a
+deployed Next 16 build — the trailing `AND ` and the whole middle clause were folded
+away by the minifier, and only in the production bundle. `src/lib/no-template-concat.test.ts`
+fails the test run if the pattern appears anywhere in the repo. Full incident and the
+"grep the built chunk" diagnostic: `.claude/references/nextjs.build-hazards.md`.
+
 ## Aggregate Functions in `$select`
 
 - Always include the column name **and** an alias: `COUNT(Contact_ID) AS Count`, `SUM(Donation_Amount) AS Total`, `AVG(Donation_Amount) AS Average`.
@@ -137,9 +165,7 @@ Two parallel queries on `MPHelper.getTableRecords` covering (a) primary contact 
     "Groups.Start_Date",
     "Groups.End_Date",
   ].join(", "),
-  filter:
-    `Groups.Primary_Contact = ${contactId} ` +
-    `AND (Groups.End_Date IS NULL OR Groups.End_Date > GETDATE())`,
+  filter: `Groups.Primary_Contact = ${contactId} AND (Groups.End_Date IS NULL OR Groups.End_Date > GETDATE())`,
   orderBy: "Groups.Group_Name",
 }
 
@@ -158,11 +184,12 @@ Two parallel queries on `MPHelper.getTableRecords` covering (a) primary contact 
     "Group_ID_TABLE.Start_Date AS Start_Date",
     "Group_ID_TABLE.End_Date AS End_Date",
   ].join(", "),
-  filter:
-    `Participant_ID_TABLE.Contact_ID = ${contactId} ` +
-    `AND Group_Role_ID_TABLE.Group_Role_Type_ID = 1 ` +
-    `AND (Group_Participants.End_Date IS NULL OR Group_Participants.End_Date > GETDATE()) ` +
-    `AND (Group_ID_TABLE.End_Date IS NULL OR Group_ID_TABLE.End_Date > GETDATE())`,
+  filter: [
+    `Participant_ID_TABLE.Contact_ID = ${contactId}`,
+    "AND Group_Role_ID_TABLE.Group_Role_Type_ID = 1",
+    "AND (Group_Participants.End_Date IS NULL OR Group_Participants.End_Date > GETDATE())",
+    "AND (Group_ID_TABLE.End_Date IS NULL OR Group_ID_TABLE.End_Date > GETDATE())",
+  ].join(" "),
 }
 ```
 
@@ -177,9 +204,11 @@ Notice in Query B that bare `End_Date` is qualified as `Group_Participants.End_D
 | `Invalid column name 'X'` (no `_TABLE` suffix) | Column name mis-cased or table mis-chosen | Re-verify via `mp_lookup` — MP names are case-sensitive |
 | Subquery rejected | Used `SELECT` inside `$filter` | Rewrite using `_TABLE` traversal; if not expressible, run two queries and merge in code |
 | `BETWEEN` rejected | Used SQL BETWEEN in `$filter` | Rewrite as two comparisons (`>= 'start' AND < 'end'`) |
+| `Invalid column name 'X'` / `Incorrect syntax near 'X'` where `X` reads like two clauses fused together, **in production only** | The filter was built as a `+` chain of template literals; the production minifier folded it and dropped text | `grep` the literal in `.next/server/**/*.js` to confirm, then rewrite as one literal or `.join(...)` — see below |
 
 ## See also
 
 - `src/lib/providers/ministry-platform/helper.ts` — `MPHelper.getTableRecords` signature.
 - `src/services/userService.ts`, `src/services/groupService.ts` — services that use `_TABLE` traversal and table-qualified selects.
 - `.claude/references/ministryplatform.schema.md` — table / column / FK reference.
+- `.claude/references/nextjs.build-hazards.md` — why a filter built with `+`-joined template literals reaches MP mangled, and only from a production build.

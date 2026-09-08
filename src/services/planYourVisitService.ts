@@ -142,9 +142,7 @@ export class PlanYourVisitService {
     const globalCongregationId =
       toNumberOrNull(await this.getConfigValue("GlobalCongregationID")) ?? 0;
 
-    const base =
-      `Group_Type_ID = ${groupTypeId} AND Available_Online = 1 ` +
-      `AND Start_Date < GETUTCDATE() AND ISNULL(End_Date, GETUTCDATE()) >= GETUTCDATE()`;
+    const base = `Group_Type_ID = ${groupTypeId} AND Available_Online = 1 AND Start_Date < GETUTCDATE() AND ISNULL(End_Date, GETUTCDATE()) >= GETUTCDATE()`;
     const filter =
       congregationId > 0
         ? `Congregation_ID IN (${congregationId},${globalCongregationId}) AND ${base}`
@@ -215,10 +213,11 @@ export class PlanYourVisitService {
     const rows = await this.mp!.getTableRecords<{ Contact_ID: number | string }>({
       table: "Contacts",
       select: "Contacts.Contact_ID AS Contact_ID",
-      filter:
-        `Contacts.Last_Name LIKE '${sqlLiteral(l)}' ` +
-        `AND (Contacts.First_Name LIKE '${sqlLiteral(f)}' OR Contacts.Nickname LIKE '${sqlLiteral(f)}') ` +
+      filter: [
+        `Contacts.Last_Name LIKE '${sqlLiteral(l)}'`,
+        `AND (Contacts.First_Name LIKE '${sqlLiteral(f)}' OR Contacts.Nickname LIKE '${sqlLiteral(f)}')`,
         `AND Contacts.Email_Address LIKE '${sqlLiteral(e)}'`,
+      ].join(" "),
       top: 1,
     });
     return rows[0] ? toNumber(rows[0].Contact_ID) : null;

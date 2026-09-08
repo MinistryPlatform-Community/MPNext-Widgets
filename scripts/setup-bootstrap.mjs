@@ -40,8 +40,7 @@ function run(command, args) {
 const major = Number(process.version.replace(/^v/, '').split('.')[0]);
 if (Number.isNaN(major) || major < 20) {
   console.error(
-    `\nMPNext setup requires Node.js v20.9 or later (found ${process.version}).\n` +
-      `Install a newer Node (e.g. via nvm) and re-run.\n`
+    `\nMPNext setup requires Node.js v20.9 or later (found ${process.version}).\nInstall a newer Node (e.g. via nvm) and re-run.\n`
   );
   process.exit(1);
 }

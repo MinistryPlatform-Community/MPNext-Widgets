@@ -124,6 +124,15 @@ Do not bump `@types/node` past `^24.13.3` — it matches the Node 24 runtime.
 FullCalendar) pass a `sha384-` hash. **Bumping a CDN version means recomputing its hash
 in the same edit** — a stale hash blocks the script with no visible error.
 
+**Never join two template literals with `+`.** Turbopack's production minifier folds a
+`+` chain of template literals whose interpolations are all compile-time constants and
+**drops literal text** — an MP filter reached the API as
+`Pertains_To_Page_ID=376From_Contact=142157`, and only from a deployed build (`next dev`,
+`tsx`, and Vitest do not minify). Write one literal, or an array and `.join(...)`.
+`src/lib/no-template-concat.test.ts` scans the repo and fails the run if the pattern
+returns. Full incident and the "grep the built chunk" diagnostic:
+`.claude/references/nextjs.build-hazards.md`.
+
 ## Widget Architecture
 
 1. External site loads `/embed-sdk/next-embed.js` (the stable loader; it imports the content-hashed `next-embed.<hash>.es.js`) via `<script type="module">`. The demo pages and the customer copy-paste snippet use this path — never `next-embed.es.js`, which the build does not publish.
@@ -178,6 +187,7 @@ See **[Date/Time Handling Reference](.claude/references/ministryplatform.datetim
 - **React Server Components** by default; `"use client"` only when needed
 - **TypeScript strict mode**; path alias `@/*` = `src/*`
 - **Naming**: PascalCase (types/components), camelCase (functions), kebab-case (files), snake_case (MP fields). Exception: `src/services/*Service.ts` is camelCase.
+- **No `+` between template literals** — one literal, or an array and `.join(...)`. The production minifier folds those chains and drops text (see Toolchain above); a guard test enforces it.
 
 ### Import Patterns
 ```typescript
@@ -261,6 +271,8 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `.claude/TODO/README.md` | Numbered deferred work + what was already attempted and reverted -- read before a dependency bump |
 | `.claude/references/ministryplatform.query-syntax.md` | MP REST API query syntax reference (`$filter`, `$select`, `_TABLE` traversal) |
 | `.claude/references/ministryplatform.datetimehandling.md` | How to send/receive MP datetimes safely via `DomainTimezoneService`, anti-patterns, Windows↔IANA mapping, test guidance |
+| `.claude/references/nextjs.build-hazards.md` | Faults that exist only in a minified production build — the `+`-joined template-literal fold, and how to grep the built chunk |
+| `src/lib/no-template-concat.test.ts` | Repo-wide guard: fails if any source file joins two template literals with `+` |
 | `src/services/domainTimezoneService.ts` | Singleton: MP domain TZ → IANA, `toMpSqlDatetime`, `parseMpDatetime` |
 | `src/app/actions/domain.ts` | `getMpTimezone()` server action for client-side `Intl.DateTimeFormat` rendering |
 

@@ -796,15 +796,8 @@ export class UserMenuWidget extends MPNextWidget {
     const waited = Math.round((MP_LOGIN_WATCH_INTERVAL_MS * MP_LOGIN_WATCH_MAX_ATTEMPTS) / 1000);
     console.warn(
       scriptPresent
-        ? `[next-user-menu] MPWidgets.js is on this page, but it did not register ` +
-            `<mpp-user-login> within ${waited}s, so the MP login widget cannot render. ` +
-            `MPWidgets.js only loads its per-widget bundles for the tags it finds when ` +
-            `it scans the page; check that it loaded successfully and that its host ` +
-            `is reachable.`
-        : `[next-user-menu] <mpp-user-login> was not registered within ${waited}s and no ` +
-            `MPWidgets.js script tag is on this page. The host site must include it for ` +
-            `legacy login to work, e.g. <script id="MPWidgets" ` +
-            `src="<MP_HOST>/widgets/dist/MPWidgets.js"></script>.`,
+        ? `[next-user-menu] MPWidgets.js is on this page, but it did not register <mpp-user-login> within ${waited}s, so the MP login widget cannot render. MPWidgets.js only loads its per-widget bundles for the tags it finds when it scans the page; check that it loaded successfully and that its host is reachable.`
+        : `[next-user-menu] <mpp-user-login> was not registered within ${waited}s and no MPWidgets.js script tag is on this page. The host site must include it for legacy login to work, e.g. <script id="MPWidgets" src="<MP_HOST>/widgets/dist/MPWidgets.js"></script>.`,
     );
   }
 
@@ -819,11 +812,7 @@ export class UserMenuWidget extends MPNextWidget {
     if (this.mpLoginBootstrapFailed) return; // warnMpLoginUnregistered() said it
     this.preferMpLoginWarned = true;
     console.warn(
-      `[next-user-menu] prefer-mp-login is set, but no MPWidgets.js script tag is on ` +
-        `this page, so MP's <mpp-user-login> can never be registered. Falling back to ` +
-        `the SDK's own Sign In button. Add <script id="MPWidgets" ` +
-        `src="<MP_HOST>/widgets/dist/MPWidgets.js"></script> to this page, or drop the ` +
-        `prefer-mp-login attribute.`,
+      `[next-user-menu] prefer-mp-login is set, but no MPWidgets.js script tag is on this page, so MP's <mpp-user-login> can never be registered. Falling back to the SDK's own Sign In button. Add <script id="MPWidgets" src="<MP_HOST>/widgets/dist/MPWidgets.js"></script> to this page, or drop the prefer-mp-login attribute.`,
     );
   }
 
@@ -957,12 +946,15 @@ export class UserMenuWidget extends MPNextWidget {
     const cfg = await this.getMpAuthConfig();
     if (!cfg) return false;
     const url =
-      `${cfg.signInUrl}?response_type=${encodeURIComponent(cfg.responseType)}` +
-      `&scope=${encodeURIComponent(cfg.scope)}` +
-      `&client_id=${encodeURIComponent(cfg.clientId)}` +
-      `&redirect_uri=${encodeURIComponent(cfg.redirectUrl)}` +
-      `&nonce=${encodeURIComponent(cfg.nonce)}` +
-      `&state=REAUTH`;
+      `${cfg.signInUrl}?` +
+      [
+        `response_type=${encodeURIComponent(cfg.responseType)}`,
+        `scope=${encodeURIComponent(cfg.scope)}`,
+        `client_id=${encodeURIComponent(cfg.clientId)}`,
+        `redirect_uri=${encodeURIComponent(cfg.redirectUrl)}`,
+        `nonce=${encodeURIComponent(cfg.nonce)}`,
+        "state=REAUTH",
+      ].join("&");
     try {
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) return false;
@@ -1300,9 +1292,7 @@ export class UserMenuWidget extends MPNextWidget {
         // Native statement list + the paperless toggle (the legacy contribution
         // statement widget bundled both into one), giving history, and pledges.
         // The entire Giving tab is now native — no legacy MP widgets remain.
-        const statement =
-          `<next-my-contribution-statement api-host="${host}"></next-my-contribution-statement>` +
-          `<next-statement-preferences api-host="${host}"></next-statement-preferences>`;
+        const statement = `<next-my-contribution-statement api-host="${host}"></next-my-contribution-statement><next-statement-preferences api-host="${host}"></next-statement-preferences>`;
         const giving = `<next-my-giving hidesoftcredits="true" api-host="${host}"></next-my-giving>`;
         const pledges = `<next-my-pledges hidecancelbuttonpledge="true" api-host="${host}"></next-my-pledges>`;
 

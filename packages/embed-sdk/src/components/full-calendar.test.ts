@@ -54,11 +54,12 @@ class FakeCalendar {
     this.renderCount++;
     // Two events' worth of content, so "did it actually paint?" is measurable
     // as rendered text and not just as a child count.
-    this.el.innerHTML =
-      `<div class="fc fc-view-harness" data-view="${this.view}">` +
-      `<div class="fc-event">Sunday Service 9:00 AM</div>` +
-      `<div class="fc-event">Youth Group 6:30 PM</div>` +
-      `</div>`;
+    this.el.innerHTML = [
+      `<div class="fc fc-view-harness" data-view="${this.view}">`,
+      `<div class="fc-event">Sunday Service 9:00 AM</div>`,
+      `<div class="fc-event">Youth Group 6:30 PM</div>`,
+      `</div>`,
+    ].join("");
   }
 
   changeView(view: string): void {
