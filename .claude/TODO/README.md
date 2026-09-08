@@ -33,7 +33,6 @@ match the Node 24 runtime (Vercel runs 24).
 | 16 | `16-copy-sdk-stale-cleanup.md` | none in prod; misleads local verification | 15 min |
 | 17 | `17-better-auth-vitest5-peer.md` | none — a warning, not a failure | 10 min |
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire | 15 min |
-| 19 | `19-embed-sdk-declarations-never-emitted.md` | none today — nothing imports the package | 20 min |
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
 | 30 | `30-demo-auth-mode-banner-always-unavailable.md` | none in prod — misleads local verification | 15 min |
 | 33 | `33-next-env-dts-churn-between-dev-and-build.md` | none in prod — a generated file that dirties the tree | 15 min |
@@ -80,11 +79,28 @@ peer-dependency warnings left in the tree. 17 was surfaced by item 2 moving to
 (`eslint-plugin-react` / `-import` / `-jsx-a11y`, via `eslint-config-next`) still
 peers at ESLint 9. 18 also carries the one workaround item 4 had to add.
 
-Item 19 is not a dependency upgrade either — it was found while inspecting
-`packages/embed-sdk/dist/` during the item 3 attempt: Vite's default
-`emptyOutDir` wipes the declarations tsc emits, so the `dist/index.d.ts` that
-`packages/embed-sdk/package.json` advertises in `types`/`exports` has never
-existed.
+Item 19 (`@mpnext/embed-sdk` never shipped the `.d.ts` its `package.json`
+advertised) is **done** — and the audit found the manifest was wrong in *every*
+entry point, not just `types`. After a clean `pnpm build:sdk`, `dist/` holds
+`next-embed.<hash>.es.js`, its `.map`, the `next-embed.js` loader and
+`mp-widget-overrides.<hash>.css`; the manifest named `dist/index.d.ts`
+(`types`, `exports["."].types`) and `dist/next-embed.es.js` (`module`,
+`exports["."].import`) — 4 of 4 declared paths missing. Two independent causes:
+Vite's default `emptyOutDir` wipes tsc's declaration emit out of `dist/`, and
+`scripts/hash-sdk.js` *renames* the Vite bundle to a content-hashed filename, so
+no static `exports` map can name the artifact and stay correct across builds.
+The honest fix was to stop making the claim rather than to prop it up: the SDK
+is not a registry package — it is fetched over HTTP from `public/embed-sdk/` by
+a `<script type="module">` tag pointing at the loader (item 22), which is the
+only stable filename the build produces. The manifest is now `private: true`
+with no `main`/`module`/`types`/`exports`/`files`, `build` is
+`tsc --noEmit && vite build` so the type gate's intent is explicit, and
+`packages/embed-sdk/tsconfig.json` sets `noEmit` instead of
+`declaration`/`declarationMap`/`outDir`/`rootDir`. A new
+`packages/embed-sdk/src/package-manifest.test.ts` (5 tests) walks the manifest
+and fails if any entry-point field returns without resolving to a file a clean
+build really emits. The shipped bytes are untouched: the bundle content hash is
+`8ed9c4be` before and after, and `public/embed-sdk/` stages the same four files.
 
 Item 21 is not a dependency upgrade either — it was found while browser-testing
 item 7 on 2026-09-07 and reproduces on the shipping `6.1.21` pin: the demo

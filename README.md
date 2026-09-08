@@ -715,7 +715,7 @@ What a church page can use in `dual` / `hardened`. In `legacy` the existing `<sc
 | `userLogout` | `{ endSessionUrl, postLogoutRedirectUri }` | Cancelable. If not prevented and `endSessionUrl` is non-null the SDK navigates there |
 | `accountModalOpen` / `accountModalClose` | `{ tab }` / `{}` | Unchanged |
 
-**JavaScript** — `window.MPNextEmbed` exposes `{ init, getAuthSession }`; the same classes are exported from `@mpnext/embed-sdk`.
+**JavaScript** — `window.MPNextEmbed` exposes `{ init, getAuthSession }`; the same classes are named exports of the SDK bundle module itself. `@mpnext/embed-sdk` is a private workspace package — it is never published to a registry, and the only supported way to load it is the `/embed-sdk/next-embed.js` loader.
 
 ```js
 const auth = MPNextEmbed.getAuthSession();
