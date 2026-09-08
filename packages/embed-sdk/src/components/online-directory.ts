@@ -553,10 +553,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
     const date = `${year}${m[1]}${m[2]}`;
     const nl = "%0A";
     const summary = `SUMMARY:${encodeURIComponent(`Happy Birthday ${name}!`)}`;
-    return (
-      `data:text/calendar;charset=utf8,BEGIN:VCALENDAR${nl}VERSION:2.0${nl}BEGIN:VEVENT${nl}` +
-      `DTSTART;VALUE=DATE:${date}${nl}${summary}${nl}RRULE:FREQ=YEARLY${nl}END:VEVENT${nl}END:VCALENDAR${nl}`
-    );
+    return `data:text/calendar;charset=utf8,BEGIN:VCALENDAR${nl}VERSION:2.0${nl}BEGIN:VEVENT${nl}DTSTART;VALUE=DATE:${date}${nl}${summary}${nl}RRULE:FREQ=YEARLY${nl}END:VEVENT${nl}END:VCALENDAR${nl}`;
   }
 
   private state(icon: string, text: string): string {

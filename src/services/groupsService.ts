@@ -375,9 +375,7 @@ export class GroupsService {
     const rows = await this.mp!.getTableRecords<{ Group_Participant_ID: number }>({
       table: "Group_Participants",
       select: "Group_Participant_ID",
-      filter:
-        `Group_ID = ${groupId} AND Participant_ID_Table.Contact_ID = ${contactId} ` +
-        `AND ISNULL(Group_Participants.End_Date, '${now}') >= '${now}'`,
+      filter: `Group_ID = ${groupId} AND Participant_ID_Table.Contact_ID = ${contactId} AND ISNULL(Group_Participants.End_Date, '${now}') >= '${now}'`,
       top: 1,
     });
     return rows.length > 0;

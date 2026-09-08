@@ -274,26 +274,26 @@ export class OnlineDirectoryService {
 
     if (kw && searchType === "keyword") {
       filter +=
-        ` AND (Contacts.First_Name LIKE '%${kw}%'` +
-        ` OR Contacts.Last_Name LIKE '%${kw}%'` +
-        ` OR Contacts.Nickname LIKE '%${kw}%'` +
-        ` OR Contacts.Mobile_Phone LIKE '%${kw}%'` +
-        ` OR Contacts.Email_Address LIKE '%${kw}%'` +
-        ` OR Household_ID_Table.Home_Phone LIKE '%${kw}%')`;
+        " AND (" +
+        [
+          `Contacts.First_Name LIKE '%${kw}%'`,
+          `Contacts.Last_Name LIKE '%${kw}%'`,
+          `Contacts.Nickname LIKE '%${kw}%'`,
+          `Contacts.Mobile_Phone LIKE '%${kw}%'`,
+          `Contacts.Email_Address LIKE '%${kw}%'`,
+          `Household_ID_Table.Home_Phone LIKE '%${kw}%'`,
+        ].join(" OR ") +
+        ")";
     } else if (kw && searchType === "displayName") {
       const parts = keyword.split(/\s+/);
       const first = this.sqlEscape(parts[0]);
       const last = this.sqlEscape(parts.slice(1).join(" "));
-      filter +=
-        ` AND (Contacts.First_Name LIKE '%${first}%' OR Contacts.Nickname LIKE '%${first}%')` +
-        ` AND Contacts.Last_Name LIKE '%${last}%'`;
+      filter += ` AND (Contacts.First_Name LIKE '%${first}%' OR Contacts.Nickname LIKE '%${first}%') AND Contacts.Last_Name LIKE '%${last}%'`;
     } else if (kw && searchType === "lastNameFirstName") {
       const parts = keyword.split(",");
       const last = this.sqlEscape((parts[0] ?? "").trim());
       const first = this.sqlEscape((parts[1] ?? "").trim());
-      filter +=
-        ` AND Contacts.Last_Name LIKE '${last}%'` +
-        ` AND (Contacts.First_Name LIKE '${first}%' OR Contacts.Nickname LIKE '${first}%')`;
+      filter += ` AND Contacts.Last_Name LIKE '${last}%' AND (Contacts.First_Name LIKE '${first}%' OR Contacts.Nickname LIKE '${first}%')`;
     }
 
     if (congregationId && congregationId > 0) {
