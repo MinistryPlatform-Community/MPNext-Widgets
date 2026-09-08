@@ -35,7 +35,6 @@ match the Node 24 runtime (Vercel runs 24).
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire | 15 min |
 | 19 | `19-embed-sdk-declarations-never-emitted.md` | none today — nothing imports the package | 20 min |
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
-| 23 | `23-access-denied-dashboard-link-loops.md` | low — dead-end button | 15 min |
 | 26 | `26-favicon-and-site-chrome-404.md` | low — cosmetic 404 on every page load | 15 min |
 | 28 | `28-jest-dom-matcher-types-missing.md` | none — a matcher no test can use | 10 min |
 | 30 | `30-demo-auth-mode-banner-always-unavailable.md` | none in prod — misleads local verification | 15 min |
@@ -141,11 +140,26 @@ than author-published ones. 16: `scripts/copy-sdk.js` never deletes
 pre-content-hashing bundles, so a months-old `next-embed.es.js` sits next to the
 real hashed bundle and makes "did my change land?" greps lie.
 
-Item 23 is not a dependency upgrade either — it was found while doing item 13
-on 2026-09-07: `AccessDenied`'s "Go to Dashboard" button links to `/`, which
-redirects to `/demo`, which re-renders `AccessDenied`. Item 27 updated its
-step 1: the fix is to render `<SignOutButton />`, **not** to link
-`/api/auth/sign-out`, which a test now forbids.
+Item 23 (`AccessDenied`'s only control returned the user to the same screen) is
+**done** — it was a "Go to Dashboard" link to `/`, and there is no dashboard:
+`/` is a `redirect('/demo')` and `/demo` is the page that just rendered
+`AccessDenied`. Both of the layout's refusal states are terminal, so that
+button was the user's whole way out, and the "Profile Incomplete" copy asked
+for a sign-out the button could not perform. It renders `<SignOutButton />`
+(item 27) now, styled as the page's primary button — sign-out clears the
+session whose `userGuid` is missing *and* lets a refused user come back as an
+account that has access, so it is the useful action in both states; the access
+refusal's copy gained "or sign out to use a different account" to say so. A new
+`access-denied.test.tsx` (8 tests) pins that the control is a `<button>` that
+drives `POST /api/auth/logout` → MP end-session, that no `<a>` survives in
+either variant, and that a missing `redirectUrl` falls back to `/signin`;
+`layout.test.tsx` asserts the same two properties through the layout for both
+states. Verified in the browser against live MP: Access Denied forced with
+`DEMO_PUBLIC_ACCESS=false` and Profile Incomplete forced by suppressing the
+`databaseHooks` `userGuid` write — from each screen, Sign Out reached MP's
+`oauth/logout` and came back to a **credential prompt**, with
+`/api/auth/get-session` returning `null`. The `/demo` catalog and its header
+Sign Out are unchanged.
 
 Item 25 (`src/proxy.ts` 307'd every unauthenticated `/embed-sdk/*` request to
 `/signin`, so no external site could ever load the SDK) is **done** —
