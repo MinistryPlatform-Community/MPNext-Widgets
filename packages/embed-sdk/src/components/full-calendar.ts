@@ -31,7 +31,11 @@ const FC_SRI = "sha384-WDvnzcla8X1CQM97EnYyl4OoTCvmMFp5lBiVNO3IjVdvLMOUjwt+iuYb/
 const FC_CDN_BASE = `https://cdn.jsdelivr.net/npm/fullcalendar@${FC_VERSION}`;
 const CARDS_PAGE_SIZE = 12;
 
-type ViewType = "month" | "grid" | "week" | "list" | "cards" | "calendar";
+const VIEW_TYPES = ["month", "grid", "week", "list", "cards", "calendar"] as const;
+type ViewType = (typeof VIEW_TYPES)[number];
+
+const isViewType = (v: string | null): v is ViewType =>
+  v !== null && (VIEW_TYPES as readonly string[]).includes(v);
 
 // ── Widget ──
 
@@ -58,6 +62,15 @@ export class FullCalendarWidget extends MPNextWidget {
   };
   private fcLoaded = false;
   private stylesAdopted = false;
+  /**
+   * False until connectedCallback has finished its one and only initialisation
+   * pass. Attributes present in the markup are delivered to
+   * attributeChangedCallback during upgrade — *before* connectedCallback runs —
+   * so acting on them there would initialise the widget a second time.
+   * connectedCallback reads `view` and `show-toolbar` off the element itself,
+   * so nothing is lost by ignoring those pre-connection callbacks.
+   */
+  private connectedOnce = false;
 
   static get observedAttributes() {
     return ["api-host", "view", "show-toolbar"];
@@ -65,8 +78,8 @@ export class FullCalendarWidget extends MPNextWidget {
 
   async connectedCallback() {
     // Read view/toolbar attributes
-    const viewAttr = this.getAttribute("view") as ViewType | null;
-    if (viewAttr && ["month", "grid", "week", "list", "cards", "calendar"].includes(viewAttr)) {
+    const viewAttr = this.getAttribute("view");
+    if (isViewType(viewAttr)) {
       this.currentView = viewAttr;
     }
     const toolbarAttr = this.getAttribute("show-toolbar");
@@ -99,18 +112,54 @@ export class FullCalendarWidget extends MPNextWidget {
         error: this.error,
         raw: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      this.openAttributeCallbacks();
+    }
+  }
+
+  /**
+   * End of the single initialisation pass: start honouring
+   * attributeChangedCallback, and replay anything that changed during the
+   * awaits above (the CDN load / first fetch), which was suppressed while the
+   * widget was still initialising. In the common case both attributes still
+   * match the state we initialised with and this does no work.
+   */
+  private openAttributeCallbacks(): void {
+    // Removed again before the init pass finished — disconnectedCallback has
+    // already re-armed the guard and a future re-insert owns the next read.
+    if (!this.isConnected) return;
+    this.connectedOnce = true;
+
+    const showToolbar = this.getAttribute("show-toolbar") !== "false";
+    if (showToolbar !== this.showToolbar) {
+      this.showToolbar = showToolbar;
+      this.rebuildCurrentView();
+    }
+
+    const viewAttr = this.getAttribute("view");
+    if (isViewType(viewAttr) && viewAttr !== this.currentView) {
+      void this.switchView(viewAttr);
     }
   }
 
   disconnectedCallback() {
     this.destroyCalendar();
+    // Re-arm the guard: a re-inserted element runs connectedCallback again, so
+    // it owns the attribute read again. Attribute changes made while detached
+    // are picked up by that pass rather than acted on off-document.
+    this.connectedOnce = false;
   }
 
   attributeChangedCallback(name: string, _old: string | null, next: string | null) {
+    // Markup attributes arrive here during upgrade, before connectedCallback.
+    // connectedCallback owns the initial read of every attribute, so anything
+    // delivered before it has finished is not ours to act on — doing so built a
+    // whole second FullCalendar and leaked it.
+    if (!this.connectedOnce) return;
+
     if (name === "view") {
-      const v = next as ViewType;
-      if (v && ["month", "grid", "week", "list", "cards", "calendar"].includes(v)) {
-        this.switchView(v);
+      if (isViewType(next)) {
+        this.switchView(next);
       }
     } else if (name === "show-toolbar") {
       this.showToolbar = next !== "false";

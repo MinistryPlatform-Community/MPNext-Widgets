@@ -14,6 +14,12 @@
  *   - the live instance's element still being the in-DOM mount
  *
  * All three are asserted below, in both toggle directions, on both views.
+ *
+ * Also pins .claude/TODO/32: mounting `<next-full-calendar view="grid|week">`
+ * used to construct *two* FullCalendars and leak one, because markup attributes
+ * reach `attributeChangedCallback` during upgrade — before `connectedCallback`
+ * — and both ran a full init. Every assertion here now counts live instances
+ * globally, so a leaked orphan fails the suite wherever it is created.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import "./full-calendar";
@@ -121,20 +127,21 @@ function attachedInstances(el: HTMLElement): FakeCalendar[] {
 }
 
 /**
- * The invariant the bug violated: exactly one live FullCalendar instance bound
- * to the `#nw-fc-mount` that is actually in the shadow DOM, with content in it.
+ * The invariant both bugs violated: exactly one live FullCalendar instance,
+ * bound to the `#nw-fc-mount` that is actually in the shadow DOM, with content
+ * in it.
  *
- * Note this counts instances bound to the *current* mount rather than live
- * instances overall: mounting with `view="grid"` already double-initialises
- * (attributeChangedCallback → switchView races connectedCallback → initCalendar)
- * and leaves one orphan behind. That is a separate, pre-existing bug — see
- * .claude/TODO/32 — and deliberately not what this file asserts about.
+ * The live count is global, not per-mount: an instance bound to a mount node a
+ * later `render()` threw away is a leak (TODO 32) and must fail here, not be
+ * filtered out.
  */
 function expectLiveCalendar(el: HTMLElement, expectToolbar: boolean) {
   const mnt = mountEl(el);
   expect(mnt).not.toBeNull();
   expect(mnt!.isConnected).toBe(true);
-  // Bound to the *current* mount node, not an orphan left behind by render().
+  // Exactly one live calendar in the whole page...
+  expect(liveInstances()).toHaveLength(1);
+  // ...and it is bound to the current mount, not an orphan left by render().
   expect(attachedInstances(el)).toHaveLength(1);
   // Measured signals from TODO 20 (text length 610 → 0, mount children 1 → 0).
   expect(mnt!.children.length).toBe(1);
@@ -177,6 +184,92 @@ describe("<next-full-calendar> view lifecycle", () => {
     delete (window as unknown as { FullCalendar?: unknown }).FullCalendar;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  // ── TODO 32: one init per mount, no orphan ────────────────────────────────
+
+  for (const view of ["grid", "week"] as const) {
+    it(`constructs exactly one FullCalendar for markup view="${view}"`, async () => {
+      const el = mount(`view="${view}"`);
+      await settle();
+
+      // Constructed, not merely *live*: an orphan that is never destroyed shows
+      // up as a second construction long before anything destroys it.
+      expect(FakeCalendar.instances).toHaveLength(1);
+      expect(liveInstances()).toHaveLength(1);
+      expect(FakeCalendar.instances[0].el).toBe(mountEl(el));
+      expect(FakeCalendar.instances[0].view).toBe(
+        view === "grid" ? "dayGridMonth" : "timeGridWeek"
+      );
+      expectLiveCalendar(el, true);
+    });
+
+    it(`leaves nothing behind when a markup view="${view}" widget is removed`, async () => {
+      const el = mount(`view="${view}"`);
+      await settle();
+      expect(FakeCalendar.instances).toHaveLength(1);
+
+      el.remove();
+      await settle();
+
+      // disconnectedCallback destroys the *only* instance — with the double
+      // init it could only ever reach the survivor, leaking the other.
+      expect(liveInstances()).toHaveLength(0);
+      expect(FakeCalendar.instances.every((i) => i.destroyed)).toBe(true);
+    });
+  }
+
+  it("constructs exactly one FullCalendar for markup view + show-toolbar together", async () => {
+    const el = mount('view="week" show-toolbar="false"');
+    await settle();
+    expect(FakeCalendar.instances).toHaveLength(1);
+    expectLiveCalendar(el, false);
+  });
+
+  it("ignores attribute callbacks delivered before connectedCallback", async () => {
+    // Exactly what a custom-element upgrade does: the element already carries
+    // its attributes when the definition (and therefore the callback) arrives.
+    const el = document.createElement("next-full-calendar");
+    el.setAttribute("api-host", HOST);
+    el.setAttribute("view", "grid");
+    el.setAttribute("show-toolbar", "false");
+    await settle();
+    // Not connected yet: no shadow content, no calendar.
+    expect(FakeCalendar.instances).toHaveLength(0);
+
+    document.body.appendChild(el);
+    await settle();
+    expect(FakeCalendar.instances).toHaveLength(1);
+    expectLiveCalendar(el, false);
+  });
+
+  it("re-initialises exactly once when a widget is removed and re-added", async () => {
+    const el = mount('view="grid"');
+    await settle();
+    expect(FakeCalendar.instances).toHaveLength(1);
+
+    el.remove();
+    await settle();
+    expect(liveInstances()).toHaveLength(0);
+
+    document.body.appendChild(el);
+    await settle();
+    expect(FakeCalendar.instances).toHaveLength(2); // one per connection
+    expect(liveInstances()).toHaveLength(1);
+    expectLiveCalendar(el, true);
+  });
+
+  it("applies attributes changed during the async init pass", async () => {
+    // The guard suppresses these callbacks; connectedCallback replays whatever
+    // the final attribute values are once its own init pass is done, so a host
+    // that flips an attribute mid-load does not lose the change.
+    const el = mount('view="grid"');
+    el.setAttribute("view", "week");
+    el.setAttribute("show-toolbar", "false");
+    await settle();
+
+    expectLiveCalendar(el, false);
+    expect(attachedInstances(el)[0].view).toBe("timeGridWeek");
   });
 
   // ── The regression itself ─────────────────────────────────────────────────
