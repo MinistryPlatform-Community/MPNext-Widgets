@@ -31,13 +31,32 @@ import { LOGOUT_RETURN_COOKIE, isAllowedReturnTarget } from '@/lib/embed/logout-
 const PUBLIC_PATH_PREFIXES = ['/api', '/signin', '/demo', '/embed-sdk'] as const;
 
 /**
+ * Root-level site chrome: exact paths, never prefixes.
+ *
+ * These are not application routes and expose nothing, but a crawler or a
+ * browser asks for them unauthenticated. Answering with a `307` to `/signin`
+ * is wrong for both — a crawler reads a redirected `/robots.txt` as "no policy"
+ * and a browser gets an HTML document where an image was expected. If either
+ * file is ever removed, Next.js's own `404` is the correct answer, which is
+ * also why they are matched exactly: `/robots.txt/anything` stays gated.
+ *
+ * The matcher below already keeps the proxy from running for them. This is the
+ * guarantee if the matcher is ever loosened, the same belt-and-braces
+ * `/embed-sdk` gets.
+ */
+const PUBLIC_EXACT_PATHS = ['/favicon.ico', '/robots.txt'] as const;
+
+/**
  * True when `pathname` is the allowlisted path itself or a descendant of it.
  * Exported for tests: this allowlist is the app's entire authentication
  * boundary, so it is pinned rather than trusted.
  */
 export function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATH_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  return (
+    (PUBLIC_EXACT_PATHS as readonly string[]).includes(pathname) ||
+    PUBLIC_PATH_PREFIXES.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    )
   );
 }
 
@@ -104,17 +123,21 @@ export async function proxy(request: NextRequest) {
  * files. The negative lookahead skips the static surface entirely so the
  * proxy is never even invoked for it:
  *
- * - `_next/static`, `_next/image`, `favicon.ico`, `assets/` — framework and
- *   app chrome (`assets/icons/favicon.ico` is referenced by the root layout).
+ * - `_next/static`, `_next/image` — framework output.
+ * - `favicon.ico`, `robots.txt` — root-level site chrome, see
+ *   `PUBLIC_EXACT_PATHS`. Both are real files now: `src/app/favicon.ico` and
+ *   `src/app/robots.ts` (the App Router metadata conventions). There is no
+ *   `assets/` exclusion any more — nothing was ever served from `public/assets`
+ *   (TODO 26), so it excluded a path that did not exist.
  * - `embed-sdk/` — the published SDK, see `PUBLIC_PATH_PREFIXES`. It is listed
  *   here *and* in the early return: the matcher is the cheap path, the early
  *   return is the guarantee if the matcher is ever loosened.
  *
  * Matcher values must be statically analyzable string literals, so this cannot
- * be built from the list above.
+ * be built from the lists above.
  */
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|assets/|embed-sdk/).*)',
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|embed-sdk/).*)',
   ],
 };
