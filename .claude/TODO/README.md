@@ -34,8 +34,8 @@ match the Node 24 runtime (Vercel runs 24).
 | 17 | `17-better-auth-vitest5-peer.md` | none — a warning, not a failure | 10 min |
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire | 15 min |
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
-| 30 | `30-demo-auth-mode-banner-always-unavailable.md` | none in prod — misleads local verification | 15 min |
 | 33 | `33-next-env-dts-churn-between-dev-and-build.md` | none in prod — a generated file that dirties the tree | 15 min |
+| 35 | `35-demo-legacy-user-menu-mpwidgets-race.md` | unproven — may be a live legacy sign-in outage | 1 hr to diagnose |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -346,12 +346,57 @@ signed out" failure item 14 existed to fix — `EMBED_SESSION_STORE_ALLOW_MEMORY
 opts back in deliberately. The throw is lazy, so `next build` is unaffected
 (verified). Item 34 was filed from that work and is now **done** (PR pending).
 
+Item 30 (every demo page's auth-mode banner read "legacy (config unavailable)")
+is **done** — and the audit found the same defect in six more places than the
+banner. Vite's `demo-env-replace` plugin substitutes `__API_HOST__` in
+`transformIndexHtml`, which only sees markup; Vite extracts every inline
+`<script type="module">` into its own `?html-proxy&index=N.js` module *before*
+that runs, so a placeholder written inside one reaches the browser as the
+literal string. Confirmed on the served bytes on 2026-09-08:
+`curl 'localhost:5173/demo-user-menu.html?html-proxy&index=0.js'` returned
+`const apiHost = "__API_HOST__";` while the same page's markup came back
+`api-host="http://localhost:3000"`. Seven pages were affected (`index.html`,
+`demo-user-menu`, `demo-add-to-calendar`, `demo-event-details`,
+`demo-group-details`, `demo-plan-your-visit`, `demo-pledge-campaign`) — the
+other 19 only ever put the placeholder in markup, and only two carry the banner
+at all. `demo-pledge-campaign.html` was the worst of them: its whole token
+provider fetched `http://localhost:5173/__API_HOST__/api/embed/session` and
+**404'd three times per page load**, so that demo could not talk to the API.
+The fix uses the pattern already in the repo rather than a new mechanism — a
+classic (non-module) `<script>` publishing `window.__nextEmbedApiHost =
+"__API_HOST__"`, which stays in the HTML and so *is* substituted, and which the
+SDK's own host detection (`base-widget.ts`, `auth-session.ts`, `index.ts`)
+already reads. Three pages had that script and used the placeholder anyway;
+four gained it. A new `packages/embed-sdk/src/demo-placeholder-substitution.test.ts`
+(3 tests) walks every demo page's script elements and fails on any `__*__`
+token inside an inline module script, and checks that a page reading
+`window.__nextEmbedApiHost` has a classic script assigning it *earlier* in the
+document — it reports all 7 offenders with the HTML fix stashed out, which is
+the same "string reference that silently breaks" gate items 19, 22 and 26 added.
+Verified in the browser across three states with `pnpm test:widget`: default
+config → banner `legacy`; `EMBED_AUTH_MODE_ORIGINS=http://localhost:5173=dual`
+on the dev server's env only → banner `dual` (with `/api/embed/auth/config`
+independently returning `dual` for 5173 and `legacy` for 3000, so the banner is
+tracking the resolved mode, not a hardcoded answer); Next.js killed → banner
+`legacy (config unavailable)`, the text now reserved for the case it names. All
+seven pages' widgets render with no console errors and no 4xx. Item 35 was filed
+from that verification.
+
 Item 34 (documentation drift: `CLAUDE.md` still described "5 embed SDK widgets"
 while the repo ships 25 registered `next-*` elements and 25 demo pages) is
 **done** — `CLAUDE.md` was refreshed on 2026-09-07 against a fresh measurement
 and brought current with items 2, 3, 4, 6, 7, 10, 11, 14, 22, 24, 25, 27, 29
 and 31. It now points at `packages/embed-sdk/src/components/` and the demo
 pages as the source of truth rather than restating a count in three places.
+
+Item 35 is not a dependency upgrade either — it was found while browser-testing
+item 30 on 2026-09-08 and is in the pre-fix baseline too: in `legacy` mode (the
+default) `next-user-menu` logs "MPWidgets.js does not appear to be loaded"
+although the script returns 200 and `mpp-user-login` *is* registered a moment
+later, and the slotted `<mpp-user-login>` stays `0 × 0` with no shadow root —
+no Sign In button renders at all. Whether that is a one-shot registration check
+the widget never retries, or MP declining to paint on an unregistered origin, is
+not yet measured; the file says how to tell them apart.
 
 **Standard verification gate** for every branch below:
 

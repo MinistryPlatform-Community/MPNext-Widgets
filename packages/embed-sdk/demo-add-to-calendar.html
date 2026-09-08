@@ -4,6 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MPNext Add to Calendar Widget - Demo</title>
+  <!-- Classic (non-module) script: Vite's transformIndexHtml substitutes
+       __API_HOST__ in markup but NOT inside inline module scripts, which it
+       extracts into a separate html-proxy chunk before the HTML transform
+       runs. Non-module scripts stay in the HTML, so this global is the one
+       place the placeholder resolves — the module script below (and the SDK's
+       own host detection) reads the API host from here. -->
+  <script>
+    window.__nextEmbedApiHost = "__API_HOST__";
+  </script>
+
   <!-- MP Widgets base script (provides mpp-user-login used by next-user-menu) -->
   <script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"></script>
   <style>
@@ -346,7 +356,7 @@
       if (oldWidget) oldWidget.remove();
       const newWidget = document.createElement("next-add-to-calendar");
       newWidget.setAttribute("event-id", String(eventId));
-      newWidget.setAttribute("api-host", "__API_HOST__");
+      newWidget.setAttribute("api-host", window.__nextEmbedApiHost);
       demoBox.appendChild(newWidget);
       attachWidgetListeners(newWidget);
       return newWidget;
