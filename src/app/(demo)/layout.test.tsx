@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
 
 /**
  * Regression cover for the `/demo` infinite redirect loop.
@@ -34,6 +33,9 @@ vi.mock('next/navigation', () => ({
   redirect: (url: string) => {
     throw new RedirectError(url);
   },
+  // `AccessDenied` renders `SignOutButton`, a client component that reads the
+  // router (TODO 23). Its own behaviour is covered by access-denied.test.tsx.
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
 vi.mock('@/lib/auth', () => ({
@@ -55,21 +57,6 @@ vi.mock('./demo/_components/mp-widgets-loader', () => ({
 // unreachable `(app)` layout, which silently disabled server-side sign-out.
 vi.mock('@/components/token-bridge', () => ({
   TokenBridge: () => <div data-testid="token-bridge" />,
-}));
-
-vi.mock('next/link', () => ({
-  default: ({
-    href,
-    children,
-    ...rest
-  }: {
-    href: string;
-    children: ReactNode;
-  }) => (
-    <a href={href} {...rest}>
-      {children}
-    </a>
-  ),
 }));
 
 const { default: DemoLayout } = await import('./layout');
@@ -233,5 +220,39 @@ describe('DemoLayout access guard', () => {
     expect(screen.getByText('Access Denied')).toBeTruthy();
     expect(screen.queryByTestId('demo-catalog')).toBeNull();
     expect(screen.queryByText('Profile Incomplete')).toBeNull();
+  });
+
+  /**
+   * TODO 23. Both refusal states are terminal: the layout renders them instead
+   * of the catalog, so whatever control they carry is the user's only way out.
+   * It used to be "Go to Dashboard" → `/` → `redirect('/demo')` → this same
+   * screen. Sign-out is the only action that changes the outcome — it clears
+   * the session whose `userGuid` is missing, and it lets a refused user come
+   * back as an account that has access.
+   */
+  it.each([
+    [
+      'the access refusal',
+      { user: { id: 'user-1', userGuid: 'guid-123' } },
+      false,
+      'Access Denied',
+    ],
+    ['the missing-userGuid render', { user: { id: 'user-1' } }, undefined, 'Profile Incomplete'],
+  ])('offers a working sign-out and no loop back on %s', async (_name, session, access, heading) => {
+    getSession.mockResolvedValue(session);
+    if (access !== undefined) checkDemoAccess.mockResolvedValue(access);
+
+    const { container } = await renderLayout();
+
+    expect(screen.getByText(heading)).toBeTruthy();
+
+    // A real control, not a navigation: `/api/auth/sign-out` is POST-only and
+    // would leave the MP session alive anyway (TODO 27).
+    const button = screen.getByRole('button', { name: 'Sign Out' });
+    expect(button.tagName).toBe('BUTTON');
+
+    // No anchor at all -- every destination reachable from here (`/`, `/demo`,
+    // `/dashboard`) lands the user back on this screen.
+    expect(container.querySelectorAll('a')).toHaveLength(0);
   });
 });
