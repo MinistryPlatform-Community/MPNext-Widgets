@@ -11,8 +11,11 @@ import { describe, expect, it } from "vitest";
  * map, `module`, or `main` can name it and stay correct across builds; the only
  * stable entry point is the generated `next-embed.js` loader, fetched over HTTP
  * from `public/embed-sdk/` by a `<script type="module">` tag. `vite build` also
- * wipes `dist/` (`emptyOutDir` defaults on), so a `tsc` emit into `dist/`
- * cannot survive either — the package's `tsc` step is a type gate only.
+ * wipes `dist/` (`emptyOutDir`, pinned in `vite.config.ts`), so a `tsc` emit
+ * into `dist/` cannot survive either — the package's `tsc` step is a type gate
+ * only. That same wipe is what makes `dist/` an exact manifest of the current
+ * build, which `scripts/copy-sdk.js` uses to clear stale artifacts out of
+ * `public/embed-sdk/` — see the last case below.
  *
  * The manifest therefore declares no entry points at all and is `private`.
  * This test fails if any file-path field comes back, unless whoever adds it
@@ -108,5 +111,20 @@ describe("embed-sdk package manifest", () => {
     const hashed = staged.filter((f) => /^next-embed\.[a-f0-9]+\.es\.js$/.test(f));
     expect(hashed).toHaveLength(1);
     expect(declaredPaths().some((p) => p.includes(hashed[0]))).toBe(false);
+  });
+
+  it("no pre-content-hashing bundle is staged beside the loader", () => {
+    if (!existsSync(publicDir)) return; // nothing built yet
+    const staged = readdirSync(publicDir).filter((f) => f.startsWith("next-embed"));
+    if (staged.length === 0) return; // pre-build checkout
+
+    // `next-embed.es.js` / `next-embed.umd.js` are outputs of naming schemes the
+    // build abandoned. They are gitignored, so they never deploy — but a months-
+    // old copy sitting next to the real hashed bundle is a verification trap:
+    // grepping it to check whether a change landed reports the wrong answer.
+    // `scripts/copy-sdk.js` deletes everything in `public/embed-sdk/` the current
+    // build did not emit; this fails if that cleanup regresses.
+    const legacy = staged.filter((f) => /^next-embed\.(es|umd)\.js(\.map)?$/.test(f));
+    expect(legacy).toEqual([]);
   });
 });
