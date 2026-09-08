@@ -32,7 +32,8 @@ const EMBED_SDK_URLS = [
 /**
  * The matcher is a path-to-regexp pattern whose body is a raw regex group, so
  * anchoring it is a faithful stand-in for what Next.js compiles it to. Only
- * the unescaped `.` in `favicon.ico` differs, which none of these cases hit.
+ * the unescaped `.` in `favicon.ico` and `robots.txt` differs, which none of
+ * these cases hit.
  */
 const matcherRegex = new RegExp(`^${config.matcher[0]}$`);
 
@@ -52,6 +53,10 @@ describe('isPublicPath', () => {
     '/demo/user-menu',
     '/embed-sdk',
     ...EMBED_SDK_URLS,
+    // Root-level site chrome (TODO 26): served to crawlers and browsers with
+    // no session, so a redirect to /signin is the wrong answer for both.
+    '/favicon.ico',
+    '/robots.txt',
   ])('allows %s', (pathname) => {
     expect(isPublicPath(pathname)).toBe(true);
   });
@@ -66,6 +71,13 @@ describe('isPublicPath', () => {
     '/demo-admin',
     '/embed-sdk-admin',
     '/embed-sdkx/next-embed.js',
+    // Site chrome is matched exactly, not as a prefix.
+    '/robots.txt/x',
+    '/favicon.ico/x',
+    '/robots.txt.bak',
+    // `public/assets` never existed (TODO 26); the matcher no longer pretends
+    // it does, and the allowlist never did.
+    '/assets/icons/favicon.ico',
   ])('gates %s', (pathname) => {
     expect(isPublicPath(pathname)).toBe(false);
   });
@@ -78,7 +90,14 @@ describe('proxy() with no session cookie', () => {
     expect(res.status).toBe(200);
   });
 
-  it.each(['/api/embed/session', '/api/embed/full-calendar/events', '/signin', '/demo'])(
+  it.each([
+    '/api/embed/session',
+    '/api/embed/full-calendar/events',
+    '/signin',
+    '/demo',
+    '/favicon.ico',
+    '/robots.txt',
+  ])(
     'lets %s through',
     async (pathname) => {
       const res = await proxy(request(pathname));
@@ -124,12 +143,22 @@ describe('config.matcher', () => {
     }
   });
 
-  it.each(['/_next/static/chunks/main.js', '/_next/image?url=x', '/favicon.ico', '/assets/icons/favicon.ico'])(
+  it.each(['/_next/static/chunks/main.js', '/_next/image?url=x', '/favicon.ico', '/robots.txt'])(
     'excludes %s',
     (pathname) => {
       expect(matcherRegex.test(pathname.split('?')[0])).toBe(false);
     },
   );
+
+  /**
+   * TODO 26. The matcher used to exclude `assets/` for a
+   * `/assets/icons/favicon.ico` that `public/` never contained. The icon now
+   * ships as `src/app/favicon.ico` (already excluded), so the exclusion is
+   * gone and `/assets/...` is gated like any other unknown path.
+   */
+  it('no longer excludes assets/, which serves nothing', () => {
+    expect(matcherRegex.test('/assets/icons/favicon.ico')).toBe(true);
+  });
 
   it.each(['/', '/dashboard', '/demo', '/embed-sdk-admin'])('still runs for %s', (pathname) => {
     expect(matcherRegex.test(pathname)).toBe(true);

@@ -35,7 +35,6 @@ match the Node 24 runtime (Vercel runs 24).
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire | 15 min |
 | 19 | `19-embed-sdk-declarations-never-emitted.md` | none today — nothing imports the package | 20 min |
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
-| 26 | `26-favicon-and-site-chrome-404.md` | low — cosmetic 404 on every page load | 15 min |
 | 30 | `30-demo-auth-mode-banner-always-unavailable.md` | none in prod — misleads local verification | 15 min |
 | 33 | `33-next-env-dts-churn-between-dev-and-build.md` | none in prod — a generated file that dirties the tree | 15 min |
 
@@ -189,9 +188,23 @@ deleting the session row out of band, the replayed cookie gets `null` from
 `get-session`, 401 from `session-tokens`, a public token from `/api/embed/session`
 and a 307 to `/signin` from `/demo`. Item 27 was filed from that verification.
 
-Item 26 is not a dependency upgrade either — it was found while doing item 25 on
-2026-09-07: the root layout points `icons.icon` at `/assets/icons/favicon.ico`,
-which does not exist, so every page load logs a 404.
+Item 26 (the root layout pointed `icons.icon` at `/assets/icons/favicon.ico`,
+which `public/` never contained, and `/robots.txt` 307'd to `/signin`) is
+**done** — the icon now ships as `src/app/favicon.ico` (a 978-byte 16/32/48
+multi-size ICO, brand blue + gold chevron) through the App Router file
+convention, so Next.js emits the cache-busted `<link rel="icon">` itself and the
+hand-written `icons` entry is gone. `src/app/robots.ts` returns
+`Disallow: /` with `Allow: /embed-sdk/` — the app is a sign-in-gated demo
+library with nothing to index, but a crawler rendering a church's page has to be
+able to fetch the SDK bundle. The dead `assets/` matcher exclusion was removed
+and `/favicon.ico` + `/robots.txt` were added to the proxy as *exact* public
+paths (not prefixes), so site chrome resolves even if the matcher is ever
+loosened. Verified against `pnpm build` + `next start` with no cookies:
+`/favicon.ico` 200 `image/x-icon`, `/robots.txt` 200 `text/plain`,
+`/embed-sdk/next-embed.js` still 200, `/`, `/demo` and `/dashboard` still 307,
+and zero console messages on a signed-in `/demo`. `src/app/site-chrome.test.ts`
+pins the ICO's validity and fails on *any* static asset URL named in `src/` that
+does not resolve — the bug class item 22 hit with the SDK filename.
 
 Item 10 (Subresource Integrity on the two pinned CDN scripts) is **done** —
 `loadScript(url, integrity?)` sets `integrity` + `crossorigin="anonymous"`, with
