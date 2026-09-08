@@ -289,7 +289,7 @@ https://yourdomain.com
 
 > **Important**: Post-logout redirect URIs are **required** for proper logout functionality. The application implements OIDC RP-initiated logout to properly end Ministry Platform OAuth sessions. Without these configured, users will be auto-logged back in after clicking "Sign out" (SSO behavior).
 >
-> Widgets in `dual` / `hardened` mode send the visitor back to the **church page** (the widget's `post-logout-redirect-uri`, defaulting to the current page) after MP ends the session, so each host site origin that will use widget logout needs its own post-logout entry here too (e.g. `https://www.church.org`).
+> **Host church sites need no entry of their own.** MP only completes an end-session whose `post_logout_redirect_uri` is registered, and an embed SDK's host pages are an open-ended set belonging to other people, so no church page URL is ever sent to MP. `${BETTER_AUTH_URL}/signin` is the single registered value, and the widget host returns the visitor to their church page itself afterwards — see [Widget Authentication](#widget-authentication).
 
 #### Generate Auth Secrets
 
@@ -365,7 +365,7 @@ pnpm dev
 - **"Redirect URI mismatch"**: Verify the redirect URI in MP matches exactly
 - **"Invalid client"**: Check OAuth client ID and secret
 - **Widget 401 / CORS error**: Confirm `EMBED_ALLOWED_ORIGINS` includes the host page origin and `EMBED_JWT_SECRET` is set
-- **Auto-login after logout**: Verify post-logout redirect URIs are configured in the MP OAuth client (OIDC RP-initiated logout requires these)
+- **Auto-login after logout**: `${BETTER_AUTH_URL}/signin` must be registered as a post-logout redirect URI on the MP OAuth client. MP refuses to complete an end-session it cannot redirect out of — it drops the whole logout context, shows a "Would you like to logout?" prompt, and leaves the SSO session alive, so the next visit signs the user straight back in
 - **Widget shows `<mpp-user-login>` although you set `EMBED_AUTH_MODE=dual`**: the SDK falls back to `legacy` whenever `GET /api/embed/auth/config` fails — check the browser console for a CORS/network error on that request and that the page origin is in `EMBED_ALLOWED_ORIGINS`. See [Troubleshooting Widget Auth](#troubleshooting-widget-auth) for more
 - **Native build script errors (esbuild / sharp / unrs-resolver)**: pnpm 10 blocks dependency build scripts by default. If a postinstall step is required (e.g. `sharp` for some Next.js image paths), approve them with `pnpm approve-builds`
 
@@ -375,7 +375,7 @@ When deploying to production:
 
 1. Update `BETTER_AUTH_URL` to your production domain
 2. Add production redirect URIs (`https://yourdomain.com/api/auth/callback/ministryplatform` and `https://yourdomain.com/api/embed/auth/callback`) to the MP OAuth client
-3. Add production post-logout redirect URIs (the app origin plus every host site origin that uses widget logout)
+3. Add `https://yourdomain.com/signin` as a post-logout redirect URI. That one entry covers the app **and** every embedded church site — host page URLs are never sent to MP (see [Widget Authentication](#widget-authentication))
 4. Add the external host site origin(s) to `EMBED_ALLOWED_ORIGINS`
 5. Ensure all environment variables are set in your hosting provider. **Always set the Upstash session store (`EMBED_SESSION_STORE_URL` / `EMBED_SESSION_STORE_TOKEN`)** — it backs both the Better Auth app session and the widget sessions, and the in-memory fallback is dev-only (users get signed out on every restart and instance switch). For `dual` / `hardened` widget auth also set `EMBED_SESSION_ENC_KEY`
 6. Enable HTTPS/SSL certificates
@@ -403,7 +403,7 @@ MPNext-Widgets/
 │   │   │       │   ├── login/            # GET  top-level redirect to MP authorize (state cookie)
 │   │   │       │   ├── callback/         # GET  OAuth redirect URI → server session → #nw_auth handoff
 │   │   │       │   ├── exchange/         # POST one-time handoff code → { sid, token }
-│   │   │       │   ├── logout/           # POST delete session → MP end-session URL
+│   │   │       │   ├── logout/           # POST delete session → URL to navigate to; GET bounce home
 │   │   │       │   └── me/               # GET  signed-in user for a v2 widget JWT
 │   │   │       ├── add-to-calendar/      # Subscribe to event reminders
 │   │   │       ├── full-calendar/        # List + detail event endpoints
@@ -427,6 +427,7 @@ MPNext-Widgets/
 │   │   │   ├── embed-session.ts          # create/get/delete sessions, handoff codes, getMpUserAccessToken()
 │   │   │   ├── jwt.ts                    # Widget JWT issue/verify (jose) + OAuth state token
 │   │   │   ├── mp-oauth.ts               # MP authorize/token/userinfo/endsession helpers
+│   │   │   ├── logout-return.ts          # Sealed return ticket + nw_logout_return bounce
 │   │   │   ├── rate-limit.ts             # Fixed-window per-IP limiter on public routes
 │   │   │   ├── recaptcha.ts              # Optional server-side reCAPTCHA
 │   │   │   ├── session-store.ts          # EmbedSessionStore: Upstash Redis + in-memory
@@ -656,12 +657,13 @@ All JSON routes send CORS headers for allowed origins and never log token materi
 
 | Route | Purpose |
 |---|---|
-| `GET /api/embed/auth/config` | `{ mode, loginUrl, logoutUrl, meUrl }` resolved for the caller's origin. `Cache-Control: public, max-age=300`. The SDK treats any failure as `legacy`. |
+| `GET /api/embed/auth/config` | `{ mode, loginUrl, logoutUrl, meUrl, postLogoutRedirectUri? }` resolved for the caller's origin. `Cache-Control: public, max-age=300`. The SDK treats any failure as `legacy`. `postLogoutRedirectUri` is the host's one registered end-session destination, used only by `legacy` (which builds MP's end-session URL in the browser). |
 | `GET /api/embed/auth/login?origin=&return_to=&wid=` | Validates `origin` (allowlist) and that `return_to` is same-origin with it; signs `state`/`nonce` (+ optional PKCE verifier) into an `HttpOnly; SameSite=Lax` cookie `nw_oauth_state` (10 min, `Path=/api/embed/auth`); 302 to MP `/oauth/connect/authorize` with `redirect_uri=<publicUrl>/api/embed/auth/callback`. |
 | `GET /api/embed/auth/callback?code=&state=` | Verifies the state cookie (constant-time), exchanges the code server-side, calls userinfo, creates the session, mints a **single-use handoff code** (60 s, origin-bound) and 302s to `return_to#nw_auth=<code>` — a fragment, so the code never reaches the church site's server logs. Failures redirect to `return_to#nw_auth_error=<short_code>`. |
 | `POST /api/embed/auth/exchange` `{ code, wid }` | Redeems the handoff code (once, origin must match) → `{ sid, token, expiresIn, mode }`. Rate-limited. `400 { error: "invalid_code" }` on reuse/expiry. |
 | `POST /api/embed/session` `{ wid, sid? \| mpUserToken? }` | Mints the widget JWT. `sid` → v2 token, or **`401 { error: "invalid_session" }`** when the session is missing, expired, or bound to another origin (the SDK then clears the `sid` and falls back to public). `mpUserToken` → v1 (`legacy`) or v2 + `sid` (`dual`). Same-origin Better Auth sessions (the demo gallery) are turned into an embed session the same way. Rate-limited per IP (`EMBED_SESSION_RATE_LIMIT`, default 120/min). |
-| `POST /api/embed/auth/logout` `{ sid, postLogoutRedirectUri? }` | Deletes the session (idempotent) → `{ endSessionUrl }` (MP end-session with `id_token_hint`). `postLogoutRedirectUri` must be same-origin with the request origin or it is dropped. |
+| `POST /api/embed/auth/logout` `{ sid, postLogoutRedirectUri? }` | Deletes the session (idempotent) → `{ endSessionUrl }`, the URL the SDK navigates to. With a valid `postLogoutRedirectUri` (must be same-origin with the request origin, else dropped) that is `GET /api/embed/auth/logout?t=<sealed ticket>` on this host, **not** MP: the church page is never sent to MP, which would refuse it. |
+| `GET /api/embed/auth/logout?t=` | Second leg of that bounce. Opens the sealed ticket, remembers the church page in an `HttpOnly; SameSite=Lax` cookie `nw_logout_return` (5 min, `Path=/`), then 302s to MP end-session with `id_token_hint` and the registered `post_logout_redirect_uri`. MP lands back on `/signin`, where `src/proxy.ts` spends the cookie and redirects to the church page. A missing or tampered ticket still ends the MP session, just without the return trip. |
 | `GET /api/embed/auth/me` (Bearer widget JWT) | `{ authenticated: true, user: { userGuid, firstName, lastName, email, imageGuid } }` for a `sid`-backed token; `{ authenticated: false }` otherwise (401 for public tokens). |
 
 Server-side building blocks live in `src/lib/embed/`: `auth-mode.ts` (mode resolution), `crypto.ts` (AES-256-GCM via WebCrypto, keyed by `EMBED_SESSION_ENC_KEY`), `session-store.ts` (Upstash Redis REST or in-memory; keys `nw:sess:<sha256(sid)>`, `nw:handoff:*`, `nw:lock:*`, `nw:rl:*`, and a generic `nw:kv:*` namespace the Better Auth app session borrows), `embed-session.ts` (create/get/delete, handoff codes, refresh under a store lock), `mp-oauth.ts` (authorize/token/userinfo/endsession URLs, PKCE), `rate-limit.ts`.
@@ -671,7 +673,7 @@ Server-side building blocks live in `src/lib/embed/`: `auth-mode.ts` (mode resol
 Nothing works in `dual` or `hardened` until the OAuth client referenced by `OIDC_CLIENT_ID` (falling back to `MINISTRY_PLATFORM_CLIENT_ID`) knows about the widget host:
 
 1. **Redirect URI**: add `https://<widget-host>/api/embed/auth/callback` (and `http://localhost:3000/api/embed/auth/callback` for local dev). `<widget-host>` is `EMBED_PUBLIC_URL` when set, otherwise the origin of the incoming request.
-2. **Post-logout redirect URIs**: add each church site origin that will use widget logout (the widget's `post-logout-redirect-uri`, defaulting to the current page).
+2. **Post-logout redirect URI**: add `https://<widget-host>/signin` — i.e. `${BETTER_AUTH_URL}/signin` — and `http://localhost:3000/signin` for local dev. This is the **only** post-logout entry needed, in every mode. Church site origins are deliberately *not* registered: MP matches the URI it is handed against this list and refuses to finish a logout it does not recognise (dropping `id_token_hint` and showing a "Would you like to logout?" prompt with the SSO session still alive), and an embed SDK cannot enumerate its host pages. So no host page URL is ever sent to MP. `dual`/`hardened` return the visitor to their church page through the widget host's own bounce (`nw_logout_return`, see the route table above); `legacy` builds the end-session URL in the browser and uses the registered URI directly, which the config route advertises to it.
 3. **PKCE**: off by default (`EMBED_OAUTH_PKCE=false`, matching the app's Better Auth config). Set `EMBED_OAUTH_PKCE=true` only if the client accepts a `code_challenge`; the flow is otherwise identical.
 4. **Scopes** requested: `openid offline_access http://www.thinkministry.com/dataplatform/scopes/all` (`offline_access` supplies the refresh token that keeps long sessions alive).
 5. **Server secrets**: set `EMBED_SESSION_ENC_KEY` (32 random bytes, base64url — distinct from `EMBED_JWT_SECRET`) and, in production, an Upstash Redis store (`EMBED_SESSION_STORE_URL` / `EMBED_SESSION_STORE_TOKEN`). Without a store URL the host uses an in-memory store that loses sessions on restart and is not shared across serverless instances. The same store backs the Better Auth app session (`src/lib/auth-secondary-storage.ts`), so it is required in production regardless of the widget auth mode.
@@ -685,7 +687,7 @@ What a church page can use in `dual` / `hardened`. In `legacy` the existing `<sc
 | Attribute | Effect |
 |---|---|
 | `mp-base-url` | MP host (still needed: end-session URL and userinfo display fallback) |
-| `post-logout-redirect-uri` | Where MP sends the visitor after sign-out; defaults to the current page; must be registered on the MP client |
+| `post-logout-redirect-uri` | Where the visitor lands after sign-out. `dual`/`hardened`: any page on an allowed embedding origin, defaults to the current page, and needs nothing registered with MP — the widget host bounces the browser back itself. `legacy`: passed to MP directly, so it must be registered on the MP OAuth client; leave it unset and the widget uses the host's registered URI instead |
 | `session-scope="tab"` | Keep the `sid` in `sessionStorage` instead of `localStorage` (shared devices). Does not migrate an existing `localStorage` sid |
 | `prefer-mp-login` | `dual` only: keep injecting `<mpp-user-login>` when `MPWidgets.js` is on the page; the resulting MP token is silently upgraded to a `sid` |
 | `prevent-login-widget` | Render a `<slot>` instead of the Sign In button so the page supplies its own control (call `MPNextEmbed.getAuthSession().login({ wid })`) |
@@ -732,7 +734,7 @@ Per customer, in this order (details in [WIDGET-AUTH-MIGRATION-PLAN.md §4 Phase
 - **MP shows "invalid redirect URI" after Sign In**: `https://<widget-host>/api/embed/auth/callback` is not registered on the OAuth client, or `EMBED_PUBLIC_URL` does not match the registered host (proxy/CDN rewriting the Host header).
 - **Return to the page with `#nw_auth_error=<code>`**: the callback failed after MP redirected back. Usual causes, in order: the `nw_oauth_state` cookie was missing or expired (cookies blocked on the widget host, or the 10-minute window passed), the code exchange was rejected (client id/secret, or a PKCE mismatch — check `EMBED_OAUTH_PKCE` against the MP client), or userinfo failed. The SDK strips the fragment; `MPNextEmbed.getAuthSession().getAuthError()` returns the short code and the server log has the detail.
 - **`400 { error: "invalid_code" }` on `/auth/exchange`**: the handoff code was already redeemed (two SDK copies on one page), expired (60 s), or the page origin differs from the one that started login.
-- **Signed out but MP signs you straight back in**: the church origin is not in the OAuth client's post-logout redirect URIs, so MP ignores the end-session redirect.
+- **Signed out but MP signs you straight back in**, or logout stops on MP's "Would you like to logout? [Yes]" page: MP was handed a `post_logout_redirect_uri` it does not recognise, so it discarded the logout context (`id_token_hint` included) and never ended the SSO session. Register `${BETTER_AUTH_URL}/signin` on the OAuth client. If it is registered, something is still sending a host page URL — in `legacy` that means a `post-logout-redirect-uri` attribute pointing at an unregistered page; remove it. A completed logout is recognisable by MP redirecting through `oauth/logout?id=<sid>` rather than rendering the prompt.
 - **`EMBED_SESSION_ENC_KEY` errors at startup**: the key must decode to exactly 32 bytes of base64url. It is required in production for any non-legacy mode.
 - **Sessions vanish on every deploy**: no `EMBED_SESSION_STORE_URL` — the in-memory store is for development only. This hits the Better Auth app session too (signed-in users bounced back to `/signin` after a deploy or a cold start), since `src/lib/auth.ts` uses the same store as its `secondaryStorage`.
 

@@ -14,6 +14,7 @@ import {
   buildFallbackCorsHeaders,
 } from "@/lib/embed/auth";
 import { resolveAuthMode } from "@/lib/embed/auth-mode";
+import { getRegisteredPostLogoutRedirectUri } from "@/lib/embed/mp-oauth";
 import { getPublicUrl, isEmbedOriginAllowed } from "../_lib/auth-route-helpers";
 
 export async function GET(req: NextRequest) {
@@ -28,12 +29,19 @@ export async function GET(req: NextRequest) {
 
   const publicUrl = getPublicUrl(req);
 
+  // Advertised for `legacy`, which builds MP's end-session URL in the browser
+  // and so cannot go through the logout route's bounce. It is the only value
+  // MP will accept, and it is not derivable client-side (TODO 29). Omitted
+  // when this deployment has none configured.
+  const postLogoutRedirectUri = getRegisteredPostLogoutRedirectUri();
+
   return NextResponse.json(
     {
       mode: resolveAuthMode(origin),
       loginUrl: `${publicUrl}/api/embed/auth/login`,
       logoutUrl: `${publicUrl}/api/embed/auth/logout`,
       meUrl: `${publicUrl}/api/embed/auth/me`,
+      ...(postLogoutRedirectUri ? { postLogoutRedirectUri } : {}),
     },
     {
       status: 200,

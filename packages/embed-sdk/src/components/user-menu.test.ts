@@ -42,13 +42,16 @@ function mockFetch(routes: Record<string, Route>) {
   vi.stubGlobal("fetch", fn);
   return fn;
 }
-const configOk = (mode: "legacy" | "dual" | "hardened") => () =>
-  jsonResponse({
-    mode,
-    loginUrl: `${HOST}/api/embed/auth/login`,
-    logoutUrl: `${HOST}/api/embed/auth/logout`,
-    meUrl: `${HOST}/api/embed/auth/me`,
-  });
+const configOk =
+  (mode: "legacy" | "dual" | "hardened", extra: Record<string, unknown> = {}) =>
+  () =>
+    jsonResponse({
+      mode,
+      loginUrl: `${HOST}/api/embed/auth/login`,
+      logoutUrl: `${HOST}/api/embed/auth/logout`,
+      meUrl: `${HOST}/api/embed/auth/me`,
+      ...extra,
+    });
 
 function mount(attrs = ""): HTMLElement {
   document.body.innerHTML = `<next-user-menu api-host="${HOST}" mp-base-url="https://mp.example.com" ${attrs}></next-user-menu>`;
@@ -172,6 +175,76 @@ describe("<next-user-menu> auth modes", () => {
     await vi.waitFor(() => expect(sessionStorage.getItem(SID_KEY)).toBe("S-TAB"));
     expect(localStorage.getItem(SID_KEY)).toBeNull();
     await vi.waitFor(() => expect(shadow(el).querySelector(".nw-avatar-btn")).not.toBeNull());
+  });
+
+  /**
+   * TODO 29. Legacy mode builds MP's end-session URL in the browser, with no
+   * server bounce to hide an unregistered destination behind. MP refuses to
+   * complete a logout whose `post_logout_redirect_uri` is not registered on
+   * its OAuth client -- it drops the whole context, `id_token_hint` included,
+   * and shows a "Would you like to logout?" prompt while the SSO session
+   * stays alive. Defaulting this to `window.location.href` guaranteed that
+   * outcome on every host page, so the default is now to send nothing.
+   */
+  describe("legacy mode: the end-session URL it builds in the browser", () => {
+    async function logoutUrlFor(attrs = "", config: Record<string, unknown> = {}): Promise<URL> {
+      localStorage.setItem("mpp-widgets_AuthToken", "legacy-access-token");
+      localStorage.setItem("mpp-widgets_IdToken", "legacy-id-token");
+      localStorage.setItem(
+        "mpp-widgets_ExpiresAfter",
+        new Date(Date.now() + 60 * 60 * 1000).toString(),
+      );
+      mockFetch({ "/api/embed/auth/config": configOk("legacy", config) });
+      const el = mount(attrs);
+
+      await vi.waitFor(() =>
+        expect(shadow(el).querySelector(".nw-avatar-btn")).not.toBeNull(),
+      );
+      (shadow(el).querySelector(".nw-avatar-btn") as HTMLButtonElement).click();
+
+      const events: CustomEvent[] = [];
+      el.addEventListener("userLogout", (e) => {
+        events.push(e as CustomEvent);
+        e.preventDefault(); // stand in for TokenBridge; jsdom cannot navigate
+      });
+      (shadow(el).querySelector('[data-action="logout"]') as HTMLButtonElement).click();
+
+      await vi.waitFor(() => expect(events).toHaveLength(1));
+      return new URL((events[0].detail as { endSessionUrl: string }).endSessionUrl);
+    }
+
+    it("defaults to the registered URI the widget host advertises, never the host page", async () => {
+      history.replaceState(null, "", "/members/directory");
+      const url = await logoutUrlFor("", {
+        postLogoutRedirectUri: `${HOST}/signin`,
+      });
+
+      expect(url.origin + url.pathname).toBe(
+        "https://mp.example.com/ministryplatformapi/oauth/connect/endsession",
+      );
+      expect(url.searchParams.get("id_token_hint")).toBe("legacy-id-token");
+      expect(url.searchParams.get("post_logout_redirect_uri")).toBe(`${HOST}/signin`);
+      // Specifically not the current page, which is what MP rejected.
+      expect(url.toString()).not.toContain("/members/directory");
+    });
+
+    it("sends none when the host advertises none -- MP completes that cleanly too", async () => {
+      history.replaceState(null, "", "/members/directory");
+      const url = await logoutUrlFor();
+
+      expect(url.searchParams.get("id_token_hint")).toBe("legacy-id-token");
+      expect(url.searchParams.has("post_logout_redirect_uri")).toBe(false);
+      expect(url.toString()).not.toContain("/members/directory");
+    });
+
+    it("lets an integrator's own registered URI win", async () => {
+      const url = await logoutUrlFor('post-logout-redirect-uri="https://church.example.com/bye"', {
+        postLogoutRedirectUri: `${HOST}/signin`,
+      });
+      expect(url.searchParams.get("post_logout_redirect_uri")).toBe(
+        "https://church.example.com/bye",
+      );
+    });
   });
 
   it("hardened mode: shows the avatar from /me and logs out via the SDK with a cancelable userLogout", async () => {

@@ -298,15 +298,17 @@
           <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
         </div>
         <pre><code id="widget-code">&lt;!-- Place in your header --&gt;
-&lt;next-user-menu
-  mp-base-url="__MP_BASE_URL__"
-  post-logout-redirect-uri="[YourWebUrl]"
-&gt;&lt;/next-user-menu&gt;
+&lt;next-user-menu mp-base-url="__MP_BASE_URL__"&gt;&lt;/next-user-menu&gt;
 
 &lt;!-- When unauthenticated: legacy mode renders &lt;mpp-user-login&gt; (MPWidgets.js); --&gt;
 &lt;!--                      dual / hardened render the widget's own Sign In button --&gt;
 &lt;!-- When authenticated:   renders avatar + dropdown + account modal --&gt;
-&lt;!-- post-logout-redirect-uri defaults to current page if omitted --&gt;
+&lt;!-- Optional: post-logout-redirect-uri="[YourPageUrl]" -- where to land after --&gt;
+&lt;!--   sign-out. dual/hardened: any page on an allowed origin, defaults to --&gt;
+&lt;!--   this one, and nothing needs registering with MP. legacy: MP must have --&gt;
+&lt;!--   the exact URI registered as a post-logout redirect URI or it will stop --&gt;
+&lt;!--   on a "Would you like to logout?" prompt; omit it to log out cleanly --&gt;
+&lt;!--   onto MP's own logged-out page. --&gt;
 &lt;!-- Optional: session-scope="tab" (sessionStorage sid), prefer-mp-login (dual only) --&gt;</code></pre>
       </div>
 

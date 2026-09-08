@@ -20,6 +20,14 @@
  * Every logout entry point routes through here — the widget path
  * (`TokenBridge`, TODO 13) and the `/demo` header's Sign Out button — so the
  * two cannot drift apart.
+ *
+ * It takes no "send me back here afterwards" argument, on purpose. MP only
+ * finishes an end-session whose `post_logout_redirect_uri` is registered on
+ * the OAuth client; handed anything else it drops the logout context and shows
+ * a "Would you like to logout?" prompt while the SSO session survives. The
+ * widget path used to pass `window.location.href` and hit exactly that
+ * (TODO 29). The destination is fixed server-side instead —
+ * `getRegisteredPostLogoutRedirectUri()` in `src/lib/embed/mp-oauth.ts`.
  */
 
 /**
@@ -50,15 +58,6 @@ export function clearMpWidgetStorage(): void {
   }
 }
 
-export interface AppLogoutOptions {
-  /**
-   * Where MP should send the browser after it ends its own session. Must be
-   * registered as a post-logout redirect URI on the MP OAuth client. Omitted
-   * means the server's default (`${BETTER_AUTH_URL}/signin`).
-   */
-  postLogoutRedirectUri?: string;
-}
-
 /**
  * Clears the browser-held MP tokens, ends the Better Auth session, and returns
  * MP's end-session URL for the caller to navigate to.
@@ -66,16 +65,13 @@ export interface AppLogoutOptions {
  * Returns `null` when the endpoint failed or returned no URL — callers should
  * fall back to `/signin` rather than pretending the logout completed.
  */
-export async function requestAppLogout(
-  options: AppLogoutOptions = {},
-): Promise<string | null> {
+export async function requestAppLogout(): Promise<string | null> {
   clearMpWidgetStorage();
 
   try {
     const res = await fetch("/api/auth/logout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ postLogoutRedirectUri: options.postLogoutRedirectUri }),
     });
     const data = (await res.json()) as { redirectUrl?: string };
     return data.redirectUrl ?? null;

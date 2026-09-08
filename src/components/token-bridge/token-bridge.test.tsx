@@ -187,9 +187,12 @@ describe('TokenBridge', () => {
     const logoutCalls = calls.filter((c) => c.url === '/api/auth/logout');
     expect(logoutCalls).toHaveLength(1);
     expect(logoutCalls[0].method).toBe('POST');
-    expect(logoutCalls[0].body).toEqual({
-      postLogoutRedirectUri: 'http://localhost:3000/demo',
-    });
+    // The widget's own page URL is deliberately dropped, not forwarded: MP
+    // only completes an end-session whose `post_logout_redirect_uri` is
+    // registered on its OAuth client, and `/demo/...` is not. Passing it left
+    // the MP session alive behind a "Would you like to logout?" prompt
+    // (TODO 29). The server picks the registered destination instead.
+    expect(logoutCalls[0].body).toBeUndefined();
 
     for (const key of TOKEN_KEYS) {
       expect(localStorage.getItem(key)).toBeNull();

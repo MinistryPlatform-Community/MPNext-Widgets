@@ -22,6 +22,14 @@ export interface AuthConfig {
   loginUrl: string;
   logoutUrl: string;
   meUrl: string;
+  /**
+   * The one `post_logout_redirect_uri` the widget host has registered on its
+   * MP OAuth client, when it has one. Only `legacy` needs it -- that mode
+   * builds MP's end-session URL in the browser, and MP refuses to complete a
+   * logout whose redirect URI it does not recognise (TODO 29). Absent means
+   * "send none", which MP also completes, just without a return trip.
+   */
+  postLogoutRedirectUri?: string;
 }
 
 export interface AuthSessionUser {
@@ -186,6 +194,9 @@ export class AuthSession {
         loginUrl: typeof data.loginUrl === "string" && data.loginUrl ? data.loginUrl : fallback.loginUrl,
         logoutUrl: typeof data.logoutUrl === "string" && data.logoutUrl ? data.logoutUrl : fallback.logoutUrl,
         meUrl: typeof data.meUrl === "string" && data.meUrl ? data.meUrl : fallback.meUrl,
+        ...(typeof data.postLogoutRedirectUri === "string" && data.postLogoutRedirectUri
+          ? { postLogoutRedirectUri: data.postLogoutRedirectUri }
+          : {}),
       };
     } catch {
       return fallback;
@@ -195,6 +206,15 @@ export class AuthSession {
   /** Synchronous mode accessor; null until getConfig() has resolved. */
   getMode(): EmbedAuthMode | null {
     return this.config?.mode ?? null;
+  }
+
+  /**
+   * The widget host's registered `post_logout_redirect_uri`, or null when the
+   * config has not resolved or the host advertises none. Read synchronously by
+   * the legacy end-session builder, which runs long after config resolution.
+   */
+  getPostLogoutRedirectUri(): string | null {
+    return this.config?.postLogoutRedirectUri ?? null;
   }
 
   // ── sid storage ────────────────────────────────────────────────

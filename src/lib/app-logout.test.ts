@@ -79,6 +79,30 @@ describe('logout is a single mechanism', () => {
     ]);
   });
 
+  /**
+   * TODO 29. Two hand-rolled end-session builders drifted apart: the app route
+   * defaulted to the registered `${BETTER_AUTH_URL}/signin` and worked, the
+   * widget path passed `window.location.href` and did not. One builder now, so
+   * `post_logout_redirect_uri` has exactly one possible value server-side.
+   */
+  it('only mp-oauth.ts builds an MP end-session URL', () => {
+    const builders = sourceFiles.filter((f) => code(f).includes('endsession'));
+    expect(builders.map((f) => relative(repoRoot, f)).sort()).toEqual([
+      join('src', 'lib', 'embed', 'mp-oauth.ts'),
+    ]);
+  });
+
+  it('no source file offers a post-logout destination to MP', () => {
+    // The parameter may only be set by `buildEndSessionUrl`, from
+    // `getRegisteredPostLogoutRedirectUri()`. Anywhere else means a URL the MP
+    // OAuth client has never heard of.
+    const offenders = sourceFiles
+      .filter((f) => code(f).includes('post_logout_redirect_uri'))
+      .map((f) => relative(repoRoot, f))
+      .sort();
+    expect(offenders).toEqual([join('src', 'lib', 'embed', 'mp-oauth.ts')]);
+  });
+
   it('the demo header renders the SignOutButton', () => {
     const page = readFileSync(resolve(srcDir, 'app/(demo)/demo/page.tsx'), 'utf-8');
     expect(page).toContain('<SignOutButton />');
@@ -128,10 +152,15 @@ describe('requestAppLogout', () => {
     expect(url).toBe('https://mp.example.com/oauth/connect/endsession');
   });
 
-  it('forwards a post-logout redirect URI when given one', async () => {
-    await requestAppLogout({ postLogoutRedirectUri: 'http://localhost:3000/demo' });
+  it('sends no destination at all -- MP only accepts a registered one', async () => {
+    // TODO 29: the widget path used to forward `window.location.href` here.
+    // MP is not willing to complete a logout it cannot redirect out of, so an
+    // unregistered URI left the SSO session alive behind a confirmation
+    // prompt. The server picks the destination now.
+    await requestAppLogout();
 
-    expect(calls[0].body).toEqual({ postLogoutRedirectUri: 'http://localhost:3000/demo' });
+    expect(calls[0].body).toBeUndefined();
+    expect(requestAppLogout.length).toBe(0);
   });
 
   it('clears the browser-held MP tokens before it calls out', async () => {

@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getSessionCookie } from 'better-auth/cookies';
+import { LOGOUT_RETURN_COOKIE, isAllowedReturnTarget } from '@/lib/embed/logout-return';
 
 /**
  * Paths that must resolve without a Better Auth session cookie.
@@ -40,8 +41,46 @@ export function isPublicPath(pathname: string): boolean {
   );
 }
 
+/**
+ * The registered `post_logout_redirect_uri` MinistryPlatform returns to after
+ * ending its session, and therefore the one path that can be carrying a
+ * pending embed logout (`src/lib/embed/logout-return.ts`).
+ */
+const LOGOUT_LANDING_PATH = '/signin';
+
+/**
+ * Last leg of the embed logout bounce.
+ *
+ * A widget on a church site cannot name its own page as MP's
+ * `post_logout_redirect_uri` — MP only honours URIs registered on the OAuth
+ * client, and an unregistered one leaves the SSO session alive behind a
+ * "Would you like to logout?" prompt (TODO 29). So the widget host takes MP's
+ * redirect on its own registered `/signin` and finishes the trip here.
+ *
+ * Returns null unless this really is that landing: `/signin`, carrying the
+ * HttpOnly cookie only `GET /api/embed/auth/logout` sets, naming an origin
+ * still on the embed allowlist. Without those three the request is an ordinary
+ * `/signin` visit and must render the sign-in page. The cookie is cleared on
+ * the way out either way, so a stale one cannot bounce the next visit.
+ */
+function embedLogoutReturn(request: NextRequest): NextResponse | null {
+  if (request.nextUrl.pathname !== LOGOUT_LANDING_PATH) return null;
+  const target = request.cookies.get(LOGOUT_RETURN_COOKIE)?.value;
+  if (!target) return null;
+
+  const res = isAllowedReturnTarget(target)
+    ? NextResponse.redirect(target, 302)
+    : NextResponse.next();
+  res.cookies.delete(LOGOUT_RETURN_COOKIE);
+  res.headers.set('Cache-Control', 'no-store');
+  return res;
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  const logoutReturn = embedLogoutReturn(request);
+  if (logoutReturn) return logoutReturn;
 
   // Early returns for public paths
   if (isPublicPath(pathname)) {
