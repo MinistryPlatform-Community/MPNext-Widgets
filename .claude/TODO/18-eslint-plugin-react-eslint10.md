@@ -76,6 +76,21 @@ resolvable from the repo root (it always is; it is a direct dependency).
    above (`npx eslint . --format json`, `npx eslint --print-config <a .ts file>`)
    rather than trusting a green exit code.
 
+## This item is now the only thing standing between us and a clean install
+
+Item 17 (better-auth's optional `vitest` peer) was suppressed on 2026-09-08 with a
+scoped `pnpm.peerDependencyRules` entry, so these four ESLint warnings are the
+**entire** remaining contents of the `Issues with peer dependencies found` banner.
+Until this item lands, that banner is still permanent background noise — which was
+item 17's stated reason for existing, so the payoff now rides on this item.
+
+Do **not** reach for the same `peerDependencyRules` suppression here as a shortcut.
+The better-auth peer was provably inert (one unused file imports `vitest`); this one
+is not — `eslint-plugin-react@7.37.5` genuinely breaks under ESLint 10, and the only
+reason `pnpm lint` is green is the `settings.react.version` workaround documented
+above. Silencing the warning would delete the last visible reminder that the
+workaround is load-bearing.
+
 ## Done when
 
 `eslint.config.mjs` is back to just the two `eslint-config-next` spreads plus the
