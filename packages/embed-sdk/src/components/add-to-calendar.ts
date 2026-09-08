@@ -1,5 +1,13 @@
 import { MPNextWidget } from "../shared/base-widget";
-import { loadScript } from "../shared/cdn-loader";
+import {
+  buildGoogleCalendarUrl,
+  buildIcsContent,
+  buildOutlookUrl,
+  buildYahooCalendarUrl,
+  icsFileName,
+  parseMpWallClock,
+  type CalendarEventInput,
+} from "../shared/calendar-links";
 
 // ── Local types (mirrors @mpnext/types without importing) ───────────────
 interface CalendarEventData {
@@ -13,23 +21,11 @@ interface CalendarEventData {
   City: string | null;
   State: string | null;
   Postal_Code: string | null;
+  /** IANA zone of the MP domain. Optional: older API deployments omit it. */
+  Time_Zone?: string | null;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
-
-// Pin the exact version -- a floating range (`@2`) lets jsDelivr serve whatever
-// 2.x is current at page load on host sites we do not control. Mirrors
-// `FC_VERSION` in full-calendar.ts. Bump deliberately; `latest` is 3.x, but the
-// element config below is schema VERSION:2.0, so stay on the 2.x line.
-const ATCB_VERSION = "2.15.0";
-// Subresource Integrity for the pinned bytes above. BUMPING ATCB_VERSION
-// REQUIRES RECOMPUTING THIS HASH — a stale hash makes the browser refuse the
-// script and this widget silently degrades to the ICS fallback (buttons render,
-// no dropdown). Recompute with:
-//   curl -sL "https://cdn.jsdelivr.net/npm/add-to-calendar-button@<ver>/dist/atcb.min.js" \
-//     | openssl dgst -sha384 -binary | openssl base64 -A
-const ATCB_SRI = "sha384-80vV/KEhBwD5tKGZUNJIP8v35xgzoh4G8XSqB97o794UbhhHRhOfKhrNGPFrhRwY";
-const ATCB_CDN_URL = `https://cdn.jsdelivr.net/npm/add-to-calendar-button@${ATCB_VERSION}/dist/atcb.min.js`;
 
 const BRAND = {
   blue: "#004C97",
@@ -41,26 +37,74 @@ const BRAND = {
   black: "#2D2926",
 };
 
+type ProviderId = "google" | "apple" | "outlook" | "office365" | "yahoo" | "ics";
+
+interface Provider {
+  id: ProviderId;
+  label: string;
+  /** Inline SVG markup for a 16x16 icon on a 24-unit viewBox. */
+  icon: string;
+  /**
+   * Brand marks (Apple, Microsoft) are solid shapes and only read correctly
+   * filled; the rest are line icons matching the widget's other SVGs.
+   */
+  filled?: boolean;
+  /** ICS providers download a file; the rest open a URL in a new tab. */
+  kind: "url" | "download";
+}
+
+/**
+ * Apple Calendar, Outlook desktop and "everything else" all consume the same
+ * `.ics` file — they are separate entries only because a visitor looking for
+ * "Apple Calendar" will not recognise ".ics" as the thing that serves them.
+ */
+const PROVIDERS: Record<ProviderId, Provider> = {
+  google: {
+    id: "google",
+    label: "Google Calendar",
+    kind: "url",
+    icon: `<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>`,
+  },
+  apple: {
+    id: "apple",
+    label: "Apple Calendar",
+    kind: "download",
+    filled: true,
+    icon: `<path d="M17.05 12.04c-.02-2.3 1.87-3.4 1.95-3.45-1.06-1.56-2.72-1.77-3.3-1.79-1.41-.14-2.75.83-3.47.83-.72 0-1.82-.81-3-.79-1.54.02-2.96.9-3.75 2.28-1.6 2.78-.41 6.9 1.15 9.16.76 1.1 1.67 2.33 2.87 2.29 1.15-.05 1.59-.74 2.98-.74 1.39 0 1.78.74 2.99.72 1.24-.02 2.03-1.13 2.79-2.23.87-1.27 1.23-2.5 1.25-2.56-.03-.01-2.4-.92-2.41-3.72zM14.6 5.2c.63-.76 1.05-1.82.94-2.87-.93.04-2.05.62-2.7 1.38-.58.67-1.09 1.75-.95 2.78 1.03.08 2.08-.53 2.71-1.29z"/>`,
+  },
+  outlook: {
+    id: "outlook",
+    label: "Outlook.com",
+    kind: "url",
+    icon: `<rect x="2" y="5" width="20" height="14" rx="2"/><polyline points="2.5 6.5 12 13 21.5 6.5"/>`,
+  },
+  office365: {
+    id: "office365",
+    label: "Microsoft 365",
+    kind: "url",
+    filled: true,
+    icon: `<rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/>`,
+  },
+  yahoo: {
+    id: "yahoo",
+    label: "Yahoo Calendar",
+    kind: "url",
+    icon: `<polyline points="4 6 11 14 11 19"/><line x1="18" y1="6" x2="11" y2="14"/><circle cx="18" cy="17.5" r="1.2"/>`,
+  },
+  ics: {
+    id: "ics",
+    label: "Other (.ics file)",
+    kind: "download",
+    icon: `<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>`,
+  },
+};
+
+const DEFAULT_PROVIDERS: ProviderId[] = ["google", "apple", "outlook", "yahoo", "ics"];
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function pad2(n: number): string {
   return n.toString().padStart(2, "0");
-}
-
-/**
- * Parse an ISO datetime string and return { date: "YYYY-MM-DD", time: "HH:MM" }
- * without any timezone conversion — the raw values from MP are local time.
- */
-function parseDateTime(isoString: string): { date: string; time: string } {
-  const d = new Date(isoString);
-  // Use UTC getters so we don't get browser TZ offset applied on top.
-  // MP datetimes are stored without timezone info so we treat them as-is.
-  const year = d.getUTCFullYear();
-  const month = pad2(d.getUTCMonth() + 1);
-  const day = pad2(d.getUTCDate());
-  const hours = pad2(d.getUTCHours());
-  const minutes = pad2(d.getUTCMinutes());
-  return { date: `${year}-${month}-${day}`, time: `${hours}:${minutes}` };
 }
 
 /**
@@ -80,49 +124,13 @@ function buildLocation(event: CalendarEventData): string {
   return parts.join(", ");
 }
 
-/**
- * Generate ICS file content for a calendar event.
- */
-function buildIcsContent(event: CalendarEventData): string {
-  const start = parseDateTime(event.Event_Start_Date);
-  const end = parseDateTime(event.Event_End_Date);
-
-  const dtStart = `${start.date.replace(/-/g, "")}T${start.time.replace(":", "")}00`;
-  const dtEnd = `${end.date.replace(/-/g, "")}T${end.time.replace(":", "")}00`;
-
-  const uid = `next-event-${event.Event_ID}-${Date.now()}@mpnext.church`;
-  const now = new Date();
-  const dtStamp = `${now.getUTCFullYear()}${pad2(now.getUTCMonth() + 1)}${pad2(now.getUTCDate())}T${pad2(now.getUTCHours())}${pad2(now.getUTCMinutes())}${pad2(now.getUTCSeconds())}Z`;
-
-  const location = buildLocation(event);
-  const description = (event.Description || "").replace(/\n/g, "\\n");
-
-  return [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//MPNext//Add to Calendar//EN",
-    "CALSCALE:GREGORIAN",
-    "METHOD:PUBLISH",
-    "BEGIN:VEVENT",
-    `UID:${uid}`,
-    `DTSTAMP:${dtStamp}`,
-    `DTSTART;TZID=America/Chicago:${dtStart}`,
-    `DTEND;TZID=America/Chicago:${dtEnd}`,
-    `SUMMARY:${event.Event_Title}`,
-    ...(description ? [`DESCRIPTION:${description}`] : []),
-    ...(location ? [`LOCATION:${location}`] : []),
-    "END:VEVENT",
-    "END:VCALENDAR",
-  ].join("\r\n");
-}
-
 // ── Widget State ───────────────────────────────────────────────────────────
 
 interface AddToCalendarState {
   loading: boolean;
   error: string | null;
   event: CalendarEventData | null;
-  cdnLoaded: boolean;
+  open: boolean;
 }
 
 // ── Web Component ──────────────────────────────────────────────────────────
@@ -132,20 +140,54 @@ export class AddToCalendarWidget extends MPNextWidget {
     loading: true,
     error: null,
     event: null,
-    cdnLoaded: false,
+    open: false,
   };
 
   private eventId: number;
+  private providers: ProviderId[];
+  private onDocumentPointerDown = (e: Event) => {
+    // `composedPath` rather than `contains`: a click inside our Shadow DOM is
+    // retargeted to the host, so `e.target` alone cannot tell inside from out.
+    if (!e.composedPath().includes(this)) this.close();
+  };
+  private onDocumentKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && this.state.open) {
+      this.close();
+      this.root.querySelector<HTMLButtonElement>(".atc-trigger")?.focus();
+    }
+  };
 
   constructor() {
     super();
     this.eventId = parseInt(this.getAttribute("event-id") || "0", 10);
+    this.providers = this.parseProviders(this.getAttribute("providers"));
   }
 
   async connectedCallback() {
     this.injectStyles(this.getStyles());
-    this.renderLoading();
+    this.render();
+    document.addEventListener("pointerdown", this.onDocumentPointerDown, true);
+    document.addEventListener("keydown", this.onDocumentKeyDown);
     await this.loadEvent();
+  }
+
+  disconnectedCallback() {
+    document.removeEventListener("pointerdown", this.onDocumentPointerDown, true);
+    document.removeEventListener("keydown", this.onDocumentKeyDown);
+  }
+
+  /**
+   * `providers="google,apple"` narrows the menu. Unknown ids are dropped, and
+   * an empty result falls back to the default set rather than rendering a menu
+   * with nothing in it.
+   */
+  private parseProviders(attr: string | null): ProviderId[] {
+    if (!attr) return DEFAULT_PROVIDERS;
+    const requested = attr
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter((s): s is ProviderId => s in PROVIDERS);
+    return requested.length ? requested : DEFAULT_PROVIDERS;
   }
 
   // ── Data Loading ──────────────────────────────────────────────────────
@@ -174,16 +216,6 @@ export class AddToCalendarWidget extends MPNextWidget {
       const eventData: CalendarEventData = await res.json();
       this.state.event = eventData;
       this.state.loading = false;
-
-      // Try loading the CDN script concurrently with rendering the fallback
-      try {
-        await loadScript(ATCB_CDN_URL, ATCB_SRI);
-        this.state.cdnLoaded = true;
-      } catch {
-        // CDN failed — use ICS fallback
-        this.state.cdnLoaded = false;
-      }
-
       this.render();
       this.emit("calendarEventLoaded", { eventId: eventData.Event_ID, title: eventData.Event_Title });
     } catch (err) {
@@ -195,151 +227,255 @@ export class AddToCalendarWidget extends MPNextWidget {
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────
-
-  render(): void {
-    // Clear content area (keep styles)
-    const existing = this.root.querySelector(".nw-atcb-root");
-    if (existing) existing.remove();
-
-    const wrapper = document.createElement("div");
-    wrapper.className = "nw-atcb-root";
-
-    if (this.state.loading) {
-      wrapper.innerHTML = this.loadingTemplate();
-    } else if (this.state.error) {
-      wrapper.innerHTML = this.errorTemplate(this.state.error);
-    } else if (this.state.event) {
-      if (this.state.cdnLoaded) {
-        this.renderAtcbButton(wrapper, this.state.event);
-      } else {
-        wrapper.appendChild(this.buildIcsFallback(this.state.event));
-      }
-    }
-
-    this.root.appendChild(wrapper);
-  }
-
-  private renderLoading(): void {
-    const existing = this.root.querySelector(".nw-atcb-root");
-    if (existing) existing.remove();
-
-    const wrapper = document.createElement("div");
-    wrapper.className = "nw-atcb-root";
-    wrapper.innerHTML = this.loadingTemplate();
-    this.root.appendChild(wrapper);
-  }
+  // ── Calendar payload ──────────────────────────────────────────────────
 
   /**
-   * Create an <add-to-calendar-button> element programmatically so it works
-   * inside Shadow DOM. The library v2 registers the custom element globally and
-   * processes elements appended after load.
+   * The zone the MP wall-clock values are in. `time-zone` on the element wins,
+   * then whatever the API reported for the domain. The last resort is the
+   * visitor's own zone: wrong for a visitor browsing from another zone, but it
+   * is the only guess available and it is correct for the common case.
    */
-  private renderAtcbButton(container: HTMLElement, event: CalendarEventData): void {
-    const start = parseDateTime(event.Event_Start_Date);
-    const end = parseDateTime(event.Event_End_Date);
-    const location = buildLocation(event);
-
-    const btn = document.createElement("add-to-calendar-button");
-    btn.setAttribute("name", event.Event_Title);
-    btn.setAttribute("startDate", start.date);
-    btn.setAttribute("endDate", end.date);
-    btn.setAttribute("startTime", start.time);
-    btn.setAttribute("endTime", end.time);
-    btn.setAttribute("timeZone", "America/Chicago");
-    btn.setAttribute("options", "'Apple','Google','iCal','Outlook.com'");
-    btn.setAttribute("buttonStyle", "flat");
-    btn.setAttribute("lightMode", "bodyScheme");
-    if (location) btn.setAttribute("location", location);
-    if (event.Description) btn.setAttribute("description", event.Description);
-
-    container.appendChild(btn);
+  private resolveTimeZone(event: CalendarEventData): string {
+    const attr = this.getAttribute("time-zone");
+    if (attr) return attr;
+    if (event.Time_Zone) return event.Time_Zone;
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {
+      return "UTC";
+    }
   }
 
-  /**
-   * Fallback: render a download button that generates an .ics file on click.
-   */
-  private buildIcsFallback(event: CalendarEventData): HTMLElement {
-    const start = parseDateTime(event.Event_Start_Date);
-    const end = parseDateTime(event.Event_End_Date);
+  private toCalendarInput(event: CalendarEventData): CalendarEventInput {
+    return {
+      title: event.Event_Title,
+      start: event.Event_Start_Date,
+      end: event.Event_End_Date,
+      timeZone: this.resolveTimeZone(event),
+      description: event.Description,
+      location: buildLocation(event) || null,
+      uid: `next-event-${event.Event_ID}@mpnext.church`,
+    };
+  }
 
-    const container = document.createElement("div");
-    container.className = "ics-fallback";
-
-    const header = document.createElement("div");
-    header.className = "ics-header";
-    header.innerHTML = `
-      <span class="ics-icon" aria-hidden="true">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-          <line x1="16" y1="2" x2="16" y2="6"></line>
-          <line x1="8" y1="2" x2="8" y2="6"></line>
-          <line x1="3" y1="10" x2="21" y2="10"></line>
-        </svg>
-      </span>
-      <span class="ics-title">${this.escapeHtml(event.Event_Title)}</span>
-    `;
-
-    const meta = document.createElement("div");
-    meta.className = "ics-meta";
-
-    const dateText = start.date === end.date
-      ? `${this.formatDateLabel(start.date)} &bull; ${this.formatTime(start.time)} &ndash; ${this.formatTime(end.time)}`
-      : `${this.formatDateLabel(start.date)} ${this.formatTime(start.time)} &ndash; ${this.formatDateLabel(end.date)} ${this.formatTime(end.time)}`;
-    meta.innerHTML = `<span class="ics-date">${dateText}</span>`;
-
-    const location = buildLocation(event);
-    if (location) {
-      const loc = document.createElement("span");
-      loc.className = "ics-location";
-      loc.textContent = location;
-      meta.appendChild(loc);
+  private providerUrl(id: ProviderId, input: CalendarEventInput): string | null {
+    switch (id) {
+      case "google":
+        return buildGoogleCalendarUrl(input);
+      case "outlook":
+        return buildOutlookUrl(input, "live");
+      case "office365":
+        return buildOutlookUrl(input, "office");
+      case "yahoo":
+        return buildYahooCalendarUrl(input);
+      default:
+        return null;
     }
+  }
 
-    const btn = document.createElement("button");
-    btn.className = "ics-download-btn";
-    btn.type = "button";
-    btn.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-        <polyline points="7 10 12 15 17 10"></polyline>
-        <line x1="12" y1="15" x2="12" y2="3"></line>
-      </svg>
-      Add to Calendar (.ics)
-    `;
-
-    btn.addEventListener("click", () => {
-      this.downloadIcs(event);
+  private downloadIcs(input: CalendarEventInput): void {
+    const blob = new Blob([buildIcsContent(input)], {
+      type: "text/calendar;charset=utf-8",
     });
-
-    container.appendChild(header);
-    container.appendChild(meta);
-    container.appendChild(btn);
-    return container;
-  }
-
-  private downloadIcs(event: CalendarEventData): void {
-    const icsContent = buildIcsContent(event);
-    const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const filename = event.Event_Title.replace(/[^a-z0-9]/gi, "-").toLowerCase() + ".ics";
 
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = filename;
+    anchor.download = icsFileName(input.title);
     anchor.style.display = "none";
+    // The anchor must live in the host document, not our Shadow DOM: a
+    // programmatic click on a detached node does not trigger a download.
     document.body.appendChild(anchor);
     anchor.click();
     document.body.removeChild(anchor);
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
 
+  private selectProvider(id: ProviderId): void {
+    if (!this.state.event) return;
+    const input = this.toCalendarInput(this.state.event);
+
+    try {
+      if (PROVIDERS[id].kind === "download") {
+        this.downloadIcs(input);
+      } else {
+        const url = this.providerUrl(id, input);
+        if (url) window.open(url, "_blank", "noopener,noreferrer");
+      }
+      this.emit("calendarProviderSelected", {
+        provider: id,
+        eventId: this.state.event.Event_ID,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Could not build calendar entry.";
+      this.state.error = message;
+      this.emit("addToCalendarError", { error: message });
+      this.render();
+      return;
+    }
+
+    this.close();
+  }
+
+  // ── Menu open/close ───────────────────────────────────────────────────
+
+  private open(): void {
+    if (this.state.open) return;
+    this.state.open = true;
+    this.render();
+    this.root.querySelector<HTMLButtonElement>(".atc-option")?.focus();
+  }
+
+  private close(): void {
+    if (!this.state.open) return;
+    this.state.open = false;
+    this.render();
+  }
+
+  private toggle(): void {
+    if (this.state.open) this.close();
+    else this.open();
+  }
+
+  /** Roving focus through the menu with the arrow keys, wrapping at both ends. */
+  private moveFocus(from: HTMLElement, delta: number): void {
+    const options = Array.from(
+      this.root.querySelectorAll<HTMLButtonElement>(".atc-option")
+    );
+    const index = options.indexOf(from as HTMLButtonElement);
+    if (index === -1) return;
+    const next = options[(index + delta + options.length) % options.length];
+    next?.focus();
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────
+
+  render(): void {
+    // Clear content area (keep styles)
+    const existing = this.root.querySelector(".nw-atc-root");
+    if (existing) existing.remove();
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "nw-atc-root";
+
+    if (this.state.loading) {
+      wrapper.innerHTML = this.loadingTemplate();
+    } else if (this.state.error) {
+      wrapper.innerHTML = this.errorTemplate(this.state.error);
+    } else if (this.state.event) {
+      this.renderPicker(wrapper, this.state.event);
+    }
+
+    this.root.appendChild(wrapper);
+  }
+
+  private renderPicker(container: HTMLElement, event: CalendarEventData): void {
+    const picker = document.createElement("div");
+    picker.className = "atc-picker";
+
+    const trigger = document.createElement("button");
+    trigger.className = "atc-trigger";
+    trigger.type = "button";
+    trigger.setAttribute("aria-haspopup", "true");
+    trigger.setAttribute("aria-expanded", String(this.state.open));
+    trigger.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+        <line x1="16" y1="2" x2="16" y2="6"></line>
+        <line x1="8" y1="2" x2="8" y2="6"></line>
+        <line x1="3" y1="10" x2="21" y2="10"></line>
+      </svg>
+      <span>Add to Calendar</span>
+      <svg class="atc-chevron" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    `;
+    trigger.addEventListener("click", () => this.toggle());
+    trigger.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        this.open();
+      }
+    });
+    picker.appendChild(trigger);
+
+    if (this.state.open) {
+      const menu = document.createElement("div");
+      menu.className = "atc-menu";
+      menu.setAttribute("role", "menu");
+      menu.setAttribute("aria-label", `Add ${event.Event_Title} to calendar`);
+
+      for (const id of this.providers) {
+        const provider = PROVIDERS[id];
+        const option = document.createElement("button");
+        option.className = "atc-option";
+        option.type = "button";
+        option.setAttribute("role", "menuitem");
+        option.dataset.provider = id;
+        const paint = provider.filled
+          ? `fill="currentColor" stroke="none"`
+          : `fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"`;
+        option.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ${paint} aria-hidden="true">${provider.icon}</svg>
+          <span>${this.escapeHtml(provider.label)}</span>
+        `;
+        option.addEventListener("click", () => this.selectProvider(id));
+        option.addEventListener("keydown", (e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            this.moveFocus(option, 1);
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            this.moveFocus(option, -1);
+          }
+        });
+        menu.appendChild(option);
+      }
+
+      picker.appendChild(menu);
+    }
+
+    container.appendChild(picker);
+    container.appendChild(this.buildSummary(event));
+  }
+
+  /**
+   * Title / date / location line under the button. The library used to swallow
+   * this into its own dropdown header; showing it inline means the visitor can
+   * confirm what they are about to add before opening the menu.
+   */
+  private buildSummary(event: CalendarEventData): HTMLElement {
+    const summary = document.createElement("div");
+    summary.className = "atc-summary";
+
+    const title = document.createElement("div");
+    title.className = "atc-summary-title";
+    title.textContent = event.Event_Title;
+    summary.appendChild(title);
+
+    const meta = document.createElement("div");
+    meta.className = "atc-summary-meta";
+    meta.textContent = this.formatWhen(event);
+    summary.appendChild(meta);
+
+    const location = buildLocation(event);
+    if (location) {
+      const loc = document.createElement("div");
+      loc.className = "atc-summary-location";
+      loc.textContent = location;
+      summary.appendChild(loc);
+    }
+
+    return summary;
+  }
+
   // ── Template Helpers ──────────────────────────────────────────────────
 
   private loadingTemplate(): string {
     return `
-      <div class="nw-atcb-loading" aria-live="polite" aria-busy="true">
-        <div class="nw-atcb-spinner"></div>
+      <div class="nw-atc-loading" aria-live="polite" aria-busy="true">
+        <div class="nw-atc-spinner"></div>
         <span>Loading event&hellip;</span>
       </div>
     `;
@@ -347,7 +483,7 @@ export class AddToCalendarWidget extends MPNextWidget {
 
   private errorTemplate(message: string): string {
     return `
-      <div class="nw-atcb-error" role="alert">
+      <div class="nw-atc-error" role="alert">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="10"></circle>
           <line x1="12" y1="8" x2="12" y2="12"></line>
@@ -367,9 +503,29 @@ export class AddToCalendarWidget extends MPNextWidget {
       .replace(/'/g, "&#39;");
   }
 
-  private formatDateLabel(yyyyMmDd: string): string {
-    const [year, month, day] = yyyyMmDd.split("-").map(Number);
-    const d = new Date(year, month - 1, day);
+  /**
+   * Render the MP wall clock verbatim — no `Date` round-trip, so the displayed
+   * time matches the church's local time regardless of the visitor's zone.
+   */
+  private formatWhen(event: CalendarEventData): string {
+    const start = parseMpWallClock(event.Event_Start_Date);
+    const end = parseMpWallClock(event.Event_End_Date);
+    if (!start) return "";
+
+    const startLabel = `${this.formatDateLabel(start)} • ${this.formatTime(start)}`;
+    if (!end) return startLabel;
+
+    const sameDay =
+      start.year === end.year && start.month === end.month && start.day === end.day;
+    return sameDay
+      ? `${startLabel} – ${this.formatTime(end)}`
+      : `${startLabel} – ${this.formatDateLabel(end)} • ${this.formatTime(end)}`;
+  }
+
+  private formatDateLabel(wall: { year: number; month: number; day: number }): string {
+    // Constructed with local-time components and formatted without a
+    // `timeZone`, so the two cancel out and the wall-clock date is preserved.
+    const d = new Date(wall.year, wall.month - 1, wall.day);
     return d.toLocaleDateString("en-US", {
       weekday: "short",
       month: "short",
@@ -378,11 +534,10 @@ export class AddToCalendarWidget extends MPNextWidget {
     });
   }
 
-  private formatTime(hhmm: string): string {
-    const [hours, minutes] = hhmm.split(":").map(Number);
-    const ampm = hours >= 12 ? "PM" : "AM";
-    const h = hours % 12 || 12;
-    return `${h}:${pad2(minutes)} ${ampm}`;
+  private formatTime(wall: { hour: number; minute: number }): string {
+    const ampm = wall.hour >= 12 ? "PM" : "AM";
+    const h = wall.hour % 12 || 12;
+    return `${h}:${pad2(wall.minute)} ${ampm}`;
   }
 
   // ── Styles ────────────────────────────────────────────────────────────
@@ -400,12 +555,12 @@ export class AddToCalendarWidget extends MPNextWidget {
         box-sizing: inherit;
       }
 
-      .nw-atcb-root {
+      .nw-atc-root {
         display: block;
       }
 
       /* ── Loading ── */
-      .nw-atcb-loading {
+      .nw-atc-loading {
         display: flex;
         align-items: center;
         gap: 10px;
@@ -414,7 +569,7 @@ export class AddToCalendarWidget extends MPNextWidget {
         padding: 12px 0;
       }
 
-      .nw-atcb-spinner {
+      .nw-atc-spinner {
         width: 18px;
         height: 18px;
         border: 2px solid #e5e7eb;
@@ -429,7 +584,7 @@ export class AddToCalendarWidget extends MPNextWidget {
       }
 
       /* ── Error ── */
-      .nw-atcb-error {
+      .nw-atc-error {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -441,99 +596,122 @@ export class AddToCalendarWidget extends MPNextWidget {
         font-size: 14px;
       }
 
-      .nw-atcb-error svg {
+      .nw-atc-error svg {
         flex-shrink: 0;
       }
 
-      /* ── ICS Fallback ── */
-      .ics-fallback {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        padding: 16px 20px;
-        border: 1px solid #e5e7eb;
-        border-radius: 10px;
-        background: #fff;
-        max-width: 480px;
+      /* ── Picker ── */
+      .atc-picker {
+        position: relative;
+        display: inline-block;
       }
 
-      .ics-header {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-
-      .ics-icon {
-        color: ${BRAND.blue};
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-      }
-
-      .ics-title {
-        font-size: 16px;
-        font-weight: 600;
-        color: ${BRAND.navy};
-        line-height: 1.3;
-      }
-
-      .ics-meta {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        font-size: 13px;
-        color: #4b5563;
-        padding-left: 30px;
-      }
-
-      .ics-date {
-        font-weight: 500;
-      }
-
-      .ics-location {
-        color: #6b7280;
-      }
-
-      .ics-download-btn {
+      .atc-trigger {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        margin-top: 4px;
         padding: 10px 18px;
         background: ${BRAND.blue};
         color: #fff;
         border: none;
         border-radius: 9999px;
+        font-family: inherit;
         font-size: 14px;
         font-weight: 600;
+        line-height: 1;
         cursor: pointer;
         transition: background 0.2s ease;
-        align-self: flex-start;
-        line-height: 1;
       }
 
-      .ics-download-btn:hover {
+      .atc-trigger:hover {
         background: ${BRAND.navy};
       }
 
-      .ics-download-btn:focus-visible {
+      .atc-trigger:focus-visible {
         outline: 2px solid ${BRAND.lightBlue};
         outline-offset: 2px;
       }
 
-      .ics-download-btn svg {
+      .atc-trigger svg {
         flex-shrink: 0;
       }
 
-      /* ── add-to-calendar-button overrides (light DOM, rendered in our Shadow) ── */
-      add-to-calendar-button {
-        --btn-background: ${BRAND.blue};
-        --btn-hover-background: ${BRAND.navy};
-        --btn-text: #ffffff;
-        --btn-shadow: none;
-        --btn-border: none;
-        --btn-border-radius: 9999px;
-        --font: ui-sans-serif, system-ui, sans-serif;
+      .atc-trigger[aria-expanded="true"] .atc-chevron {
+        transform: rotate(180deg);
+      }
+
+      .atc-chevron {
+        transition: transform 0.2s ease;
+      }
+
+      /* ── Menu ── */
+      .atc-menu {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        z-index: 50;
+        min-width: 220px;
+        padding: 6px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .atc-option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 9px 12px;
+        background: transparent;
+        border: none;
+        border-radius: 7px;
+        font-family: inherit;
+        font-size: 14px;
+        color: ${BRAND.black};
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .atc-option:hover,
+      .atc-option:focus-visible {
+        background: #f3f4f6;
+        outline: none;
+      }
+
+      .atc-option:focus-visible {
+        box-shadow: inset 0 0 0 2px ${BRAND.lightBlue};
+      }
+
+      .atc-option svg {
+        flex-shrink: 0;
+        color: ${BRAND.blue};
+      }
+
+      /* ── Summary ── */
+      .atc-summary {
+        margin-top: 12px;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .atc-summary-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: ${BRAND.navy};
+      }
+
+      .atc-summary-meta {
+        color: #4b5563;
+        font-weight: 500;
+      }
+
+      .atc-summary-location {
+        color: #6b7280;
       }
     `;
   }

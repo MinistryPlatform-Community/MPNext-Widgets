@@ -1,4 +1,5 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
+import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import type { CalendarEventData } from "@mpnext/types";
 
 interface EventRecord {
@@ -101,6 +102,18 @@ export class AddToCalendarService {
       }
     }
 
+    // The widget builds Google/Outlook/Yahoo links and an .ics from these
+    // wall-clock strings, and every one of those targets needs a real instant.
+    // Ship the domain zone with the payload so the client never has to guess
+    // (it used to hardcode America/Chicago).
+    let timeZone: string | null = null;
+    try {
+      timeZone = await DomainTimezoneService.getInstance().getMpTimezone();
+    } catch (error) {
+      // A missing domain zone degrades the calendar link, not the event data.
+      console.warn("addToCalendarService: could not resolve domain timezone", error);
+    }
+
     return {
       Event_ID: event.Event_ID,
       Event_Title: event.Event_Title,
@@ -112,6 +125,7 @@ export class AddToCalendarService {
       City: city,
       State: state,
       Postal_Code: postalCode,
+      Time_Zone: timeZone,
     };
   }
 }

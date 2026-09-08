@@ -242,7 +242,7 @@
   <div class="page">
     <a href="/" class="back-link">&larr; All Widgets</a>
     <h1>Add to Calendar</h1>
-    <p class="description">iCal/calendar export button for a single event.</p>
+    <p class="description">Add-to-calendar menu for a single event &mdash; Google, Apple, Outlook, Yahoo, or a downloaded .ics file.</p>
     <code class="tag-code">&lt;next-add-to-calendar&gt;</code>
 
     <div class="space-y">
@@ -288,11 +288,23 @@
         <pre><code id="widget-code">&lt;!-- Use the widget --&gt;
 &lt;next-add-to-calendar event-id="123"&gt;&lt;/next-add-to-calendar&gt;
 
+&lt;!-- Optional: narrow the menu. Default is
+     google,apple,outlook,yahoo,ics
+     (office365 is also available) --&gt;
+&lt;next-add-to-calendar event-id="123" providers="google,apple,ics"&gt;&lt;/next-add-to-calendar&gt;
+
+&lt;!-- Optional: override the zone the MP event times are in.
+     Defaults to the MP domain timezone reported by the API. --&gt;
+&lt;next-add-to-calendar event-id="123" time-zone="America/New_York"&gt;&lt;/next-add-to-calendar&gt;
+
 &lt;!-- Listen to events --&gt;
 &lt;script&gt;
   const widget = document.querySelector("next-add-to-calendar");
   widget.addEventListener("calendarEventLoaded", (e) =&gt; {
     console.log("Event loaded:", e.detail);
+  });
+  widget.addEventListener("calendarProviderSelected", (e) =&gt; {
+    console.log("Provider chosen:", e.detail.provider);
   });
   widget.addEventListener("addToCalendarError", (e) =&gt; {
     console.error("Error:", e.detail);
@@ -339,6 +351,11 @@
       widget.addEventListener("calendarEventLoaded", (e) => {
         logEvent("calendarEventLoaded", e.detail);
         showStatus(`Event loaded: "${e.detail.title}" (ID: ${e.detail.eventId})`, "success");
+      });
+
+      widget.addEventListener("calendarProviderSelected", (e) => {
+        logEvent("calendarProviderSelected", e.detail);
+        showStatus(`Handed off to ${e.detail.provider}.`, "success");
       });
 
       widget.addEventListener("addToCalendarError", (e) => {

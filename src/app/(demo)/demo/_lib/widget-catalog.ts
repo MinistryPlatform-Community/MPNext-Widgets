@@ -73,8 +73,27 @@ const extras: Record<string, WidgetExtras> = {
     attributes: { "event-id": "1" },
     controls: [
       { name: "eventId", label: "Event ID", type: "number", attribute: "event-id", placeholder: "e.g. 1234" },
+      {
+        name: "providers", label: "Calendars", type: "select", attribute: "providers",
+        options: [
+          { label: "All (default)", value: "google,apple,outlook,yahoo,ics" },
+          { label: "Google only", value: "google" },
+          { label: "Google + Apple", value: "google,apple" },
+          { label: "Microsoft (Outlook.com + 365)", value: "outlook,office365" },
+          { label: ".ics download only", value: "ics" },
+        ],
+        defaultValue: "google,apple,outlook,yahoo,ics",
+      },
     ],
-    implementationCode: `<next-add-to-calendar event-id="1234"></next-add-to-calendar>`,
+    implementationCode: `<next-add-to-calendar event-id="1234"></next-add-to-calendar>
+
+<!-- Narrow the menu. Default: google,apple,outlook,yahoo,ics
+     (office365 is also available.) -->
+<next-add-to-calendar event-id="1234" providers="google,apple,ics"></next-add-to-calendar>
+
+<!-- Override the zone the MP event times are in. Defaults to the
+     MP domain timezone, which the API ships with the event. -->
+<next-add-to-calendar event-id="1234" time-zone="America/New_York"></next-add-to-calendar>`,
   },
 
   "full-calendar": {

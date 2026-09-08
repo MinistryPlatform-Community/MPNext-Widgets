@@ -21,9 +21,10 @@ const scriptCache = new Map<string, Promise<void>>();
  *    library that is already executing in the page, and the byte-level trust
  *    problem (their tag ran first, whatever we do) would not actually be solved.
  * 2. `scriptCache` is keyed by URL only, so a second caller passing a different
- *    hash for the same URL silently reuses the first promise. Left as is:
- *    each URL has exactly one hash, both defined next to their version constant
- *    (`ATCB_SRI`, `FC_SRI`), so two hashes for one URL cannot arise today.
+ *    hash for the same URL silently reuses the first promise. Left as is: each
+ *    URL has exactly one hash, defined next to its version constant (`FC_SRI` —
+ *    FullCalendar is the only remaining production caller), so two hashes for
+ *    one URL cannot arise today.
  */
 export function loadScript(url: string, integrity?: string): Promise<void> {
   if (scriptCache.has(url)) return scriptCache.get(url)!;
