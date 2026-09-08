@@ -57,6 +57,7 @@ export class FullCalendarWidget extends MPNextWidget {
     ministryNames: new Set(),
   };
   private fcLoaded = false;
+  private stylesAdopted = false;
 
   static get observedAttributes() {
     return ["api-host", "view", "show-toolbar"];
@@ -113,7 +114,8 @@ export class FullCalendarWidget extends MPNextWidget {
       }
     } else if (name === "show-toolbar") {
       this.showToolbar = next !== "false";
-      this.render();
+      // rebuildCurrentView() owns the render() — on the FullCalendar views the
+      // render has to be bracketed by destroy/init, so it cannot happen here.
       this.rebuildCurrentView();
     }
   }
@@ -189,15 +191,30 @@ export class FullCalendarWidget extends MPNextWidget {
 
   // ── Calendar CSS ──
 
+  /**
+   * Clone FullCalendar's own <style> tags (which it injects into document.head)
+   * into this Shadow DOM, where head styles do not reach.
+   *
+   * Idempotent: the clones are appended to the shadow root itself, not inside
+   * `.nw-fc-container`, so they survive every `render()`. Re-initialising the
+   * calendar — which `switchView()` and `rebuildCurrentView()` both do — must
+   * not keep stacking duplicate copies of a ~40KB stylesheet.
+   */
   private adoptCalendarStyles(): void {
+    if (this.stylesAdopted) return;
     const headStyles = document.querySelectorAll("head style");
+    let adopted = 0;
     for (const style of headStyles) {
       const text = style.textContent || "";
       if (text.includes(".fc") || text.includes("fc-")) {
         const clone = style.cloneNode(true) as HTMLStyleElement;
         this.root.appendChild(clone);
+        adopted++;
       }
     }
+    // Only latch once something was actually found: on the very first call the
+    // CDN bundle may not have injected its styles yet.
+    if (adopted > 0) this.stylesAdopted = true;
   }
 
   // ── Calendar Initialization ──
@@ -728,12 +745,28 @@ export class FullCalendarWidget extends MPNextWidget {
     container.appendChild(area);
   }
 
+  /**
+   * Re-render the widget chrome and re-attach whatever view is active.
+   *
+   * `render()` rewrites `.nw-fc-container`'s innerHTML, which **replaces the
+   * `#nw-fc-mount` element** a live FullCalendar instance is bound to. The
+   * instance keeps its reference to the now-detached node, so calling
+   * `calendarInstance.render()` afterwards paints into an orphan and leaves the
+   * fresh mount empty — a silently blank widget, no throw, no error event.
+   *
+   * FullCalendar has no supported "re-attach to a new element" call, so the
+   * only correct sequence is the one `switchView()` already uses when it
+   * crosses into the FullCalendar views: destroy → render → init.
+   */
   private rebuildCurrentView(): void {
     if (this.needsFullCalendar()) {
-      if (this.calendarInstance) {
-        this.calendarInstance.render();
-      }
+      const hadInstance = this.calendarInstance !== null;
+      this.destroyCalendar();
+      this.render();
+      // initCalendar() adopts the FullCalendar stylesheets itself.
+      if (hadInstance) this.initCalendar();
     } else {
+      this.render();
       this.renderCardsOrCalendarView();
     }
   }
