@@ -251,7 +251,7 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `packages/embed-sdk/src/shared/base-widget.ts` | Abstract base class (Shadow DOM, token mgmt, fetch, `requestLogin()` → cancelable `loginRequired` then `authSession.login`) |
 | `packages/embed-sdk/src/shared/cdn-loader.ts` | `loadScript(url, integrity?)` -- SRI + `crossOrigin="anonymous"` for the two CDN scripts |
 | `packages/embed-sdk/src/shared/form-validation.ts` | Shared widget form validation (no native `reportValidity` popup) |
-| `packages/embed-sdk/src/components/user-menu.ts` | Mode branches: `legacy` (MPWidgets.js `<mpp-user-login>`, REAUTH) vs `dual`/`hardened` (own Sign In, `/auth/me`, `/auth/logout`). `watchMpLoginRegistration()` re-inserts `<mpp-user-login>` until MPWidgets.js registers it -- see MP widget styling below |
+| `packages/embed-sdk/src/components/user-menu.ts` | Mode branches: `legacy` (MPWidgets.js `<mpp-user-login>`, REAUTH) vs `dual`/`hardened` (own Sign In, `/auth/me`, `/auth/logout`). `watchMpLoginRegistration()` re-inserts `<mpp-user-login>` until MPWidgets.js registers it -- both `legacy` and `dual` + `prefer-mp-login` bootstrap through that one watch (see MP widget styling below) |
 | `packages/embed-sdk/src/components/full-calendar.ts` | Largest widget; composes the five `full-calendar-*` sub-modules and pins the FullCalendar CDN version + SRI |
 | `packages/embed-sdk/vite.config.ts` | Vite library mode (ES output only) + the canonical customer setup snippet injected into every demo page |
 | `scripts/hash-sdk.js`, `scripts/copy-sdk.js` | Content-hash the SDK bundle and publish it plus the stable `next-embed.js` loader into `public/embed-sdk/` |

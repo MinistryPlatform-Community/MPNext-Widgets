@@ -5,7 +5,9 @@
  *   - placeholder until /api/embed/auth/config resolves
  *   - legacy: <mpp-user-login> injection (today's behavior)
  *   - dual / hardened: own Sign In button, loginRequired hook, no mpp-widgets_* writes
- *   - dual + prefer-mp-login: MP login element when MPWidgets.js is present
+ *   - dual + prefer-mp-login: adopting an <mpp-user-login> MP already registered
+ *     (bootstrapping one from an unregistered registry is TODO 36's case and
+ *     lives in user-menu-prefer-mp-login.test.ts)
  *   - session-scope="tab" → sid in sessionStorage
  *   - hardened logout → cancelable userLogout with endSessionUrl
  */
@@ -60,6 +62,8 @@ function mount(attrs = ""): HTMLElement {
 const shadow = (el: HTMLElement) => el.shadowRoot!;
 
 describe("<next-user-menu> auth modes", () => {
+  let warn: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
@@ -71,7 +75,7 @@ describe("<next-user-menu> auth modes", () => {
       refresh: () => getAuthSession(HOST).refreshToken("user-menu"),
     };
     window.__nextSDKReady = Promise.resolve();
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -152,7 +156,19 @@ describe("<next-user-menu> auth modes", () => {
     expect(nav).not.toHaveBeenCalled();
   });
 
-  it("dual mode with prefer-mp-login and MPWidgets.js present uses <mpp-user-login>", async () => {
+  /**
+   * The "already registered" half of `prefer-mp-login`: a host page carrying
+   * another `mpp-*` widget, so MPWidgets.js has defined the element before the
+   * user menu renders.
+   *
+   * Pre-defining it here is exactly what let TODO 36 hide: it is the one state
+   * the old `customElements.get("mpp-user-login")` gate was satisfied in, and a
+   * page with no `mpp-*` tag of its own never reaches it, so the attribute was
+   * a silent no-op there. Those cases are in
+   * `user-menu-prefer-mp-login.test.ts` -- `customElements` cannot be
+   * un-defined, so they need a file where nothing has defined it.
+   */
+  it("dual mode with prefer-mp-login adopts an <mpp-user-login> MP has already registered", async () => {
     if (!customElements.get("mpp-user-login")) {
       customElements.define("mpp-user-login", class extends HTMLElement {});
     }
@@ -161,6 +177,9 @@ describe("<next-user-menu> auth modes", () => {
     await vi.waitFor(() => expect(el.querySelector("mpp-user-login")).not.toBeNull());
     expect(shadow(el).querySelector(".nw-login-btn")).toBeNull();
     expect(shadow(el).querySelector("slot")).not.toBeNull();
+    // Already upgraded, so no placeholder stand-in and nothing to warn about.
+    expect(shadow(el).querySelector(".nw-placeholder")).toBeNull();
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining("prefer-mp-login"));
   });
 
   it('session-scope="tab" stores the sid in sessionStorage', async () => {
