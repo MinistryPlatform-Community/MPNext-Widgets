@@ -29,8 +29,8 @@ match the Node 24 runtime (Vercel runs 24).
 |---|------|------|-----------|
 | 3 | `03-typescript-7.md` | **blocked upstream** — attempted 2026-09-07, not merged | wait for TS 7.1 |
 | 7 | `07-fullcalendar-7.md` | **attempted 2026-09-07, not merged** — v7 is a rewrite, not a bump | 1-2 days + a design decision |
-| 17 | `17-better-auth-vitest5-peer.md` | none — a warning, not a failure | 10 min |
-| 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire | 15 min |
+| 17 | `17-better-auth-vitest5-peer.md` | **suppressed 2026-09-08** — warning gone; remove the rule when upstream widens | 5 min to retire |
+| 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire. **Now the sole gate on a warning-free `pnpm install`** | 15 min |
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
 | 37 | `37-playwright-local-network-access-blocks-widget-e2e.md` | none in prod — but every widget E2E run tests a silently de-authenticated widget | 20 min |
 | 38 | `38-mp-widget-overrides-css-never-injected.md` | either MP widgets render unbranded in prod, or the build maintains dead plumbing — read the file, it is one browser check | 30 min to triage |
