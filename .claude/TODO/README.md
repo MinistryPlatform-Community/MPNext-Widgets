@@ -40,7 +40,6 @@ match the Node 24 runtime (Vercel runs 24).
 | 28 | `28-jest-dom-matcher-types-missing.md` | none — a matcher no test can use | 10 min |
 | 30 | `30-demo-auth-mode-banner-always-unavailable.md` | none in prod — misleads local verification | 15 min |
 | 33 | `33-next-env-dts-churn-between-dev-and-build.md` | none in prod — a generated file that dirties the tree | 15 min |
-| 34 | `34-claude-md-stale-five-widgets.md` | none in prod — stale project instructions misdirect agents and new contributors | 45 min |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -303,12 +302,14 @@ The same change makes the fallback stop being silent: it warns in development
 naming the missing variables instead of degrading into the exact "you are
 signed out" failure item 14 existed to fix — `EMBED_SESSION_STORE_ALLOW_MEMORY=1`
 opts back in deliberately. The throw is lazy, so `next build` is unaffected
-(verified). Item 34 was filed from that work.
+(verified). Item 34 was filed from that work and is now **done** (PR pending).
 
-Item 34 is not a dependency upgrade either — it is documentation drift the
-item-32 agent noticed on 2026-09-07: `CLAUDE.md` still describes "5 embed SDK
-widgets" and sizes its Structure and Services sections to match, but the repo
-ships 25 registered `next-*` elements and 25 demo pages.
+Item 34 (documentation drift: `CLAUDE.md` still described "5 embed SDK widgets"
+while the repo ships 25 registered `next-*` elements and 25 demo pages) is
+**done** — `CLAUDE.md` was refreshed on 2026-09-07 against a fresh measurement
+and brought current with items 2, 3, 4, 6, 7, 10, 11, 14, 22, 24, 25, 27, 29
+and 31. It now points at `packages/embed-sdk/src/components/` and the demo
+pages as the source of truth rather than restating a count in three places.
 
 **Standard verification gate** for every branch below:
 
