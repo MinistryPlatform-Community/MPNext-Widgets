@@ -36,7 +36,6 @@ match the Node 24 runtime (Vercel runs 24).
 | 19 | `19-embed-sdk-declarations-never-emitted.md` | none today — nothing imports the package | 20 min |
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
 | 26 | `26-favicon-and-site-chrome-404.md` | low — cosmetic 404 on every page load | 15 min |
-| 28 | `28-jest-dom-matcher-types-missing.md` | none — a matcher no test can use | 10 min |
 | 30 | `30-demo-auth-mode-banner-always-unavailable.md` | none in prod — misleads local verification | 15 min |
 | 33 | `33-next-env-dts-churn-between-dev-and-build.md` | none in prod — a generated file that dirties the tree | 15 min |
 

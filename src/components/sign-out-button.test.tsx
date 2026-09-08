@@ -150,9 +150,7 @@ describe('SignOutButton', () => {
     await click(button);
     await flush();
 
-    // Native `.disabled`, not jest-dom's `toBeDisabled()` — the matcher types
-    // are not wired into tsconfig (TODO 28).
-    expect((screen.getByRole('button') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('button')).toBeDisabled();
     await click(screen.getByRole('button'));
     await flush();
 
