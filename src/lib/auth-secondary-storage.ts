@@ -1,6 +1,6 @@
 /**
  * Better Auth `secondaryStorage`, backed by the same Redis the embed widget
- * sessions already use (`EMBED_SESSION_STORE_URL` / `_TOKEN`, see
+ * sessions already use (`UPSTASH_REDIS_REST_URL` / `_TOKEN`, see
  * `src/lib/embed/session-store.ts`).
  *
  * ## Why this instead of a `database`
@@ -61,7 +61,7 @@ const key = (k: string) => `${PREFIX}${k}`;
 
 /**
  * Better Auth's `SecondaryStorage`. Resolved lazily on every call so the
- * process picks up `EMBED_SESSION_STORE_URL` whenever the env is loaded, and
+ * process picks up `UPSTASH_REDIS_REST_URL` whenever the env is loaded, and
  * so tests can swap the store via `__resetSessionStoreForTests()`.
  */
 export function betterAuthSecondaryStorage(): SecondaryStorage {
