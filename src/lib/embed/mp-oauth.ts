@@ -220,14 +220,51 @@ export function buildAuthorizeUrl(args: {
   return url.toString();
 }
 
-export function buildEndSessionUrl(args: {
-  idToken?: string | null;
-  postLogoutRedirectUri?: string;
-}): string {
+/**
+ * The one `post_logout_redirect_uri` this deployment may hand MinistryPlatform.
+ *
+ * MP will not finish an end-session it cannot redirect out of: hand it a URI
+ * that is **not** registered on the OAuth client and IdentityServer discards
+ * the whole logout context — `id_token_hint` included — and renders a bare
+ * "Would you like to logout? [Yes]" interstitial instead. The user walks away,
+ * the MP SSO session survives, and the next visit signs them straight back in
+ * (TODO 29, measured 2026-09-07).
+ *
+ * So the value can never come from the browser. A widget embedded on
+ * `firstbaptist.org` cannot have its page URL registered — there is one MP
+ * client for the widget host and an open-ended set of host pages — which is
+ * why `next-user-menu`'s old `window.location.href` default was unfixable by
+ * registration. Host pages are returned to by
+ * `src/app/api/embed/auth/logout/route.ts`'s own bounce instead
+ * (`src/lib/embed/logout-return.ts`), which needs nothing registered.
+ *
+ * Registered on the MP OAuth client as a post-logout redirect URI:
+ * `${BETTER_AUTH_URL}/signin`. Unset/unparseable env returns `undefined`, and
+ * the caller then sends `id_token_hint` alone — measured to log out cleanly
+ * with no interstitial, just without the return trip.
+ */
+export function getRegisteredPostLogoutRedirectUri(): string | undefined {
+  const raw = process.env.BETTER_AUTH_URL?.trim();
+  if (!raw) return undefined;
+  try {
+    return `${new URL(raw).origin}/signin`;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * MP's end-session URL. The **only** place an end-session URL is built
+ * server-side; both logout routes go through it so the two cannot drift apart
+ * again. It deliberately takes no redirect argument — see
+ * {@link getRegisteredPostLogoutRedirectUri}.
+ */
+export function buildEndSessionUrl(args: { idToken?: string | null }): string {
   const url = new URL(getMpOAuthEndpoints().endsession);
   if (args.idToken) url.searchParams.set("id_token_hint", args.idToken);
-  if (args.postLogoutRedirectUri) {
-    url.searchParams.set("post_logout_redirect_uri", args.postLogoutRedirectUri);
+  const postLogoutRedirectUri = getRegisteredPostLogoutRedirectUri();
+  if (postLogoutRedirectUri) {
+    url.searchParams.set("post_logout_redirect_uri", postLogoutRedirectUri);
   }
   return url.toString();
 }

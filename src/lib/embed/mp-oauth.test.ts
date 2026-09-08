@@ -8,6 +8,7 @@ import {
   refreshWithRefreshToken,
   buildAuthorizeUrl,
   buildEndSessionUrl,
+  getRegisteredPostLogoutRedirectUri,
   pkcePair,
   MP_OAUTH_SCOPE,
   __resetUserinfoCacheForTests,
@@ -250,19 +251,63 @@ describe('mp-oauth - URL builders', () => {
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
   });
 
-  it('buildEndSessionUrl includes id_token_hint and post_logout_redirect_uri when given', () => {
-    const bare = new URL(buildEndSessionUrl({}));
-    expect(bare.origin + bare.pathname).toBe(`${MP}/oauth/connect/endsession`);
-    expect(bare.searchParams.has('id_token_hint')).toBe(false);
+  /**
+   * TODO 29. MP drops the entire logout context -- `id_token_hint` included --
+   * when `post_logout_redirect_uri` is not registered on its OAuth client, and
+   * shows a "Would you like to logout?" prompt while the SSO session survives.
+   * These pin that the value can only ever be the registered one.
+   */
+  describe('buildEndSessionUrl', () => {
+    it('sends id_token_hint plus the registered post_logout_redirect_uri', () => {
+      vi.stubEnv('BETTER_AUTH_URL', 'https://widgets.example.com');
 
-    const full = new URL(
-      buildEndSessionUrl({ idToken: 'idt', postLogoutRedirectUri: 'https://church.example.com/bye' }),
-    );
-    expect(full.searchParams.get('id_token_hint')).toBe('idt');
-    expect(full.searchParams.get('post_logout_redirect_uri')).toBe('https://church.example.com/bye');
+      const bare = new URL(buildEndSessionUrl({}));
+      expect(bare.origin + bare.pathname).toBe(`${MP}/oauth/connect/endsession`);
+      expect(bare.searchParams.has('id_token_hint')).toBe(false);
+      expect(bare.searchParams.get('post_logout_redirect_uri')).toBe(
+        'https://widgets.example.com/signin',
+      );
 
-    const nullId = new URL(buildEndSessionUrl({ idToken: null }));
-    expect(nullId.searchParams.has('id_token_hint')).toBe(false);
+      const full = new URL(buildEndSessionUrl({ idToken: 'idt' }));
+      expect(full.searchParams.get('id_token_hint')).toBe('idt');
+      expect(full.searchParams.get('post_logout_redirect_uri')).toBe(
+        'https://widgets.example.com/signin',
+      );
+
+      const nullId = new URL(buildEndSessionUrl({ idToken: null }));
+      expect(nullId.searchParams.has('id_token_hint')).toBe(false);
+    });
+
+    it('takes no destination from its caller -- there is no argument for one', () => {
+      vi.stubEnv('BETTER_AUTH_URL', 'https://widgets.example.com');
+      // A host page URL, the value that caused TODO 29. Passing it must not
+      // reach MP even when a caller tries.
+      const url = new URL(
+        buildEndSessionUrl({
+          idToken: 'idt',
+          postLogoutRedirectUri: 'https://firstbaptist.example.org/members',
+        } as Parameters<typeof buildEndSessionUrl>[0]),
+      );
+      expect(url.searchParams.get('post_logout_redirect_uri')).toBe(
+        'https://widgets.example.com/signin',
+      );
+    });
+
+    it('omits post_logout_redirect_uri entirely when BETTER_AUTH_URL is unusable', () => {
+      // Better an id_token_hint-only logout (which MP completes cleanly) than
+      // a bogus URI, which it refuses to complete at all.
+      for (const value of ['', '   ', 'not-a-url']) {
+        vi.stubEnv('BETTER_AUTH_URL', value);
+        const url = new URL(buildEndSessionUrl({ idToken: 'idt' }));
+        expect(url.searchParams.has('post_logout_redirect_uri')).toBe(false);
+        expect(url.searchParams.get('id_token_hint')).toBe('idt');
+      }
+    });
+
+    it('normalises the registered URI to <origin>/signin', () => {
+      vi.stubEnv('BETTER_AUTH_URL', 'https://widgets.example.com/some/base/');
+      expect(getRegisteredPostLogoutRedirectUri()).toBe('https://widgets.example.com/signin');
+    });
   });
 
   it('pkcePair returns a 43-char verifier and its S256 challenge', async () => {

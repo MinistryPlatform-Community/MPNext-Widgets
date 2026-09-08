@@ -1,12 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { proxy, isPublicPath, config } from './proxy';
+import { LOGOUT_RETURN_COOKIE } from '@/lib/embed/logout-return';
 
 const getSessionCookie = vi.hoisted(() => vi.fn<() => string | null>(() => null));
 vi.mock('better-auth/cookies', () => ({ getSessionCookie }));
+vi.mock('@/lib/embed/config', () => ({
+  allowedOrigins: ['https://allowed.example.com'],
+}));
 
-function request(pathname: string): NextRequest {
-  return new NextRequest(`http://localhost:3000${pathname}`);
+function request(pathname: string, cookies?: Record<string, string>): NextRequest {
+  const req = new NextRequest(`http://localhost:3000${pathname}`);
+  for (const [name, value] of Object.entries(cookies ?? {})) {
+    req.cookies.set(name, value);
+  }
+  return req;
 }
 
 /**
@@ -125,5 +133,49 @@ describe('config.matcher', () => {
 
   it.each(['/', '/dashboard', '/demo', '/embed-sdk-admin'])('still runs for %s', (pathname) => {
     expect(matcherRegex.test(pathname)).toBe(true);
+  });
+});
+
+/**
+ * TODO 29. MP will not complete an end-session whose `post_logout_redirect_uri`
+ * is not registered on its OAuth client, and an embed SDK's host pages cannot
+ * all be registered. So the widget host sends MP its own registered `/signin`
+ * and finishes the trip here, from the HttpOnly cookie
+ * `GET /api/embed/auth/logout` left behind.
+ */
+describe('proxy() finishing an embed logout on /signin', () => {
+  const HOST_PAGE = 'https://allowed.example.com/members';
+
+  it('redirects to the host page and clears the cookie', async () => {
+    const res = await proxy(request('/signin', { [LOGOUT_RETURN_COOKIE]: HOST_PAGE }));
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(HOST_PAGE);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    // Cleared, so a stale cookie cannot bounce the next /signin visit.
+    expect(res.cookies.get(LOGOUT_RETURN_COOKIE)?.value).toBe('');
+  });
+
+  it('renders /signin normally when there is no cookie', async () => {
+    const res = await proxy(request('/signin'));
+    expect(res.headers.get('location')).toBeNull();
+  });
+
+  it.each([
+    ['an origin that is not embedded here', 'https://evil.example.net/pwn'],
+    ['a lookalike suffix', 'https://allowed.example.com.evil.net/'],
+    ['javascript:', 'javascript:alert(1)'],
+    ['a relative path', '/dashboard'],
+  ])('is not an open redirect: refuses %s and still clears the cookie', async (_why, value) => {
+    const res = await proxy(request('/signin', { [LOGOUT_RETURN_COOKIE]: value }));
+    expect(res.headers.get('location')).toBeNull();
+    expect(res.cookies.get(LOGOUT_RETURN_COOKIE)?.value).toBe('');
+  });
+
+  it('only fires on /signin -- the cookie cannot divert any other path', async () => {
+    for (const pathname of ['/demo', '/dashboard', '/api/embed/session', '/signin/help']) {
+      const res = await proxy(request(pathname, { [LOGOUT_RETURN_COOKIE]: HOST_PAGE }));
+      expect(res.headers.get('location')).not.toBe(HOST_PAGE);
+    }
   });
 });

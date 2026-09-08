@@ -40,14 +40,17 @@ export function TokenBridge() {
       // Synchronously cancel the event so the widget knows TokenBridge will handle the redirect
       e.preventDefault();
 
-      const detail = (e as CustomEvent).detail as { postLogoutRedirectUri?: string } | undefined;
-      const postLogoutRedirectUri = detail?.postLogoutRedirectUri;
-
       (async () => {
         // Shared with the `/demo` header's Sign Out button: clears the
         // `mpp-widgets_*` copies, ends the Better Auth session and hands back
         // MP's end-session URL. See `src/lib/app-logout.ts`.
-        const redirectUrl = await requestAppLogout({ postLogoutRedirectUri });
+        //
+        // The widget's `postLogoutRedirectUri` (its own page URL) is
+        // deliberately NOT forwarded: it is not registered on the MP OAuth
+        // client, and passing it is what left the MP session alive behind a
+        // "Would you like to logout?" prompt (TODO 29). Same-origin logouts
+        // land on the registered `/signin` instead.
+        const redirectUrl = await requestAppLogout();
         if (redirectUrl) {
           // Cross-origin, top-level navigation to MinistryPlatform's OIDC end-session
           // endpoint. Must stay a raw location assignment — router.push() cannot

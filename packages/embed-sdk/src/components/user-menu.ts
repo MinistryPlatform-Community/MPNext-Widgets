@@ -528,6 +528,12 @@ export class UserMenuWidget extends MPNextWidget {
     this.closeDropdown();
     this.closeModal();
 
+    // Where the visitor should end up, NOT what MP is handed as
+    // `post_logout_redirect_uri` — MP would refuse a host page that is not
+    // registered on its OAuth client and leave the SSO session alive behind a
+    // confirmation prompt (TODO 29). `/api/embed/auth/logout` seals this into
+    // a ticket and bounces the browser back here itself after MP is done, so
+    // any page on an allowed embedding origin works with nothing registered.
     const postLogoutRedirectUri = this.getAttribute("post-logout-redirect-uri") || window.location.href;
     let endSessionUrl: string | null = null;
     try {
@@ -1257,7 +1263,22 @@ export class UserMenuWidget extends MPNextWidget {
     this.clearUserInfoRetry();
     this.closeDropdown();
     this.closeModal();
-    const postLogoutRedirectUri = this.getAttribute("post-logout-redirect-uri") || window.location.href;
+    // Legacy mode builds MP's end-session URL in the browser, so there is no
+    // server bounce to hide an unregistered destination behind. The default is
+    // therefore the widget host's own registered URI, which it advertises via
+    // /api/embed/auth/config — the only value MP will accept, and not
+    // derivable here. Passing the current page instead is what caused TODO 29:
+    // MP drops the whole logout context, `id_token_hint` included, when the
+    // URI is not registered on its OAuth client, and shows a "Would you like
+    // to logout?" prompt while the SSO session survives.
+    //
+    // No advertised URI (config unreachable, or the host has none configured)
+    // means sending none, which MP also completes cleanly.
+    // `post-logout-redirect-uri` still wins for integrators who have
+    // registered their own; an unregistered one will reproduce the prompt.
+    const postLogoutRedirectUri =
+      this.getAttribute("post-logout-redirect-uri") ||
+      this.authSession.getPostLogoutRedirectUri();
     const endSessionUrl = new URL(`${this.mpBaseUrl}/ministryplatformapi/oauth/connect/endsession`);
     if (idToken) endSessionUrl.searchParams.set("id_token_hint", idToken);
     if (postLogoutRedirectUri) endSessionUrl.searchParams.set("post_logout_redirect_uri", postLogoutRedirectUri);

@@ -57,10 +57,11 @@ const extras: Record<string, WidgetExtras> = {
   "user-menu": {
     implementationCode: `<next-user-menu mp-base-url="${mpHost}"></next-user-menu>
 
-<!-- With post-logout redirect -->
+<!-- Land somewhere specific after sign-out. Defaults to the current page. -->
+<!-- In legacy mode the URI must be registered on the MP OAuth client. -->
 <next-user-menu
   mp-base-url="${mpHost}"
-  post-logout-redirect-uri="${mpHost}"
+  post-logout-redirect-uri="https://your-site.example.org/goodbye"
 ></next-user-menu>
 
 <!-- Deep-link to profile tab -->

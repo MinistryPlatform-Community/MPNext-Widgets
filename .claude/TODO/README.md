@@ -39,7 +39,7 @@ match the Node 24 runtime (Vercel runs 24).
 | 23 | `23-access-denied-dashboard-link-loops.md` | low — dead-end button | 15 min |
 | 26 | `26-favicon-and-site-chrome-404.md` | low — cosmetic 404 on every page load | 15 min |
 | 28 | `28-jest-dom-matcher-types-missing.md` | none — a matcher no test can use | 10 min |
-| 29 | `29-widget-logout-stalls-on-mp-confirmation.md` | **medium** — MP session survives widget logout | 30 min + an MP client change |
+| 30 | `30-demo-auth-mode-banner-always-unavailable.md` | none in prod — misleads local verification | 15 min |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -200,6 +200,34 @@ browser against a loopback Redis: one `POST /api/auth/logout` → 200, the
 the test that matters — navigating back to `/demo` afterwards lands on **MP's
 login form**, not a silent re-authentication. Items 28 and 29 were filed from
 that verification; 29 is the same failure still live on the widget path.
+
+Item 29 (widget logout passed `window.location.href` as
+`post_logout_redirect_uri`, MP refused to complete an end-session it could not
+redirect out of, and the MP SSO session survived behind a "Would you like to
+logout? [Yes]" prompt) is **done** — and the cheap fix in its write-up was
+*not* what shipped. Measured against the live MP on 2026-09-07: an unregistered
+host page URL (`http://localhost:5173/demo-user-menu.html`) reproduces the
+prompt; `id_token_hint` alone completes cleanly; the registered
+`http://localhost:3000/signin` completes and redirects. Registering church
+origins is not a fix an embed SDK can rely on — the host pages belong to other
+people and are open-ended — so **no browser-derived URL is sent to MP at all
+any more**. `buildEndSessionUrl()` in `src/lib/embed/mp-oauth.ts` is the one
+server-side builder and takes no destination argument; both logout routes use
+it, and `src/lib/app-logout.test.ts` fails the build if a second builder or a
+second `post_logout_redirect_uri` appears anywhere in `src/`. Visitors still
+get home: `src/lib/embed/logout-return.ts` seals the church page into a ticket,
+`GET /api/embed/auth/logout?t=` turns it into a `SameSite=Lax`
+`nw_logout_return` cookie and forwards to MP, and `src/proxy.ts` spends the
+cookie when MP lands on the registered `/signin` — validated against
+`EMBED_ALLOWED_ORIGINS` twice so it cannot become an open redirect. `legacy`
+builds its URL in the browser and so has no bounce; it uses the registered URI,
+which `/api/embed/auth/config` now advertises. **No MP OAuth client change was
+needed** — `${BETTER_AUTH_URL}/signin` was already registered, and it is the
+only post-logout entry this deployment needs, for every host site. Verified in
+the browser on both origins: same-origin `/demo/user-menu` and cross-origin
+`localhost:5173` (dual, real MP session) both log out with no interstitial, the
+5173 visitor lands back on their own page, and the silent-re-signin test lands
+on MP's login form in both cases. Item 30 was filed from that verification.
 
 **Standard verification gate** for every branch below:
 
