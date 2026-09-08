@@ -34,12 +34,13 @@ match the Node 24 runtime (Vercel runs 24).
 | 17 | `17-better-auth-vitest5-peer.md` | none — a warning, not a failure | 10 min |
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire | 15 min |
 | 19 | `19-embed-sdk-declarations-never-emitted.md` | none today — nothing imports the package | 20 min |
-| 20 | `20-fullcalendar-toolbar-toggle-blanks-view.md` | medium — silent blank widget, no error | 30 min |
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
 | 23 | `23-access-denied-dashboard-link-loops.md` | low — dead-end button | 15 min |
 | 26 | `26-favicon-and-site-chrome-404.md` | low — cosmetic 404 on every page load | 15 min |
 | 28 | `28-jest-dom-matcher-types-missing.md` | none — a matcher no test can use | 10 min |
 | 30 | `30-demo-auth-mode-banner-always-unavailable.md` | none in prod — misleads local verification | 15 min |
+| 31 | `31-memory-session-store-split-module-graph.md` | dev-experience blocker — cannot sign in locally without a store URL | 15 min-2 h |
+| 32 | `32-full-calendar-double-init-on-view-attribute.md` | low-medium — one leaked FullCalendar per mount | 30 min |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -89,12 +90,25 @@ Item 19 is not a dependency upgrade either — it was found while inspecting
 `packages/embed-sdk/package.json` advertises in `types`/`exports` has never
 existed.
 
-Items 20 and 21 are not dependency upgrades either — both were found while
-browser-testing item 7 on 2026-09-07, and both reproduce on the shipping
-`6.1.21` pin. 20: toggling `show-toolbar` while on `grid`/`week` replaces the
-`#nw-fc-mount` element out from under the live FullCalendar instance, so the
-widget goes blank with no error. 21: the demo page's View `<select>` omits
-`grid`, one of the two views that actually mount FullCalendar.
+Item 21 is not a dependency upgrade either — it was found while browser-testing
+item 7 on 2026-09-07 and reproduces on the shipping `6.1.21` pin: the demo
+page's View `<select>` omits `grid`, one of the two views that actually mount
+FullCalendar.
+
+Item 20 (toggling `show-toolbar` on `grid`/`week` blanked the widget) is
+**done** — `render()` replaces the `#nw-fc-mount` element a live FullCalendar
+instance is bound to, and `rebuildCurrentView()` then called
+`calendarInstance.render()`, painting into the orphan; nothing threw, so the
+widget just went empty. `rebuildCurrentView()` now owns the render and brackets
+it the way `switchView()` already did — destroy → render → init — and
+`adoptCalendarStyles()` was made idempotent so the re-init cannot stack
+duplicate copies of FullCalendar's stylesheet in the Shadow DOM.
+`packages/embed-sdk/src/components/full-calendar.test.ts` pins the measured
+signals (mount child count, rendered text, and the live instance still being
+bound to the in-DOM mount) in both toggle directions on both views, plus a
+six-view `switchView()` round trip; 5 of its 10 tests fail on the unfixed
+component. Verified in the browser on `demo-full-calendar.html` against live MP
+data. Item 32 was filed from that work.
 
 Items 15 and 16 are also not dependency upgrades — both were found while doing
 item 10 on 2026-09-07. 15: `dist/atcb.min.js` does not exist in the npm tarball,
@@ -228,6 +242,21 @@ the browser on both origins: same-origin `/demo/user-menu` and cross-origin
 `localhost:5173` (dual, real MP session) both log out with no interstitial, the
 5173 visitor lands back on their own page, and the silent-re-signin test lands
 on MP's login form in both cases. Item 30 was filed from that verification.
+
+Item 31 is not a dependency upgrade either — it was written up by the item-29
+agent on 2026-09-07: with no `EMBED_SESSION_STORE_URL` set, the RSC module graph
+and the route-handler module graph each get their own `MemorySessionStore`, so
+`/signin` sees a session the `(demo)` layout does not and `/demo` redirect-loops.
+The in-memory branch of `getSessionStore()` is therefore not a working fallback
+in the App Router, and a loopback Upstash-REST helper (or a real Upstash
+instance) is currently required to sign in locally at all.
+
+Item 32 is not a dependency upgrade either — it was found while writing the
+regression tests for item 20 on 2026-09-07 and reproduces on `dev` with that fix
+stashed out: `<next-full-calendar view="grid|week">` runs `initCalendar()` twice
+(`attributeChangedCallback` fires before `connectedCallback` and races it), so
+every mount constructs two FullCalendar instances and leaks the one that is not
+bound to the surviving mount.
 
 **Standard verification gate** for every branch below:
 
