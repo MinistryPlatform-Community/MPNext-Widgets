@@ -4,9 +4,10 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 // ── 1. Base Styles ──────────────────────────────────────────────────────────
-// Host, container, loading/error states, spinner, FullCalendar brand
-// overrides (toolbar, today cell, event pills, list view, now indicator,
-// column headers, popover) and responsive tweaks for the FC built-in UI.
+// Host, container, loading/error states, spinner, and the FullCalendar 7 theme
+// custom-property contract (the brand palette that themes/classic/theme.css
+// reads — see the note above the :host block) plus the event-chip rule that
+// replaces the old `.fc-event` selectors.
 
 export const BASE_STYLES = `
   :host {
@@ -64,164 +65,89 @@ export const BASE_STYLES = `
     to { transform: rotate(360deg); }
   }
 
-  /* ── FullCalendar CSS Variable Overrides ── */
-  /* Must be on .fc (not :host) so they cascade into FC's cloned styles in Shadow DOM */
+  /* ── FullCalendar 7 theme contract ── */
+  /*
+   * FullCalendar 7 ships no CSS inside its JS bundle. 'skeleton.css' and
+   * 'themes/classic/theme.css' are <link>ed into this shadow root by
+   * loadFullCalendar(), and they only *consume* these custom properties —
+   * theme.css has no :root rule of its own and 67 of its 68 var() uses carry
+   * no fallback.
+   *
+   * The upstream values live in 'themes/classic/palette.css', which is
+   * deliberately NOT loaded: it declares them on ':root', a selector that
+   * never matches inside a shadow tree, so the whole calendar would render
+   * with no borders, no today highlight, no event chips and no now-indicator.
+   * Declaring them on :host both fixes that and puts the brand palette in —
+   * which is why there are no '.fc-*' rules below any more. v7's own class
+   * names are build-generated hashes ('fc-1q', 'fc-DP', …), not a public API.
+   *
+   * KEEP THIS COMPLETE. Every property below is read by theme.css or by
+   * themes/classic/global.js with no fallback; dropping one silently removes
+   * whatever it paints. Re-derive the list after a version or theme bump:
+   *   curl -sL ".../fullcalendar@<ver>/themes/<theme>/theme.css"
+   *     | grep -oE -- "--fc-[a-z0-9-]+" | sort -u
+   */
 
-  .fc {
-    --fc-button-bg-color: #004C97;
-    --fc-button-border-color: #004C97;
-    --fc-button-hover-bg-color: #002855;
-    --fc-button-hover-border-color: #002855;
-    --fc-button-active-bg-color: #002855;
-    --fc-button-active-border-color: #002855;
-    --fc-event-bg-color: #004C97;
-    --fc-event-border-color: #004C97;
-    --fc-event-selected-overlay-color: rgba(0, 40, 85, 0.25);
-    --fc-bg-event-color: #D6F0FC;
-    --fc-bg-event-opacity: 0.5;
-    --fc-highlight-color: rgba(0, 76, 151, 0.1);
-    --fc-today-bg-color: #D6F0FC;
-    --fc-now-indicator-color: #FF6D6A;
-    --fc-non-business-color: rgba(0, 0, 0, 0.03);
-    --fc-neutral-bg-color: #f9fafb;
-    --fc-page-bg-color: white;
-    --fc-border-color: #E0E0E0;
-    --fc-list-event-hover-bg-color: #D6F0FC;
+  :host {
+    /* Skeleton stacking order (skeleton.css declares these on :root too). */
+    --fc-sticky-header-footer-z: 3;
+    --fc-popover-z: 4;
+
+    /* Buttons. FullCalendar's own toolbar is off ('headerToolbar: false') so
+       nothing reads these today; kept in brand so enabling it stays correct. */
+    --fc-classic-button: #004C97;
+    --fc-classic-button-border: #004C97;
+    --fc-classic-button-strong: #002855;
+    --fc-classic-button-strong-border: #002855;
+    --fc-classic-button-outline: rgba(0, 76, 151, 0.5);
+    --fc-classic-button-foreground: #fff;
+
+    /* Primary / events */
+    --fc-classic-primary: #004C97;
+    --fc-classic-event: #004C97;
+    --fc-classic-event-contrast: #fff;
+    --fc-classic-background-event: #D6F0FC;
+    --fc-classic-background-event-opacity: 50%;
+    --fc-classic-background-event-foreground-opacity: 50%;
+    --fc-classic-highlight: rgba(0, 76, 151, 0.1);
+    --fc-classic-today: #D6F0FC;
+    --fc-classic-now: #FF6D6A;
+    --fc-classic-small-dot-width: 8px;
+    --fc-classic-large-dot-width: 10px;
+
+    /* Neutral backgrounds */
+    --fc-classic-background: #ffffff;
+    --fc-classic-faint: #f9fafb;
+    --fc-classic-muted: rgba(0, 0, 0, 0.08);
+    --fc-classic-strong: rgba(0, 0, 0, 0.14);
+
+    /* Neutral foregrounds */
+    --fc-classic-foreground: #2D2926;
+    --fc-classic-faint-foreground: #9E9E9E;
+    --fc-classic-muted-foreground: #474747;
+
+    /* Neutral borders */
+    --fc-classic-border: #E0E0E0;
+    --fc-classic-strong-border: #9E9E9E;
   }
 
-  /* ── FullCalendar Brand Overrides ── */
+  /* ── Event chips ── */
+  /*
+   * Applied via the 'eventClass' option in initCalendar() (v7's rename of
+   * 'eventClassNames'), because the '.fc-event' selector this replaces no
+   * longer exists. Colour comes from the vars above; only the geometry and
+   * the hover affordance need a rule.
+   */
 
-  /* Toolbar */
-  .fc .fc-toolbar-title {
-    font-size: 1.2em;
-    font-weight: 700;
-    color: #002855;
-  }
-
-  .fc .fc-button {
-    background-color: #004C97;
-    border-color: #004C97;
-    font-size: 0.82em;
-    font-weight: 600;
-    padding: 5px 12px;
-    border-radius: 6px;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
-  }
-
-  .fc .fc-button:hover {
-    background-color: #002855;
-    border-color: #002855;
-  }
-
-  .fc .fc-button:disabled {
-    background-color: #9E9E9E;
-    border-color: #9E9E9E;
-    opacity: 0.6;
-  }
-
-  .fc .fc-button-primary:not(:disabled).fc-button-active,
-  .fc .fc-button-primary:not(:disabled):active {
-    background-color: #002855;
-    border-color: #002855;
-  }
-
-  /* Today cell */
-  .fc .fc-day-today {
-    background-color: #D6F0FC !important;
-  }
-
-  .fc .fc-day-today .fc-daygrid-day-number {
-    color: #004C97;
-    font-weight: 700;
-    background-color: #004C97;
-    color: white;
-    border-radius: 50%;
-    width: 26px;
-    height: 26px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* Event pills */
-  .fc-event {
+  .nw-fc-event {
     border-radius: 4px;
-    border: none !important;
-    font-size: 0.78em;
-    font-weight: 600;
-    padding: 1px 5px;
     cursor: pointer;
     transition: opacity 0.15s ease, transform 0.1s ease;
   }
 
-  .fc-event:hover {
+  .nw-fc-event:hover {
     opacity: 0.85;
     transform: translateY(-1px);
-  }
-
-  /* List view */
-  .fc .fc-list-event:hover td {
-    background-color: #D6F0FC;
-  }
-
-  .fc .fc-list-event-dot {
-    border-color: #004C97;
-  }
-
-  .fc .fc-daygrid-event-dot {
-    border-color: #004C97 !important;
-  }
-
-  /* Now indicator */
-  .fc .fc-timegrid-now-indicator-line {
-    border-color: #FF6D6A;
-  }
-
-  .fc .fc-timegrid-now-indicator-arrow {
-    border-top-color: #FF6D6A;
-    border-bottom-color: #FF6D6A;
-  }
-
-  /* Column/day headers */
-  .fc .fc-col-header-cell-cushion {
-    font-weight: 600;
-    color: #474747;
-    font-size: 0.82em;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-
-  /* Popover (more events) */
-  .fc .fc-popover {
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-    border: 1px solid #E0E0E0;
-  }
-
-  .fc .fc-popover-header {
-    background: #004C97;
-    color: white;
-    border-radius: 8px 8px 0 0;
-    font-weight: 600;
-    font-size: 0.85em;
-  }
-
-  /* ── Responsive (FC built-in) ── */
-
-  @media (max-width: 600px) {
-    .fc .fc-toolbar {
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .fc .fc-toolbar-title {
-      font-size: 1em;
-    }
-
-    .fc .fc-button {
-      font-size: 0.75em;
-      padding: 4px 8px;
-    }
   }
 `;
 
