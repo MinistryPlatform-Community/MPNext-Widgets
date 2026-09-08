@@ -39,8 +39,8 @@ match the Node 24 runtime (Vercel runs 24).
 | 26 | `26-favicon-and-site-chrome-404.md` | low — cosmetic 404 on every page load | 15 min |
 | 28 | `28-jest-dom-matcher-types-missing.md` | none — a matcher no test can use | 10 min |
 | 30 | `30-demo-auth-mode-banner-always-unavailable.md` | none in prod — misleads local verification | 15 min |
-| 31 | `31-memory-session-store-split-module-graph.md` | dev-experience blocker — cannot sign in locally without a store URL | 15 min-2 h |
 | 33 | `33-next-env-dts-churn-between-dev-and-build.md` | none in prod — a generated file that dirties the tree | 15 min |
+| 34 | `34-claude-md-stale-five-widgets.md` | none in prod — stale project instructions misdirect agents and new contributors | 45 min |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -282,6 +282,33 @@ stashed out: `<next-full-calendar view="grid|week">` runs `initCalendar()` twice
 (`attributeChangedCallback` fires before `connectedCallback` and races it), so
 every mount constructs two FullCalendar instances and leaks the one that is not
 bound to the surviving mount.
+
+Item 31 (the in-memory session store was not a working fallback; `/demo`
+redirect-looped locally) is **done** — and the cause was measured, not guessed.
+A probe printing `process.pid`, a per-module-evaluation id and a `globalThis`
+id, hit from both a route handler and the `(demo)` layout under `next dev`,
+returned `pid=65364 module=8ixqsx global=nbnf4q` and
+`pid=65364 module=72ctu2 global=nbnf4q`: **one process, two module instances,
+one `globalThis`**. So the memory store's Map and the `getSessionStore()`
+singleton — both module-level — gave the RSC bundle and the route-handler
+bundle two disjoint stores, and since item 14 put Better Auth's whole session
+path in that store, `/signin` saw a session the `(demo)` layout did not.
+Reproduced with the real MP account: **130** `/signin?callbackUrl=/demo`
+navigations in 12 seconds, `/demo` never reached. Both the instance and its
+backing Map now live on `globalThis` under `Symbol.for("mpnext.embed.session-store")`,
+which also survives the HMR re-evaluation that used to sign a developer out on
+every save. Signing in locally now needs **no** Redis and no loopback shim.
+The same change makes the fallback stop being silent: it warns in development
+(where it is used) and, in **production**, `getSessionStore()` now **throws**
+naming the missing variables instead of degrading into the exact "you are
+signed out" failure item 14 existed to fix — `EMBED_SESSION_STORE_ALLOW_MEMORY=1`
+opts back in deliberately. The throw is lazy, so `next build` is unaffected
+(verified). Item 34 was filed from that work.
+
+Item 34 is not a dependency upgrade either — it is documentation drift the
+item-32 agent noticed on 2026-09-07: `CLAUDE.md` still describes "5 embed SDK
+widgets" and sizes its Structure and Services sections to match, but the repo
+ships 25 registered `next-*` elements and 25 demo pages.
 
 **Standard verification gate** for every branch below:
 

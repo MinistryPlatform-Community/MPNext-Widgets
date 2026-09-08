@@ -5,6 +5,7 @@ import {
   getSessionStore,
   __resetSessionStoreForTests,
 } from './session-store';
+import type { Entry } from './session-store';
 import type { EmbedSessionRecord } from './types';
 
 function makeRecord(overrides: Partial<EmbedSessionRecord> = {}): EmbedSessionRecord {
@@ -429,25 +430,154 @@ describe('getSessionStore', () => {
     expect(getSessionStore()).toBeInstanceOf(UpstashSessionStore);
   });
 
-  it('warns once in production when falling back to memory', () => {
+  it('throws in production when no store is configured', () => {
     vi.stubEnv('NODE_ENV', 'production');
+    __resetSessionStoreForTests();
+    expect(() => getSessionStore()).toThrow(/EMBED_SESSION_STORE_URL/);
+    expect(() => getSessionStore()).toThrow(/EMBED_SESSION_STORE_ALLOW_MEMORY/);
+  });
+
+  it('throws in production when the url is set but the token is missing', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('EMBED_SESSION_STORE_URL', 'https://redis.example.upstash.io');
+    vi.stubEnv('EMBED_SESSION_STORE_TOKEN', '');
+    __resetSessionStoreForTests();
+    expect(() => getSessionStore()).toThrow(/EMBED_SESSION_STORE_TOKEN is missing/);
+  });
+
+  it('does not cache the production failure, so fixing the env recovers', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    __resetSessionStoreForTests();
+    expect(() => getSessionStore()).toThrow();
+    vi.stubEnv('EMBED_SESSION_STORE_URL', 'https://redis.example.upstash.io');
+    vi.stubEnv('EMBED_SESSION_STORE_TOKEN', 'tok');
+    expect(getSessionStore()).toBeInstanceOf(UpstashSessionStore);
+  });
+
+  it('EMBED_SESSION_STORE_ALLOW_MEMORY opts back in, with a warning', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('EMBED_SESSION_STORE_ALLOW_MEMORY', '1');
+    __resetSessionStoreForTests();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(getSessionStore()).toBeInstanceOf(MemorySessionStore);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatch(/EMBED_SESSION_STORE_ALLOW_MEMORY is set/);
+    warn.mockRestore();
+  });
+
+  it('warns once in development, where the fallback is actually used', () => {
+    vi.stubEnv('NODE_ENV', 'development');
     __resetSessionStoreForTests();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     getSessionStore();
-    __resetSessionStoreForTests();
-    // reset clears the instance; the warn flag is also reset, so a second cold start warns again
     getSessionStore();
-    getSessionStore();
-    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0][0]).toMatch(/in-memory session store/);
     warn.mockRestore();
   });
 
-  it('does not warn outside production', () => {
+  it('does not warn when a real store is configured', () => {
+    vi.stubEnv('EMBED_SESSION_STORE_URL', 'https://redis.example.upstash.io');
+    vi.stubEnv('EMBED_SESSION_STORE_TOKEN', 'tok');
     __resetSessionStoreForTests();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     getSessionStore();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+/**
+ * The regression that made the in-memory store useless in the App Router
+ * (TODO 31): Next 16 evaluates `session-store.ts` once for the RSC bundle and
+ * again for the route-handler bundle, in the *same process*. A module-level
+ * singleton therefore gave the two halves of the app two disjoint stores, and
+ * signing in locally looped `/demo -> /signin -> /demo` forever.
+ *
+ * `vi.resetModules()` plus a second dynamic import reproduces exactly that
+ * shape: two independent evaluations of the module, one shared `globalThis`.
+ * The old implementation fails every assertion below.
+ */
+describe('getSessionStore across separate module graphs (TODO 31)', () => {
+  const MODULE = './session-store';
+
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.stubEnv('EMBED_SESSION_STORE_URL', '');
+    vi.stubEnv('EMBED_SESSION_STORE_TOKEN', '');
+    __resetSessionStoreForTests();
+  });
+
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    __resetSessionStoreForTests();
+  });
+
+  /** Two independent evaluations of the module, as Next's two bundles produce. */
+  async function loadTwoGraphs() {
+    vi.resetModules();
+    const graphA = await import(MODULE);
+    vi.resetModules();
+    const graphB = await import(MODULE);
+    expect(graphA).not.toBe(graphB); // genuinely separate module instances
+    graphA.__resetSessionStoreForTests();
+    return { graphA, graphB };
+  }
+
+  it('hands both module instances the same store object', async () => {
+    const { graphA, graphB } = await loadTwoGraphs();
+    expect(graphA.getSessionStore()).toBe(graphB.getSessionStore());
+  });
+
+  it('a write in one graph is visible in the other', async () => {
+    const { graphA, graphB } = await loadTwoGraphs();
+    // Better Auth's session path goes through `kv*` (auth-secondary-storage.ts),
+    // which is the exact traffic that used to land in the wrong Map.
+    await graphA.getSessionStore().kvSet('ba:session-token', 'the-session', 60);
+    expect(await graphB.getSessionStore().kvGet('ba:session-token')).toBe('the-session');
+
+    const rec = makeRecord({ sidHash: 'cross-graph' });
+    await graphB.getSessionStore().set(rec, 60);
+    expect(await graphA.getSessionStore().get('cross-graph')).toEqual(rec);
+  });
+
+  it('a reset in one graph is seen by the other (one registry, not two)', async () => {
+    const { graphA, graphB } = await loadTwoGraphs();
+    const before = graphA.getSessionStore();
+    graphB.__resetSessionStoreForTests();
+    expect(graphA.getSessionStore()).not.toBe(before);
+  });
+
+  it('data survives a module re-evaluation, as HMR produces on every save', async () => {
+    vi.resetModules();
+    const first = await import(MODULE);
+    first.__resetSessionStoreForTests();
+    await first.getSessionStore().kvSet('ba:session-token', 'still-signed-in', 60);
+
+    // HMR: the file is re-evaluated into a fresh module instance mid-session.
+    vi.resetModules();
+    const afterHmr = await import(MODULE);
+    expect(await afterHmr.getSessionStore().kvGet('ba:session-token')).toBe('still-signed-in');
+  });
+});
+
+describe('MemorySessionStore backing map', () => {
+  it('two stores over one map share rows', async () => {
+    const shared = new Map<string, Entry>();
+    const a = new MemorySessionStore(shared);
+    const b = new MemorySessionStore(shared);
+    await a.kvSet('k', 'v', 60);
+    expect(await b.kvGet('k')).toBe('v');
+    await b.kvDelete('k');
+    expect(await a.kvGet('k')).toBeNull();
+  });
+
+  it('defaults to a private map, so unit tests stay isolated', async () => {
+    const a = new MemorySessionStore();
+    const b = new MemorySessionStore();
+    await a.kvSet('k', 'v', 60);
+    expect(await b.kvGet('k')).toBeNull();
   });
 });
