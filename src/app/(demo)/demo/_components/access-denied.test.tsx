@@ -97,8 +97,8 @@ describe('AccessDenied', () => {
     it('renders the default copy', () => {
       render(<AccessDenied />);
 
-      expect(screen.getByText('Access Denied')).toBeTruthy();
-      expect(screen.getByText(/don't have permission/i)).toBeTruthy();
+      expect(screen.getByText('Access Denied')).toBeInTheDocument();
+      expect(screen.getByText(/don't have permission/i)).toBeInTheDocument();
     });
 
     it('offers Sign Out as its only control', () => {
@@ -126,15 +126,15 @@ describe('AccessDenied', () => {
     it('keeps the caller overrides', () => {
       renderIncomplete();
 
-      expect(screen.getByText('Profile Incomplete')).toBeTruthy();
-      expect(screen.getByText(/MinistryPlatform user ID is missing/i)).toBeTruthy();
-      expect(screen.queryByText('Access Denied')).toBeNull();
+      expect(screen.getByText('Profile Incomplete')).toBeInTheDocument();
+      expect(screen.getByText(/MinistryPlatform user ID is missing/i)).toBeInTheDocument();
+      expect(screen.queryByText('Access Denied')).not.toBeInTheDocument();
     });
 
     it('offers the sign-out the copy asks for', () => {
       const { container } = renderIncomplete();
 
-      expect(screen.getByRole('button', { name: 'Sign Out' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Sign Out' })).toBeInTheDocument();
       expect(container.querySelectorAll('a')).toHaveLength(0);
     });
   });

@@ -80,6 +80,17 @@ Unit and component tests are **Vitest on jsdom** (`vitest.config.mts`), colocate
 must be clean. Playwright E2E lives in `e2e/widget/`. Manual widget testing via
 `pnpm test:widget` (opens http://localhost:5173).
 
+`@testing-library/jest-dom` matchers (`toBeInTheDocument`, `toBeDisabled`,
+`toHaveAttribute`, …) are available **and typed**: `src/test-setup.ts` imports
+`@testing-library/jest-dom/vitest`, the vitest-specific entry that augments
+`Assertion` in the `vitest` module, and that file is in the root tsconfig
+`include`, so the augmentation covers every test in the program (including
+`packages/*/src/**/*.test.ts`, which the package tsconfigs exclude). Prefer them
+over `toBeTruthy()` / `toBeNull()` on DOM queries — the failure messages print
+the element. Do not swap the import back to the bare `@testing-library/jest-dom`
+entry: it only ships the jest namespace declarations, and every matcher then
+fails `tsc --noEmit`.
+
 **Playwright test account**: `PLAYWRIGHT_MP_USERNAME` / `PLAYWRIGHT_MP_PASSWORD` in `.env.local`. This is a non-admin MP OAuth user with **MFA disabled**.
 
 **Dev auth**: Widget session auth is origin-based — no tenant id or init token. The `/api/embed/session` route validates the request origin against `EMBED_ALLOWED_ORIGINS` (`src/lib/embed/config.ts`). Local dev origins: `localhost:3000`, `localhost:5173` (and 127.0.0.1 variants).

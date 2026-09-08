@@ -1,4 +1,11 @@
-import '@testing-library/jest-dom';
+// The vitest-specific entry point (what @testing-library/jest-dom documents for
+// vitest): it registers the matchers on vitest's own `expect` *and* pulls in
+// `types/vitest.d.ts`, which augments `Assertion` in the `vitest` module. The
+// bare '@testing-library/jest-dom' entry only ships the jest namespace
+// declarations, so matchers worked at runtime but failed `tsc --noEmit`.
+// This file is in the root tsconfig `include`, so the augmentation is global
+// to the type-check program -- do not swap it back for the bare import.
+import '@testing-library/jest-dom/vitest';
 import { vi } from 'vitest';
 
 // jsdom's TextEncoder returns a Uint8Array from a different realm than the

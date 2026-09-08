@@ -140,9 +140,9 @@ describe('DemoLayout access guard', () => {
     await renderLayout();
 
     // The bug: this state used to throw a redirect back to /signin.
-    expect(screen.getByText('Profile Incomplete')).toBeTruthy();
-    expect(screen.getByText(/MinistryPlatform user ID is missing/i)).toBeTruthy();
-    expect(screen.queryByTestId('demo-catalog')).toBeNull();
+    expect(screen.getByText('Profile Incomplete')).toBeInTheDocument();
+    expect(screen.getByText(/MinistryPlatform user ID is missing/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('demo-catalog')).not.toBeInTheDocument();
 
     // No point calling the access check without the GUID it resolves.
     expect(checkDemoAccess).not.toHaveBeenCalled();
@@ -157,7 +157,7 @@ describe('DemoLayout access guard', () => {
 
     await renderLayout();
 
-    expect(screen.getByText('Profile Incomplete')).toBeTruthy();
+    expect(screen.getByText('Profile Incomplete')).toBeInTheDocument();
     expect(checkDemoAccess).not.toHaveBeenCalled();
   });
 
@@ -170,8 +170,8 @@ describe('DemoLayout access guard', () => {
     await renderLayout();
 
     expect(checkDemoAccess).toHaveBeenCalledWith('guid-123');
-    expect(screen.getByTestId('demo-catalog')).toBeTruthy();
-    expect(screen.queryByText('Access Denied')).toBeNull();
+    expect(screen.getByTestId('demo-catalog')).toBeInTheDocument();
+    expect(screen.queryByText('Access Denied')).not.toBeInTheDocument();
     expect(consoleError).not.toHaveBeenCalled();
   });
 
@@ -198,7 +198,7 @@ describe('DemoLayout access guard', () => {
 
     await renderLayout();
 
-    expect(screen.queryByTestId('token-bridge')).toBeNull();
+    expect(screen.queryByTestId('token-bridge')).not.toBeInTheDocument();
   });
 
   it('does not mount TokenBridge when the session has no userGuid', async () => {
@@ -206,7 +206,7 @@ describe('DemoLayout access guard', () => {
 
     await renderLayout();
 
-    expect(screen.queryByTestId('token-bridge')).toBeNull();
+    expect(screen.queryByTestId('token-bridge')).not.toBeInTheDocument();
   });
 
   it('still renders Access Denied for a signed-in user without demo access', async () => {
@@ -217,9 +217,9 @@ describe('DemoLayout access guard', () => {
 
     await renderLayout();
 
-    expect(screen.getByText('Access Denied')).toBeTruthy();
-    expect(screen.queryByTestId('demo-catalog')).toBeNull();
-    expect(screen.queryByText('Profile Incomplete')).toBeNull();
+    expect(screen.getByText('Access Denied')).toBeInTheDocument();
+    expect(screen.queryByTestId('demo-catalog')).not.toBeInTheDocument();
+    expect(screen.queryByText('Profile Incomplete')).not.toBeInTheDocument();
   });
 
   /**
@@ -244,7 +244,7 @@ describe('DemoLayout access guard', () => {
 
     const { container } = await renderLayout();
 
-    expect(screen.getByText(heading)).toBeTruthy();
+    expect(screen.getByText(heading)).toBeInTheDocument();
 
     // A real control, not a navigation: `/api/auth/sign-out` is POST-only and
     // would leave the MP session alive anyway (TODO 27).
