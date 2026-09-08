@@ -35,7 +35,7 @@ match the Node 24 runtime (Vercel runs 24).
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire | 15 min |
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
 | 33 | `33-next-env-dts-churn-between-dev-and-build.md` | none in prod — a generated file that dirties the tree | 15 min |
-| 36 | `36-dual-prefer-mp-login-never-activates.md` | low — fails safe to the SDK's own Sign In, but the attribute is a no-op | 1 hr |
+| 37 | `37-playwright-local-network-access-blocks-widget-e2e.md` | none in prod — but every widget E2E run tests a silently de-authenticated widget | 20 min |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -408,11 +408,33 @@ registers it — each re-insertion is the childList mutation MP's re-scan needs 
 and the warning was rewritten to fire only after that budget expires and to say
 what was observed rather than blaming a script that returned 200.
 
-Item 36 was filed from that work: `dual` + `prefer-mp-login` gates itself on
-`<mpp-user-login>` being registered *already*, which by the same loader behaviour
-never happens unless the host page carries an `mpp-*` tag of its own — so the
-attribute silently falls back to the SDK's own Sign In button. Fails safe, but it
-does not do what it documents.
+Item 36 (`dual` + `prefer-mp-login` never used MP's login widget) is **done** —
+same loader behaviour, other branch of `user-menu.ts`, and the file is deleted.
+`shouldUseMpLoginInDual` required `customElements.get("mpp-user-login")` to be
+truthy at render time, which nothing on a page without its own `mpp-*` tag can
+ever make true, so the attribute was a silent no-op: measured in `dual` on
+`demo-user-menu.html`, the tag was never appended, `UserLogin.js` was never
+fetched and the widget rendered its own Sign In button with no warning. It now
+keys on the attribute plus a `MPWidgets.js` script tag and bootstraps through
+item 35's `watchMpLoginRegistration()`: MP's control renders at 71x28 with a
+1011-char shadow root and clicking it reaches MP's hosted login, including with
+`MPWidgets.js` artificially delayed 3s (the `.nw-placeholder` stands in while the
+element is still unupgraded). If the script is absent, or MP does not register
+the element within the 6s budget, the widget falls back to its own Sign In button
+and warns once instead of failing silently. The masking test (it called
+`customElements.define()` itself before mounting) is now labelled as the
+adopt-an-already-registered-element case; the bootstrap cases live in
+`user-menu-prefer-mp-login.test.ts`, which drives them from an unregistered
+registry and fails against the old getter.
+
+Item 37 was filed from that verification: with no launch flags, the bundled
+Chromium blocked `http://localhost:5173` → `http://localhost:3000/api/embed/*`
+outright ("Permission was denied for this request to access the `loopback`
+address space"), so the demo banner read "legacy (config unavailable)" while the
+server was in `dual`. `playwright.config.ts` sets no such flag, which means the
+widget E2E project has been driving a widget that silently fell back to a public
+token. Every item-36 measurement below was taken with
+`--disable-features=LocalNetworkAccessChecks,...` set.
 
 **Standard verification gate** for every branch below:
 

@@ -31,6 +31,12 @@ const TABS = [
 const MP_LOGIN_WATCH_INTERVAL_MS = 300;
 const MP_LOGIN_WATCH_MAX_ATTEMPTS = 20;
 
+/**
+ * Neutral avatar-sized stand-in: shown until the auth mode resolves, and in
+ * `dual` + `prefer-mp-login` while MP's own element is still 0x0 (unupgraded).
+ */
+const PLACEHOLDER_HTML = '<span class="nw-placeholder" aria-hidden="true"></span>';
+
 export class UserMenuWidget extends MPNextWidget {
   private state: UserMenuState = {
     isDropdownOpen: false,
@@ -48,6 +54,9 @@ export class UserMenuWidget extends MPNextWidget {
   private mpLoginWatchTimer: ReturnType<typeof setInterval> | null = null;
   private mpLoginWatchAttempts = 0;
   private mpLoginWhenDefinedHooked = false;
+  /** Set once the registration watch has given up on MPWidgets.js. */
+  private mpLoginBootstrapFailed = false;
+  private preferMpLoginWarned = false;
   private cachedUserInfo: UserInfo | null = null;
   private fetchingUserInfo = false;
   private userInfoFetchExhausted = false;
@@ -111,18 +120,49 @@ export class UserMenuWidget extends MPNextWidget {
     return this.authMode === "dual" || this.authMode === "hardened";
   }
 
+  /** The `dual`-only opt-in to keep MP's own login UI during a cutover. */
+  private get prefersMpLogin(): boolean {
+    return this.authMode === "dual" && this.hasAttribute("prefer-mp-login");
+  }
+
+  private get isMpLoginRegistered(): boolean {
+    return typeof customElements !== "undefined" && !!customElements.get("mpp-user-login");
+  }
+
+  /**
+   * Evidence that MPWidgets.js can register <mpp-user-login> at all. It is a
+   * loader, so the script tag being on the page is the whole precondition --
+   * see `watchMpLoginRegistration` for why the registration itself has to be
+   * waited for rather than tested up front.
+   */
+  private get isMpWidgetsScriptPresent(): boolean {
+    return (
+      typeof document !== "undefined" &&
+      !!document.querySelector('script#MPWidgets, script[src*="MPWidgets.js"]')
+    );
+  }
+
   /**
    * In `dual` mode with the `prefer-mp-login` attribute, the host keeps using
-   * MP's own <mpp-user-login> (when MPWidgets.js is loaded); the SDK then
-   * silently upgrades the resulting MP token to a server session.
+   * MP's own <mpp-user-login>; the SDK then silently upgrades the resulting MP
+   * token to a server session.
+   *
+   * This used to also require `customElements.get("mpp-user-login")` to be
+   * truthy already, which made the attribute a no-op on every page it exists
+   * for (TODO 36): MPWidgets.js only fetches the bundle that defines the
+   * element for the widget tags it *finds*, so on a page with no `mpp-*` tag of
+   * its own nothing is ever registered until someone appends one -- which that
+   * check refused to do. So key it on the attribute plus the script tag, append
+   * the element, and let `watchMpLoginRegistration()` drive the registration
+   * exactly as `legacy` does. If MP never registers it the watch gives up, sets
+   * `mpLoginBootstrapFailed` and this goes false, so the widget falls back to
+   * its own Sign In button rather than leaving no control at all.
    */
   private get shouldUseMpLoginInDual(): boolean {
-    return (
-      this.authMode === "dual" &&
-      this.hasAttribute("prefer-mp-login") &&
-      typeof customElements !== "undefined" &&
-      !!customElements.get("mpp-user-login")
-    );
+    if (!this.prefersMpLogin) return false;
+    if (this.isMpLoginRegistered) return true;
+    if (this.mpLoginBootstrapFailed) return false;
+    return this.isMpWidgetsScriptPresent;
   }
 
   private get isAuthenticated(): boolean {
@@ -417,7 +457,7 @@ export class UserMenuWidget extends MPNextWidget {
 
   /** Neutral avatar-sized placeholder shown until the auth mode resolves. */
   private renderPlaceholder() {
-    this.setContent('<span class="nw-placeholder" aria-hidden="true"></span>');
+    this.setContent(PLACEHOLDER_HTML);
   }
 
   /** Replace the widget's Shadow DOM content (creating the wrapper on first use). */
@@ -470,13 +510,22 @@ export class UserMenuWidget extends MPNextWidget {
       } else {
         this.removeLightDOMLogin();
         this.stopAuthPoll();
+        // Asked for MP's login UI and not getting it: say why, once.
+        if (this.prefersMpLogin) this.warnPreferMpLoginDeclined();
       }
     }
 
     let html: string;
     if (authenticated) {
       html = this.renderAuthenticated();
-    } else if (useMpLogin || this.shouldPreventLoginWidget) {
+    } else if (useMpLogin) {
+      // MP's element is 0x0 until MPWidgets.js upgrades it, so stand the
+      // placeholder in front of the slot until it does (or the watch gives up
+      // and this branch stops being taken).
+      html = this.isMpLoginRegistered
+        ? `<slot></slot>`
+        : `${PLACEHOLDER_HTML}<slot></slot>`;
+    } else if (this.shouldPreventLoginWidget) {
       html = `<slot></slot>`;
     } else {
       html = this.renderSignInButton();
@@ -711,7 +760,12 @@ export class UserMenuWidget extends MPNextWidget {
       this.mpLoginWatchAttempts += 1;
       if (this.mpLoginWatchAttempts > MP_LOGIN_WATCH_MAX_ATTEMPTS) {
         this.stopMpLoginWatch();
+        this.mpLoginBootstrapFailed = true;
         this.warnMpLoginUnregistered();
+        // `dual` + prefer-mp-login has somewhere to fall back to: re-render so
+        // the visitor gets the SDK's own Sign In instead of an empty menu.
+        // `legacy` has nothing else to offer, and renders the slot regardless.
+        if (this.isConnected && this.prefersMpLogin) this.render();
         return;
       }
       const login = this.querySelector("mpp-user-login");
@@ -751,6 +805,25 @@ export class UserMenuWidget extends MPNextWidget {
             `MPWidgets.js script tag is on this page. The host site must include it for ` +
             `legacy login to work, e.g. <script id="MPWidgets" ` +
             `src="<MP_HOST>/widgets/dist/MPWidgets.js"></script>.`,
+    );
+  }
+
+  /**
+   * `dual` + `prefer-mp-login` declined. Either MPWidgets.js is not on the page
+   * at all, or the watch above already gave up on it (and warned with what it
+   * observed). Either way the widget renders its own Sign In button, which
+   * authenticates correctly -- but silently, which is what TODO 36 was about.
+   */
+  private warnPreferMpLoginDeclined() {
+    if (this.preferMpLoginWarned) return;
+    if (this.mpLoginBootstrapFailed) return; // warnMpLoginUnregistered() said it
+    this.preferMpLoginWarned = true;
+    console.warn(
+      `[next-user-menu] prefer-mp-login is set, but no MPWidgets.js script tag is on ` +
+        `this page, so MP's <mpp-user-login> can never be registered. Falling back to ` +
+        `the SDK's own Sign In button. Add <script id="MPWidgets" ` +
+        `src="<MP_HOST>/widgets/dist/MPWidgets.js"></script> to this page, or drop the ` +
+        `prefer-mp-login attribute.`,
     );
   }
 

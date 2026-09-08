@@ -704,7 +704,7 @@ What a church page can use in `dual` / `hardened`. In `legacy` the existing `<sc
 | `mp-base-url` | MP host (still needed: end-session URL and userinfo display fallback) |
 | `post-logout-redirect-uri` | Where the visitor lands after sign-out. `dual`/`hardened`: any page on an allowed embedding origin, defaults to the current page, and needs nothing registered with MP — the widget host bounces the browser back itself. `legacy`: passed to MP directly, so it must be registered on the MP OAuth client; leave it unset and the widget uses the host's registered URI instead |
 | `session-scope="tab"` | Keep the `sid` in `sessionStorage` instead of `localStorage` (shared devices). Does not migrate an existing `localStorage` sid |
-| `prefer-mp-login` | `dual` only: keep injecting `<mpp-user-login>` when `MPWidgets.js` is on the page; the resulting MP token is silently upgraded to a `sid` |
+| `prefer-mp-login` | `dual` only: keep injecting `<mpp-user-login>` when `MPWidgets.js` is on the page; the resulting MP token is silently upgraded to a `sid`. The widget appends the tag itself and keeps re-inserting it until MPWidgets.js registers it (a placeholder stands in meanwhile), so the page needs no `mpp-*` markup of its own. If the script is absent, or MP does not register the element within ~6 s, it falls back to the Sign In button and warns once |
 | `prevent-login-widget` | Render a `<slot>` instead of the Sign In button so the page supplies its own control (call `MPNextEmbed.getAuthSession().login({ wid })`) |
 
 **Events** (bubble, composed)
