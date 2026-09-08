@@ -32,7 +32,6 @@ match the Node 24 runtime (Vercel runs 24).
 | 17 | `17-better-auth-vitest5-peer.md` | none — a warning, not a failure | 10 min |
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire | 15 min |
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
-| 33 | `33-next-env-dts-churn-between-dev-and-build.md` | none in prod — a generated file that dirties the tree | 15 min |
 | 37 | `37-playwright-local-network-access-blocks-widget-e2e.md` | none in prod — but every widget E2E run tests a silently de-authenticated widget | 20 min |
 | 38 | `38-mp-widget-overrides-css-never-injected.md` | either MP widgets render unbranded in prod, or the build maintains dead plumbing — read the file, it is one browser check | 30 min to triage |
 
@@ -145,6 +144,45 @@ was never a base-class bug, and every other widget's callback already guards on
 post-load state that is falsy before connection (`this.event` / `this.group` /
 `this.campaign` null, `oldValue !== null`, `!this.loading` with `loading = true`
 initial, `access === "checking"`). Item 33 was filed from that verification.
+
+Item 33 (`next-env.d.ts` flipped between `next dev` and `next build`, dirtying
+the tree) is **done (2026-09-08)** — option 1, stop tracking it. Next 16's own
+docs settle it: "`next-env.d.ts` is managed by Next.js. Its contents are an
+implementation detail and may change over time. **Add it to `.gitignore`. If
+your project already tracks the file, remove it from Git.**"
+(`node_modules/next/dist/docs/01-app/03-api-reference/05-config/02-typescript.md`,
+and `01-getting-started/02-project-structure.md` lists it as "should not be
+tracked by version control"). So the file is now in `.gitignore` and
+`git rm --cached`'d; it stays in the `tsconfig.json` `include` array, which the
+same doc requires.
+
+The measurement the file said should decide between its two options —
+`rm -rf .next && npx tsc --noEmit` with `next-env.d.ts` absent — **passes**:
+exit 0 on a 934-file project program, with `tsconfig.tsbuildinfo` deleted and
+`.next` renamed aside so nothing could be served from cache. Two independent
+reasons it holds, and both are worth knowing because they mean the flipping
+lines were never load-bearing *in this repo*:
+
+- The ambient module declarations do not come from `next-env.d.ts`.
+  `next/types/global.d.ts` — which declares `*.css`, `*.svg` and the image
+  imports — enters the program transitively through the many
+  `import … from "next/…"` statements in `src/`; it is in the cold
+  `tsc --listFilesOnly` output, and `src/app/layout.tsx`'s
+  `import "./globals.css"` type-checks without the triple-slash reference.
+- The generated route types are already covered by `tsconfig.json` `include`,
+  which lists **both** emit directories (`.next/types/**/*.ts` *and*
+  `.next/dev/types/**/*.ts`). The two `import "./.next/…"` lines that flipped
+  were redundant against those globs — which is why years of churn never broke
+  a build, and why it was pure review noise.
+
+Nothing else depended on it: no `PageProps` / `LayoutProps` / `RouteContext` /
+`type Route` usage anywhere in `src/`, there is no `typecheck` script, CI runs
+only `pnpm test:coverage`, and `next build` regenerates the file before it
+type-checks. The one behaviour change to keep in mind: a fresh clone has no
+`next-env.d.ts` until someone runs `dev`, `build` or `next typegen`, so the cold
+`tsc` result above rests on "no file imports a CSS or image asset without also
+importing from `next`". True today; re-run the cold check if that ever stops
+being true.
 
 Items 15 and 16 are also not dependency upgrades — both were found while doing
 item 10 on 2026-09-07.

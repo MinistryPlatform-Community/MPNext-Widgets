@@ -222,9 +222,11 @@ curl -s https://raw.githubusercontent.com/actions/setup-node/v7.0.0/action.yml |
 Confirm every input the workflow actually uses still exists. Say plainly in the report
 that Action bumps are unverified until the next CI run.
 
-**Expect regenerated-file noise.** A Next major/minor rewrites `next-env.d.ts`; delete
-`tsconfig.tsbuildinfo` before a TypeScript bump so you are not reading a stale
-incremental cache. Neither is a problem — just do not present them as changes you made.
+**Expect regenerated-file noise.** Delete `tsconfig.tsbuildinfo` before a TypeScript
+bump so you are not reading a stale incremental cache. That is not a problem — just do
+not present it as a change you made. (`next-env.d.ts`, which a Next major/minor also
+rewrites, is untracked as of 2026-09-08 and no longer shows up at all — see
+`.claude/TODO/README.md` item 33.)
 
 ## Arguments
 
