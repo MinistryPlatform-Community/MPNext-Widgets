@@ -35,7 +35,7 @@ match the Node 24 runtime (Vercel runs 24).
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire | 15 min |
 | 21 | `21-demo-full-calendar-missing-grid-option.md` | none — demo page only | 5 min |
 | 33 | `33-next-env-dts-churn-between-dev-and-build.md` | none in prod — a generated file that dirties the tree | 15 min |
-| 35 | `35-demo-legacy-user-menu-mpwidgets-race.md` | unproven — may be a live legacy sign-in outage | 1 hr to diagnose |
+| 36 | `36-dual-prefer-mp-login-never-activates.md` | low — fails safe to the SDK's own Sign In, but the attribute is a no-op | 1 hr |
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -380,7 +380,7 @@ independently returning `dual` for 5173 and `legacy` for 3000, so the banner is
 tracking the resolved mode, not a hardcoded answer); Next.js killed → banner
 `legacy (config unavailable)`, the text now reserved for the case it names. All
 seven pages' widgets render with no console errors and no 4xx. Item 35 was filed
-from that verification.
+from that verification, and is now fixed — see below.
 
 Item 34 (documentation drift: `CLAUDE.md` still described "5 embed SDK widgets"
 while the repo ships 25 registered `next-*` elements and 25 demo pages) is
@@ -389,14 +389,30 @@ and brought current with items 2, 3, 4, 6, 7, 10, 11, 14, 22, 24, 25, 27, 29
 and 31. It now points at `packages/embed-sdk/src/components/` and the demo
 pages as the source of truth rather than restating a count in three places.
 
-Item 35 is not a dependency upgrade either — it was found while browser-testing
-item 30 on 2026-09-08 and is in the pre-fix baseline too: in `legacy` mode (the
-default) `next-user-menu` logs "MPWidgets.js does not appear to be loaded"
-although the script returns 200 and `mpp-user-login` *is* registered a moment
-later, and the slotted `<mpp-user-login>` stays `0 × 0` with no shadow root —
-no Sign In button renders at all. Whether that is a one-shot registration check
-the widget never retries, or MP declining to paint on an unregistered origin, is
-not yet measured; the file says how to tell them apart.
+Item 35 (legacy `next-user-menu` rendered no Sign In button) is **done** — it was
+a real race, not an origin problem, and the file is deleted. MPWidgets.js is a
+*loader*: on its own `DOMContentLoaded` handler it scans the document for the
+widget tags it knows, fetches `/widgets/dist/UserLogin.js` only for the tags it
+found, and installs the `MutationObserver` that re-scans **after** an awaited
+CSRF round-trip in that same handler. Anything inserted between those two is
+invisible to both. The SDK appends `<mpp-user-login>` once
+`GET /api/embed/auth/config` resolves, which measured 365-532ms — ~10ms after
+`DOMContentLoaded` and ~100ms before the observer existed — across three runs, so
+`UserLogin.js` was never requested, `mpp-user-login` was never registered and
+`customElements.whenDefined()` would never have resolved either. MP paints fine
+on `localhost:5173`: injecting the same tag before MP's initial scan, or after
+its observer was live, upgraded **both** that element and the widget's slotted
+one to 71x28 with a 1011-char shadow root. `watchMpLoginRegistration()`
+(`user-menu.ts`) now re-inserts the element every 300ms for up to 6s until MP
+registers it — each re-insertion is the childList mutation MP's re-scan needs —
+and the warning was rewritten to fire only after that budget expires and to say
+what was observed rather than blaming a script that returned 200.
+
+Item 36 was filed from that work: `dual` + `prefer-mp-login` gates itself on
+`<mpp-user-login>` being registered *already*, which by the same loader behaviour
+never happens unless the host page carries an `mpp-*` tag of its own — so the
+attribute silently falls back to the SDK's own Sign In button. Fails safe, but it
+does not do what it documents.
 
 **Standard verification gate** for every branch below:
 
