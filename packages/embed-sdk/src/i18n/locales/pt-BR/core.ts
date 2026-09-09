@@ -129,6 +129,8 @@ export const ptBRCore = {
     group_not_found: "Não encontramos esse grupo.",
     opportunity_not_found: "Não encontramos essa oportunidade.",
     publication_not_found: "Não encontramos essa publicação.",
+    precheck_unavailable:
+      "O check-in ainda não está configurado neste site. Entre em contato com a igreja.",
     payment_declined: "O pagamento foi recusado. Tente outro método.",
     campaign_not_found: "Não encontramos essa campanha de doações.",
     household_not_found: "Não encontramos sua família.",

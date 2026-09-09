@@ -161,6 +161,13 @@ export const core = {
     // answers the same code for both — a distinguishable pair would let the
     // id space be probed for internal publications.
     publication_not_found: "We could not find that publication.",
+    // `next-pre-check` (C78). The check-in read runs through MP's own
+    // `api_MPPW_GetPreCheckEvents`, which ships in MP's widget database scripts
+    // but is not on every domain. The sentence points at the church rather than
+    // at the visitor, because a congregant can do nothing about an uninstalled
+    // stored procedure and should not be invited to retry.
+    precheck_unavailable:
+      "Check-in is not set up for this site yet. Please contact the church.",
     payment_declined: "The payment was declined. Please try another method.",
     campaign_not_found: "We could not find that giving campaign.",
     household_not_found: "We could not find your household.",

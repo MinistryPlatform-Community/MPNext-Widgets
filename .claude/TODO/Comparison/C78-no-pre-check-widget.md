@@ -45,15 +45,49 @@ a QR code, and no route under `src/app/api/embed/` (27 directories) corresponds 
 a single event; that is a different act from checking a household in for a service on a
 given date.
 
-## Caveat on confidence
+## Caveat on confidence — **withdrawn 2026-09-09; the flow is confirmed**
 
-The tag, its absence of configuration, and the three endpoints are **measured**. The
-sentence describing the end-user flow is my reading of those endpoint names and DOM ids,
-not a behaviour I watched — no browser was used on this pass. Before this item is sized,
-someone should place the tag (CONFIG-MAP.md section 5) and confirm what it actually renders
-and who it is for. I am filing it despite that because the *parity* claim needs none of it:
-a legacy widget, three legacy endpoints and a QR-code surface exist, and nothing in this
-repo answers them. The flow description is the part to verify.
+> The original caveat read: *"The sentence describing the end-user flow is my reading of
+> those endpoint names and DOM ids, not a behaviour I watched… Before this item is sized,
+> someone should place the tag and confirm what it actually renders."*
+
+That caveat was **too pessimistic, and it mis-stated where the evidence was.** It assumed
+`/Api/EventsApi/…` was MP's own server-side widget API, unavailable to us. It is not: the
+legacy server is in `S:\MP\mp-Widgets` in full, with the stored procedure it calls. The
+flow was read off source, not inferred from endpoint names:
+
+| Legacy endpoint | Source |
+|---|---|
+| `GET /Api/EventsApi/GetMyEvents` | `PortalComponents/Controllers/Api/EventsApiController.cs:191-203` |
+| `GET /Api/EventsApi/GetQRCode` | same file, `:205-222` |
+| `POST /Api/EventsApi/SavePreCheck` | same file, `:224-243` |
+| the read query | `DatabaseScripts/StoredProcedures/api_MPPW_GetPreCheckEvents.sql` |
+| the write translation | `PortalComponents/Translators/EventParticipantTranslator.cs:71-152` |
+| the write | `PortalComponents/DataManagers/EventsManager.cs:109-167` |
+| the client | `PortalComponents/ClientApp/Components/mpp-pre-check.js` (158 lines) |
+
+Three things the caveat feared are settled, and one new fact replaces them:
+
+- **The QR is not a blocker.** `EventsApiController.cs:216` encodes the plain string
+  `pre|{eventDate.ToShortDateString()}|{householdId}` at ECC level Q. No MP secret, no
+  token, no server state.
+- **The delete-or-status question is settled: status.** Cancellations set
+  `Participation_Status_ID = 5`; no row is ever deleted
+  (`EventParticipantTranslator.cs:135-151`).
+- **`api_MPPW_GetPreCheckEvents` is installed and API-granted** on the reference domain —
+  verified 2026-09-09 by calling `/procs` and then executing the proc. It returns the
+  13-column shape the service now maps.
+- **New, and it is the real caveat**: whether a *current* MP check-in station still scans
+  the `pre|…` barcode cannot be verified from any repo — the payload predates
+  `Events.Allow_QR_Check_In` / `QR_Redirect_Url`, which is a different, URL-redirect
+  mechanism. The widget therefore ships the QR behind `show-qr`, **defaulting to `false`**.
+  The pre-check submission itself is unconditional and carries the value on its own.
+
+## Resolution
+
+**Resolved 2026-09-09** by `next-pre-check` — see
+`.claude/TODO/Comparison/Plans/pre-check.md` for the design and
+`README.md` "Event Pre-Check" for the customer setup steps.
 
 ## Why it matters
 

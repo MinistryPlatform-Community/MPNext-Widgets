@@ -112,6 +112,7 @@
   "errors.payment_declined": "9514ea7a",
   "errors.photo_not_found": "bde78c0a",
   "errors.pledge_forbidden": "cdae9273",
+  "errors.precheck_unavailable": "e926fb3e",
   "errors.profile_not_found": "da3c9ef8",
   "errors.publication_not_found": "3198c26e",
   "errors.rateLimited": "50da2322",

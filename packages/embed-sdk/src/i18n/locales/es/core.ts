@@ -129,6 +129,8 @@ export const esCore = {
     group_not_found: "No encontramos ese grupo.",
     opportunity_not_found: "No encontramos esa oportunidad.",
     publication_not_found: "No encontramos esa publicación.",
+    precheck_unavailable:
+      "El registro de entrada aún no está configurado en este sitio. Comuníquese con la iglesia.",
     payment_declined: "El pago fue rechazado. Intente con otro método.",
     campaign_not_found: "No encontramos esa campaña de donaciones.",
     household_not_found: "No encontramos su hogar.",
