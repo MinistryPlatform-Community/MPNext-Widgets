@@ -190,6 +190,24 @@ export const widgetRegistry: WidgetMeta[] = [
   },
 
   {
+    slug: "prayer-feedback",
+    tag: "next-prayer-feedback",
+    title: "Prayer & Feedback",
+    description:
+      "Prayer requests, praise reports and general feedback, written to MP's Feedback Entries. Works with no sign-in: a signed-out visitor confirms one emailed link before anything is created, while a signed-in member can file for themselves or a household member immediately.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: [
+      "feedbackSubmitted",
+      "verificationSent",
+      "feedbackVerified",
+      "feedbackError",
+      "loginRequired",
+    ],
+  },
+
+  {
     slug: "online-directory",
     tag: "next-online-directory",
     title: "Online Directory",
