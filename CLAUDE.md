@@ -16,13 +16,16 @@ ls packages/embed-sdk/demo-*.html | wc -l
 ls src/app/api/embed/ ; ls src/services/*.ts | grep -v '\.test\.'
 ```
 
-Snapshot at 2026-09-09 (re-measured): **28** registered `next-*` elements, 27 demo
-pages, 29 `src/app/api/embed/` route directories, 29 services. The counts diverge on
+Snapshot at 2026-09-09 (re-measured): **29** registered `next-*` elements, 28 demo
+pages, 30 `src/app/api/embed/` route directories, 29 services. The counts diverge on
 purpose: `next-locale-selector` has no demo page, because it needs no API, no token and
 no configuration to demonstrate — `<html lang="es">` on any existing demo page exercises
-the whole localisation path. (The previous snapshot said 26/25/27/27 and had already
-fallen behind `next-unsubscribe`, which is exactly why the paragraph above says not to
-trust the number over the disk.)
+the whole localisation path. The service count no longer moves with the widget count
+either: `next-subscribe-to-publication` extends `subscriptionService.ts` rather than
+forking a second file for the same two MP tables, and `src/services/_shared/` is a
+directory the `ls src/services/*.ts` glob does not reach. (An earlier snapshot said
+26/25/27/27 and had already fallen behind `next-unsubscribe`, which is exactly why the
+paragraph above says not to trust the number over the disk.)
 
 ## Structure
 
@@ -40,7 +43,8 @@ src/                           # Next.js 16 (App Router)
 ├── lib/embed/                 # Widget auth (JWT, CORS, auth mode, encrypted server sessions, MP OAuth)
 ├── lib/providers/ministry-platform/  # MP REST API (MPHelper, models, auth)
 ├── proxy.ts                   # Deny-by-default route gate (isPublicPath)
-└── services/                  # Singleton services wrapping MPHelper (one per widget domain)
+├── services/                  # Singleton services wrapping MPHelper (one per widget domain)
+└── services/_shared/          # mp-lookup.ts — sqlLiteral, clean, toNumberOrNull, cap, getIdByValue
 packages/
 ├── embed-sdk/                 # @mpnext/embed-sdk (Vite library, ES output only)
 │   ├── src/components/        # One `next-*` Web Component per widget, plus 5 `full-calendar-*`
@@ -182,7 +186,7 @@ returns. Full incident and the "grep the built chunk" diagnostic:
 
 **Design**: Web Components + Shadow DOM (no framework deps), JWT+CORS auth, multi-tenant origin allowlists, MP tokens only in the encrypted server session (never in the JWT or host-page storage in `hardened`). Widget forms use the shared `packages/embed-sdk/src/shared/form-validation.ts` (no native `reportValidity` popup).
 
-**The element roster** (28 as of 2026-09-09 — this is the one place it is listed; re-measure with the command in Overview rather than trusting it):
+**The element roster** (29 as of 2026-09-09 — this is the one place it is listed; re-measure with the command in Overview rather than trusting it):
 `next-add-to-calendar`, `next-checkout`, `next-checkout-complete`, `next-custom-form`,
 `next-event-details`, `next-event-finder`, `next-full-calendar`, `next-group-details`,
 `next-group-finder`, `next-my-contribution-statement`, `next-my-giving`,
@@ -190,8 +194,8 @@ returns. Full incident and the "grep the built chunk" diagnostic:
 `next-locale-selector`, `next-online-directory`, `next-opportunity-details`,
 `next-opportunity-finder`,
 `next-pay`, `next-plan-your-visit`, `next-prayer-feedback`, `next-pledge-campaign`,
-`next-profile`, `next-statement-preferences`, `next-subscriptions`, `next-unsubscribe`,
-`next-user-menu`.
+`next-profile`, `next-statement-preferences`, `next-subscribe-to-publication`,
+`next-subscriptions`, `next-unsubscribe`, `next-user-menu`.
 
 **MP widget styling**: `public/embed-sdk/mp-widget-overrides.css` injected into MP Shadow DOM widgets via `customcss` attribute. User-menu applies this automatically.
 
@@ -329,8 +333,18 @@ One service per widget domain, all following the same singleton pattern:
 `const svc = await ServiceName.getInstance()`. Each wraps `MPHelper` and is named
 `<domain>Service.ts` (camelCase file name — the one place this repo does not use
 kebab-case). Add a new widget's data access as a new service here rather than calling
-`MPHelper` from a route. `ls src/services/` is the roster; there is no index to keep in
-sync.
+`MPHelper` from a route — **unless the domain already has one**, which is why
+`next-subscribe-to-publication` extends `subscriptionService.ts` rather than forking a
+second file over the same two publication tables. `ls src/services/` is the roster; there
+is no index to keep in sync.
+
+`src/services/_shared/mp-lookup.ts` holds the helpers more than one service needs:
+`sqlLiteral` (doubling a quote for an MP `$filter` literal), `clean`, `toNumberOrNull`,
+`cap`, and `getIdByValue` — cached resolution of a lookup-table id from its
+human-readable value, so no service hard-codes `Contact_Status_ID = 1` on a domain whose
+conversion renumbered it. **Import `sqlLiteral` from there rather than writing a fourth
+copy**; the three that existed were byte-identical and a divergence between them would
+have been an injection bug, not a style inconsistency.
 
 ## MP Date/Time Handling
 
@@ -461,6 +475,7 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `.claude/references/ministryplatform.datetimehandling.md` | How to send/receive MP datetimes safely via `DomainTimezoneService`, anti-patterns, Windows↔IANA mapping, test guidance |
 | `.claude/references/nextjs.build-hazards.md` | Faults that exist only in a minified production build — the `+`-joined template-literal fold, and how to grep the built chunk |
 | `src/lib/no-template-concat.test.ts` | Repo-wide guard: fails if any source file joins two template literals with `+` |
+| `src/services/_shared/mp-lookup.ts` | `sqlLiteral` / `clean` / `toNumberOrNull` / `cap` / `getIdByValue` — the helpers three MP-writing services each had a byte-identical copy of |
 | `src/services/domainTimezoneService.ts` | Singleton: MP domain TZ → IANA, `toMpSqlDatetime`, `parseMpDatetime` |
 | `src/app/actions/domain.ts` | `getMpTimezone()` server action for client-side `Intl.DateTimeFormat` rendering |
 

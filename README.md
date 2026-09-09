@@ -39,6 +39,7 @@ Embeddable Web Component widgets for [Ministry Platform](https://www.ministrypla
 - [Widget Languages](#widget-languages)
 - [Widget Unsubscribe Links](#widget-unsubscribe-links)
 - [Prayer & Feedback Intake](#prayer--feedback-intake)
+- [Newsletter Sign-Up](#newsletter-sign-up)
 - [Testing](#testing)
 - [Development](#development)
 - [Claude Code Commands](#claude-code-commands)
@@ -1135,6 +1136,135 @@ Two smaller legacy behaviours also changed, both fixes:
 - The acknowledgement deliberately **does not merge the description**. A prayer
   request echoed back into an unencrypted mailbox is a disclosure the submitter
   did not ask for, and the summary identifies which request it confirms.
+
+
+## Newsletter Sign-Up
+
+`<next-subscribe-to-publication>` is the anonymous way onto one publication:
+a signed-out visitor types a name and an email address, receives a confirmation
+link, and clicking it subscribes them. It is the counterpart of legacy's
+`mpp-subscribe-to-publication`, and it fills the gap `next-subscriptions` cannot
+— that one is a signed-in management surface whose route refuses anonymous
+callers outright, so before this the only route onto a mailing list was to
+already have an MP account.
+
+**Nothing is written until the link is opened.** Submitting the form validates
+the input, seals it in the session store and sends one email. It does not read a
+`Contacts` row, let alone write one. Opening the link creates the
+`dp_Contact_Publications` row and, for an address MinistryPlatform has never
+seen, a `Contacts` + `Households` pair.
+
+### Setup
+
+1. **Pick the publication.** It must be `Available_Online` in
+   `dp_Publications`. A publication that is not flagged behaves exactly like one
+   that does not exist — deliberately, so the id space cannot be probed for
+   internal lists.
+2. **Author the verification email** as a `dp_Communications` record. Its Body
+   must render `[mpp_verify_email_url]`, or the visitor has no way to confirm.
+   Three more tokens are available: `[mpp_contact_first_name]`,
+   `[mpp_contact_last_name]` and `[mpp_publication_title]`. The template needs a
+   From contact with an email address.
+3. **Host the page on an allowlisted origin.** Its origin must be in
+   `EMBED_ALLOWED_ORIGINS`, exactly as for every other widget — and here it is
+   load-bearing twice over, because the confirmation link must be same-origin
+   with the page that requested it.
+
+```html
+<next-subscribe-to-publication
+  publication-id="4"
+  verification-email-template-id="5125"
+></next-subscribe-to-publication>
+```
+
+| Attribute | Required | Meaning |
+|---|---|---|
+| `publication-id` | **yes** | `dp_Publications.Publication_ID`. Must be `Available_Online`. |
+| `verification-email-template-id` | **yes** | `dp_Communications.Communication_ID`. Its Body must render `[mpp_verify_email_url]`. |
+| `return-url` | no | Where the confirmation link lands. Defaults to the current page URL with the query string stripped. Must be `https:` (localhost excepted), same-origin with the page, and carry no embedded credentials — otherwise the request is refused and **no email is sent**. |
+| `verify-param-name` | no | The query parameter carrying the handle. Defaults to `nextwidgets_verify`. |
+| `my-subscriptions-url` | no | Where "Manage all your email preferences" points. Rendered on the confirmed and already-confirmed states; omitted when unset. Use the same URL as `<next-unsubscribe>`'s. |
+| `api-host` | no | Standard across the SDK. |
+
+Events: `verificationSent { email }`, `subscribed { publicationId, email,
+alreadySubscribed }`, `subscribeFailed { code }`.
+
+### What a sign-up actually does
+
+| Step | MinistryPlatform |
+|---|---|
+| The page loads | reads one `dp_Publications` row |
+| The visitor submits | **nothing** — the submission is sealed in the session store and one email is sent |
+| The visitor opens the link | resolves the address to a contact, or creates `Contacts` + `Households`; creates or un-flags the `dp_Contact_Publications` row |
+| The visitor opens the link again | **nothing** — the handle is single-use |
+
+A created contact carries `Email_Verified = true` (the double opt-in is exactly
+the evidence that column records), `Contact_Status_ID` = Active,
+`Household_Position_ID` = Head of Household, and a household whose
+`Household_Source` is **Website** and whose congregation is the publication's, so
+staff can tell a widget-created record from a hand-typed one. No participant row
+and no milestone: a newsletter subscriber is not a participant.
+
+### Migrating from `mpp-subscribe-to-publication` — five things changed
+
+1. **The query parameter is `nextwidgets_verify`, not `mpp-verify-id`.** Every
+   browser-visible key this SDK owns carries the `nextwidgets_` prefix. If a
+   template already in the wild hard-codes the old spelling, set
+   `verify-param-name="mpp-verify-id"` on the element rather than editing every
+   link already in an inbox.
+2. **The confirmation link is single-use, and lives three days** instead of
+   being replayable for twenty-four hours. A second click says "you're all set"
+   rather than confirming again. That is not politeness: a replayable link
+   silently *re-subscribes* anyone who has unsubscribed in the meantime, and a
+   mail-client prefetcher or a security scanner is enough to trigger it.
+3. **A contact's `Email_Address` is never overwritten.** Legacy set it to
+   whatever the public form held, for whatever contact id the caller named —
+   which let anyone move a stranger's account to an address they controlled.
+4. **The mobile-phone field is not ported.** A newsletter opt-in needs a
+   mailbox; writing `Mobile_Phone` from an anonymous form interacts with texting
+   consent in ways a subscription form should not decide. Ask if you want it
+   back — it is a small change.
+5. **The signed-in "Subscribe As" household dropdown is not ported.** A member
+   managing a household member's subscriptions has `<next-subscriptions>`, and
+   dropping it is what lets the confirmation handle name only an email address
+   rather than a contact row.
+
+Also improved: the publication is matched **by address alone**, where legacy
+required first name, last name and address to agree — so "Bob Smith" signing up
+when MinistryPlatform holds "Robert Smith" at the same address no longer creates
+a duplicate contact.
+
+### Notes for whoever reviews this later
+
+- **The first hop reads no `Contacts` row at all.** Not "looks the address up
+  and hides the answer" — it does not perform the query, so there is no branch
+  to leak and no timing difference to measure. A known address, an unknown one
+  and an already-subscribed one produce byte-identical responses, asserted on
+  the serialised body in
+  `src/app/api/embed/subscribe-to-publication/send-verification/route.test.ts`.
+- **The handle names an address, never a contact.** That is the structural half
+  of the takeover fix above: a token naming a contact row would be a
+  contact-scoped write credential sitting in an inbox.
+- **The handle also carries the origin it was minted on**, checked on
+  redemption, so a link minted on one allowlisted church site cannot be redeemed
+  from another. A mismatch answers exactly what a forged handle answers.
+- **The redemption is a POST.** A state-changing GET is fetched by mailbox link
+  scanners and URL-rewriting gateways — which here would subscribe someone who
+  never clicked. The emailed link resolves to a page that only renders; the
+  widget on it issues the write.
+- Rate limits: **5/min per IP** and **3/hour per submitted address** (hashed),
+  both checked before any MinistryPlatform call and any send, and both
+  fail-closed — failing open on an endpoint that emails a submitted address
+  turns a store outage into an open relay.
+- **`return-url` is validated against the request origin.** The church's own
+  domain sends the mail, so an unvalidated link inherits its credibility;
+  legacy interpolated the attribute straight into the email with no check of any
+  kind.
+- **Merge values are HTML-escaped**, unconditionally, by
+  `messageTemplateService`.
+- Not implemented yet: the `recaptcha-site-key` opt-in bot check. The server
+  accepts and verifies a `recaptchaToken` when one is posted, but the element
+  does not render a challenge.
 
 
 ## Testing

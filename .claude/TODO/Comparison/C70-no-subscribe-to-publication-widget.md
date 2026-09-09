@@ -91,3 +91,75 @@ POST is an unauthenticated write that must be rate-limited per IP and must not l
 an email is already known to MP; and the verification link has to seal its payload rather
 than trust a query string — `src/lib/embed/crypto.ts` (`seal`/`open`) and the sealed-ticket
 pattern in `src/lib/embed/logout-return.ts` are the in-repo precedents.
+
+---
+
+## Resolution — 2026-09-09, `next-subscribe-to-publication`
+
+Built as `packages/embed-sdk/src/components/subscribe-to-publication.ts`, three routes
+under `src/app/api/embed/subscribe-to-publication/`, and three methods on the existing
+`src/services/subscriptionService.ts`. Full design in
+`.claude/TODO/Comparison/Plans/subscribe-to-publication.md`; customer-facing docs in
+README "Newsletter Sign-Up".
+
+**Where this finding's suggested fix was followed.** `next-plan-your-visit` was indeed
+the pattern to copy rather than `next-subscriptions` — but the two halves the finding
+named as "the reasons this is not a small job" both turned out to be *shared* by then,
+not per-widget work: `src/lib/embed/anonymous-write.ts` supplies the rate-limited,
+POST-only, origin-checked wrapper, and `src/lib/embed/pending-action.ts` supplies the
+sealed, single-use handle. Neither existed when this was filed. The attribute surface is
+the one suggested (`publication-id`, `return-url`,
+`verification-email-template-id`), kebab-cased.
+
+**Where it was not.** The route directory is `subscribe-to-publication/`, matching the
+element slug, rather than the suggested `subscribe/` — every other route directory in
+the tree mirrors its widget's slug. And the widget's data access extends
+`subscriptionService.ts` rather than adding "an email-keyed subscribe path alongside the
+contact-keyed one" in a new file: it is the same two tables and the same "subscribed =
+row exists AND `Unsubscribed` is false" rule.
+
+**Three legacy defects found in the source and deliberately not ported**, all three
+regression-tested rather than commented:
+
+1. **An anonymous endpoint that rewrites any contact's email address.**
+   `SubscribeToPublicationModel.ContactId` is `[FromForm]`-bound on an `[AllowAnonymous]`
+   action, copied unvalidated into the verification token, and on redemption
+   `SubscriptionsService.cs:147-150` calls `UpdateContactEmail(contactId, email)`. So an
+   unauthenticated caller posts a stranger's contact id with their own address, clicks
+   their own link, and MP moves that account to an address they control. On an
+   email-identified IdP that is an account-takeover primitive, not a data-integrity bug.
+   Structurally foreclosed here: no schema has a field for a contact id, the sealed
+   payload is asserted to hold exactly five keys, and no route writes
+   `Contacts.Email_Address`.
+2. **An unauthenticated email cannon with an unvalidated link inside it.** `ReturnUrl`
+   was client-bound and interpolated straight into the email
+   (`SubscriptionsService.cs:164`) with no validation of any kind, on an endpoint with no
+   rate limit — `grep -rn "RateLimit\|Throttl\|EnableRateLimiting" --include=*.cs` returns
+   **zero hits across the whole legacy solution**. A phishing kit with the church's
+   deliverability reputation attached. Now: same-origin https with no embedded
+   credentials, 5/min per IP and 3/hour per hashed address, both fail-closed, all checked
+   before any MP call or send.
+3. **`GetPublication` is a bare primary-key fetch** (`SubscriptionsManager.cs:67`) with no
+   `Available_Online` check, so legacy would render a subscribe form for a staff-only
+   list. Legacy's own signed-in proc requires the flag
+   (`api_MPPW_SearchSubscriptions.sql:38`) — the widget was the outlier. The flag is now
+   in the MP filter on every hop, and a non-online publication answers exactly like one
+   that does not exist so the id space cannot be probed.
+
+**One improvement neither stack had.** Legacy's handle was a 24-hour JWT with no backing
+table, i.e. **replayable**. Ours is single-use, and that is not tidiness: the subscribe
+write is *idempotent*, which is what makes replay look harmless — right up to the point
+where the visitor has unsubscribed in between, and a mail-client prefetcher or a security
+scanner re-fetching the old link silently puts them back on the list. Idempotency is
+exactly what makes replay harmful here. The cost is honest and accepted: a second click
+shows "you're all set" rather than confirming again.
+
+**Two deliberate non-ports**, both recorded in the README migration note: the
+mobile-phone field (a newsletter opt-in needs a mailbox, and writing `Mobile_Phone` from
+an anonymous form interacts with texting consent), and the signed-in "Subscribe As"
+household dropdown (which is *why* legacy's token carried `contactId` and `onBehalfId`;
+dropping it is what makes the handle email-scoped rather than contact-scoped).
+
+**Out of scope, and stated in the plan.** The `recaptcha-site-key` path end-to-end — the
+server verifies a posted `recaptchaToken`, but the element renders no challenge — and an
+E2E spec, which needs a real mailbox.

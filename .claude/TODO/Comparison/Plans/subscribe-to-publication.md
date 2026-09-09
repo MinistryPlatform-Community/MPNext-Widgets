@@ -1558,3 +1558,99 @@ unsubscribe (D3), the absence of any rate limiting in the legacy solution, and t
 plain column (which also answers `subscriptions.md`'s C61 open question).
 **Surfaces** an existing defect in `plan-your-visit/send-verification` (Open question 3) and a
 probable one in `planYourVisitService.createContact` (Open question 2).
+
+---
+
+## As built — 2026-09-09
+
+Landed in six commits on `feature/tier1-missing-widgets`, suite green at each. The plan
+was followed; what follows is every place the code differs from what is written above,
+plus the two things it found.
+
+### Phase 1 grew, on instruction and then once more on its own
+
+The extract was approved with a stronger justification than the plan had: `sqlLiteral`,
+`clean` and `toNumberOrNull` were **byte-identical in three files**, not two, so all
+three copies were migrated rather than just adding a fourth consumer. `groupsService.ts`
+migrated only `clean` — the helper this change actually finishes deduplicating; its
+`toNumberOrNull` is one of ten copies across the services and collapsing those is a
+separate change.
+
+`cap` joined the module in phase 2, one commit later than the rest. The instruction was
+to leave a service's genuinely local helpers alone *unless they are also duplicated*, and
+`createSubscriberContact` needed exactly that column-length truncation — so it stopped
+being local the moment a second service wanted it.
+
+`getIdByValue` keeps its four-argument shape at every call site: each service retains a
+private delegate that supplies `{ mp, cache, label }`. That is what made the migration
+provably behaviour-free — the existing 1,655 tests passed before and after, with 17 new
+ones covering the extract itself.
+
+### Two deviations from the plan's own text
+
+1. **The catalogue namespace is in `giving.ts`, but C72's `unsubscribe` is in
+   `account.ts`.** The plan predicted they would end up together and reasoned from that;
+   they did not. `giving.ts` is still right for this one — same two tables, same
+   lifecycle, and `subscriptions` is twenty lines above it — but the publication
+   lifecycle is now split across two files rather than one, which is worth knowing before
+   the next widget in this domain picks a file.
+2. **The `Contacts` → `Households` → association order is the plan's, but not for the
+   plan's stated reason.** The plan cites `Households.Address_ID` and
+   `Contacts.Household_ID` pointing at each other; this widget writes no address, so that
+   argument does not apply here. The order is still right, and the real reason is the
+   partial-failure state: a failure between the two writes leaves a *findable contact*
+   whose retry resolves to the same row, where household-first (which is what
+   `prayerFeedbackService` does, in two writes rather than three) accumulates one orphan
+   household per attempt.
+
+### Smaller things the plan did not specify
+
+- **`notAvailable` is translated from our English, not adopted verbatim from legacy's
+  Spanish.** The plan said "adopt verbatim", reading legacy's `publicationDoesNotExist`
+  ("The requested publication cannot be found"). Our English says something more accurate
+  — the publication may exist and simply not be published online — so the vetted sentence
+  no longer matches what it would be translating.
+- **`subscribeToPublication.title`** is a key the plan's table does not list. The status
+  region needs an accessible name (CROSS-3) and the heading cannot supply one: it
+  interpolates a publication title that does not exist yet while the widget is loading or
+  verifying.
+- **`errorResponse` is called directly**, with the English message as a string literal in
+  the call. C72's `ERRORS` object-literal workaround is no longer needed —
+  `i18n/error-codes.test.ts` was extended to match the helper's call form.
+- **`GET /publication` sets no `Cache-Control`.** The plan did not raise caching;
+  `Available_Online` can be withdrawn at any moment, and a shared cache serving a stale
+  "yes, this is online" is the one caching failure that matters on this route.
+- **The verify hop meters only handles that cost something**, following C69's route:
+  an envelope that fails its signature check is answered with no store round-trip and no
+  MP call, so metering it would let link-scanner traffic exhaust the budget of visitors
+  holding real links.
+
+### Error codes, final
+
+One new key, exactly as the reconciliation predicted: **`publication_not_found`**.
+Everything else is inherited — `verification_invalid` / `_expired` / `_used`,
+`template_not_configured`, `email_send_failed` (C69, in `locales/*/core.ts`);
+`save_failed → errors.saveFailed` (C72's `WIRE_CODE_KEYS` entry, reused untouched); and
+`invalid_request`, `validation_failed`, `rate_limited`, `auth_required`, `internal_error`
+(pre-existing). No `WIRE_CODE_KEYS` additions. The three shared `verification_*`
+sentences were already written neutrally by C69, so they were consumed as they stand.
+
+**`email_send_failed` and `save_failed` are 500**, per the ruling. C69's `submit` route
+already answers 500 for `email_send_failed` and C72's `unsubscribe` already answers 500
+for `save_failed`, so all three widgets agree and no sibling needs changing.
+
+### Phase 7 — deferred, not attempted
+
+Out of scope by instruction, and recorded here rather than left implicit:
+
+- **The `recaptcha-site-key` path end to end.** The server side exists and is exercised:
+  `send-verification` accepts `recaptchaToken`, calls `verifyRecaptchaToken` before
+  anything is read, minted or sent, and answers `validation_failed` on rejection — with a
+  route test. What is missing is the *client* half: the element does not render a
+  challenge and never posts a token, so the attribute is not advertised on the element,
+  in the demo page, or in the README. Adding it means loading Google's script, which is a
+  new CDN dependency and therefore a decision, not an implementation detail.
+- **`e2e/widget/subscribe-to-publication.spec.ts`.** The full flow needs a real mailbox
+  and there is no mail-capture endpoint. The tractable version is to mint a pending action
+  server-side and drive only the verify hop, skipping when MP credentials are absent —
+  the shape `login-hardened.spec.ts` uses.
