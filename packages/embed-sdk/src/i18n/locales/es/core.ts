@@ -131,6 +131,9 @@ export const esCore = {
     publication_not_found: "No encontramos esa publicación.",
     precheck_unavailable:
       "El registro de entrada aún no está configurado en este sitio. Comuníquese con la iglesia.",
+    invalid_pre_check_selection:
+      "Sus selecciones de registro están desactualizadas. Revíselas e inténtelo de nuevo.",
+    pre_check_closed: "El registro de entrada no está abierto para esa fecha.",
     payment_declined: "El pago fue rechazado. Intente con otro método.",
     campaign_not_found: "No encontramos esa campaña de donaciones.",
     household_not_found: "No encontramos su hogar.",

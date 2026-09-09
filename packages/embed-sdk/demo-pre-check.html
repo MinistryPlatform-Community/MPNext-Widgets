@@ -303,6 +303,9 @@
   widget.addEventListener("preCheckLoaded", (e) =&gt; {
     console.log("Pre check-in loaded:", e.detail);
   });
+  widget.addEventListener("preCheckSaved", (e) =&gt; {
+    console.log("Pre check-in saved:", e.detail);
+  });
   widget.addEventListener("preCheckError", (e) =&gt; {
     console.error("Pre check-in error:", e.detail);
   });
@@ -447,6 +450,14 @@
       logEvent("preCheckLoaded", e.detail);
       showStatus(
         `Loaded ${e.detail.rowCount} row(s) across ${e.detail.memberCount} member(s) for ${e.detail.eventDate}`,
+        "success"
+      );
+    });
+
+    widget.addEventListener("preCheckSaved", (e) => {
+      logEvent("preCheckSaved", e.detail);
+      showStatus(
+        `Saved: ${e.detail.registered} registered, ${e.detail.cancelled} cancelled, ${e.detail.locked.length} locked`,
         "success"
       );
     });

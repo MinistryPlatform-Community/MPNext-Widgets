@@ -112,6 +112,7 @@ describe('GET /api/embed/pre-check', () => {
     mockGetProcedures.mockResolvedValue([{ Name: 'api_MPPW_GetPreCheckEvents' }]);
     mockExecuteProcedure.mockResolvedValue([PROC_ROWS]);
     mockResolveUser.mockResolvedValue({
+      userId: 771,
       contactId: 9,
       householdId: 5,
       isHeadOfHousehold: true,
@@ -128,8 +129,10 @@ describe('GET /api/embed/pre-check', () => {
     vi.restoreAllMocks();
   });
 
-  it('exports GET and OPTIONS only', () => {
-    expect(Object.keys(route).sort()).toEqual(['GET', 'OPTIONS']);
+  it('exports GET, POST and OPTIONS only', () => {
+    // A stray non-handler export from a `route.ts` is a Next.js build error,
+    // and it is an easy one to add by accident when extracting a helper.
+    expect(Object.keys(route).sort()).toEqual(['GET', 'OPTIONS', 'POST']);
   });
 
   it('answers the preflight with CORS headers', async () => {
@@ -206,7 +209,7 @@ describe('GET /api/embed/pre-check', () => {
   // ── Household resolution ──
 
   it('answers household_not_found when the account has no household', async () => {
-    mockResolveUser.mockResolvedValue({ contactId: 9, householdId: null, isHeadOfHousehold: false });
+    mockResolveUser.mockResolvedValue({ userId: 771, contactId: 9, householdId: null, isHeadOfHousehold: false });
     const res = await route.GET(get(await token()));
     expect(res.status).toBe(404);
     await expect(res.json()).resolves.toMatchObject({ error: 'household_not_found' });
@@ -300,6 +303,321 @@ describe('GET /api/embed/pre-check', () => {
       const res = await route.GET(req);
       const body = await res.json();
       expect(typeof body.error).toBe('string');
+      expect(body.error).toMatch(/^[a-z][a-z0-9_]*$/);
+      expect(typeof body.message).toBe('string');
+      expect(body.message.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+/**
+ * `POST /api/embed/pre-check`.
+ *
+ * The service owns the authorisation decision and
+ * `preCheckService.save.test.ts` proves it. What this block covers is the
+ * request envelope the route is responsible for: that the public subject is
+ * refused **before** any MP call, that a rejected selection writes nothing and
+ * answers `403 invalid_pre_check_selection`, that the date window closes the
+ * "walk the calendar backwards writing Cancelled" shape, and that the limiter
+ * is keyed per user and fails closed because this endpoint writes.
+ */
+describe('POST /api/embed/pre-check', () => {
+  const mockCreateTableRecords = vi.fn();
+  const mockUpdateTableRecords = vi.fn();
+
+  function post(tok: string | null, body: unknown, ip = '198.51.100.9'): NextRequest {
+    const headers: Record<string, string> = {
+      Origin: ORIGIN,
+      'x-forwarded-for': ip,
+      'Content-Type': 'application/json',
+    };
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+    return new NextRequest('http://localhost:3000/api/embed/pre-check', {
+      method: 'POST',
+      headers,
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    });
+  }
+
+  const wrote = () =>
+    mockCreateTableRecords.mock.calls.length > 0 ||
+    mockUpdateTableRecords.mock.calls.length > 0;
+
+  beforeEach(async () => {
+    __resetSessionStoreForTests();
+    vi.clearAllMocks();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    mockGetProcedures.mockResolvedValue([{ Name: 'api_MPPW_GetPreCheckEvents' }]);
+    mockExecuteProcedure.mockResolvedValue([PROC_ROWS]);
+    mockCreateTableRecords.mockResolvedValue([{ Participant_ID: 99 }]);
+    mockUpdateTableRecords.mockResolvedValue([]);
+    mockResolveUser.mockResolvedValue({
+      userId: 771,
+      contactId: 9,
+      householdId: 5,
+      isHeadOfHousehold: true,
+    });
+
+    const { PreCheckService } = await import('@/services/preCheckService');
+    const svc = await PreCheckService.getInstance();
+    (svc as unknown as { available: boolean | undefined }).available = true;
+    // Point the singleton's MPHelper at this block's write spies.
+    (svc as unknown as { mp: Record<string, unknown> }).mp = {
+      getTableRecords: mockGetTableRecords,
+      executeProcedure: mockExecuteProcedure,
+      getProcedures: mockGetProcedures,
+      createTableRecords: mockCreateTableRecords,
+      updateTableRecords: mockUpdateTableRecords,
+    };
+
+    // The fixture day is "today" for the window check.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2018-06-12T15:00:00Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  // ── Auth ──
+
+  it('refuses a public subject with auth_required, before any MP call', async () => {
+    const res = await route.POST(
+      post(await token('public'), { eventDate: '2018-06-12', selected: [] })
+    );
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toMatchObject({ error: 'auth_required' });
+    expect(mockExecuteProcedure).not.toHaveBeenCalled();
+    expect(wrote()).toBe(false);
+  });
+
+  it('refuses a missing token', async () => {
+    const res = await route.POST(post(null, { eventDate: '2018-06-12', selected: [] }));
+    expect(res.status).toBe(401);
+    expect(wrote()).toBe(false);
+  });
+
+  it('refuses a token minted for another widget', async () => {
+    const res = await route.POST(
+      post(await token(USER_GUID, 'my-household'), { eventDate: '2018-06-12', selected: [] })
+    );
+    expect(res.status).toBe(401);
+    expect(wrote()).toBe(false);
+  });
+
+  // ── Body shape ──
+
+  it('rejects a malformed body with validation_failed', async () => {
+    for (const bad of [
+      { selected: [] },
+      { eventDate: '2018-06-12', selected: 'nope' },
+      { eventDate: 'today', selected: [] },
+      { eventDate: '2018-06-12', selected: [123] },
+    ]) {
+      const res = await route.POST(post(await token(), bad));
+      expect(res.status, JSON.stringify(bad)).toBe(400);
+      await expect(res.json()).resolves.toMatchObject({ error: 'validation_failed' });
+    }
+    expect(wrote()).toBe(false);
+  });
+
+  it('rejects unparseable JSON with validation_failed', async () => {
+    const res = await route.POST(post(await token(), '{not json'));
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: 'validation_failed' });
+    expect(wrote()).toBe(false);
+  });
+
+  it('caps the selection list at 500 entries', async () => {
+    const selected = Array.from({ length: 501 }, (_, i) => `9|4|2|0|2|${i}`);
+    const res = await route.POST(post(await token(), { eventDate: '2018-06-12', selected }));
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: 'validation_failed' });
+    expect(wrote()).toBe(false);
+  });
+
+  it('accepts a body carrying only eventDate and selected — no ids', async () => {
+    const res = await route.POST(
+      post(await token(), { eventDate: '2018-06-12', selected: ['9|4|2|0|2|17'] })
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ registered: 1, cancelled: 0, locked: [] });
+  });
+
+  it('ignores extra body fields a caller bolts on', async () => {
+    // The Zod schema strips them, so nothing downstream can see a
+    // `householdId` even when one is posted.
+    const res = await route.POST(
+      post(await token(), {
+        eventDate: '2018-06-12',
+        selected: [],
+        householdId: 999,
+        contactId: 999,
+        userId: 999,
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(mockExecuteProcedure).toHaveBeenCalledWith('api_MPPW_GetPreCheckEvents', {
+      '@HouseholdID': 5,
+      '@EventDate': '2018-06-12',
+    });
+  });
+
+  // ── The selection guard ──
+
+  it('answers 403 invalid_pre_check_selection with NO MP write', async () => {
+    const res = await route.POST(
+      post(await token(), { eventDate: '2018-06-12', selected: ['4242|4243|2|0|2|17'] })
+    );
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toMatchObject({
+      error: 'invalid_pre_check_selection',
+    });
+    expect(wrote()).toBe(false);
+  });
+
+  it('does not echo the rejected keys', async () => {
+    const res = await route.POST(
+      post(await token(), { eventDate: '2018-06-12', selected: ['4242|4243|2|0|2|17'] })
+    );
+    const body = await res.json();
+    expect(JSON.stringify(body)).not.toContain('4242');
+  });
+
+  // ── The window ──
+
+  it('answers 409 pre_check_closed for a date too far in the past', async () => {
+    const res = await route.POST(
+      post(await token(), { eventDate: '2017-01-01', selected: [] })
+    );
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toMatchObject({ error: 'pre_check_closed' });
+    expect(wrote()).toBe(false);
+  });
+
+  it('answers 409 pre_check_closed for a date too far ahead', async () => {
+    const res = await route.POST(
+      post(await token(), { eventDate: '2019-01-01', selected: [] })
+    );
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toMatchObject({ error: 'pre_check_closed' });
+  });
+
+  it('accepts yesterday and 90 days ahead, the window edges', async () => {
+    for (const date of ['2018-06-11', '2018-09-10']) {
+      const res = await route.POST(post(await token(), { eventDate: date, selected: [] }));
+      expect(res.status, date).toBe(200);
+    }
+  });
+
+  it('rejects two days back and 91 days ahead', async () => {
+    for (const date of ['2018-06-10', '2018-09-11']) {
+      const res = await route.POST(post(await token(), { eventDate: date, selected: [] }));
+      expect(res.status, date).toBe(409);
+    }
+  });
+
+  it('measures the window against the domain zone, not the server', async () => {
+    // 2018-06-13T02:30Z is still 2018-06-12 in New York, so 2018-06-11 is
+    // still "yesterday" and inside the window.
+    vi.setSystemTime(new Date('2018-06-13T02:30:00Z'));
+    const res = await route.POST(
+      post(await token(), { eventDate: '2018-06-11', selected: [] })
+    );
+    expect(res.status).toBe(200);
+  });
+
+  // ── Household ──
+
+  it('answers household_not_found when the account has no household', async () => {
+    mockResolveUser.mockResolvedValue({
+      userId: 771,
+      contactId: 9,
+      householdId: null,
+      isHeadOfHousehold: false,
+    });
+    const res = await route.POST(
+      post(await token(), { eventDate: '2018-06-12', selected: [] })
+    );
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toMatchObject({ error: 'household_not_found' });
+    expect(wrote()).toBe(false);
+  });
+
+  // ── Rate limiting ──
+
+  it('answers 429 past 20 saves in the window, keyed per user', async () => {
+    const tok = await token();
+    for (let i = 0; i < 20; i++) {
+      const res = await route.POST(post(tok, { eventDate: '2018-06-12', selected: [] }));
+      expect(res.status, `call ${i}`).toBe(200);
+    }
+    const res = await route.POST(post(tok, { eventDate: '2018-06-12', selected: [] }));
+    expect(res.status).toBe(429);
+    await expect(res.json()).resolves.toMatchObject({ error: 'rate_limited' });
+  });
+
+  it('does not throttle a different user sharing the same IP', async () => {
+    // A household shares one IP with itself: an IP bucket would throttle a
+    // family of five faster than a family of one.
+    const a = await token();
+    for (let i = 0; i < 20; i++) {
+      await route.POST(post(a, { eventDate: '2018-06-12', selected: [] }));
+    }
+    expect(
+      (await route.POST(post(a, { eventDate: '2018-06-12', selected: [] }))).status
+    ).toBe(429);
+
+    const b = await token('99999999-2222-3333-4444-555555555555');
+    const res = await route.POST(post(b, { eventDate: '2018-06-12', selected: [] }));
+    expect(res.status).toBe(200);
+  });
+
+  // ── Degraded domain and failures ──
+
+  it('answers precheck_unavailable when the proc is not installed', async () => {
+    const { PreCheckService } = await import('@/services/preCheckService');
+    const svc = await PreCheckService.getInstance();
+    (svc as unknown as { available: boolean | undefined }).available = false;
+
+    const res = await route.POST(
+      post(await token(), { eventDate: '2018-06-12', selected: [] })
+    );
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toMatchObject({ error: 'precheck_unavailable' });
+    expect(wrote()).toBe(false);
+  });
+
+  it('answers 500 save_failed — never 502 — when MP refuses the write', async () => {
+    mockCreateTableRecords.mockRejectedValue(new Error('MP write exploded'));
+    const res = await route.POST(
+      post(await token(), { eventDate: '2018-06-12', selected: ['9|4|2|0|2|17'] })
+    );
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toMatchObject({ error: 'save_failed' });
+  });
+
+  it('never leaks MP error text to the caller', async () => {
+    mockCreateTableRecords.mockRejectedValue(new Error('Invalid column Household_Secret'));
+    const res = await route.POST(
+      post(await token(), { eventDate: '2018-06-12', selected: ['9|4|2|0|2|17'] })
+    );
+    expect(JSON.stringify(await res.json())).not.toContain('Household_Secret');
+  });
+
+  it('answers every failure as { error, message } with a snake_case code', async () => {
+    const cases: NextRequest[] = [
+      post(await token('public'), { eventDate: '2018-06-12', selected: [] }),
+      post(await token(), { eventDate: 'nope', selected: [] }),
+      post(await token(), { eventDate: '2017-01-01', selected: [] }),
+      post(await token(), { eventDate: '2018-06-12', selected: ['4242|1|2|0|0|0'] }),
+    ];
+    for (const req of cases) {
+      const res = await route.POST(req);
+      const body = await res.json();
       expect(body.error).toMatch(/^[a-z][a-z0-9_]*$/);
       expect(typeof body.message).toBe('string');
       expect(body.message.length).toBeGreaterThan(0);

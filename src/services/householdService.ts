@@ -19,6 +19,16 @@ interface DpUserRecord {
 }
 
 interface ResolvedUser {
+  /**
+   * `dp_Users.User_ID`.
+   *
+   * Read here already — the query has always selected it — but not surfaced
+   * until `next-pre-check` (C78) needed it for MP's `$userId` write parameter,
+   * so an `Event_Participants` row a parent creates is audited to the parent
+   * rather than to the API service account. **Audit only**: no caller may treat
+   * it as an authorisation input.
+   */
+  userId: number;
   contactId: number;
   householdId: number | null;
   isHeadOfHousehold: boolean;
@@ -208,6 +218,7 @@ export class HouseholdService {
     const householdPositionId = contacts[0]?.HouseholdPositionId ?? null;
 
     return {
+      userId: users[0].User_ID,
       contactId,
       householdId,
       isHeadOfHousehold: householdPositionId === HEAD_OF_HOUSEHOLD_POSITION_ID,

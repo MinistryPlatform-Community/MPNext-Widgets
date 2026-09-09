@@ -68,6 +68,16 @@ interface LoadedData {
   members: PreCheckMember[];
 }
 
+/** What the last save reported, for the banner over the reloaded list. */
+interface SaveNotice {
+  registered: number;
+  cancelled: number;
+  /** Row keys a station had already acted on. Reported, never written. */
+  locked: string[];
+  /** The date the save applied to — the banner names it. */
+  eventDate: string;
+}
+
 export class PreCheckWidget extends MPNextWidget {
   /**
    * Watched so a host page can move the widget to another day from script.
@@ -90,6 +100,16 @@ export class PreCheckWidget extends MPNextWidget {
   private painted = false;
   /** Set on disconnect, so an in-flight request never paints a detached root. */
   private detached = false;
+  /** A save is in flight: the submit control is disabled and reads `Saving…`. */
+  private saving = false;
+  /** Result of the last save, rendered as a banner over the reloaded list. */
+  private savedNotice: SaveNotice | null = null;
+  /**
+   * The submitted selection named a row the server did not issue — a page left
+   * open while someone else in the household saved, most often. The list is
+   * reloaded behind this message.
+   */
+  private staleSelection = false;
 
   connectedCallback() {
     this.detached = false;
@@ -123,6 +143,8 @@ export class PreCheckWidget extends MPNextWidget {
     this.data = null;
     this.errorPayload = null;
     this.activeDate = null;
+    this.savedNotice = null;
+    this.staleSelection = false;
     this.state = "loading";
     this.paint();
     void this.load();
@@ -241,8 +263,112 @@ export class PreCheckWidget extends MPNextWidget {
     this.activeDate = date;
     this.state = "loading";
     this.errorPayload = null;
+    this.savedNotice = null;
+    this.staleSelection = false;
     this.paint();
     void this.load();
+  }
+
+  // ── Saving ───────────────────────────────────────────────────────────────
+
+  /**
+   * Post the selection.
+   *
+   * **The body is `{ eventDate, selected }` and nothing else.** No contact id,
+   * no participant id, no event id, no event-participant id — the four things
+   * legacy posted and its server wrote unchecked. `selected` holds row keys the
+   * *server* computed and handed to this widget in the checkbox `value`; the
+   * server re-derives the same set and treats a key as a lookup, never as a
+   * source of ids. There is a test asserting the body's exact shape.
+   *
+   * Absence is meaningful: a row whose key is not in `selected` is not
+   * attending, and the server derives the cancellation set from that. Disabled
+   * (locked) checkboxes are excluded from the sweep on purpose — the server
+   * refuses to write them either way, and including them would make the body
+   * claim something the widget did not offer the visitor.
+   */
+  private async submit(): Promise<void> {
+    if (this.saving || !this.data) return;
+
+    const boxes = [
+      ...this.root.querySelectorAll<HTMLInputElement>(
+        'input[type="checkbox"]:not([disabled])',
+      ),
+    ];
+    const selected = boxes.filter((b) => b.checked).map((b) => b.value);
+    const eventDate = this.data.eventDate;
+
+    this.saving = true;
+    this.staleSelection = false;
+    this.paint();
+
+    try {
+      const res = await this.fetch("/api/embed/pre-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventDate, selected }),
+      });
+      if (this.detached) return;
+
+      const payload: unknown = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const code = (payload as { error?: string }).error ?? "";
+        this.saving = false;
+
+        if (res.status === 401) {
+          this.state = "needs-auth";
+          this.errorPayload = payload;
+          this.emit("preCheckError", { code, status: res.status });
+          this.paint();
+          return;
+        }
+
+        if (code === "invalid_pre_check_selection") {
+          // Reload rather than leave a stale page on screen: the server is the
+          // truth about what this household's rows are, and the visitor's next
+          // attempt should be against the current set.
+          this.staleSelection = true;
+          this.emit("preCheckError", { code, status: res.status });
+          this.paint();
+          void this.load();
+          return;
+        }
+
+        this.errorPayload = payload;
+        this.state = "error";
+        this.emit("preCheckError", { code, status: res.status });
+        this.paint();
+        return;
+      }
+
+      const result = payload as Omit<SaveNotice, "eventDate">;
+      this.savedNotice = { ...result, eventDate };
+      this.saving = false;
+      this.emit("preCheckSaved", { eventDate, ...result });
+
+      // Reload before painting the banner. **Never leave the old checkbox
+      // state on screen** — a locked row the server refused to change would
+      // otherwise stay as the visitor left it, which is the widget quietly
+      // lying about what was saved.
+      await this.load();
+    } catch {
+      if (this.detached) return;
+      this.saving = false;
+      this.errorPayload = { error: "network" };
+      this.state = "error";
+      this.emit("preCheckError", { code: "network", status: 0 });
+      this.paint();
+    }
+  }
+
+  /** Tick or untick every row the visitor is allowed to change. */
+  private setAll(checked: boolean): void {
+    for (const box of this.root.querySelectorAll<HTMLInputElement>(
+      'input[type="checkbox"]:not([disabled])',
+    )) {
+      box.checked = checked;
+    }
   }
 
   // ── Rendering ────────────────────────────────────────────────────────────
@@ -290,14 +416,14 @@ export class PreCheckWidget extends MPNextWidget {
         // Not an error, and it must not read like one: a Tuesday has no Sunday
         // classes, and MP's own check-in visibility rule legitimately hides a
         // household whose groups do not match the event's.
-        return `${this.renderDateControl()}${this.statusRegion(
+        return `${this.renderDateControl()}${this.renderNotices()}${this.statusRegion(
           `<p class="pc-msg">${this.escapeHtml(
             this.t("preCheck.emptyNoEvents", { date: this.formattedDate }),
           )}</p>`,
         )}`;
 
       case "list":
-        return `${this.renderDateControl()}${this.renderMembers()}`;
+        return `${this.renderDateControl()}${this.renderNotices()}${this.renderMembers()}${this.renderActions()}`;
 
       case "error":
         return `${this.statusRegion(`
@@ -358,6 +484,73 @@ export class PreCheckWidget extends MPNextWidget {
       </div>`;
   }
 
+  /**
+   * The banner over the reloaded list: what the last save did, or why the last
+   * one was refused.
+   *
+   * `savedCount` is a plural through `Intl.PluralRules`, never a hand-rolled
+   * `n !== 1 ? "s" : ""` — Spanish and Portuguese both select a `many` branch
+   * this widget's counts will never reach, and the catalogue carries it anyway
+   * so parity holds.
+   */
+  private renderNotices(): string {
+    const parts: string[] = [];
+
+    if (this.staleSelection) {
+      parts.push(
+        `<p class="pc-notice pc-notice--warn" role="status">${this.escapeHtml(
+          this.t("preCheck.staleSelection"),
+        )}</p>`,
+      );
+    }
+
+    const saved = this.savedNotice;
+    if (saved) {
+      const date = this.fmt.date(saved.eventDate, "full");
+      const headline =
+        saved.registered === 0
+          ? this.t("preCheck.savedNone", { date })
+          : this.t("preCheck.savedCount", { count: saved.registered, date });
+
+      const cancelled =
+        saved.cancelled > 0
+          ? ` ${this.t("preCheck.cancelledNote")}`
+          : "";
+
+      parts.push(
+        `<p class="pc-notice pc-notice--ok" role="status">${this.escapeHtml(
+          `${headline}${cancelled}`,
+        )}</p>`,
+      );
+    }
+
+    return parts.join("");
+  }
+
+  /**
+   * Bulk toggles and the submit control.
+   *
+   * `Select all` / `Clear all` act only on rows the visitor can change; a
+   * locked row stays checked and disabled whatever they press.
+   */
+  private renderActions(): string {
+    const label = this.saving ? this.t("common.saving") : this.t("preCheck.save");
+    const disabled = this.saving ? " disabled" : "";
+
+    return `
+      <div class="pc-actions pc-actions--bar">
+        <button class="pc-link" type="button" data-action="select-all"${disabled}>${this.escapeHtml(
+          this.t("preCheck.selectAll"),
+        )}</button>
+        <button class="pc-link" type="button" data-action="clear-all"${disabled}>${this.escapeHtml(
+          this.t("preCheck.clearAll"),
+        )}</button>
+        <button class="pc-btn" type="button" data-action="save"${disabled}>${this.escapeHtml(
+          label,
+        )}</button>
+      </div>`;
+  }
+
   private renderMembers(): string {
     const members = this.data?.members ?? [];
     return `<div class="pc-members">${members
@@ -379,8 +572,11 @@ export class PreCheckWidget extends MPNextWidget {
 
   private renderRow(row: PreCheckMember["rows"][number]): string {
     const checked = row.isRegistered || row.isLocked ? " checked" : "";
-    // Phase 2 is read-only: the rows show what MP holds, and there is no submit
-    // control, so nothing on screen implies a write that does not happen yet.
+    // A locked row is checked **and disabled**: a check-in station has already
+    // scanned or confirmed this person, and the server refuses to write it in
+    // either direction. Legacy offered the checkbox and then destroyed the
+    // attendance record when a parent unticked it.
+    const disabled = row.isLocked || this.saving ? " disabled" : "";
     const locked = row.isLocked
       ? `<span class="pc-locked">${this.escapeHtml(this.t("preCheck.attendedLocked"))}</span>`
       : "";
@@ -398,7 +594,7 @@ export class PreCheckWidget extends MPNextWidget {
     return `
       <li class="pc-row">
         <label class="pc-check">
-          <input type="checkbox" value="${this.escapeAttr(row.rowKey)}"${checked} disabled>
+          <input type="checkbox" value="${this.escapeAttr(row.rowKey)}"${checked}${disabled}>
           <span class="pc-when">${this.escapeHtml(this.fmt.time(row.eventStart))}</span>
           <span class="pc-event">${this.escapeHtml(row.eventName)}</span>
           ${group}${role}${locked}
@@ -431,6 +627,15 @@ export class PreCheckWidget extends MPNextWidget {
     if (date) {
       date.addEventListener("change", () => this.showDate(date.value));
     }
+
+    const save = this.root.querySelector('[data-action="save"]');
+    if (save) save.addEventListener("click", () => void this.submit());
+
+    const selectAll = this.root.querySelector('[data-action="select-all"]');
+    if (selectAll) selectAll.addEventListener("click", () => this.setAll(true));
+
+    const clearAll = this.root.querySelector('[data-action="clear-all"]');
+    if (clearAll) clearAll.addEventListener("click", () => this.setAll(false));
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -597,6 +802,57 @@ export class PreCheckWidget extends MPNextWidget {
       }
 
       .pc-actions { margin-top: 12px; }
+
+      .pc-actions--bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .pc-actions--bar .pc-btn { margin-left: auto; }
+
+      .pc-link {
+        font: inherit;
+        font-size: 13px;
+        background: none;
+        border: 0;
+        padding: 4px 2px;
+        color: #004C97;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+
+      .pc-link:disabled { color: #9ca3af; cursor: default; }
+
+      .pc-link:focus-visible {
+        outline: 2px solid #009CDE;
+        outline-offset: 2px;
+      }
+
+      .pc-btn:disabled { background: #9ca3af; cursor: default; }
+
+      .pc-notice {
+        margin: 0 0 12px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-size: 14px;
+      }
+
+      .pc-notice--ok {
+        background: #f1f7e8;
+        border: 1px solid #86AD3F;
+        color: #2D2926;
+      }
+
+      .pc-notice--warn {
+        background: #fff1f1;
+        border: 1px solid #FF6D6A;
+        color: #2D2926;
+      }
 
       .pc-btn {
         font: inherit;

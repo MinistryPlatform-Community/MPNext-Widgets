@@ -168,6 +168,16 @@ export const core = {
     // stored procedure and should not be invited to retry.
     precheck_unavailable:
       "Check-in is not set up for this site yet. Please contact the church.",
+    // `next-pre-check` (C78). The submitted selection named a row the server
+    // did not issue for this household and date — a page left open while
+    // someone else in the family saved, most often, and an attack at worst.
+    // The widget reloads and re-renders behind this sentence, so the copy says
+    // what happens next rather than naming the mismatch.
+    invalid_pre_check_selection:
+      "Your check-in choices are out of date. Please review them and try again.",
+    // The requested date is outside the window the route accepts (more than a
+    // day back or more than 90 days ahead).
+    pre_check_closed: "Check-in is not open for that date.",
     payment_declined: "The payment was declined. Please try another method.",
     campaign_not_found: "We could not find that giving campaign.",
     household_not_found: "We could not find your household.",

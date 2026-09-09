@@ -131,6 +131,9 @@ export const ptBRCore = {
     publication_not_found: "Não encontramos essa publicação.",
     precheck_unavailable:
       "O check-in ainda não está configurado neste site. Entre em contato com a igreja.",
+    invalid_pre_check_selection:
+      "Suas escolhas de check-in estão desatualizadas. Confira-as e tente de novo.",
+    pre_check_closed: "O check-in não está aberto para essa data.",
     payment_declined: "O pagamento foi recusado. Tente outro método.",
     campaign_not_found: "Não encontramos essa campanha de doações.",
     household_not_found: "Não encontramos sua família.",

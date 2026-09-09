@@ -1,13 +1,15 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
+import { ConfigSettingsService } from "@/services/configSettingsService";
 import {
   buildPreCheckQrPayload,
   buildPreCheckRowKey,
   PARTICIPATION_STATUS,
   type PreCheckMember,
   type PreCheckRow,
+  type PreCheckSaveResponse,
 } from "@mpnext/types";
-import { toNumberOrNull } from "@/services/_shared/mp-lookup";
+import { getIdByValue, toNumberOrNull } from "@/services/_shared/mp-lookup";
 
 /**
  * Group the flat proc output by member, preserving the proc's row order.
@@ -114,6 +116,18 @@ export class PreCheckService {
    * round-trip on every page load to rediscover that.
    */
   private available: boolean | undefined;
+
+  /**
+   * Memoised `Participant_Type_ID` for a widget-created participant.
+   * `undefined` = not yet asked; `null` = asked, and this domain has none.
+   */
+  private participantTypeId: number | null | undefined;
+
+  /**
+   * Lookup-id cache for {@link getIdByValue}, owned by this singleton so a
+   * reset service starts with cold lookups. Keyed `table:column:value`.
+   */
+  private idCache = new Map<string, number | null>();
 
   private constructor() {
     this.mp = new MPHelper();
@@ -270,6 +284,309 @@ export class PreCheckService {
     };
   }
 
+  // ── The write ────────────────────────────────────────────────────────────
+
+  /**
+   * Apply a household's pre-check selection for one day.
+   *
+   * **This method is the authorisation boundary, and the shape of it is the
+   * point.** `selected` is a set of opaque row keys. Nothing in it is parsed,
+   * split, or coerced into an id. What it can do is *name* a row that this
+   * method itself derived, one line earlier, from `(householdId, eventDate)` —
+   * and `householdId` came from the caller's session, never from the request.
+   *
+   * Compare legacy. `EventParticipantTranslator.ToEventParticipants` split the
+   * client's string on `_` then `|` and `int.Parse`d six fields straight into
+   * an `Event_Participants` write with no check of any kind, so any signed-in
+   * MP user could pre-check an arbitrary contact into an arbitrary event, or
+   * cancel a stranger's registration, by editing one checkbox attribute. The
+   * feature is ported; the protocol is not.
+   *
+   * The rules, in the order they run:
+   *
+   * 1. **Re-derive.** One fresh read of the same `(householdId, eventDate)`,
+   *    keyed by `rowKey`. This map is the entire universe of legal writes.
+   * 2. **Whole-key membership, and fail the whole request.** Every submitted
+   *    string must be a key of that map, or nothing at all is written. Partial
+   *    filtering is wrong here: a mismatch means an attack or a stale page, and
+   *    both deserve a visible outcome rather than a save that silently did
+   *    something other than what the visitor saw. Whole-key matching is what
+   *    stops a caller keeping their own `contactId` and swapping in another
+   *    event's `eventId` — the resulting key is not in the map.
+   * 3. **Every written id comes from the map's row.** After step 2 the client's
+   *    contribution is reduced to a set of booleans. `preCheckService.save.test.ts`
+   *    asserts this by mutating the ids *inside* an accepted key's string and
+   *    checking the write is unchanged.
+   * 4. **Locked rows are never written, in either direction.** A row at
+   *    `3 Attended` or `4 Confirmed` has been acted on by a check-in station.
+   *    Legacy would overwrite it with `5 Cancelled` when a parent unticked the
+   *    box, destroying attendance history — the one legacy defect that must be
+   *    fixed rather than ported. Registering over an `Attended` row would lose
+   *    the same information, so neither direction touches it. They come back in
+   *    `locked` so the widget can explain the disabled checkbox.
+   * 5. **Cancellations are derived, never submitted**, and never deletes: rows
+   *    with an existing `Event_Participant_ID` that nothing selected go to
+   *    `5 Cancelled`.
+   * 6. **One write per `(eventId, contactId)`.** The proc emits one row per
+   *    group participation, so a member in two of an event's groups yields two
+   *    rows sharing one `Event_Participant_ID`. Two updates to one primary key
+   *    in a batch is at best wasted and at worst a lost update.
+   * 7. **`$userId` on every write**, so MP's audit trail names the parent
+   *    rather than the API service account.
+   */
+  public async savePreCheck(args: {
+    householdId: number;
+    /** `dp_Users.User_ID`, resolved from the JWT. Audit only — never authorisation. */
+    userId: number;
+    eventDate: string;
+    selected: string[];
+  }): Promise<PreCheckSaveResponse> {
+    const { householdId, userId, eventDate, selected } = args;
+
+    // Rule 1 — the authoritative set, derived here, from the session's
+    // household. The request contributed the date and nothing else.
+    const rows = await this.getPreCheckRows(householdId, eventDate);
+    const byKey = new Map(rows.map((row) => [row.rowKey, row]));
+
+    // Rule 2 — membership, then all-or-nothing.
+    const submitted = [...new Set(selected)];
+    const unknown = submitted.filter((key) => !byKey.has(key));
+    if (unknown.length > 0) {
+      throw new PreCheckSelectionError(unknown.length);
+    }
+
+    const selectedRows = submitted.map((key) => byKey.get(key)!);
+
+    // Rule 4 — locked rows are reported and then dropped from both paths.
+    const locked = rows.filter((row) => row.isLocked).map((row) => row.rowKey);
+    const lockedEventParticipantIds = new Set(
+      rows
+        .filter((row) => row.isLocked && row.eventParticipantId !== null)
+        .map((row) => row.eventParticipantId as number)
+    );
+
+    // Rule 6 — one write per (event, member). `contactId` rather than
+    // `participantId` because the latter is null for a contact with no
+    // `Participant_Record`, and null is not a usable map key; the two are 1:1,
+    // so this is the same partition, total.
+    const pairKey = (row: PreCheckRow) => `${row.eventId}:${row.contactId}`;
+
+    const toRegister = new Map<string, PreCheckRow>();
+    for (const row of selectedRows) {
+      if (row.isLocked) continue;
+      // "Take the first in the server's order" — the rows disagree only about
+      // which group the member is being checked in under.
+      if (!toRegister.has(pairKey(row))) toRegister.set(pairKey(row), row);
+    }
+
+    // Rule 5 — the cancellation set. An `Event_Participant_ID` survives if any
+    // row that shares it was selected, which is what makes the two-group case
+    // safe: unticking one group's row must not cancel a registration the other
+    // group's row is holding open.
+    const keptEventParticipantIds = new Set(
+      selectedRows
+        .filter((row) => row.eventParticipantId !== null)
+        .map((row) => row.eventParticipantId as number)
+    );
+
+    const toCancel = new Map<number, PreCheckRow>();
+    for (const row of rows) {
+      const epId = row.eventParticipantId;
+      if (epId === null) continue;
+      if (keptEventParticipantIds.has(epId)) continue;
+      if (lockedEventParticipantIds.has(epId)) continue;
+      if (row.participationStatusId === PARTICIPATION_STATUS.CANCELLED) continue;
+      if (!toCancel.has(epId)) toCancel.set(epId, row);
+    }
+
+    let registered = 0;
+    let cancelled = 0;
+
+    for (const row of toRegister.values()) {
+      // Rule 3 — `row` is the server's, and every id below comes off it.
+      const participantId = row.participantId ?? (await this.createParticipant(row, userId));
+      if (participantId === null) continue;
+
+      if (row.eventParticipantId !== null) {
+        await this.mp!.updateTableRecords(
+          "Event_Participants",
+          [
+            {
+              Event_Participant_ID: row.eventParticipantId,
+              Event_ID: row.eventId,
+              Participant_ID: participantId,
+              Participation_Status_ID: PARTICIPATION_STATUS.REGISTERED,
+              ...this.groupColumns(row),
+            },
+          ],
+          { $userId: userId }
+        );
+      } else {
+        await this.mp!.createTableRecords(
+          "Event_Participants",
+          [
+            {
+              Event_ID: row.eventId,
+              Participant_ID: participantId,
+              Participation_Status_ID: PARTICIPATION_STATUS.REGISTERED,
+              ...this.groupColumns(row),
+              // `mp_lookup` marks these three NOT NULL on `Event_Participants`.
+              // Written explicitly rather than left to a database default,
+              // because "no confirmation email has been sent" and "not
+              // attending online" are the correct values for a fresh pre-check
+              // either way — so being explicit costs nothing and removes a
+              // dependency on a default this code cannot see.
+              Registrant_Message_Sent: false,
+              Attendee_Message_Sent: false,
+              Attending_Online: false,
+            },
+          ],
+          { $userId: userId }
+        );
+      }
+      registered++;
+    }
+
+    for (const row of toCancel.values()) {
+      // Status only. **Never a delete** — legacy never deleted either, and a
+      // deleted row loses the fact that the family had planned to come.
+      // `Time_In`, `Room_ID` and `Check-in_Station` are the station's to write
+      // and are not touched here.
+      await this.mp!.updateTableRecords(
+        "Event_Participants",
+        [
+          {
+            Event_Participant_ID: row.eventParticipantId as number,
+            Participation_Status_ID: PARTICIPATION_STATUS.CANCELLED,
+          },
+        ],
+        { $userId: userId }
+      );
+      cancelled++;
+    }
+
+    return { registered, cancelled, locked };
+  }
+
+  /**
+   * `Group_ID` / `Group_Participant_ID`, present only when the row has them.
+   *
+   * Legacy wrote them "when non-zero", which is the same rule expressed through
+   * the zeroes its own null-coercion had created. Omitting the key entirely is
+   * better than writing `null`: an update that sets `Group_ID = null` would
+   * *clear* a group a station had already assigned.
+   */
+  private groupColumns(row: PreCheckRow): Record<string, number> {
+    const columns: Record<string, number> = {};
+    if (row.groupId !== null) columns.Group_ID = row.groupId;
+    if (row.groupParticipantId !== null) {
+      columns.Group_Participant_ID = row.groupParticipantId;
+    }
+    return columns;
+  }
+
+  /**
+   * Create the `Participants` row a contact does not yet have.
+   *
+   * **Household-scoped by construction**: `row` came out of the map this
+   * service derived from the caller's own `Household_ID`, so there is no path
+   * by which a contact outside the household reaches this method. That is the
+   * invariant, and it is worth more than any check that could be added here.
+   *
+   * Mirrors legacy `ContactManager.CreateParticipant` — including its
+   * `"Created by Web Widget"` note, so church staff see the provenance they
+   * already recognise. `Participant_Start_Date` goes through
+   * `toMpSqlDatetime`, never `new Date().toISOString()`: MP stores wall-clock
+   * in the domain's zone, so an ISO instant shifts an evening save into the
+   * next day.
+   */
+  private async createParticipant(
+    row: PreCheckRow,
+    userId: number
+  ): Promise<number | null> {
+    const participantTypeId = await this.resolveDefaultParticipantTypeId();
+    if (participantTypeId === null) {
+      console.warn(
+        "PreCheckService: no default Participant_Type_ID; skipping participant creation for contact",
+        row.contactId
+      );
+      return null;
+    }
+
+    const startDate = await DomainTimezoneService.getInstance().toMpSqlDatetime(
+      new Date()
+    );
+
+    const created = await this.mp!.createTableRecords<{ Participant_ID: number }>(
+      "Participants",
+      [
+        {
+          Contact_ID: row.contactId,
+          Participant_Type_ID: participantTypeId,
+          Participant_Start_Date: startDate,
+          Notes: "Created by Web Widget",
+        } as unknown as { Participant_ID: number },
+      ],
+      { $userId: userId }
+    );
+
+    return toNumberOrNull(created[0]?.Participant_ID ?? null);
+  }
+
+  /**
+   * `Participant_Types.Participant_Type_ID` for a widget-created participant.
+   *
+   * Legacy read a `defaultParticipantType` config setting
+   * (`ContactManager.cs:42`). The MP equivalent is
+   * `dp_Configuration_Settings` `PORTAL` / `DefaultParticipantTypeID`, which is
+   * present and set to `4` (`Guest`) on the reference domain — confirmed, not
+   * assumed. A domain that has cleared it falls back to resolving `Guest` by
+   * name, because lookup ids are only stable on a stock instance and a data
+   * conversion can renumber them. Both misses return `null`, and the caller
+   * then skips creating the participant rather than inventing a type.
+   */
+  private async resolveDefaultParticipantTypeId(): Promise<number | null> {
+    if (this.participantTypeId !== undefined) return this.participantTypeId;
+
+    const config = await ConfigSettingsService.getInstance();
+    const configured = toNumberOrNull(
+      await config.getSetting("PORTAL", "DefaultParticipantTypeID")
+    );
+
+    this.participantTypeId =
+      configured ??
+      (await this.getIdByValue(
+        "Participant_Types",
+        "Participant_Type",
+        "Guest",
+        "Participant_Type_ID"
+      ));
+
+    return this.participantTypeId;
+  }
+
+  /**
+   * Look up a lookup-table row's numeric id by one of its column values.
+   *
+   * The four-argument delegate onto `_shared/mp-lookup`, matching
+   * `prayerFeedbackService`: the cache and the `MPHelper` stay owned by this
+   * singleton, the query and the caching rule are shared.
+   */
+  private getIdByValue(
+    table: string,
+    columnName: string,
+    value: string,
+    idColumn: string
+  ): Promise<number | null> {
+    return getIdByValue(
+      { mp: this.mp!, cache: this.idCache, label: "PreCheckService" },
+      table,
+      columnName,
+      value,
+      idColumn
+    );
+  }
+
   /**
    * `pre|M/d/yyyy|householdId`.
    *
@@ -278,5 +595,23 @@ export class PreCheckService {
    */
   public buildQrPayload(householdId: number, eventDate: string): string {
     return buildPreCheckQrPayload(householdId, eventDate);
+  }
+}
+
+/**
+ * A submitted `rowKey` the server did not issue for this household and date.
+ *
+ * Its own class so the route can answer `403 invalid_pre_check_selection`
+ * without string-matching an error message. The count is carried for the log;
+ * **the keys themselves are not**, because echoing them back would confirm to a
+ * prober which of their guesses were well-formed.
+ */
+export class PreCheckSelectionError extends Error {
+  public readonly unknownCount: number;
+
+  constructor(unknownCount: number) {
+    super(`Pre-check selection contained ${unknownCount} unrecognised row(s).`);
+    this.name = "PreCheckSelectionError";
+    this.unknownCount = unknownCount;
   }
 }

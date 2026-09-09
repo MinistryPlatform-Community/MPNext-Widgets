@@ -542,3 +542,377 @@ describe("<next-pre-check>", () => {
     });
   });
 });
+
+/**
+ * The write half of `<next-pre-check>`.
+ *
+ * The one that matters is **"the POST body contains no ids"**. Legacy encoded a
+ * six-part composite into each checkbox `name` and posted it back for its
+ * server to `int.Parse` unchecked; the whole redesign rests on the body being
+ * a date plus opaque row keys the server itself issued. A future "let's just
+ * send the contactId, it's right there" would be caught here.
+ */
+describe("<next-pre-check> saving", () => {
+  /** Bodies posted to `/api/embed/pre-check`. */
+  function postedBodies(fn: ReturnType<typeof mockFetch>): Record<string, unknown>[] {
+    return fn.mock.calls
+      .filter(
+        ([input, init]) =>
+          String(input).includes("/api/embed/pre-check") &&
+          (init as RequestInit | undefined)?.method === "POST",
+      )
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+  }
+
+  /** GET the list, POST through `onSave`. */
+  function mockSave(
+    onSave: (body: Record<string, unknown>) => Response,
+    listBody: unknown = OK_BODY,
+  ) {
+    return mockFetch((url, init) => {
+      if ((init as RequestInit | undefined)?.method === "POST") {
+        const body = JSON.parse(String((init as RequestInit).body));
+        return onSave(body as Record<string, unknown>);
+      }
+      return jsonResponse(listBody);
+    });
+  }
+
+  const saveBtn = (el: HTMLElement) =>
+    el.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="save"]');
+
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    delete (window as unknown as { __nextAuthSession?: unknown }).__nextAuthSession;
+    __resetLocaleSession();
+    document.documentElement.removeAttribute("lang");
+    window.history.replaceState(null, "", PAGE);
+    window.__nextTokenProvider = {
+      get: () => getAuthSession(HOST).getToken("pre-check"),
+      refresh: () => getAuthSession(HOST).refreshToken("pre-check"),
+    };
+    window.__nextSDKReady = Promise.resolve();
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+    window.history.replaceState(null, "", PAGE);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("renders a submit control on the list", async () => {
+    mockSave(() => jsonResponse({ registered: 1, cancelled: 0, locked: [] }));
+    const el = await mountSettled('event-date="2018-06-12"');
+    expect(saveBtn(el)).not.toBeNull();
+  });
+
+  it("posts ONLY { eventDate, selected } — no ids of any kind", async () => {
+    const fn = mockSave(() => jsonResponse({ registered: 1, cancelled: 0, locked: [] }));
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    el.shadowRoot!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked = true;
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() => expect(postedBodies(fn)).toHaveLength(1));
+    const body = postedBodies(fn)[0]!;
+
+    expect(Object.keys(body).sort()).toEqual(["eventDate", "selected"]);
+    expect(body.eventDate).toBe("2018-06-12");
+    expect(body.selected).toEqual(["9|4|2|0|2|17"]);
+    // The four legacy accepted and wrote blind.
+    expect(body).not.toHaveProperty("contactId");
+    expect(body).not.toHaveProperty("participantId");
+    expect(body).not.toHaveProperty("eventId");
+    expect(body).not.toHaveProperty("eventParticipantId");
+    expect(body).not.toHaveProperty("householdId");
+  });
+
+  it("sends the server's rowKey verbatim, not a reconstructed one", async () => {
+    const fn = mockSave(() => jsonResponse({ registered: 1, cancelled: 0, locked: [] }));
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    el.shadowRoot!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked = true;
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() => expect(postedBodies(fn)).toHaveLength(1));
+    expect(postedBodies(fn)[0]!.selected).toEqual([ROW.rowKey]);
+  });
+
+  it("omits an unticked row — absence is how a cancellation is expressed", async () => {
+    const fn = mockSave(() => jsonResponse({ registered: 0, cancelled: 1, locked: [] }));
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    el.shadowRoot!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked = false;
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() => expect(postedBodies(fn)).toHaveLength(1));
+    expect(postedBodies(fn)[0]!.selected).toEqual([]);
+  });
+
+  it("never sends a locked row, in either direction", async () => {
+    // The server refuses to write it anyway; including it would make the body
+    // claim something the widget did not offer the visitor.
+    const fn = mockSave(
+      () => jsonResponse({ registered: 0, cancelled: 0, locked: [ROW.rowKey] }),
+      {
+        ...OK_BODY,
+        members: [
+          {
+            contactId: 9,
+            participantName: "Check-me-in, Daddy",
+            rows: [
+              { ...ROW, eventParticipantId: 800, participationStatusId: 3, isLocked: true },
+            ],
+          },
+        ],
+      },
+    );
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() => expect(postedBodies(fn)).toHaveLength(1));
+    expect(postedBodies(fn)[0]!.selected).toEqual([]);
+  });
+
+  it("disables the control and says Saving… while in flight", async () => {
+    let release: ((r: Response) => void) | null = null;
+    mockSave(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }) as unknown as Response,
+    );
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() => expect(saveBtn(el)!.disabled).toBe(true));
+    expect(saveBtn(el)!.textContent).toBe("Saving…");
+
+    // The control disables synchronously, before the request leaves — so the
+    // POST may still be behind the token provider's own await when the
+    // assertion above passes. Wait for the handler before releasing it, or the
+    // pending fetch leaks into the next test.
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    release!(jsonResponse({ registered: 1, cancelled: 0, locked: [] }));
+  });
+
+  it("reports the saved count and reloads from the server", async () => {
+    const fn = mockSave(() => jsonResponse({ registered: 2, cancelled: 0, locked: [] }));
+    const el = await mountSettled('event-date="2018-06-12"');
+    const getsBefore = preCheckCalls(fn).length;
+
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() =>
+      expect(el.shadowRoot!.querySelector(".pc-notice--ok")).not.toBeNull(),
+    );
+    expect(el.shadowRoot!.textContent).toContain("2 people are checked in for");
+    // Never leave the old checkbox state on screen — the server is the truth.
+    expect(preCheckCalls(fn).length).toBeGreaterThan(getsBefore + 1);
+  });
+
+  it("uses the singular branch for one person", async () => {
+    mockSave(() => jsonResponse({ registered: 1, cancelled: 0, locked: [] }));
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() =>
+      expect(el.shadowRoot!.querySelector(".pc-notice--ok")).not.toBeNull(),
+    );
+    expect(el.shadowRoot!.textContent).toContain("1 person is checked in for");
+  });
+
+  it("says so when the save checked nobody in", async () => {
+    mockSave(() => jsonResponse({ registered: 0, cancelled: 0, locked: [] }));
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() =>
+      expect(el.shadowRoot!.querySelector(".pc-notice--ok")).not.toBeNull(),
+    );
+    expect(el.shadowRoot!.textContent).toContain("Nobody is checked in for");
+  });
+
+  it("adds the cancellation note when something was cancelled", async () => {
+    mockSave(() => jsonResponse({ registered: 1, cancelled: 2, locked: [] }));
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() =>
+      expect(el.shadowRoot!.querySelector(".pc-notice--ok")).not.toBeNull(),
+    );
+    expect(el.shadowRoot!.textContent).toContain("Anyone you unchecked has been removed.");
+  });
+
+  it("renders the stale-selection message and reloads on a 403", async () => {
+    const fn = mockSave(() =>
+      jsonResponse(
+        { error: "invalid_pre_check_selection", message: "unrecognised rows" },
+        403,
+      ),
+    );
+    const el = await mountSettled('event-date="2018-06-12"');
+    const getsBefore = preCheckCalls(fn).length;
+
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() =>
+      expect(el.shadowRoot!.querySelector(".pc-notice--warn")).not.toBeNull(),
+    );
+    expect(el.shadowRoot!.textContent).toContain("This page is out of date.");
+    // The server's English message is logged, never rendered.
+    expect(el.shadowRoot!.textContent).not.toContain("unrecognised rows");
+    // And the list is refreshed behind it.
+    await vi.waitFor(() =>
+      expect(preCheckCalls(fn).length).toBeGreaterThan(getsBefore + 1),
+    );
+  });
+
+  it("paints the sign-in panel when the save 401s", async () => {
+    mockSave(() => jsonResponse({ error: "auth_required", message: "x" }, 401));
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() =>
+      expect(el.shadowRoot!.textContent).toContain("sign-in link on this page"),
+    );
+    expect(el.shadowRoot!.querySelector('[data-action="retry"]')).toBeNull();
+  });
+
+  it("renders the error state with the catalogue sentence on a 500", async () => {
+    mockSave(() => jsonResponse({ error: "save_failed", message: "MP exploded" }, 500));
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() =>
+      expect(el.shadowRoot!.querySelector('[data-action="retry"]')).not.toBeNull(),
+    );
+    expect(el.shadowRoot!.textContent).toContain(
+      "We could not save your changes. Please try again.",
+    );
+    expect(el.shadowRoot!.textContent).not.toContain("MP exploded");
+  });
+
+  it("renders the catalogue sentence for pre_check_closed", async () => {
+    mockSave(() => jsonResponse({ error: "pre_check_closed", message: "out of window" }, 409));
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() =>
+      expect(el.shadowRoot!.textContent).toContain("Check-in is not open for that date."),
+    );
+  });
+
+  it("emits preCheckSaved with the counts", async () => {
+    mockSave(() => jsonResponse({ registered: 2, cancelled: 1, locked: ["9|4|2|800|2|17"] }));
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    const seen: Record<string, unknown>[] = [];
+    el.addEventListener("preCheckSaved", (e) =>
+      seen.push((e as CustomEvent).detail as Record<string, unknown>),
+    );
+
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]).toEqual({
+      eventDate: "2018-06-12",
+      registered: 2,
+      cancelled: 1,
+      locked: ["9|4|2|800|2|17"],
+    });
+  });
+
+  it("select all ticks every changeable row, leaving locked ones alone", async () => {
+    const fn = mockSave(() => jsonResponse({ registered: 1, cancelled: 0, locked: [] }), {
+      ...OK_BODY,
+      members: [
+        {
+          contactId: 9,
+          participantName: "Check-me-in, Daddy",
+          rows: [
+            ROW,
+            {
+              ...ROW,
+              rowKey: "9|4|3|800|2|17",
+              eventId: 3,
+              eventParticipantId: 800,
+              participationStatusId: 3,
+              isLocked: true,
+            },
+          ],
+        },
+      ],
+    });
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    el.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="select-all"]')!.click();
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() => expect(postedBodies(fn)).toHaveLength(1));
+    // The locked row is neither ticked nor sent.
+    expect(postedBodies(fn)[0]!.selected).toEqual([ROW.rowKey]);
+  });
+
+  it("clear all unticks every changeable row", async () => {
+    const fn = mockSave(() => jsonResponse({ registered: 0, cancelled: 1, locked: [] }), {
+      ...OK_BODY,
+      members: [
+        {
+          contactId: 9,
+          participantName: "Check-me-in, Daddy",
+          rows: [{ ...ROW, eventParticipantId: 500, participationStatusId: 2, isRegistered: true }],
+        },
+      ],
+    });
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    expect(
+      el.shadowRoot!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked,
+    ).toBe(true);
+
+    el.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="clear-all"]')!.click();
+    saveBtn(el)!.click();
+
+    await vi.waitFor(() => expect(postedBodies(fn)).toHaveLength(1));
+    expect(postedBodies(fn)[0]!.selected).toEqual([]);
+  });
+
+  it("does not post twice when the control is pressed twice", async () => {
+    let release: ((r: Response) => void) | null = null;
+    const fn = mockSave(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }) as unknown as Response,
+    );
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    saveBtn(el)!.click();
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    saveBtn(el)!.click();
+
+    expect(postedBodies(fn)).toHaveLength(1);
+    release!(jsonResponse({ registered: 1, cancelled: 0, locked: [] }));
+  });
+
+  it("renders no submit control in the empty state", async () => {
+    // Nothing to submit, so nothing that implies a write.
+    mockSave(
+      () => jsonResponse({ registered: 0, cancelled: 0, locked: [] }),
+      { ...OK_BODY, members: [] },
+    );
+    const el = await mountSettled('event-date="2025-05-20"');
+    expect(saveBtn(el)).toBeNull();
+  });
+});
