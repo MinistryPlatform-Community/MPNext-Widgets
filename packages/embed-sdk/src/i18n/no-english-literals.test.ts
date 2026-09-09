@@ -45,37 +45,38 @@ const NEWLINE = String.fromCharCode(10);
 /**
  * Remaining markup-embedded English literals per file.
  *
- * Baseline taken 2026-09-09, before any widget conversion. Lower an entry in
- * the same commit that converts the strings; delete it when it reaches 0.
+ * Lower an entry in the same commit that converts the strings, and delete it
+ * when it reaches 0. A file absent from this table must contain none at all.
+ *
+ * `event-finder.ts` is the Phase 1 pilot and is already absent: it went to 0.
  */
 const BUDGET: Record<string, number> = {
   "components/add-to-calendar.ts": 2,
-  "components/checkout-complete.ts": 1,
-  "components/checkout.ts": 14,
+  "components/checkout-complete.ts": 2,
+  "components/checkout.ts": 16,
   "components/custom-form.ts": 9,
-  "components/event-details.ts": 43,
-  "components/event-finder.ts": 15,
+  "components/event-details.ts": 44,
   "components/full-calendar-list.ts": 1,
   "components/full-calendar-modal.ts": 8,
   "components/full-calendar.ts": 4,
-  "components/group-details.ts": 18,
-  "components/group-finder.ts": 26,
+  "components/group-details.ts": 19,
+  "components/group-finder.ts": 27,
   "components/my-contribution-statement.ts": 8,
-  "components/my-giving.ts": 19,
+  "components/my-giving.ts": 20,
   "components/my-groups.ts": 9,
-  "components/my-household.ts": 29,
-  "components/my-invoices.ts": 13,
-  "components/my-pledges.ts": 9,
+  "components/my-household.ts": 37,
+  "components/my-invoices.ts": 27,
+  "components/my-pledges.ts": 10,
   "components/online-directory.ts": 19,
   "components/opportunity-details.ts": 16,
-  "components/opportunity-finder.ts": 17,
-  "components/pay.ts": 7,
+  "components/opportunity-finder.ts": 18,
+  "components/pay.ts": 8,
   "components/plan-your-visit.ts": 28,
   "components/pledge-campaign.ts": 14,
   "components/profile.ts": 23,
   "components/statement-preferences.ts": 7,
-  "components/subscriptions.ts": 5,
-  "components/user-menu.ts": 10,
+  "components/subscriptions.ts": 6,
+  "components/user-menu.ts": 11,
   "shared/custom-form.ts": 2,
 };
 

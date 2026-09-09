@@ -20,6 +20,8 @@
  *   // once after render: bindLiveValidation(form);
  */
 
+import { getLocaleSession, type Translator } from "../i18n";
+
 type ValidatableControl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
 /** Returns a friendly message string when the value is invalid, else null. */
@@ -38,6 +40,12 @@ export interface ValidateOptions {
   customValidators?: Record<string, CustomValidator>;
   /** Focus + scroll the first invalid control into view (default true). */
   focusFirstInvalid?: boolean;
+  /**
+   * Translator for the built-in messages. Widgets pass their own `this.t` so a
+   * form inside a `<div lang="es">` validates in Spanish even on an otherwise
+   * English page; omitting it falls back to the page-wide locale.
+   */
+  t?: Translator;
 }
 
 const DEFAULT_WRAPPER_SELECTOR =
@@ -105,26 +113,41 @@ function errorId(el: ValidatableControl): string {
   return `mpx-err-${el.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 
+/**
+ * The translator for this validation pass.
+ *
+ * Widgets pass `this.t`; anything else (a demo page, a direct call) gets the
+ * page-wide locale. Never `el.validationMessage` as a fallback — that string is
+ * localised by the *browser*, to the browser's UI language, which is a
+ * different language from the one the page is in more often than not.
+ */
+function translator(opts: ValidateOptions): Translator {
+  return opts.t ?? getLocaleSession().translator();
+}
+
 function resolveMessage(el: ValidatableControl, opts: ValidateOptions): string {
   const custom = opts.messages?.[el.name];
   if (custom) return custom;
   const fromData = (el as HTMLElement).dataset?.errorMsg;
   if (fromData) return fromData;
 
+  const t = translator(opts);
   const v = el.validity;
-  if (v.valueMissing) return "This field is required.";
+  if (v.valueMissing) return t("validation.required");
   if (v.typeMismatch && el instanceof HTMLInputElement && el.type === "email")
-    return "Enter a valid email address.";
+    return t("validation.email");
   if (v.typeMismatch && el instanceof HTMLInputElement && el.type === "url")
-    return "Enter a valid URL.";
-  if (v.patternMismatch) return el.title || "Please match the requested format.";
+    return t("validation.url");
+  // `title` is author-supplied copy describing the expected format, so it wins
+  // over the generic message when present.
+  if (v.patternMismatch) return el.title || t("validation.pattern");
   if (v.tooShort && el instanceof HTMLInputElement)
-    return `Please use at least ${el.minLength} characters.`;
+    return t("validation.tooShort", { min: el.minLength });
   if (v.tooLong && el instanceof HTMLInputElement)
-    return `Please use ${el.maxLength} characters or fewer.`;
-  if (v.rangeUnderflow || v.rangeOverflow) return "Value is out of range.";
-  if (v.stepMismatch) return "Please enter a valid value.";
-  return el.validationMessage || "Please correct this field.";
+    return t("validation.tooLong", { max: el.maxLength });
+  if (v.rangeUnderflow || v.rangeOverflow) return t("validation.outOfRange");
+  if (v.stepMismatch) return t("validation.invalidValue");
+  return t("validation.generic");
 }
 
 /** Compute the error message for a single control, or null when it is valid. */

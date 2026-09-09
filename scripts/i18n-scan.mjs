@@ -72,12 +72,37 @@ function stripComments(source) {
 }
 
 /**
- * Extract every template literal body, with its start offset in `source`.
+ * Extract every template literal body, with its start offset in `source`,
+ * **including templates nested inside `${…}` interpolations**.
+ *
+ * The nesting matters more than it sounds. These widgets build most conditional
+ * markup as a nested template inside a ternary:
+ *
+ *   ${filtered.length === 0
+ *     ? `<div class="empty">No invoices found.</div>`
+ *     : `<div class="table">…</div>`}
+ *
+ * A single-level scan masks the whole `${…}` and never sees "No invoices
+ * found." — which silently under-counted `my-invoices.ts` at 13 when it really
+ * had 31, and would have let a conversion "finish" with a third of the copy
+ * still hardcoded. So each span is re-scanned for templates of its own.
+ */
+function templateLiterals(source, baseOffset = 0) {
+  const spans = topLevelTemplates(source, baseOffset);
+  // Recurse into each body: within it, a nested template reads as top-level.
+  for (const span of [...spans]) {
+    spans.push(...templateLiterals(span.body, span.start));
+  }
+  return spans;
+}
+
+/**
+ * Templates at the current nesting level only.
  *
  * Hand-rolled rather than a regex because it has to know which quote style it
  * is inside: a backtick within a `"…"` string does not open a template.
  */
-function templateLiterals(source) {
+function topLevelTemplates(source, baseOffset) {
   const spans = [];
   let i = 0;
   const n = source.length;
@@ -122,7 +147,7 @@ function templateLiterals(source) {
         if (depth === 0 && c === "`") break;
         i++;
       }
-      spans.push({ start, body: source.slice(start, i) });
+      spans.push({ start: baseOffset + start, body: source.slice(start, i) });
       i++;
       continue;
     }
