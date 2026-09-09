@@ -17,4 +17,5 @@ export * from "./pledge-campaign";
 export * from "./profile";
 export * from "./statement-preferences";
 export * from "./subscription";
+export * from "./unsubscribe";
 export * from "./widgets";
