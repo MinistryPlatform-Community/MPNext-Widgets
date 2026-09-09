@@ -1,11 +1,29 @@
 # Legacy → Next widget comparison findings
 
-**80 items, filed 2026-09-08.** Every legacy MinistryPlatform widget at
-`mpi.ministryplatform.com/widgets` driven side by side with its `next-*` counterpart in
-this repo, both pointed at the **same MP instance**, so every data difference recorded
-here is a real difference and not two datasets. All 25 `next-*` elements were exercised
-signed out and signed in; money, dates and written rows were cross-checked against MP
-directly via the client-credentials API rather than read off the screen.
+**80 items, filed 2026-09-08**, plus C83 filed 2026-09-09 while remediating. Every legacy
+MinistryPlatform widget at `mpi.ministryplatform.com/widgets` driven side by side with its
+`next-*` counterpart in this repo, both pointed at the **same MP instance**, so every data
+difference recorded here is a real difference and not two datasets. All 25 `next-*` elements
+*at the time* were exercised signed out and signed in — **the roster is now 30**; the five
+newest have no comparison pass because they are the remediation. Money, dates and written
+rows were cross-checked against MP directly via the client-credentials API rather than read
+off the screen.
+
+> ### Resolved so far — 2026-09-09
+>
+> **C67** and **C73** (labels + localisation, `next-locale-selector`), then the four **Tier 1
+> missing widgets**: **C72** `next-unsubscribe`, **C69** `next-prayer-feedback`, **C70**
+> `next-subscribe-to-publication`, **C78** `next-pre-check`. Each carries a resolution section
+> at the foot of its own file, and a plan in [`Plans/`](Plans/).
+>
+> **C83** was filed *during* that work and resolved in it: `planYourVisitService` wrote
+> `Contacts.Status`, a column MP does not have. It is the one item here found by building
+> rather than by comparing, which is worth noting — the comparison run could not have caught
+> it, because the widget's own C24 defect means the code path never runs.
+>
+> Everything else is open. [`Plans/`](Plans/) has the remediation design for most of it;
+> [`Plans/ROADMAP-missing-widgets.md`](Plans/ROADMAP-missing-widgets.md) covers the six
+> legacy widgets still without a counterpart.
 
 These are **`C`-numbered** deliberately. The numeric items in `.claude/TODO/` are the
 dependency-upgrade backlog; this is a separate axis of work and does not continue that
@@ -90,14 +108,14 @@ Fix these before the per-widget items they explain; each is one cause with many 
 [C65](C65-opportunity-details-no-show-full-address.md) ·
 [C66](C66-checkout-no-receipt-template-id.md) no receipt template — "receipt" appears nowhere in the repo
 
-**Legacy widgets with no counterpart at all** — 11 of 36 legacy tags
-[C72](C72-no-one-click-unsubscribe-widget.md) **one-click unsubscribe — an unsubscribe link in a sent email has nowhere to land** ·
-[C70](C70-no-subscribe-to-publication-widget.md) anonymous email-verified opt-in ·
+**Legacy widgets with no counterpart at all** — was 11 of 36 legacy tags, **now 6**
+[C72](C72-no-one-click-unsubscribe-widget.md) **RESOLVED** — `next-unsubscribe` ·
+[C70](C70-no-subscribe-to-publication-widget.md) **RESOLVED** — `next-subscribe-to-publication` ·
+[C78](C78-no-pre-check-widget.md) **RESOLVED** — `next-pre-check` ·
+[C69](C69-no-prayer-feedback-widget.md) **RESOLVED** — `next-prayer-feedback` ·
+[C73](C73-no-locale-selector-no-localisation.md) **RESOLVED** — `next-locale-selector` ·
 [C76](C76-no-mission-trip-widgets.md) the whole mission-trip domain, three tags ·
-[C78](C78-no-pre-check-widget.md) event pre-check / check-in QR ·
-[C69](C69-no-prayer-feedback-widget.md) prayer & feedback ·
 [C71](C71-no-rss-reader-widget.md) publication feed ·
-[C73](C73-no-locale-selector-no-localisation.md) **RESOLVED 2026-09-09** — `next-locale-selector` ·
 [C74](C74-no-smart-link-widget.md) (what `giving.aspx` actually is) ·
 [C75](C75-no-smart-frame-widget.md) ·
 [C52](C52-about-me-contact-attributes-no-counterpart.md) self-service contact attributes ·
@@ -236,7 +254,7 @@ from the pledge confirmation and cancellation — they are the evidence those em
 | C40–C49 | payments | 10/10 |
 | C50–C59 | people | 8/10 |
 | C60–C79 | static config parity | 20/20 |
-| C80–C89 | cross-cutting, filed at consolidation | 3 |
+| C80–C89 | cross-cutting, filed at consolidation | 4 — C83 added 2026-09-09 during remediation |
 | C90–C99 | harness | 0 — none found |
 
 Five blocks filled completely, which means the run was **block-limited, not

@@ -21,7 +21,7 @@ real ones (see *What the new widgets already do better*, below).
 
 | Question | Decision |
 |---|---|
-| The eleven missing legacy widgets | **Ranked roadmap, not eleven plans** → [`ROADMAP-missing-widgets.md`](ROADMAP-missing-widgets.md) |
+| The eleven missing legacy widgets | **Ranked roadmap, not eleven plans** → [`ROADMAP-missing-widgets.md`](ROADMAP-missing-widgets.md). **Tier 1 was then picked up and built (2026-09-09)**, so four of them now have a plan each, written at implementation time as the roadmap intended. |
 | Labels (C67), theming (C68), locale (C73) | **All three committed as real workstreams** → [`CROSS-5`](CROSS-5-theming-labels-locale.md) |
 | What `next-pay` is | **A sandbox stand-in for a vendor-hosted payment page.** Resolves C48; reshapes the token contract → [`checkout-pay.md`](checkout-pay.md) |
 | Sequencing driver | **First real church cutover** — ordered by what blocks a pilot going live |
@@ -43,7 +43,11 @@ statement widgets exist as a pair precisely because C38 is about the split.
 | [`CROSS-3-accessibility.md`](CROSS-3-accessibility.md) | C05 · C10 · C22 · C45 · C28 · C35 · C29 · C08 · C54 · C19 |
 | [`CROSS-4-attribute-plumbing-and-naming.md`](CROSS-4-attribute-plumbing-and-naming.md) | C39 · C79 |
 | [`CROSS-5-theming-labels-locale.md`](CROSS-5-theming-labels-locale.md) | C68 · C67 · C73 · C77 · C36 · the copy rows of C09/C18/C19/C37 |
-| [`ROADMAP-missing-widgets.md`](ROADMAP-missing-widgets.md) | C52 · C69–C78 |
+| [`ROADMAP-missing-widgets.md`](ROADMAP-missing-widgets.md) | C52 · C69–C78 — **Tier 1 built; six gaps remain** |
+| [`unsubscribe.md`](unsubscribe.md) | C72 — **built** (`next-unsubscribe`) |
+| [`prayer-feedback.md`](prayer-feedback.md) | C69 — **built** (`next-prayer-feedback`) |
+| [`subscribe-to-publication.md`](subscribe-to-publication.md) | C70 — **built** (`next-subscribe-to-publication`) |
+| [`pre-check.md`](pre-check.md) | C78 — **built** (`next-pre-check`) |
 | [`add-to-calendar.md`](add-to-calendar.md) | C06 |
 | [`checkout-pay.md`](checkout-pay.md) | C40 · C41 · C42 · C43 · C47 · C48 · C49 · C66 |
 | [`contribution-statements.md`](contribution-statements.md) | C34 · C38 · C62 (+ C30, C35) |
@@ -117,15 +121,40 @@ being open questions once labels land.
 
 ### Stage 4 — roadmap
 
-[`ROADMAP-missing-widgets.md`](ROADMAP-missing-widgets.md), starting with the C72 question that
-could be answered in an afternoon.
+~~[`ROADMAP-missing-widgets.md`](ROADMAP-missing-widgets.md), starting with the C72 question that
+could be answered in an afternoon.~~
+
+**Partly done, 2026-09-09.** The C72 question was answered (no — MP generates no unsubscribe
+link, so the severity stood) and all four **Tier 1** widgets were built ahead of stages 1–3,
+because they are the items that block a cutover outright rather than degrading one. Six gaps
+remain; the roadmap's Tier 2–4 rankings are still open, with one caveat recorded there: every
+estimate in that file was made without the legacy **server** source, which is on disk at
+`S:\MP\mp-Widgets` and settled several questions the file treats as unknown.
 
 ---
 
-## Three primitives that pay for themselves
+## Three primitives that pay for themselves — **all three built, 2026-09-09**
 
 Named across several plans. Building any of them for one widget without extracting it is how we
 end up with four hand-rolled versions.
+
+**They now exist, and the Tier 1 build is the proof they were worth extracting** — four widgets
+consumed them and none hand-rolled one:
+
+| Primitive | Where |
+|---|---|
+| `sendTemplateMessage` | `src/services/messageTemplateService.ts` — two named methods, one per MP template table |
+| Sealed anonymous action tokens | `src/lib/embed/action-token.ts` (stateless) + `pending-action.ts` (single-use, payload in the store) |
+| An anonymous-write route convention | `src/lib/embed/anonymous-write.ts` — `withAnonymousWrite` |
+
+Two notes for whoever consumes them next. The **token primitive is two things, not one**,
+because C69 needed a store-backed handle (a 2000-character payload signs into a 3KB URL) and
+C72 needed a stateless one (an unsubscribe link must survive 180 days in a mail archive) — the
+single-use one is built on the stateless one. And `withAnonymousWrite` means the *user* is
+anonymous, **not the request**: a widget JWT is still required and the origin still
+allowlisted.
+
+The original descriptions follow, for the reasoning.
 
 1. **`sendTemplateMessage(templateId, to, mergeData)`** on the MP provider — wanted by C11
    (group inquiries), C66 (payment receipts), C69 and C70 (roadmap).
