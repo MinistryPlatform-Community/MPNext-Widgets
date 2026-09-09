@@ -59,30 +59,62 @@ export interface AnonymousWriteLimit {
   windowSeconds?: number;
 }
 
+/** What a `limits` callback is given, before any bucket has been checked. */
+export interface AnonymousWriteLimitContext {
+  claims: WidgetClaims;
+  origin: string;
+  /** Client IP, already resolved through the proxy headers. */
+  ip: string;
+  /**
+   * The parsed JSON body, or `{}` when there was none or it was malformed.
+   *
+   * Malformed JSON is deliberately **not** an error here: every consumer
+   * validates with a schema and answers `validation_failed`, and a caller
+   * sending garbage still has to be metered — so the limits run first and the
+   * route decides what to say about the shape afterwards.
+   */
+  body: unknown;
+}
+
 export interface AnonymousWriteOptions {
   /** Passed to `requireWidgetAuth`. */
   widget: string | string[];
   /**
    * Buckets to check, in order. Keep the cheapest and broadest first: an IP
    * bucket rejects a flood without hashing anything.
+   *
+   * Pass a **callback** when a bucket key depends on the request body — a hash
+   * of the submitted email address, say. The callback runs after
+   * authentication and after the body is parsed, which is the point: without
+   * it, a route had to read and hash the body *itself, before calling this
+   * helper*, so an unauthenticated caller got a JSON parse and a SHA-256 done
+   * for them. That was the shape C72 had to work around, and it contradicted
+   * this helper's own "limits run before anything else" promise.
    */
-  limits: AnonymousWriteLimit[];
+  limits:
+    | AnonymousWriteLimit[]
+    | ((
+        ctx: AnonymousWriteLimitContext
+      ) => AnonymousWriteLimit[] | Promise<AnonymousWriteLimit[]>);
   /**
    * Deny when the rate-limit store is unreachable. Defaults to **true** — the
    * opposite of `checkRateLimit`'s own default, because every caller here
-   * writes records or sends email. Pass `false` only for a route that does
-   * neither.
+   * writes records or sends email.
+   *
+   * Pass `false` for a route that does neither, **and for the one case where
+   * failing closed is worse than failing open: a compliance path.** An
+   * unsubscribe must work during a store outage — the recipient's only
+   * remaining move is to report the message as spam, so a Redis blip would
+   * cost the church deliverability. That exception is narrow, and it holds only
+   * because the caller already holds the capability and the write is idempotent
+   * and confined to their own record. It is not a general licence.
    */
   failClosed?: boolean;
 }
 
-export interface AnonymousWriteContext {
-  claims: WidgetClaims;
-  origin: string;
+export interface AnonymousWriteContext extends AnonymousWriteLimitContext {
   /** CORS headers for the resolved origin. Put them on every response. */
   cors: HeadersInit;
-  /** Client IP, already resolved through the proxy headers. */
-  ip: string;
 }
 
 /** `{ error, message }` — the machine-code envelope every embed route uses. */
@@ -135,8 +167,26 @@ export async function withAnonymousWrite(
 
   const cors = getCorsHeaders(origin);
   const failClosed = options.failClosed ?? true;
+  const ip = getClientIp(req);
 
-  for (const bucket of options.limits) {
+  // Read the body once, here, and hand the same value to the limits callback
+  // and the handler. A `Request` body can only be consumed once, so owning it
+  // is what lets a bucket key depend on it without the route parsing it before
+  // authentication. Handlers must use `ctx.body`, never `req.json()`.
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    body = {};
+  }
+
+  const limitContext: AnonymousWriteLimitContext = { claims, origin, ip, body };
+  const buckets =
+    typeof options.limits === "function"
+      ? await options.limits(limitContext)
+      : options.limits;
+
+  for (const bucket of buckets) {
     const result = await checkRateLimit(bucket.key, bucket.limit, {
       windowSeconds: bucket.windowSeconds,
       failClosed,
@@ -149,7 +199,7 @@ export async function withAnonymousWrite(
   }
 
   try {
-    return await handler({ claims, origin, cors, ip: getClientIp(req) });
+    return await handler({ ...limitContext, cors });
   } catch (error) {
     console.error("Anonymous write failed:", error);
     return errorResponse("internal_error", "Internal server error", 500, cors);

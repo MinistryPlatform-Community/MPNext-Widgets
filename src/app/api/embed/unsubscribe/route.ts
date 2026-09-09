@@ -51,7 +51,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { buildOptionsResponse, getClientIp } from "@/lib/embed/auth";
+import { buildOptionsResponse } from "@/lib/embed/auth";
 import { withAnonymousWrite, errorResponse } from "@/lib/embed/anonymous-write";
 import { sha256Hex } from "@/lib/embed/crypto";
 import { verifyActionToken } from "@/lib/embed/action-token";
@@ -141,56 +141,45 @@ function guardUnsubscribeToken(
   return { contactGuid, publicationId: publicationId > 0 ? publicationId : null };
 }
 
-/** Body as sent, or `{}`. A malformed body becomes `validation_failed` below. */
-async function readJsonBody(req: NextRequest): Promise<unknown> {
-  try {
-    return await req.json();
-  } catch {
-    return {};
-  }
-}
-
 /**
- * The capability string the per-capability rate limit is keyed on.
+ * The rate-limit key for the capability this request presents.
  *
  * Read from the raw body **before** validation, because the limit has to be in
  * place for a caller who is sending garbage too. The sealed token wins over
  * `cg` for the same reason it wins in the handler: it is the narrower
  * capability, so it is the one to meter.
+ *
+ * Hashed so a `Contact_GUID` never reaches Redis in cleartext.
  */
-function capabilityValue(raw: unknown): string {
+async function capabilityHash(raw: unknown): Promise<string> {
   const body = (raw ?? {}) as { cg?: unknown; token?: unknown };
-  if (typeof body.token === "string" && body.token) return body.token;
-  if (typeof body.cg === "string" && body.cg) return body.cg;
-  return "";
+  const capability =
+    (typeof body.token === "string" && body.token) ||
+    (typeof body.cg === "string" && body.cg) ||
+    "";
+  return capability ? sha256Hex(capability) : "none";
 }
 
 export async function POST(req: NextRequest) {
-  // The body is read (and hashed) ahead of `withAnonymousWrite` because the
-  // per-capability limit key depends on it, and every limit must be checked
-  // before the handler runs. A JSON parse and one SHA-256 is the whole cost of
-  // that ordering.
-  const raw = await readJsonBody(req);
-  const capability = capabilityValue(raw);
-  // Hashed so a Contact_GUID never reaches Redis in cleartext, and truncated
-  // again before it reaches a log line.
-  const capHash = capability ? await sha256Hex(capability) : "none";
-
   return withAnonymousWrite(
     req,
     {
       // Least privilege, not `"*"`: `next-subscriptions` needs this for its
       // future "stop all bulk email" affordance (C55); nothing else does.
       widget: ["unsubscribe", "subscriptions"],
-      limits: [
+      // A callback, because the per-capability key depends on the body. The
+      // helper parses the body once and runs this after authentication, so an
+      // unauthenticated caller never gets a JSON parse and a SHA-256 done for
+      // them — which is what reading it here in the route used to cost.
+      limits: async ({ ip, body }) => [
         // 10/min/IP: generous for a household behind one NAT plus a re-click,
         // tight enough that an IP is not a bulk tool.
-        { key: `unsub:ip:${getClientIp(req)}`, limit: 10 },
+        { key: `unsub:ip:${ip}`, limit: 10 },
         // 5/min per hashed capability. This is the one that matters: an
         // attacker holding one scraped GUID and a botnet defeats an IP limit,
         // and this caps them at "unsubscribed, undone, unsubscribed" — already
         // the honest outcome of holding the link.
-        { key: `unsub:cap:${capHash}`, limit: 5 },
+        { key: `unsub:cap:${await capabilityHash(body)}`, limit: 5 },
       ],
       // The helper defaults to fail-*closed*, which is right for a route that
       // sends email. It is wrong here: a Redis blip must not break the one path
@@ -201,8 +190,8 @@ export async function POST(req: NextRequest) {
       // the recipient's only remaining move is to report the mail as spam.
       failClosed: false,
     },
-    async ({ cors }) => {
-      const parsed = UnsubscribeRequestSchema.safeParse(raw);
+    async ({ cors, body: rawBody }) => {
+      const parsed = UnsubscribeRequestSchema.safeParse(rawBody);
       if (!parsed.success) return fail(ERRORS.validationFailed, cors);
 
       const { action } = parsed.data;
@@ -261,6 +250,10 @@ export async function POST(req: NextRequest) {
         // Never the GUID and never the address: a `cg` is bearer capability, so
         // CLAUDE.md's "never log token material" covers it. A short hash prefix
         // is enough to correlate a burst of failures.
+        // Hashed here rather than up front: this is the only place it is
+        // needed now that the rate-limit key is computed by the `limits`
+        // callback, and one SHA-256 on a failure path costs nothing.
+        const capHash = await capabilityHash(rawBody);
         console.error(
           `[unsubscribe] MP update failed (cap ${capHash.slice(0, 8)}, scope ${scope}, action ${action}):`,
           error instanceof Error ? error.message : error

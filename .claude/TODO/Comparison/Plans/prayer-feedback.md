@@ -466,13 +466,31 @@ Existing (already in all three catalogues — reuse, do not re-add):
 | `feedback_type_not_found` | 422 | posted type is not in `Feedback_Types` | "That option is no longer available. Please choose another." |
 | `template_not_configured` | 422 | anonymous submit with no verification template | "This form is not fully configured. Please contact the church." |
 | `invalid_return_url` | 400 | `returnUrl` not same-origin with `Origin` | "That request was not valid. Please try again." |
-| `email_send_failed` | 502 | template missing, no `From_Contact`, or send threw | "We could not send the confirmation email. Please try again." |
+| `email_send_failed` | 500 | template missing, no `From_Contact`, or send threw | "We could not send the confirmation email. Please try again." |
 | `verification_invalid` | 400 | envelope signature bad, `kind` wrong, or malformed | "This link is not valid. Please submit the form again." |
 | `verification_expired` | 410 | envelope `exp` in the past — proved from the signature, no store read | "This link has expired. Please submit the form again." |
-| `verification_used` | 409 | envelope valid, store key absent (legacy `feedbackAlreadyVerified`) | "This request has already been submitted. Thank you!" |
-| `feedback_save_failed` | 502 | the MP insert failed | "We could not submit your request. Please try again." |
+| `verification_used` | 409 | envelope valid, store key absent (legacy `feedbackAlreadyVerified`) | "This link has already been used." |
+| `feedback_save_failed` | 500 | the MP insert failed | "We could not submit your request. Please try again." |
 
 All nine are named identically to their catalogue key, so `WIRE_CODE_KEYS` needs no entry.
+
+### Two rulings applied to this table — 2026-09-09
+
+**Status codes are 500, not 502**, for `email_send_failed` and `feedback_save_failed`. Not
+because 502 is inaccurate — MP is genuinely an upstream service — but because the machine code
+already carries the meaning, which is the point of the `{ error, message }` envelope, and the
+widget branches on the code and never on the status. A second, partially-overlapping signal in
+3 routes out of 30 costs a future reader the question *"does a 500 elsewhere mean something
+different?"*. An upstream-failure convention, if wanted, is a `CROSS-` item across all 30 embed
+routes. Same ruling applied to C70 and C72.
+
+**The three `verification_*` sentences are written neutrally**, because C70 and C72 now share
+these keys and a message three widgets share cannot be phrased for one of them. *"This request
+has already been submitted. Thank you!"* is prayer-intake wording that would read oddly as a
+newsletter fallback. `next-subscribe-to-publication` branches on the code into its own state
+copy and so never renders the shared sentence — but a future widget may render it directly,
+which is exactly why it must stay neutral. Widget-specific warmth belongs in the widget's own
+namespace, not in `errors.*`.
 
 ---
 

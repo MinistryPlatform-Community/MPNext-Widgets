@@ -37,6 +37,14 @@ export const WIRE_CODE_KEYS: Record<string, MessageKey> = {
   // `errors.save_failed` spelling of the same words in three catalogues — which
   // is exactly what this table is for.
   save_failed: "errors.saveFailed",
+  // `withAnonymousWrite` refuses anything but POST. A visitor can do nothing
+  // about it — it means the widget built a bad request — so it deliberately
+  // degrades to the generic sentence rather than surfacing an HTTP concept.
+  // Mapped explicitly rather than left to `errorText`'s unmapped-code fallback,
+  // so `error-codes.test.ts` can see that the choice was made on purpose. It
+  // reached `main` with no entry at all because the guard scanned only route
+  // files, and this code is emitted from `src/lib/embed/`.
+  method_not_allowed: "errors.generic",
 };
 
 /**

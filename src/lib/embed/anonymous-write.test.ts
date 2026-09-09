@@ -6,6 +6,7 @@ import {
   buildReturnUrl,
   errorResponse,
   type AnonymousWriteContext,
+  type AnonymousWriteLimitContext,
 } from './anonymous-write';
 import { __resetSessionStoreForTests } from './session-store';
 import * as auth from './auth';
@@ -235,6 +236,141 @@ describe('withAnonymousWrite', () => {
 
       expect(res.status).toBe(200);
       err.mockRestore();
+    });
+  });
+
+  describe('body ownership', () => {
+    function withBody(payload: unknown): NextRequest {
+      return new NextRequest('https://widgets.example/api/embed/prayer-feedback/submit', {
+        method: 'POST',
+        headers: { origin: ORIGIN, authorization: 'Bearer token', 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    it('parses the body once and hands it to the handler', async () => {
+      const handler = okHandler();
+      await withAnonymousWrite(
+        withBody({ email: 'a@example.com' }),
+        { widget: 'prayer-feedback', limits: [] },
+        handler
+      );
+
+      expect(handler.mock.calls[0][0].body).toEqual({ email: 'a@example.com' });
+    });
+
+    it('gives the handler {} for a malformed body rather than erroring', async () => {
+      // Deliberate: every consumer validates with a schema and answers
+      // `validation_failed`, and a caller sending garbage must still be metered.
+      const req = new NextRequest('https://widgets.example/x', {
+        method: 'POST',
+        headers: { origin: ORIGIN, authorization: 'Bearer token', 'content-type': 'application/json' },
+        body: 'not json',
+      });
+      const handler = okHandler();
+
+      const res = await withAnonymousWrite(req, { widget: 'prayer-feedback', limits: [] }, handler);
+
+      expect(res.status).toBe(200);
+      expect(handler.mock.calls[0][0].body).toEqual({});
+    });
+
+    it('gives the handler {} when there is no body at all', async () => {
+      const handler = okHandler();
+      await withAnonymousWrite(makeRequest(), { widget: 'prayer-feedback', limits: [] }, handler);
+
+      expect(handler.mock.calls[0][0].body).toEqual({});
+    });
+  });
+
+  describe('limits as a callback', () => {
+    function withBody(payload: unknown): NextRequest {
+      return new NextRequest('https://widgets.example/x', {
+        method: 'POST',
+        headers: { origin: ORIGIN, authorization: 'Bearer token', 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    it('receives the parsed body, so a bucket key can depend on it', async () => {
+      // The whole reason the callback form exists: without it a route had to
+      // read and hash the body itself, before this helper ran, so an
+      // unauthenticated caller got a JSON parse and a SHA-256 done for them.
+      const limits = vi.fn((ctx: AnonymousWriteLimitContext) => [
+        { key: `k:${ctx.ip}`, limit: 5 },
+      ]);
+
+      await withAnonymousWrite(
+        withBody({ email: 'a@example.com' }),
+        { widget: 'prayer-feedback', limits },
+        okHandler()
+      );
+
+      expect(limits).toHaveBeenCalledTimes(1);
+      expect(limits.mock.calls[0][0]).toMatchObject({
+        body: { email: 'a@example.com' },
+        ip: '1.2.3.4',
+        origin: ORIGIN,
+        claims: PUBLIC_CLAIMS,
+      });
+    });
+
+    it('runs after authentication, not before', async () => {
+      vi.spyOn(auth, 'requireWidgetAuth').mockRejectedValue(new Error('nope'));
+      const limits = vi.fn(() => [{ key: 'k', limit: 5 }]);
+
+      const res = await withAnonymousWrite(
+        withBody({ email: 'a@example.com' }),
+        { widget: 'prayer-feedback', limits },
+        okHandler()
+      );
+
+      expect(res.status).toBe(401);
+      expect(limits).not.toHaveBeenCalled();
+    });
+
+    it('is not consulted for a rejected method', async () => {
+      const limits = vi.fn(() => [{ key: 'k', limit: 5 }]);
+
+      await withAnonymousWrite(
+        makeRequest('GET'),
+        { widget: 'prayer-feedback', limits },
+        okHandler()
+      );
+
+      expect(limits).not.toHaveBeenCalled();
+    });
+
+    it('accepts an async callback', async () => {
+      const limits = vi.fn(async ({ body }: { body: unknown }) => [
+        { key: `email:${(body as { email: string }).email}`, limit: 1 },
+      ]);
+      const options = { widget: 'prayer-feedback', limits };
+
+      expect(
+        (await withAnonymousWrite(withBody({ email: 'a@e.com' }), options, okHandler())).status
+      ).toBe(200);
+      expect(
+        (await withAnonymousWrite(withBody({ email: 'a@e.com' }), options, okHandler())).status
+      ).toBe(429);
+      // A different address is a different bucket.
+      expect(
+        (await withAnonymousWrite(withBody({ email: 'b@e.com' }), options, okHandler())).status
+      ).toBe(200);
+    });
+
+    it('still enforces the buckets it returns before the handler', async () => {
+      const handler = okHandler();
+      const options = {
+        widget: 'prayer-feedback',
+        limits: () => [{ key: 'cb:blocked', limit: 1 }],
+      };
+
+      await withAnonymousWrite(makeRequest(), options, handler);
+      const blocked = await withAnonymousWrite(makeRequest(), options, handler);
+
+      expect(blocked.status).toBe(429);
+      expect(handler).toHaveBeenCalledTimes(1);
     });
   });
 
