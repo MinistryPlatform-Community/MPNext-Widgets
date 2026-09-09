@@ -6,6 +6,10 @@ as #18.
 work is ~0 because it cannot be finished.
 **Status:** attempted on branch `chore/typescript-7`, reverted. The bump itself is
 clean — the blocker is `typescript-eslint`, which **hard-refuses** TypeScript 7.0.
+Re-checked 2026-09-08: upstream is unchanged, but the block turned out to be a
+*resolution* problem rather than a capability one, and there is now a **verified**
+workspace-scoped workaround that does put the repo on TS 7. Still not recommended
+yet — see "What the 2026-09-08 re-check found".
 
 ## Why
 
@@ -130,12 +134,114 @@ Adopting the dual layout is a deliberate architectural decision with a real
 downside, not a version bump. If it is ever wanted, it should be its own item
 with its own justification — probably not worth it for `npx tsc` speed alone.
 
+## What the 2026-09-08 re-check found
+
+### Upstream has not moved
+
+| Check | 2026-09-08 |
+|---|---|
+| `npm view typescript dist-tags` | `latest` **7.0.2**; `next` **7.1.0-dev.20260908.1** — 7.1 is in nightlies |
+| `npm view typescript-eslint@latest peerDependencies` | 8.70.0, `typescript: ">=4.8.4 <6.1.0"` — unchanged |
+| `npm view eslint-config-next@latest dependencies` | 16.3.4, `typescript-eslint: "^8.46.0"` — unchanged |
+
+So retry criteria 1–3 below still all fail. But two things about the *shape* of the
+block were wrong or unknown on 2026-09-07, and both change the calculus.
+
+### The throw is in three packages, not one
+
+`grep -rl "does not support TS"` across the installed tree hits
+`typescript-eslint`, **`@typescript-eslint/parser`**, and
+**`@typescript-eslint/eslint-plugin`**. All three run the same gate at module load:
+
+```js
+const [versionMajor] = ts.versionMajorMinor.split('.').map(Number);
+if (versionMajor >= 7) { throw new Error('typescript-eslint does not support TS 7.0.'); }
+```
+
+Two dead ends follow, so nobody has to retry them:
+
+- **Hand-assembling the TS layer from the sub-packages does not dodge it** — the
+  parser and the plugin each throw on their own.
+- **Dropping `eslint-config-next/typescript` and keeping only `core-web-vitals` does
+  not help either.** `core-web-vitals.js` extends `dist/index.js`, which `require`s
+  `typescript-eslint` on line 5 — the exact frame in the recorded stack trace. The
+  whole of `eslint-config-next` is gated, not just its TS half.
+
+The gate reads only `require('typescript').versionMajorMinor`, i.e. it is a
+**resolution** question, not a capability question. That is what makes the option
+below work.
+
+### This repo runs *no* type-aware lint rules
+
+This corrects the premise of the "split compiler" objection recorded above.
+
+`eslint-config-next/typescript` spreads `typescript-eslint.configs.recommended` —
+**not** `recommendedTypeChecked`. Verified with `eslint --print-config src/proxy.ts`:
+113 rules total, of which 20 are `@typescript-eslint/*`, and **every one of them is
+syntactic** (`no-explicit-any`, `no-unused-vars`, `ban-ts-comment`, …). There is no
+`project` or `projectService` anywhere in `eslint.config.mjs` or in
+`eslint-config-next`'s own `parserOptions`. `eslint.config.mjs` also ignores
+`packages/**`, so the SDK and types packages are not linted at all.
+
+typescript-eslint is therefore used here as a **parser**, not as a type checker. The
+hazard the dual-install was rejected over — two compilers silently disagreeing, with
+the faster one not gating CI — does not apply to an arrangement where only the
+*linter's parser* is on the older version. The residual risk is TS 7-only **syntax**
+that a TS 6 parser cannot read, and TS 7.0 is a port that introduces none.
+
+### The option that does deliver TS 7 today: a workspace-scoped linter
+
+`pnpm.packageExtensions` was tried first and **does not work** — injecting
+`dependencies.typescript` into the `@typescript-eslint/*` packages loses to their own
+`peerDependencies` declaration, and typescript-eslint still resolved 7.0.2.
+
+What does work is pnpm's actual peer-resolution mechanism: peers resolve **per
+subtree**, which is why the tree already carries four separately-peered
+`typescript-eslint@8.69.0_<hash>` directories. Move the ESLint stack into its own
+workspace package that pins TS 6, and leave the root on TS 7.
+
+Verified end-to-end in a throwaway workspace on 2026-09-08:
+
+- root `package.json` → `typescript: 7.0.2`; `tools/lint/package.json` →
+  `typescript: 6.0.3` + `typescript-eslint`
+- `require('typescript/package.json').version` was **7.0.2** at the root and
+  **6.0.3** inside `tools/lint`
+- `require('typescript-eslint')` from `tools/lint` **loaded without throwing**
+  (13 configs; it reported `ts.versionMajorMinor === '6.0'`)
+- `eslint --config tools/lint/eslint.config.mjs "src/**/*.ts"`, run from the TS 7
+  root, linted root source files and both `no-explicit-any` and `no-unused-vars`
+  fired normally
+
+**This is not the dual-install rejected above.** There, the package literally named
+`typescript` was TS 6, so `next build` and VS Code silently stayed on the old
+compiler — the fatal objection. Here the root `typescript` **is** 7.0.2, so
+`next build`, `npx tsc`, and the IDE all use TS 7. Only the linter's parser is on 6,
+and per the section above it does no type analysis.
+
+Costs, none of them hidden:
+
+- a new `tools/lint` workspace package (`pnpm-workspace.yaml` gains `tools/*`)
+- `pnpm lint` becomes `eslint --config tools/lint/eslint.config.mjs .`
+- the `reactVersion` workaround in `eslint.config.mjs` (see TODO 18) must point its
+  `createRequire` at the repo root, not at the config file's own directory
+- two `typescript` entries in the lockfile until 7.1 lands and this is collapsed
+- upside: the seven peer warnings from the 2026-09-07 attempt disappear, because the
+  peer is satisfied inside `tools/lint`
+
+**Recommendation:** this is a real architectural change carried only to buy compile
+speed (~11s → ~0.9s), and TS 7.1 — where the compiler API lands and all of this
+collapses to a version bump — is already publishing nightlies. Default to waiting.
+Adopt the workspace-scoped linter only if the typecheck time starts actually costing
+something, and if adopted, file it as its own item so the unwind is tracked.
+
 ## Retry criteria
 
 Do not reattempt until **all** of these hold:
 
 1. `npm view typescript dist-tags` shows a `latest` of **7.1.x or newer** (7.1 is
-   where the new compiler API lands).
+   where the new compiler API lands). As of 2026-09-08 `latest` is still 7.0.2, but
+   `next` is `7.1.0-dev.20260908.1`, so 7.1 is already in nightlies — this criterion
+   is the closest of the three to clearing.
 2. `npm view typescript-eslint@latest peerDependencies.typescript` accepts that
    version — i.e. upstream issue
    https://github.com/typescript-eslint/typescript-eslint/issues/10940 is closed
@@ -146,6 +252,10 @@ Do not reattempt until **all** of these hold:
 
 Item #18 is the sibling of this one — the same plugin chain, one ESLint major
 behind. It is plausible both clear in the same `eslint-config-next` release.
+
+If TS 7 is wanted **before** these clear, the workspace-scoped linter above is the
+only arrangement found so far that delivers it without putting `next build` on the
+old compiler. Treat that as a separate, deliberate decision — not as this item.
 
 ## Steps (when retrying)
 

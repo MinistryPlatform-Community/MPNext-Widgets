@@ -27,12 +27,12 @@ match the Node 24 runtime (Vercel runs 24).
 
 | # | File | Risk | Rough size |
 |---|------|------|-----------|
-| 3 | `03-typescript-7.md` | **blocked upstream** — attempted 2026-09-07, not merged | wait for TS 7.1 |
+| 3 | `03-typescript-7.md` | **blocked upstream** — attempted 2026-09-07, not merged; re-checked 2026-09-08 (a verified workaround exists, still not advised) | wait for TS 7.1 |
 | 17 | `17-better-auth-vitest5-peer.md` | **suppressed 2026-09-08** — warning gone; remove the rule when upstream widens | 5 min to retire |
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire. **Now the sole gate on a warning-free `pnpm install`** | 15 min |
 | 37 | `37-playwright-local-network-access-blocks-widget-e2e.md` | **done 2026-09-08** — and the Local Network Access diagnosis was a **misdiagnosis**; do not add the launch flag | — |
 | 38 | `38-mp-widget-overrides-css-never-injected.md` | either MP widgets render unbranded in prod, or the build maintains dead plumbing — read the file, it is one browser check | 30 min to triage |
-| 39 | `39-full-calendar-density-dots-first-paint.md` | none — a decoration that has never rendered on its intended view; decide whether to keep it | 1 hour |
+| 39 | `39-full-calendar-density-dots-first-paint.md` | **done 2026-09-08** — the decoration was dropped, not reordered; do not reintroduce `dayCellDidMount` | — |
 
 Item 37 (widget E2E) is **done (2026-09-08)** — and, like item 7, the blocker the
 file first recorded was a **misdiagnosis**. Chromium's Local Network Access
@@ -57,6 +57,19 @@ API at all. The documented `@typescript/typescript6` side-by-side install makes
 the gate green but leaves `next build` and the IDE on TS 6, so it is not an
 upgrade. See `03-typescript-7.md` for the diagnostics, the measured baselines, and
 the retry criteria. Item 19 was filed from that attempt.
+
+Re-checked 2026-09-08: upstream is unchanged (`typescript-eslint@8.70.0` still caps
+`typescript` at `<6.1.0`), but two findings were added to the file. The gate is a
+`ts.versionMajorMinor` check in **three** packages (`typescript-eslint`, the parser,
+*and* the plugin), so it is a **resolution** problem — and dropping
+`eslint-config-next/typescript` does not evade it, because `core-web-vitals` extends
+the same gated `index.js`. Second, this repo runs **no type-aware lint rules** at all
+(`eslint-config-next/typescript` is `configs.recommended`, 20 syntactic rules, no
+`projectService`), which is why a *verified* arrangement now exists: pin TS 6 inside a
+`tools/lint` workspace package and let peer-per-subtree resolution keep the root on
+TS 7. Unlike the rejected side-by-side install, `next build` and the IDE stay on the
+new compiler. Still **not recommended yet** — TS 7.1 is already in nightlies and
+collapses all of it to a version bump. Read the file before acting on either.
 
 Item 7 (FullCalendar CDN pin `6.1.21` → `7.1.0`) is **done (2026-09-08)** — and
 the blocker the 2026-09-07 attempt recorded was a **misdiagnosis**, which is why
@@ -90,7 +103,8 @@ Three more of the file's findings did not survive contact with the 7.1.0 bundle:
   `role="gridcell"` day cell itself, so the dots now append straight to it,
   which is both the fix and less fragile than the old lookup. The dots were
   nonetheless **already absent on first paint under 6.1.21** for an unrelated
-  ordering reason — filed as item 39.
+  ordering reason — filed as item 39, and resolved by deleting the decoration
+  (see below); the hook is no longer passed at all.
 - **`eventColor` did not become background-only.** The bundle resolves
   `color: eventUi.color || options.eventColor` for normal events, with a
   separate `options.backgroundEventColor`. Both `eventColor: "#004C97"` and the
@@ -177,6 +191,21 @@ first Apply. `month` is now the selected option, and `#main-calendar` carries no
 `view` attribute, so the two agree on load. `grid` is one of the two views that
 actually mount FullCalendar, and it was driven from the console throughout item
 7's first attempt; it is now selectable from the page.
+
+Item 39 (density dots never appeared on the first paint of `week`) is
+**done (2026-09-08)** — resolved by **deleting the feature**, not by fixing the
+ordering. The `dayCellDidMount` hook only ever painted on `week` (its own guard
+excluded `grid`, and those are the only two views that mount FullCalendar), and
+`week` is a `timeGridWeek` that already draws every event as a positioned,
+timed block — so the dots duplicated what the view shows and had never once
+rendered on a first mount. `addDensityDots()`, the hook, the orphaned private
+`toDateKey()` and the `getDensityDotCount` import are gone from
+`full-calendar.ts`; `buildEventCountMap` / `eventCountsByDate` and the
+`.nw-fc-density-dot{,s}` rules stay, because the **mini calendar** renders its
+own dots on a path that runs after the data loads and has always worked. The
+test that used to assert the dots now asserts their absence
+(`registers no day-cell hook — the FC density dots are gone`), so the dead path
+cannot drift back in. Do not reintroduce a calendar-level dot decoration.
 
 Item 14 is **not** a dependency upgrade — it was found while browser-testing
 item 11 on 2026-09-07: Better Auth has no `database` configured and silently
