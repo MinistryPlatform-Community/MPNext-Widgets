@@ -32,7 +32,7 @@ export async function GET(
     const groupId = parseInt(id, 10);
     if (isNaN(groupId) || groupId <= 0) {
       return NextResponse.json(
-        { error: "Invalid groupId: must be a positive integer" },
+        { error: "invalid_request", message: "Invalid groupId: must be a positive integer" },
         { status: 400, headers: buildFallbackCorsHeaders(origin) }
       );
     }
@@ -58,7 +58,7 @@ export async function GET(
 
     if (!group) {
       return NextResponse.json(
-        { error: "Group not found" },
+        { error: "group_not_found", message: "Group not found" },
         { status: 404, headers: buildFallbackCorsHeaders(origin) }
       );
     }

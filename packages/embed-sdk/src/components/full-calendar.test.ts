@@ -411,7 +411,16 @@ describe("<next-full-calendar> view lifecycle", () => {
       end: new Date(2026, 8, 13),
       view: { title: "September 2026" },
     });
-    const title = () => shadow(el).querySelector("#nw-fc-title")?.textContent;
+    // Normalise Unicode spaces before comparing. The title now comes from
+    // `Intl.DateTimeFormat.formatRange`, which sets the en dash with U+2009 thin
+    // spaces rather than the ASCII spaces the old hand-built string used. That
+    // is correct typography and it is the platform's choice, not ours \u2014 pinning
+    // the exact code points would make this test a hostage to the ICU version
+    // shipped by whatever Node or browser runs it.
+    const title = () =>
+      shadow(el)
+        .querySelector("#nw-fc-title")
+        ?.textContent?.replace(/[\u2000-\u200a\u202f\u00a0]/g, " ");
     expect(title()).toBe("Sep 6 \u2013 12, 2026");
 
     // A week that straddles a month boundary names both months.

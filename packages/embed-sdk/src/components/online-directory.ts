@@ -90,8 +90,13 @@ export class OnlineDirectoryWidget extends MPNextWidget {
   connectedCallback() {
     this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
     this.seedFromAttributes();
-    this.render();
-    this.init();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish; it hides inside the access check this
+    // widget already waits on.
+    void this.initLocale().then(() => {
+      this.render();
+      this.init();
+    });
   }
 
   /** Public hook so demo pages can force a reload (e.g. after sign-in). */
@@ -135,10 +140,12 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       if (res.status === 401) {
         this.access = "login";
         this.render();
-        this.attachShellListeners();
         return;
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(body, "onlineDirectory.loadFailed"));
+      }
       const data: { canAccess: boolean } = await res.json();
       if (!data.canAccess) {
         this.access = "denied";
@@ -147,9 +154,13 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       }
     } catch (err) {
       this.access = "error";
-      this.error = err instanceof Error ? err.message : "Unable to load the directory.";
+      // `errorText` has already translated an API code; anything else (a
+      // dropped connection) becomes this widget's own load message.
+      this.error =
+        err instanceof Error
+          ? err.message
+          : this.t("onlineDirectory.loadFailed");
       this.render();
-      this.attachShellListeners();
       this.emit("directoryError", { error: this.error });
       return;
     }
@@ -162,14 +173,12 @@ export class OnlineDirectoryWidget extends MPNextWidget {
     }
     this.access = "ok";
     this.emit("directoryReady", {});
+    // `render()` paints the minimum-length prompt and wires the form itself.
     this.render();
-    this.attachFormListeners();
 
-    // Initial state: prompt for a search (or run one if attributes seeded it).
+    // Run a search straight away when an attribute seeded the keyword.
     if (this.keyword.trim().length >= this.config.minimumSearchLength) {
       this.search();
-    } else {
-      this.showResultsMessage("info", `Enter at least ${this.config.minimumSearchLength} characters to search the directory.`);
     }
   }
 
@@ -186,6 +195,16 @@ export class OnlineDirectoryWidget extends MPNextWidget {
   }
 
   // ── Search ──
+
+  /**
+   * The prompt shown until the keyword is long enough. The minimum is church
+   * configuration, so the sentence is pluralised on it.
+   */
+  private minLengthHint(): string {
+    return this.t("onlineDirectory.minLengthHint", {
+      count: this.config.minimumSearchLength,
+    });
+  }
 
   private readFormState() {
     const kw = this.root.querySelector<HTMLInputElement>("#od-keyword");
@@ -206,7 +225,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
     if (keyword.length < this.config.minimumSearchLength) {
       this.members = [];
       this.updateChip();
-      this.showResultsMessage("info", `Enter at least ${this.config.minimumSearchLength} characters to search the directory.`);
+      this.showResultsMessage("info", this.minLengthHint());
       return;
     }
 
@@ -218,14 +237,17 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       if (this.congregationId) params.set("congregationId", this.congregationId);
       const res = await this.fetch(`/api/embed/online-directory?${params.toString()}`);
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data, "onlineDirectory.searchFailed"));
       }
       const data: { members: DirectoryMember[] } = await res.json();
       this.members = data.members || [];
       this.emit("directorySearched", { count: this.members.length });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Search failed.";
+      const msg =
+        err instanceof Error
+          ? err.message
+          : this.t("onlineDirectory.searchFailed");
       this.emit("directoryError", { error: msg });
       this.showResultsMessage("warning", msg);
       this.searching = false;
@@ -324,7 +346,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
   private async sendEmail(contactId: number) {
     const form = this.root.querySelector<HTMLFormElement>(`#od-email-form-${contactId}`);
     if (!form) return;
-    if (!validateForm(form).valid) return;
+    if (!validateForm(form, { t: this.t }).valid) return;
 
     const subject = form.querySelector<HTMLInputElement>('[name="subject"]')?.value.trim() || "";
     const body = form.querySelector<HTMLTextAreaElement>('[name="body"]')?.value.trim() || "";
@@ -338,17 +360,23 @@ export class OnlineDirectoryWidget extends MPNextWidget {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ toContactId: contactId, subject, body }),
       });
-      const data: { success: boolean; message?: string } = await res
-        .json()
-        .catch(() => ({ success: false }));
-      if (!data.success) throw new Error(data.message || "Unable to send the message.");
+      const data: { success: boolean; error?: string; message?: string } =
+        await res.json().catch(() => ({ success: false }));
+      if (!data.success) {
+        throw new Error(this.errorText(data, "onlineDirectory.sendFailed"));
+      }
       this.emailSentFor.add(contactId);
       this.composeFor = null;
       this.emit("directoryEmailSent", { contactId });
       this.updateResults();
     } catch (err) {
       const errEl = form.querySelector<HTMLElement>(".nw-od-email-error");
-      if (errEl) errEl.textContent = err instanceof Error ? err.message : "Unable to send the message.";
+      if (errEl) {
+        errEl.textContent =
+          err instanceof Error
+            ? err.message
+            : this.t("onlineDirectory.sendFailed");
+      }
       if (sendBtn) sendBtn.disabled = false;
     }
   }
@@ -357,37 +385,41 @@ export class OnlineDirectoryWidget extends MPNextWidget {
 
   render() {
     if (this.access === "checking") {
-      this.root.innerHTML = `<div class="nw-od">${this.state(this.spinnerSvg(), "Loading directory…")}</div>`;
+      this.root.innerHTML = `<div class="nw-od">${this.state(this.spinnerSvg(), this.t("onlineDirectory.loading"))}</div>`;
       return;
     }
     if (this.access === "login") {
       this.root.innerHTML = `
         <div class="nw-od">
           <div class="nw-od-panel">
-            <p>Please sign in to view the directory.</p>
-            <button class="nw-od-btn" data-action="login">Sign In</button>
+            <p>${this.escapeHtml(this.t("onlineDirectory.signInRequired"))}</p>
+            <button class="nw-od-btn" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button>
           </div>
         </div>`;
+      this.attachShellListeners();
       return;
     }
     if (this.access === "denied") {
       this.root.innerHTML = `
         <div class="nw-od">
-          <div class="nw-od-msg nw-od-msg--warning">You do not have access to the directory.</div>
+          <div class="nw-od-msg nw-od-msg--warning">${this.escapeHtml(this.t("onlineDirectory.accessDenied"))}</div>
         </div>`;
       return;
     }
     if (this.access === "error") {
       this.root.innerHTML = `
         <div class="nw-od">
-          <div class="nw-od-msg nw-od-msg--warning">${this.escapeHtml(this.error || "Unable to load the directory.")}</div>
-          <button class="nw-od-btn" data-action="retry">Try Again</button>
+          <div class="nw-od-msg nw-od-msg--warning">${this.escapeHtml(this.error || this.t("onlineDirectory.loadFailed"))}</div>
+          <button class="nw-od-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
         </div>`;
+      this.attachShellListeners();
       return;
     }
 
     // access === "ok"
-    const congOptions = [`<option value="">All Congregations</option>`]
+    const congOptions = [
+      `<option value="">${this.escapeHtml(this.t("onlineDirectory.allCongregations"))}</option>`,
+    ]
       .concat(
         this.config.congregations.map(
           (c) =>
@@ -396,29 +428,41 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       )
       .join("");
 
+    const placeholder = this.t("onlineDirectory.searchPlaceholder", {
+      count: this.config.minimumSearchLength,
+    });
+
     this.root.innerHTML = `
       <div class="nw-od">
-        <h2 class="nw-od-title">Directory</h2>
+        <h2 class="nw-od-title">${this.escapeHtml(this.t("onlineDirectory.title"))}</h2>
         <form id="od-form" class="nw-od-form">
           <div class="nw-od-field">
-            <label for="od-congregation">Congregation</label>
+            <label for="od-congregation">${this.escapeHtml(this.t("fields.congregation"))}</label>
             <select id="od-congregation" class="nw-od-select">${congOptions}</select>
           </div>
           <div class="nw-od-field">
-            <label for="od-keyword">Search by name, phone, or email</label>
+            <label for="od-keyword">${this.escapeHtml(this.t("onlineDirectory.searchLabel"))}</label>
             <div class="nw-od-search">
               <input id="od-keyword" type="search" class="nw-od-input" autocomplete="off"
-                placeholder="Type at least ${this.config.minimumSearchLength} characters…"
+                placeholder="${this.escapeAttr(placeholder)}"
                 value="${this.escapeAttr(this.keyword)}">
               <div id="od-chip" class="nw-od-chip" style="display:none">
                 <span id="od-chip-name"></span>
-                <button type="button" class="nw-od-chip-clear" data-action="clear-household" aria-label="Clear family filter">&times;</button>
+                <button type="button" class="nw-od-chip-clear" data-action="clear-household" aria-label="${this.escapeAttr(this.t("onlineDirectory.clearFamilyFilter"))}">&times;</button>
               </div>
             </div>
           </div>
         </form>
         <div id="od-results" class="nw-od-results"></div>
       </div>`;
+
+    // Listeners are bound here rather than by the caller: a locale change
+    // re-renders through `render()` alone, and a shell rebuilt without them
+    // would leave the search form inert.
+    this.attachFormListeners();
+    this.updateChip();
+    if (this.members.length) this.updateResults();
+    else this.showResultsMessage("info", this.minLengthHint());
   }
 
   private updateChip() {
@@ -427,7 +471,9 @@ export class OnlineDirectoryWidget extends MPNextWidget {
     if (!chip || !name) return;
     if (this.householdFilter) {
       chip.style.display = "";
-      name.textContent = `${this.householdFilter.name} Family`.trim();
+      name.textContent = this.t("onlineDirectory.familyChip", {
+        name: this.householdFilter.name,
+      }).trim();
     } else {
       chip.style.display = "none";
     }
@@ -437,7 +483,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
     const container = this.root.querySelector<HTMLElement>("#od-results");
     if (!container) return;
     if (type === "loading") {
-      container.innerHTML = `<div class="nw-od-state">${this.spinnerSvg()}<span>Searching…</span></div>`;
+      container.innerHTML = `<div class="nw-od-state">${this.spinnerSvg()}<span>${this.escapeHtml(this.t("onlineDirectory.searching"))}</span></div>`;
       return;
     }
     container.innerHTML = `<div class="nw-od-msg nw-od-msg--${type}">${this.escapeHtml(text)}</div>`;
@@ -448,20 +494,20 @@ export class OnlineDirectoryWidget extends MPNextWidget {
     if (!container) return;
 
     if (this.members.length === 0) {
-      container.innerHTML = `<div class="nw-od-msg nw-od-msg--warning">No results found.</div>`;
+      container.innerHTML = `<div class="nw-od-msg nw-od-msg--warning">${this.escapeHtml(this.t("onlineDirectory.noResults"))}</div>`;
       return;
     }
 
     const cards = this.members.map((m) => this.renderCard(m)).join("");
     const viewMore =
       this.members.length > 20
-        ? `<div class="nw-od-msg nw-od-msg--info">Showing the first results — refine your search to narrow them down.</div>`
+        ? `<div class="nw-od-msg nw-od-msg--info">${this.escapeHtml(this.t("onlineDirectory.truncated"))}</div>`
         : "";
     container.innerHTML = `<div class="nw-od-grid">${cards}</div>${viewMore}`;
     this.attachResultsListeners();
     // Live-validate any open compose form.
     const openForm = this.root.querySelector<HTMLFormElement>("[id^='od-email-form-']");
-    if (openForm) bindLiveValidation(openForm);
+    if (openForm) bindLiveValidation(openForm, { t: this.t });
   }
 
   private renderCard(m: DirectoryMember): string {
@@ -481,25 +527,33 @@ export class OnlineDirectoryWidget extends MPNextWidget {
     const actions: string[] = [];
     if (!this.hideBirthdayIcon && m.dateOfBirthMonthDay && m.dateOfBirthShort) {
       const href = this.buildBirthdayIcs(m.displayName, m.dateOfBirthMonthDay);
+      // The service also sends `dateOfBirthShort`, but it builds it from a
+      // hardcoded English month table, so re-format the MM-DD it sends
+      // alongside it and keep that string only as a fallback.
+      const label =
+        this.formatMonthDay(m.dateOfBirthMonthDay) || m.dateOfBirthShort;
       actions.push(
-        `<a class="nw-od-action" href="${href}" download="birthday.ics" title="Add birthday to calendar">${this.cakeSvg()}<span>${this.escapeHtml(m.dateOfBirthShort)}</span></a>`
+        `<a class="nw-od-action" href="${href}" download="birthday.ics" title="${this.escapeAttr(this.t("onlineDirectory.addBirthday"))}">${this.cakeSvg()}<span>${this.escapeHtml(label)}</span></a>`
       );
     }
     if (!this.hideEmail && m.canEmail) {
       const sent = this.emailSentFor.has(m.contactId);
+      const label = sent
+        ? this.t("onlineDirectory.sent")
+        : this.t("fields.email");
       actions.push(
-        `<a class="nw-od-action" href="#" data-action="email" data-contact-id="${m.contactId}" title="Email">${this.mailSvg()}<span>${sent ? "Sent" : "Email"}</span></a>`
+        `<a class="nw-od-action" href="#" data-action="email" data-contact-id="${m.contactId}" title="${this.escapeAttr(this.t("fields.email"))}">${this.mailSvg()}<span>${this.escapeHtml(label)}</span></a>`
       );
     }
     if (!this.hideAddress && m.address) {
       const q = encodeURIComponent(m.address);
       actions.push(
-        `<a class="nw-od-action" href="https://www.google.com/maps?q=${q}" target="_blank" rel="noopener" title="${this.escapeAttr(m.address)}">${this.mapSvg()}<span>Map</span></a>`
+        `<a class="nw-od-action" href="https://www.google.com/maps?q=${q}" target="_blank" rel="noopener" title="${this.escapeAttr(m.address)}">${this.mapSvg()}<span>${this.escapeHtml(this.t("onlineDirectory.map"))}</span></a>`
       );
     }
     if (!this.hideFamilyLink && m.householdId && m.householdId > 0) {
       actions.push(
-        `<a class="nw-od-action" href="#" data-action="filter-household" data-household-id="${m.householdId}" data-household-name="${this.escapeAttr(m.householdName || "")}" title="View family">${this.familySvg()}<span>Family</span></a>`
+        `<a class="nw-od-action" href="#" data-action="filter-household" data-household-id="${m.householdId}" data-household-name="${this.escapeAttr(m.householdName || "")}" title="${this.escapeAttr(this.t("onlineDirectory.viewFamily"))}">${this.familySvg()}<span>${this.escapeHtml(this.t("onlineDirectory.family"))}</span></a>`
       );
     }
     const actionsHtml = actions.length ? `<div class="nw-od-actions">${actions.join("")}</div>` : "";
@@ -524,25 +578,42 @@ export class OnlineDirectoryWidget extends MPNextWidget {
   private renderCompose(m: DirectoryMember): string {
     return `
       <form id="od-email-form-${m.contactId}" class="nw-od-email" novalidate>
-        <div class="nw-od-email-title">Email ${this.escapeHtml(m.displayName)}</div>
+        <div class="nw-od-email-title">${this.escapeHtml(
+          this.t("onlineDirectory.emailTitle", { name: m.displayName }),
+        )}</div>
         <div class="nw-od-field">
-          <label>Subject${requiredStar()}</label>
+          <label>${this.escapeHtml(this.t("onlineDirectory.subject"))}${requiredStar()}</label>
           <input class="nw-od-input" name="subject" required>
         </div>
         <div class="nw-od-field">
-          <label>Message${requiredStar()}</label>
+          <label>${this.escapeHtml(this.t("fields.message"))}${requiredStar()}</label>
           <textarea class="nw-od-input" name="body" rows="3" maxlength="2000" required></textarea>
         </div>
         <div class="nw-od-email-error"></div>
         <div class="nw-od-email-buttons">
-          <button type="button" class="nw-od-btn nw-od-btn--sm" data-action="send-email" data-contact-id="${m.contactId}">Send</button>
-          <button type="button" class="nw-od-btn nw-od-btn--ghost nw-od-btn--sm" data-action="cancel-email">Cancel</button>
+          <button type="button" class="nw-od-btn nw-od-btn--sm" data-action="send-email" data-contact-id="${m.contactId}">${this.escapeHtml(this.t("onlineDirectory.send"))}</button>
+          <button type="button" class="nw-od-btn nw-od-btn--ghost nw-od-btn--sm" data-action="cancel-email">${this.escapeHtml(this.t("common.cancel"))}</button>
         </div>
       </form>`;
   }
 
   private phoneLink(phone: string): string {
     return `<a href="tel:${this.escapeAttr(phone)}">${this.escapeHtml(phone)}</a>`;
+  }
+
+  /**
+   * "Sep 10" for an `MM-DD` birthday, in the widget's locale.
+   *
+   * A birthday carries no year, so the current one stands in: the wall-clock
+   * parsing in `fmt` never shifts the day, and the year is not rendered.
+   */
+  private formatMonthDay(monthDay: string): string {
+    const m = monthDay.match(/^(\d{2})-(\d{2})$/);
+    if (!m) return "";
+    return this.fmt.date(
+      `${new Date().getFullYear()}-${m[1]}-${m[2]}`,
+      "monthDay",
+    );
   }
 
   /** Build an all-day birthday ICS (current year) as a data: URL. */
@@ -552,7 +623,9 @@ export class OnlineDirectoryWidget extends MPNextWidget {
     const year = new Date().getFullYear();
     const date = `${year}${m[1]}${m[2]}`;
     const nl = "%0A";
-    const summary = `SUMMARY:${encodeURIComponent(`Happy Birthday ${name}!`)}`;
+    const summary = `SUMMARY:${encodeURIComponent(
+      this.t("onlineDirectory.birthdaySummary", { name }),
+    )}`;
     return `data:text/calendar;charset=utf8,BEGIN:VCALENDAR${nl}VERSION:2.0${nl}BEGIN:VEVENT${nl}DTSTART;VALUE=DATE:${date}${nl}${summary}${nl}RRULE:FREQ=YEARLY${nl}END:VEVENT${nl}END:VCALENDAR${nl}`;
   }
 

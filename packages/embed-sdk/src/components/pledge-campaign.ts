@@ -57,11 +57,6 @@ interface HouseholdMemberLite {
   mobilePhoneNumber: string | null;
 }
 
-const CURRENCY = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
-
 /**
  * `next-pledge-campaign` — campaign progress display + make-a-pledge form.
  *
@@ -118,8 +113,12 @@ export class PledgeCampaignWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
-    this.render();
-    this.init();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish.
+    void this.initLocale().then(() => {
+      this.render();
+      this.init();
+    });
   }
 
   /** Re-run the load — exposed so the demo page can refresh on sign-in. */
@@ -170,7 +169,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
 
     const campaignId = this.resolveCampaignId();
     if (!campaignId) {
-      this.error = "No pledge campaign specified.";
+      this.error = this.t("pledgeCampaign.notSpecified");
       this.loading = false;
       this.render();
       this.attachListeners();
@@ -190,8 +189,10 @@ export class PledgeCampaignWidget extends MPNextWidget {
       ]);
 
       if (!campaignRes.ok) {
-        if (campaignRes.status === 404) throw new Error("Pledge campaign not found.");
-        throw new Error(`HTTP ${campaignRes.status}`);
+        // A 404 and a route-reported error code land in the same place: a
+        // translated sentence, with "no campaign found" as the fallback.
+        const body = await campaignRes.json().catch(() => ({}));
+        throw new Error(this.errorText(body, "pledgeCampaign.notFound"));
       }
       const data: { campaign: PledgeCampaign; userHasAlreadyPledged: boolean } =
         await campaignRes.json();
@@ -210,7 +211,8 @@ export class PledgeCampaignWidget extends MPNextWidget {
         title: this.campaign.title,
       });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "No pledge campaign found.";
+      this.error =
+        err instanceof Error ? err.message : this.t("pledgeCampaign.notFound");
       this.campaign = null;
       this.loading = false;
       this.render();
@@ -259,12 +261,12 @@ export class PledgeCampaignWidget extends MPNextWidget {
     if (!this.isAcceptingPledges()) {
       this.message = {
         type: "warning",
-        text: "This Campaign is no longer accepting new Pledges.",
+        text: this.t("pledgeCampaign.closed"),
       };
     } else if (this.userHasAlreadyPledged) {
       this.message = {
         type: "warning",
-        text: "You have already made a Pledge for this Campaign. Please ensure you want to pledge again.",
+        text: this.t("pledgeCampaign.alreadyPledged"),
       };
     }
   }
@@ -285,8 +287,8 @@ export class PledgeCampaignWidget extends MPNextWidget {
     const form = this.root.querySelector<HTMLFormElement>("#pc-form");
     if (!form) return;
 
-    if (!validateForm(form).valid) {
-      this.setMessage("warning", "Please complete the pledge campaign form.");
+    if (!validateForm(form, { t: this.t }).valid) {
+      this.setMessage("warning", this.t("validation.formIncomplete"));
       return;
     }
 
@@ -296,11 +298,13 @@ export class PledgeCampaignWidget extends MPNextWidget {
     const last = this.fieldValue("#pc-last-installment");
     if (this.pastCampaignEndDate(last)) {
       const end = this.campaign?.endDate
-        ? this.formatShortDate(this.campaign.endDate)
+        ? this.fmt.date(this.campaign.endDate, "numeric")
         : "";
       this.setMessage(
         "danger",
-        `You cannot give past the campaign end date${end ? ` (${end})` : ""}.`
+        end
+          ? this.t("pledgeCampaign.pastEndDateOn", { date: end })
+          : this.t("pledgeCampaign.pastEndDate")
       );
       return;
     }
@@ -336,7 +340,9 @@ export class PledgeCampaignWidget extends MPNextWidget {
         await res.json().catch(() => ({ success: false, pledgeId: null }));
 
       if (!data.success) {
-        const msg = data.message || "Unable to save your pledge.";
+        // The route's `message` is English debug text, so it is never rendered;
+        // `errorText` translates the machine code when there is one.
+        const msg = this.errorText(data, "pledgeCampaign.saveFailed");
         this.setMessage("danger", msg);
         this.emit("pledgeError", { error: msg });
         this.setSubmitDisabled(false);
@@ -344,9 +350,10 @@ export class PledgeCampaignWidget extends MPNextWidget {
       }
 
       const displayName = this.getDisplayName(payload.firstName, payload.lastName);
+      // A campaign's own thank-you is church-authored copy and wins as written.
       const thankYou =
         this.campaign?.onlineThankYouMessage?.trim() ||
-        `Thank you! Your response for ${displayName} has been received. If desired, click the button below to respond for another household member.`;
+        this.t("pledgeCampaign.thankYou", { name: displayName });
 
       this.submitted = true;
       this.emit("pledgeSaved", { pledgeId: data.pledgeId });
@@ -354,7 +361,8 @@ export class PledgeCampaignWidget extends MPNextWidget {
       this.attachListeners();
       this.setMessage("success", thankYou);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Pledge save failed.";
+      const msg =
+        err instanceof Error ? err.message : this.t("errors.network");
       this.setMessage("danger", msg);
       this.emit("pledgeError", { error: msg });
       this.setSubmitDisabled(false);
@@ -372,7 +380,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
       const text = select.options[select.selectedIndex]?.text ?? "";
       if (text.trim()) return text.replace(/,/g, "").trim();
     }
-    return `${firstName} ${lastName}`.trim() || "your household";
+    return `${firstName} ${lastName}`.trim() || this.t("pledgeCampaign.yourHousehold");
   }
 
   // ── Total / installment math (port of CalculateTotalPledge) ─────────────
@@ -427,7 +435,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
     }
 
     const display = this.root.querySelector<HTMLElement>("#pc-total-value");
-    if (display) display.textContent = CURRENCY.format(this.totalPledge);
+    if (display) display.textContent = this.fmt.currency(this.totalPledge);
   }
 
   private useOneTime(amount: number) {
@@ -568,7 +576,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
       });
     }
 
-    if (form) bindLiveValidation(form);
+    if (form) bindLiveValidation(form, { t: this.t });
     this.recalcTotal();
   }
 
@@ -632,10 +640,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
       if (!res.ok) return;
       const data: { hasPledged: boolean } = await res.json();
       if (data.hasPledged) {
-        this.setMessage(
-          "warning",
-          "You have already made a Pledge for this Campaign. Please ensure you want to pledge again."
-        );
+        this.setMessage("warning", this.t("pledgeCampaign.alreadyPledged"));
       } else {
         const container = this.root.querySelector<HTMLElement>("#pc-message");
         if (container && this.isAcceptingPledges()) container.style.display = "none";
@@ -657,13 +662,13 @@ export class PledgeCampaignWidget extends MPNextWidget {
 
   render() {
     if (this.loading) {
-      this.root.innerHTML = `<div class="pc">${this.renderState(this.spinnerSvg(), "Loading campaign…")}</div>`;
+      this.root.innerHTML = `<div class="pc">${this.renderState(this.spinnerSvg(), this.t("pledgeCampaign.loading"))}</div>`;
       return;
     }
     if (this.error || !this.campaign) {
       this.root.innerHTML = `
         <div class="pc">
-          <div class="pc-state pc-error"><p>${this.escapeHtml(this.error || "No pledge campaign found.")}</p></div>
+          <div class="pc-state pc-error"><p>${this.escapeHtml(this.error || this.t("pledgeCampaign.notFound"))}</p></div>
         </div>`;
       return;
     }
@@ -699,12 +704,17 @@ export class PledgeCampaignWidget extends MPNextWidget {
     return `
       <div class="pc-detail">
         ${img}
-        <h1 class="pc-title">${this.escapeHtml(c.title || "Pledge Campaign")}</h1>
+        <h1 class="pc-title">${this.escapeHtml(c.title || this.t("pledgeCampaign.defaultTitle"))}</h1>
         ${description}
-        <h2 class="pc-progress-title">Progress</h2>
+        <h2 class="pc-progress-title">${this.escapeHtml(this.t("pledgeCampaign.progress"))}</h2>
         <div class="pc-progress">
-          <h4 class="pc-progress-sub">${CURRENCY.format(c.pledged)} pledged of ${CURRENCY.format(goal)} goal</h4>
-          <svg width="100%" height="19" role="img" aria-label="Campaign progress">
+          <h4 class="pc-progress-sub">${this.escapeHtml(
+            this.t("pledgeCampaign.pledgedOfGoal", {
+              pledged: this.fmt.currency(c.pledged),
+              goal: this.fmt.currency(goal),
+            })
+          )}</h4>
+          <svg width="100%" height="19" role="img" aria-label="${this.escapeAttr(this.t("pledgeCampaign.progressBarLabel"))}">
             <defs>
               <linearGradient id="pc-gradient">
                 <stop offset="0%" stop-color="#1b88b0"></stop>
@@ -716,8 +726,16 @@ export class PledgeCampaignWidget extends MPNextWidget {
             <rect x="${receivedX}%" y="0" width="2" height="19" fill="#000"></rect>
           </svg>
           <p class="pc-legend">
-            <span class="pc-dot pc-dot--received"></span>${Number(receivedPct).toLocaleString()}% received
-            <span class="pc-dot pc-dot--pledged"></span>${Number(pledgedPct).toLocaleString()}% pledged
+            <span class="pc-dot pc-dot--received"></span>${this.escapeHtml(
+              this.t("pledgeCampaign.receivedPercent", {
+                percent: this.fmt.percent(receivedPct),
+              })
+            )}
+            <span class="pc-dot pc-dot--pledged"></span>${this.escapeHtml(
+              this.t("pledgeCampaign.pledgedPercent", {
+                percent: this.fmt.percent(pledgedPct),
+              })
+            )}
           </p>
         </div>
       </div>`;
@@ -730,8 +748,8 @@ export class PledgeCampaignWidget extends MPNextWidget {
     if (c.forceLogin && !this.isAuthenticated) {
       return `
         <div class="pc-form-wrap pc-login-panel">
-          <p>Please sign in to make a pledge for this campaign.</p>
-          <button class="pc-btn pc-btn--primary" type="button" data-action="login">Sign In</button>
+          <p>${this.escapeHtml(this.t("pledgeCampaign.signInPrompt"))}</p>
+          <button class="pc-btn pc-btn--primary" type="button" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button>
         </div>`;
     }
 
@@ -742,10 +760,10 @@ export class PledgeCampaignWidget extends MPNextWidget {
 
     return `
       <div class="pc-form-wrap">
-        <h2 class="pc-form-title">Create a Pledge</h2>
+        <h2 class="pc-form-title">${this.escapeHtml(this.t("pledgeCampaign.createPledge"))}</h2>
         <form id="pc-form" class="pc-form" novalidate>
           <div id="pc-form-fields" style="${this.submitted ? "display:none" : ""}">
-            <h3 class="pc-subtitle">Pledge Details</h3>
+            <h3 class="pc-subtitle">${this.escapeHtml(this.t("pledgeCampaign.pledgeDetails"))}</h3>
             <input type="hidden" id="pc-contact-id" name="ContactId" value="${this.isAuthenticated && this.contact ? this.contact.contactId : 0}">
 
             ${this.renderAmountRow()}
@@ -765,14 +783,14 @@ export class PledgeCampaignWidget extends MPNextWidget {
       ? `<div class="pc-amount-buttons">${amounts
           .map(
             (a) =>
-              `<button type="button" class="pc-btn pc-btn--ghost pc-amount-btn" data-amount="${a}">$${a}</button>`
+              `<button type="button" class="pc-btn pc-btn--ghost pc-amount-btn" data-amount="${a}">${this.fmt.currency(a)}</button>`
           )
           .join("")}</div>`
       : "";
     return `
       ${buttons}
       <div class="pc-field">
-        <label for="pc-installment-amount">Pledge Amount${requiredStar()}</label>
+        <label for="pc-installment-amount">${this.escapeHtml(this.t("pledgeCampaign.pledgeAmount"))}${requiredStar()}</label>
         <input id="pc-installment-amount" class="pc-input" type="number" name="InstallmentAmount" min="0" step="0.01" inputmode="decimal" required>
       </div>`;
   }
@@ -788,19 +806,19 @@ export class PledgeCampaignWidget extends MPNextWidget {
     return `
       <div class="pc-grid3">
         <div class="pc-field">
-          <label for="pc-frequency">Select Frequency${requiredStar()}</label>
+          <label for="pc-frequency">${this.escapeHtml(this.t("pledgeCampaign.selectFrequency"))}${requiredStar()}</label>
           <select id="pc-frequency" class="pc-input" name="Frequency" required>
-            <option value="">-- Select --</option>
+            <option value="">${this.escapeHtml(this.t("pledgeCampaign.selectPlaceholder"))}</option>
             ${freqOptions}
           </select>
         </div>
         <div class="pc-field">
-          <label for="pc-first-installment">Pledge Start Date${requiredStar()}</label>
+          <label for="pc-first-installment">${this.escapeHtml(this.t("pledgeCampaign.startDate"))}${requiredStar()}</label>
           <input id="pc-first-installment" class="pc-input" type="date" name="FirstInstallmentDate"
             required min="${min}" ${max ? `max="${max}"` : ""} value="${min}">
         </div>
         <div class="pc-field">
-          <label for="pc-last-installment">Pledge End Date</label>
+          <label for="pc-last-installment">${this.escapeHtml(this.t("pledgeCampaign.endDate"))}</label>
           <input id="pc-last-installment" class="pc-input" type="date" name="LastInstallmentDate"
             min="${min}" ${max ? `max="${max}"` : ""} value="${lastValue}">
         </div>
@@ -810,8 +828,8 @@ export class PledgeCampaignWidget extends MPNextWidget {
   private renderTotalRow(): string {
     return `
       <div class="pc-total">
-        <span class="pc-total-label">Total Pledge</span>
-        <span class="pc-total-value" id="pc-total-value">${CURRENCY.format(0)}</span>
+        <span class="pc-total-label">${this.escapeHtml(this.t("pledgeCampaign.totalPledge"))}</span>
+        <span class="pc-total-value" id="pc-total-value">${this.fmt.currency(0)}</span>
       </div>`;
   }
 
@@ -837,12 +855,12 @@ export class PledgeCampaignWidget extends MPNextWidget {
       )
       .join("");
     return `
-      <h3 class="pc-subtitle">Personal Details</h3>
+      <h3 class="pc-subtitle">${this.escapeHtml(this.t("fields.personalDetails"))}</h3>
       <div class="pc-field">
-        <label for="pc-apply-as">Make a Pledge as</label>
+        <label for="pc-apply-as">${this.escapeHtml(this.t("pledgeCampaign.makePledgeAs"))}</label>
         <select id="pc-apply-as" class="pc-input">
           ${opts}
-          <option value="">Blank Form</option>
+          <option value="">${this.escapeHtml(this.t("pledgeCampaign.blankForm"))}</option>
         </select>
       </div>`;
   }
@@ -850,7 +868,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
   private memberDisplayName(m: HouseholdMemberLite): string {
     if (m.displayName) return m.displayName;
     const first = m.nickName || m.firstName;
-    return `${first} ${m.lastName}`.trim() || "My Info";
+    return `${first} ${m.lastName}`.trim() || this.t("pledgeCampaign.myInfo");
   }
 
   /**
@@ -865,24 +883,24 @@ export class PledgeCampaignWidget extends MPNextWidget {
     const req = authedMemberSelected ? "" : "required";
     return `
       <div id="pc-blank-form" style="${authedMemberSelected ? "display:none" : ""}">
-        <h3 class="pc-subtitle">Contact</h3>
+        <h3 class="pc-subtitle">${this.escapeHtml(this.t("fields.contact"))}</h3>
         <div class="pc-grid2">
           <div class="pc-field">
-            <label for="pc-first-name">First Name${star}</label>
+            <label for="pc-first-name">${this.escapeHtml(this.t("fields.firstName"))}${star}</label>
             <input id="pc-first-name" class="pc-input" name="FirstName" value="${this.escapeAttr(c?.firstName || "")}" ${req}>
           </div>
           <div class="pc-field">
-            <label for="pc-last-name">Last Name${star}</label>
+            <label for="pc-last-name">${this.escapeHtml(this.t("fields.lastName"))}${star}</label>
             <input id="pc-last-name" class="pc-input" name="LastName" value="${this.escapeAttr(c?.lastName || "")}" ${req}>
           </div>
         </div>
         <div class="pc-grid2">
           <div class="pc-field">
-            <label for="pc-email">Email${star}</label>
+            <label for="pc-email">${this.escapeHtml(this.t("fields.email"))}${star}</label>
             <input id="pc-email" class="pc-input" type="email" name="Email" value="${this.escapeAttr(c?.emailAddress || "")}" ${req}>
           </div>
           <div class="pc-field">
-            <label for="pc-phone">Mobile Phone</label>
+            <label for="pc-phone">${this.escapeHtml(this.t("fields.mobilePhone"))}</label>
             <input id="pc-phone" class="pc-input" type="tel" name="MobilePhoneNumber" maxlength="50" value="${this.escapeAttr(c?.mobilePhoneNumber || "")}">
           </div>
         </div>
@@ -890,10 +908,12 @@ export class PledgeCampaignWidget extends MPNextWidget {
   }
 
   private renderSubmit(): string {
-    const label = this.submitted ? "Create Another Pledge" : "Create Pledge";
+    const label = this.t(
+      this.submitted ? "pledgeCampaign.submitAnother" : "pledgeCampaign.submit"
+    );
     return `
       <div class="pc-buttons">
-        <button id="pc-submit" class="pc-btn pc-btn--primary" type="button">${label}</button>
+        <button id="pc-submit" class="pc-btn pc-btn--primary" type="button">${this.escapeHtml(label)}</button>
       </div>`;
   }
 
@@ -948,13 +968,12 @@ export class PledgeCampaignWidget extends MPNextWidget {
     return `${d.getFullYear()}-${m}-${day}`;
   }
 
-  private formatShortDate(value: string): string {
-    const d = this.parseMpDate(value);
-    if (!d) return "";
-    return d.toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" });
-  }
-
-  /** Wall-clock parse of an MP datetime with no TZ day-shift. */
+  /**
+   * Wall-clock parse of an MP datetime with no TZ day-shift.
+   *
+   * Retained after the i18n conversion because the installment maths compares
+   * and counts dates; every *displayed* date goes through `this.fmt`.
+   */
   private parseMpDate(value: string): Date | null {
     if (!value) return null;
     const m = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);

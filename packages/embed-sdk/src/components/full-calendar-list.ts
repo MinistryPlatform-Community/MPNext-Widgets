@@ -1,3 +1,5 @@
+import type { Formatters, Translator } from "../i18n";
+
 // ── Interfaces ──
 
 interface CalendarEvent {
@@ -44,38 +46,24 @@ function toDateKey(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function formatDateHeader(dateStr: string): string {
+function formatDateHeader(dateStr: string, t: Translator, fmt: Formatters): string {
   const date = new Date(dateStr + "T00:00:00");
   const today = new Date();
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
   if (toDateKey(date) === toDateKey(today)) {
-    return "Today";
+    return t("fullCalendar.today");
   }
   if (toDateKey(date) === toDateKey(tomorrow)) {
-    return "Tomorrow";
+    return t("fullCalendar.tomorrow");
   }
 
-  return date.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  return fmt.date(date, "full");
 }
 
-function formatTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
-function formatTimeRange(startStr: string, endStr: string): string {
-  return `${formatTime(startStr)} – ${formatTime(endStr)}`;
+function formatTimeRange(startStr: string, endStr: string, fmt: Formatters): string {
+  return `${fmt.time(startStr)} – ${fmt.time(endStr)}`;
 }
 
 // Placeholder SVG for events without images
@@ -96,7 +84,13 @@ const ICON_CLOCK = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" 
 export function renderAgendaList(
   events: CalendarEvent[],
   onEventClick: (event: CalendarEvent) => void,
-  getEventColor: (typeId: number | null) => string
+  getEventColor: (typeId: number | null) => string,
+  /**
+   * Translator and formatters from `full-calendar.ts` — this module is plain
+   * functions, so there is no `this.t` to reach for.
+   */
+  t: Translator,
+  fmt: Formatters
 ): HTMLElement {
   const container = document.createElement("div");
   container.className = "nw-fc-agenda";
@@ -110,7 +104,7 @@ export function renderAgendaList(
           <line x1="8" y1="2" x2="8" y2="6"/>
           <line x1="3" y1="10" x2="21" y2="10"/>
         </svg>
-        <p>No events scheduled for this period.</p>
+        <p>${escapeHtml(t("fullCalendar.emptyPeriod"))}</p>
       </div>
     `;
     return container;
@@ -140,12 +134,12 @@ export function renderAgendaList(
 
     const dateLabel = document.createElement("span");
     dateLabel.className = "nw-fc-agenda-date-label";
-    dateLabel.textContent = formatDateHeader(dateKey);
+    dateLabel.textContent = formatDateHeader(dateKey, t, fmt);
     header.appendChild(dateLabel);
 
     const countBadge = document.createElement("span");
     countBadge.className = "nw-fc-agenda-count";
-    countBadge.textContent = `${dayEvents.length} event${dayEvents.length > 1 ? "s" : ""}`;
+    countBadge.textContent = t("fullCalendar.eventCount", { count: dayEvents.length });
     header.appendChild(countBadge);
 
     group.appendChild(header);
@@ -197,7 +191,9 @@ export function renderAgendaList(
 
       const timeSpan = document.createElement("span");
       timeSpan.className = "nw-fc-agenda-time";
-      timeSpan.innerHTML = `${ICON_CLOCK} ${escapeHtml(formatTimeRange(event.Event_Start_Date, event.Event_End_Date))}`;
+      timeSpan.innerHTML = `${ICON_CLOCK} ${escapeHtml(
+        formatTimeRange(event.Event_Start_Date, event.Event_End_Date, fmt)
+      )}`;
       meta.appendChild(timeSpan);
 
       if (event.Congregation_Name) {
@@ -234,7 +230,7 @@ export function renderAgendaList(
       if (event.Featured_On_Calendar) {
         const featured = document.createElement("span");
         featured.className = "nw-fc-agenda-badge nw-fc-agenda-badge-featured";
-        featured.textContent = "Featured";
+        featured.textContent = t("fullCalendar.featured");
         badges.appendChild(featured);
       }
 

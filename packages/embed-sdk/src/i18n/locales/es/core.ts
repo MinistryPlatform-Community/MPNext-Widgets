@@ -115,6 +115,18 @@ export const esCore = {
     group_not_found: "No encontramos ese grupo.",
     opportunity_not_found: "No encontramos esa oportunidad.",
     payment_declined: "El pago fue rechazado. Intente con otro método.",
+    campaign_not_found: "No encontramos esa campaña de donaciones.",
+    household_not_found: "No encontramos su hogar.",
+    profile_not_found: "No encontramos su perfil.",
+    photo_not_found: "No hay ninguna foto registrada.",
+    not_head_of_household: "Solo el jefe de hogar puede hacer este cambio.",
+    not_household_member: "Esa persona no forma parte de su hogar.",
+    directory_forbidden: "No tiene acceso al directorio de miembros.",
+    pledge_forbidden: "No tiene permiso para modificar este compromiso.",
+    validation_failed: "Revise los campos marcados e inténtelo de nuevo.",
+    no_file: "Primero elija un archivo.",
+    invalid_file_type: "Suba una imagen JPEG, PNG, GIF o WebP.",
+    file_too_large: "Ese archivo es demasiado grande. Elija una imagen más pequeña.",
   },
 
   localeSelector: {

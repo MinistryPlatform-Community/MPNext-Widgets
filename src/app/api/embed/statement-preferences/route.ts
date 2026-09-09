@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required. Please sign in." },
+        { error: "auth_required", message: "Authentication required. Please sign in." },
         { status: 401, headers: getCorsHeaders(origin) }
       );
     }
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     const user = await service.getUserByGuid(claims.sub);
     if (!user) {
       return NextResponse.json(
-        { error: "User not found" },
+        { error: "user_not_found", message: "User not found" },
         { status: 404 }
       );
     }
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     const preference = await service.getPreference(user.Contact_ID);
     if (!preference) {
       return NextResponse.json(
-        { error: "Donor record not found" },
+        { error: "donor_not_found", message: "Donor record not found" },
         { status: 404, headers: getCorsHeaders(origin) }
       );
     }
@@ -67,7 +67,7 @@ export async function PUT(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required. Please sign in." },
+        { error: "auth_required", message: "Authentication required. Please sign in." },
         { status: 401, headers: getCorsHeaders(origin) }
       );
     }
@@ -75,7 +75,7 @@ export async function PUT(req: NextRequest) {
     const body = await req.json().catch(() => null);
     if (!body || typeof body.paperless !== "boolean") {
       return NextResponse.json(
-        { error: "Invalid request body. 'paperless' must be a boolean." },
+        { error: "invalid_request", message: "Invalid request body. 'paperless' must be a boolean." },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -85,7 +85,7 @@ export async function PUT(req: NextRequest) {
     const user = await service.getUserByGuid(claims.sub);
     if (!user) {
       return NextResponse.json(
-        { error: "User not found" },
+        { error: "user_not_found", message: "User not found" },
         { status: 404 }
       );
     }
@@ -93,7 +93,7 @@ export async function PUT(req: NextRequest) {
     const existing = await service.getPreference(user.Contact_ID);
     if (!existing) {
       return NextResponse.json(
-        { error: "Donor record not found" },
+        { error: "donor_not_found", message: "Donor record not found" },
         { status: 404, headers: getCorsHeaders(origin) }
       );
     }

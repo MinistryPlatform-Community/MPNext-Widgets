@@ -32,7 +32,7 @@ export async function GET(
     const campaignId = parseInt(id, 10);
     if (isNaN(campaignId) || campaignId <= 0) {
       return NextResponse.json(
-        { error: "Invalid campaign id: must be a positive integer" },
+        { error: "invalid_request", message: "Invalid campaign id: must be a positive integer" },
         { status: 400, headers: buildFallbackCorsHeaders(origin) }
       );
     }
@@ -41,7 +41,7 @@ export async function GET(
     const campaign = await service.getCampaign(campaignId);
     if (!campaign) {
       return NextResponse.json(
-        { error: "Pledge campaign not found" },
+        { error: "campaign_not_found", message: "Pledge campaign not found" },
         { status: 404, headers: buildFallbackCorsHeaders(origin) }
       );
     }

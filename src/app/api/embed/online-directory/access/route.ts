@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     const claims = await requireWidgetAuth(req, { widget: "*" });
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required. Please sign in." },
+        { error: "auth_required", message: "Authentication required. Please sign in." },
         { status: 401, headers: getCorsHeaders(origin) }
       );
     }

@@ -61,13 +61,31 @@ async function loadCatalogues() {
   return { en: enMod.en, es: esMod.es, "pt-BR": ptMod.ptBR };
 }
 
-/** Flatten a catalogue to dotted paths; plural branches become `key.one` etc. */
+/**
+ * Flatten a catalogue to dotted paths, treating a **plural message as one key**.
+ *
+ * Not flattening plurals into `key.one` / `key.other` is the point. A locale is
+ * *required* to carry every CLDR category its own language selects, and Spanish
+ * and Brazilian Portuguese both select `many` (whole millions) where English does
+ * not. Branch-level flattening reported those mandatory branches as "keys
+ * English does not have" — the tool telling you to delete the thing
+ * `catalogue-parity.test.ts` demands you add.
+ *
+ * The `other` branch stands in for hashing, since it is the one every locale has
+ * and the one that renders for all but a couple of counts.
+ */
 function flatten(node, prefix = "", out = {}) {
   if (typeof node === "string") {
     out[prefix] = node;
     return out;
   }
   if (typeof node !== "object" || node === null) return out;
+
+  if (typeof node.other === "string" && typeof node.one === "string") {
+    out[prefix] = node.other;
+    return out;
+  }
+
   for (const [key, value] of Object.entries(node)) {
     flatten(value, prefix ? `${prefix}.${key}` : key, out);
   }
@@ -176,7 +194,7 @@ if (!sync) {
     note(`  ${String(count).padStart(4)}  ${file.replace("packages/embed-sdk/src/", "")}`);
   }
   if (total === 0) {
-    note("  none — the conversion is complete; collapse BUDGET in the guard test.");
+    note("  none — every widget routes its copy through the catalogue.");
   }
 }
 

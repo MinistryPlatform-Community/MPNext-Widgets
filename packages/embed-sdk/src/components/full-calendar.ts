@@ -143,16 +143,22 @@ export class FullCalendarWidget extends MPNextWidget {
       this.showToolbar = false;
     }
 
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees the toolbar and loading line in English first. Free in practice:
+    // the FullCalendar CDN load below is far slower than one same-origin
+    // locale chunk.
+    await this.initLocale();
+
     // Inject styles and show loading state
     this.injectStyles(ALL_STYLES);
-    this.render();
+    this.paint();
 
     try {
       if (this.needsFullCalendar()) {
         await this.loadFullCalendar();
       }
       this.loading = false;
-      this.render();
+      this.paint();
 
       if (this.needsFullCalendar()) {
         this.initCalendar();
@@ -161,9 +167,9 @@ export class FullCalendarWidget extends MPNextWidget {
       }
     } catch (err) {
       console.error("FullCalendarWidget: Failed to initialize:", err);
-      this.error = "Failed to load calendar. Please refresh the page.";
+      this.error = this.t("fullCalendar.initFailed");
       this.loading = false;
-      this.render();
+      this.paint();
       this.emit("fullCalendarError", {
         error: this.error,
         raw: err instanceof Error ? err.message : String(err),
@@ -199,6 +205,7 @@ export class FullCalendarWidget extends MPNextWidget {
   }
 
   disconnectedCallback() {
+    super.disconnectedCallback();
     this.destroyCalendar();
     // Re-arm the guard: a re-inserted element runs connectedCallback again, so
     // it owns the attribute read again. Attribute changes made while detached
@@ -290,21 +297,21 @@ export class FullCalendarWidget extends MPNextWidget {
     if (wasFC && !nowFC) {
       // Switching FROM FC to cards/calendar — destroy FC
       this.destroyCalendar();
-      this.render();
+      this.paint();
       await this.loadCardsData();
     } else if (!wasFC && nowFC) {
       // Switching FROM cards/calendar to FC — need to load FC
       this.loading = true;
-      this.render();
+      this.paint();
       try {
         await this.loadFullCalendar();
         this.loading = false;
-        this.render();
+        this.paint();
         this.initCalendar();
-      } catch (err) {
-        this.error = "Failed to load calendar library.";
+      } catch {
+        this.error = this.t("fullCalendar.libraryFailed");
         this.loading = false;
-        this.render();
+        this.paint();
       }
     } else if (wasFC && nowFC) {
       // Switching between FC views
@@ -316,7 +323,7 @@ export class FullCalendarWidget extends MPNextWidget {
       this.updateToolbarActiveState();
     } else {
       // Switching between cards/calendar
-      this.render();
+      this.paint();
       this.renderCardsOrCalendarView();
     }
 
@@ -328,8 +335,8 @@ export class FullCalendarWidget extends MPNextWidget {
   private initCalendar(): void {
     const FC = (window as any).FullCalendar;
     if (!FC) {
-      this.error = "FullCalendar library not available.";
-      this.render();
+      this.error = this.t("fullCalendar.libraryUnavailable");
+      this.paint();
       return;
     }
 
@@ -367,14 +374,15 @@ export class FullCalendarWidget extends MPNextWidget {
         meridiem: "short",
       },
       datesSet: (info: { start: Date; end: Date; view: { title: string } }) => {
-        // Not `info.view.title`: FullCalendar 7 reports "September 2026" for
-        // timeGridWeek where 6.x reported "Sep 6 – 12, 2026", which is a
-        // visibly worse (and, across a month boundary, wrong) toolbar title.
-        // dayGridMonth's title is unchanged, so only week is computed here.
+        // `info.view.title` is unusable in either view. FullCalendar 7 builds
+        // it from its own locale data, a CDN asset this widget does not load,
+        // so it is always English whatever the page locale; and for
+        // timeGridWeek it reports "September 2026" where 6.x reported the day
+        // range. Both titles are computed from the dates instead.
         this.updateToolbarTitle(
           this.currentView === "week"
             ? this.formatWeekTitle(info.start, info.end)
-            : info.view.title
+            : this.formatMonthTitle(info.start, info.end)
         );
       },
       // No `dayCellDidMount`: the density dots it used to paint were removed
@@ -396,26 +404,37 @@ export class FullCalendarWidget extends MPNextWidget {
   }
 
   /**
-   * "Sep 6 – 12, 2026" for a week, spelling out both months when the week
-   * straddles a boundary. Replaces FullCalendar 7's `view.title`, which
-   * collapses a timeGridWeek range to just the month and year.
+   * "September 2026" for a month grid.
+   *
+   * Derived from the midpoint of the visible range rather than from `start`:
+   * a dayGridMonth range begins on the first day of the week containing the
+   * 1st, so `start` itself often falls in the *previous* month (a September
+   * grid starts Aug 30). The range always spans four to six whole weeks
+   * around one month, so its middle is always inside that month.
+   */
+  private formatMonthTitle(start: Date, end: Date): string {
+    const middle = new Date((start.getTime() + end.getTime()) / 2);
+    return this.fmt.date(middle, "monthYear");
+  }
+
+  /**
+   * "Sep 6 – 12, 2026" for a week. Replaces FullCalendar 7's `view.title`,
+   * which collapses a timeGridWeek range to just the month and year (and
+   * renders it in English).
+   *
+   * `fmt.dateRangeCompact` is `Intl.DateTimeFormat.formatRange`, which knows
+   * per locale which components the two endpoints share and where to put the
+   * separator — "6–12 sept 2026", "6 – 12 de set. de 2026". Collapsing this by
+   * hand only works in a month-first locale: `es` and `pt-BR` lead with the day,
+   * so a hand-built "Sep 6 – 12, 2026" becomes "6 sept – 12, 2026", where the
+   * trailing 12 reads as a second month.
    *
    * `end` is exclusive, per FullCalendar's convention, so the last visible day
    * is `end - 1ms`.
    */
   private formatWeekTitle(start: Date, end: Date): string {
     const last = new Date(end.getTime() - 1);
-    const month = (d: Date) => d.toLocaleString("en-US", { month: "short" });
-    const sameMonth =
-      start.getMonth() === last.getMonth() && start.getFullYear() === last.getFullYear();
-
-    const head = `${month(start)} ${start.getDate()}`;
-    const tail = sameMonth ? `${last.getDate()}` : `${month(last)} ${last.getDate()}`;
-
-    if (start.getFullYear() !== last.getFullYear()) {
-      return `${head}, ${start.getFullYear()} – ${tail}, ${last.getFullYear()}`;
-    }
-    return `${head} – ${tail}, ${last.getFullYear()}`;
+    return this.fmt.dateRangeCompact(start, last, "medium");
   }
 
   // ── Data Fetching ──
@@ -427,7 +446,7 @@ export class FullCalendarWidget extends MPNextWidget {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      const msg = body.error || `HTTP ${res.status}`;
+      const msg = this.errorText(body);
       this.emit("fullCalendarError", { error: msg });
       throw new Error(msg);
     }
@@ -481,7 +500,7 @@ export class FullCalendarWidget extends MPNextWidget {
       const res = await this.fetch(`/api/embed/full-calendar?${params}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `HTTP ${res.status}`);
+        throw new Error(this.errorText(body));
       }
 
       const data = await res.json();
@@ -497,7 +516,10 @@ export class FullCalendarWidget extends MPNextWidget {
     } catch (err) {
       console.error("FullCalendarWidget: Failed to load cards data:", err);
       this.emit("fullCalendarError", {
-        error: err instanceof Error ? err.message : "Failed to load events",
+        // `errorText` has already turned an API machine code into a translated
+        // sentence; anything else (a dropped connection) becomes the generic
+        // network message rather than leaking English.
+        error: err instanceof Error ? err.message : this.t("errors.network"),
       });
     }
   }
@@ -559,6 +581,8 @@ export class FullCalendarWidget extends MPNextWidget {
       isAdmin,
       onClose: () => this.closeModal(),
       getEventColor: (typeId) => this.getEventColor(typeId),
+      t: this.t,
+      fmt: this.fmt,
     });
 
     this.root.appendChild(modal);
@@ -579,31 +603,31 @@ export class FullCalendarWidget extends MPNextWidget {
     if (!this.showToolbar) return "";
 
     const views: { key: ViewType; label: string }[] = [
-      { key: "month", label: "Month" },
-      { key: "grid", label: "Grid" },
-      { key: "week", label: "Week" },
-      { key: "list", label: "List" },
-      { key: "cards", label: "Cards" },
-      { key: "calendar", label: "Calendar" },
+      { key: "month", label: this.t("fullCalendar.viewMonth") },
+      { key: "grid", label: this.t("fullCalendar.viewGrid") },
+      { key: "week", label: this.t("fullCalendar.viewWeek") },
+      { key: "list", label: this.t("fullCalendar.viewList") },
+      { key: "cards", label: this.t("fullCalendar.viewCards") },
+      { key: "calendar", label: this.t("fullCalendar.viewCalendar") },
     ];
 
     const viewButtons = views
       .map(
         (v) =>
-          `<button class="nw-fc-toolbar-btn${v.key === this.currentView ? " active" : ""}" data-view="${v.key}">${v.label}</button>`
+          `<button class="nw-fc-toolbar-btn${v.key === this.currentView ? " active" : ""}" data-view="${v.key}">${this.escapeHtml(v.label)}</button>`
       )
       .join("");
 
     return `
       <div class="nw-fc-toolbar">
         <div class="nw-fc-toolbar-left">
-          <button class="nw-fc-toolbar-nav" data-action="prev" aria-label="Previous">
+          <button class="nw-fc-toolbar-nav" data-action="prev" aria-label="${this.escapeHtml(this.t("common.previous"))}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <button class="nw-fc-toolbar-nav" data-action="next" aria-label="Next">
+          <button class="nw-fc-toolbar-nav" data-action="next" aria-label="${this.escapeHtml(this.t("common.next"))}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
-          <button class="nw-fc-toolbar-btn" data-action="today">Today</button>
+          <button class="nw-fc-toolbar-btn" data-action="today">${this.escapeHtml(this.t("fullCalendar.today"))}</button>
         </div>
         <div class="nw-fc-toolbar-center" id="nw-fc-title"></div>
         <div class="nw-fc-toolbar-right">
@@ -705,11 +729,7 @@ export class FullCalendarWidget extends MPNextWidget {
     }
 
     // Update title for cards views
-    const title = this.miniCalMonth.toLocaleString("en-US", {
-      month: "long",
-      year: "numeric",
-    });
-    this.updateToolbarTitle(title);
+    this.updateToolbarTitle(this.fmt.date(this.miniCalMonth, "monthYear"));
 
     if (this.currentView === "month") {
       // Full-width mini calendar + card grid below
@@ -730,16 +750,23 @@ export class FullCalendarWidget extends MPNextWidget {
             this.miniCalMonth = newMonth;
             this.renderCardsOrCalendarView();
           },
+          t: this.t,
+          fmt: this.fmt,
         })
       );
 
       if (this.filters.campuses.length > 0 || this.filters.ministries.length > 0) {
         monthPanel.appendChild(
-          renderFilterChips(this.filters, this.activeFilters, (newFilters) => {
-            this.activeFilters = newFilters;
-            this.cardsPage = 1;
-            this.renderCardsOrCalendarView();
-          })
+          renderFilterChips(
+            this.filters,
+            this.activeFilters,
+            (newFilters) => {
+              this.activeFilters = newFilters;
+              this.cardsPage = 1;
+              this.renderCardsOrCalendarView();
+            },
+            this.t
+          )
         );
       }
 
@@ -751,7 +778,9 @@ export class FullCalendarWidget extends MPNextWidget {
           () => {
             this.cardsPage++;
             this.renderCardsOrCalendarView();
-          }
+          },
+          this.t,
+          this.fmt
         )
       );
 
@@ -760,10 +789,15 @@ export class FullCalendarWidget extends MPNextWidget {
       // Custom agenda list view — events grouped by date
       if (this.filters.campuses.length > 0 || this.filters.ministries.length > 0) {
         area.appendChild(
-          renderFilterChips(this.filters, this.activeFilters, (newFilters) => {
-            this.activeFilters = newFilters;
-            this.renderCardsOrCalendarView();
-          })
+          renderFilterChips(
+            this.filters,
+            this.activeFilters,
+            (newFilters) => {
+              this.activeFilters = newFilters;
+              this.renderCardsOrCalendarView();
+            },
+            this.t
+          )
         );
       }
 
@@ -771,18 +805,25 @@ export class FullCalendarWidget extends MPNextWidget {
         renderAgendaList(
           displayEvents,
           (event) => this.showEventModal(event),
-          (typeId) => this.getEventColor(typeId)
+          (typeId) => this.getEventColor(typeId),
+          this.t,
+          this.fmt
         )
       );
     } else if (this.currentView === "cards") {
       // Filter chips + card grid
       if (this.filters.campuses.length > 0 || this.filters.ministries.length > 0) {
         area.appendChild(
-          renderFilterChips(this.filters, this.activeFilters, (newFilters) => {
-            this.activeFilters = newFilters;
-            this.cardsPage = 1;
-            this.renderCardsOrCalendarView();
-          })
+          renderFilterChips(
+            this.filters,
+            this.activeFilters,
+            (newFilters) => {
+              this.activeFilters = newFilters;
+              this.cardsPage = 1;
+              this.renderCardsOrCalendarView();
+            },
+            this.t
+          )
         );
       }
 
@@ -794,7 +835,9 @@ export class FullCalendarWidget extends MPNextWidget {
           () => {
             this.cardsPage++;
             this.renderCardsOrCalendarView();
-          }
+          },
+          this.t,
+          this.fmt
         )
       );
     } else if (this.currentView === "calendar") {
@@ -819,6 +862,8 @@ export class FullCalendarWidget extends MPNextWidget {
             this.miniCalMonth = newMonth;
             this.renderCardsOrCalendarView();
           },
+          t: this.t,
+          fmt: this.fmt,
         })
       );
       layout.appendChild(miniPanel);
@@ -829,11 +874,16 @@ export class FullCalendarWidget extends MPNextWidget {
 
       if (this.filters.campuses.length > 0 || this.filters.ministries.length > 0) {
         cardsPanel.appendChild(
-          renderFilterChips(this.filters, this.activeFilters, (newFilters) => {
-            this.activeFilters = newFilters;
-            this.cardsPage = 1;
-            this.renderCardsOrCalendarView();
-          })
+          renderFilterChips(
+            this.filters,
+            this.activeFilters,
+            (newFilters) => {
+              this.activeFilters = newFilters;
+              this.cardsPage = 1;
+              this.renderCardsOrCalendarView();
+            },
+            this.t
+          )
         );
       }
 
@@ -845,7 +895,9 @@ export class FullCalendarWidget extends MPNextWidget {
           () => {
             this.cardsPage++;
             this.renderCardsOrCalendarView();
-          }
+          },
+          this.t,
+          this.fmt
         )
       );
       layout.appendChild(cardsPanel);
@@ -873,17 +925,31 @@ export class FullCalendarWidget extends MPNextWidget {
     if (this.needsFullCalendar()) {
       const hadInstance = this.calendarInstance !== null;
       this.destroyCalendar();
-      this.render();
+      this.paint();
       if (hadInstance) this.initCalendar();
     } else {
-      this.render();
+      this.paint();
       this.renderCardsOrCalendarView();
     }
   }
 
   // ── Render ──
 
+  /**
+   * The re-render entry point every *external* caller reaches, including the
+   * base class's page-wide locale change — which is why it delegates to the
+   * full rebuild rather than to `paint()`. A bare repaint orphans a live
+   * FullCalendar instance and drops the cards area (see `rebuildCurrentView`),
+   * and the locale handler has no way to know which of the six views is up.
+   * The internal callers already sequence destroy/init themselves and go
+   * straight to `paint()`.
+   */
   render(): void {
+    this.rebuildCurrentView();
+  }
+
+  /** Rewrite the widget chrome. Callers own whatever hangs off it. */
+  private paint(): void {
     const container = this.root.querySelector<HTMLElement>(".nw-fc-container");
 
     if (container) {
@@ -914,7 +980,7 @@ export class FullCalendarWidget extends MPNextWidget {
         ${this.renderToolbar()}
         <div class="nw-fc-state nw-fc-loading">
           <div class="nw-fc-spinner"></div>
-          <p>Loading calendar&hellip;</p>
+          <p>${this.escapeHtml(this.t("fullCalendar.loading"))}</p>
         </div>
       `;
     }

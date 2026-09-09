@@ -99,7 +99,10 @@ describe('POST /api/embed/profile/change-password', () => {
 
     const res = await POST(post(token));
     expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: 'Session expired. Please sign in again.' });
+    expect(await res.json()).toEqual({
+      error: 'session_expired',
+      message: 'Session expired. Please sign in again.',
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -108,6 +111,9 @@ describe('POST /api/embed/profile/change-password', () => {
     const token = await createWidgetToken({ sub: 'public', wid: 'profile', origin: ORIGIN, ver: 2 });
     const res = await POST(post(token));
     expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: 'Authentication required' });
+    expect(await res.json()).toEqual({
+      error: 'auth_required',
+      message: 'Authentication required',
+    });
   });
 });

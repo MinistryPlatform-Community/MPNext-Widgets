@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     const guid = req.nextUrl.searchParams.get("guid")?.trim();
     if (!guid) {
       return NextResponse.json(
-        { error: "Missing guid" },
+        { error: "invalid_request", message: "Missing guid" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     const invoice = await service.getCheckoutInvoiceByGuid(guid, mpContactId);
     if (!invoice) {
       return NextResponse.json(
-        { error: "Invoice not found" },
+        { error: "invoice_not_found", message: "Invoice not found" },
         { status: 404, headers: getCorsHeaders(origin) }
       );
     }

@@ -134,6 +134,21 @@ export const core = {
     group_not_found: "We could not find that group.",
     opportunity_not_found: "We could not find that opportunity.",
     payment_declined: "The payment was declined. Please try another method.",
+    campaign_not_found: "We could not find that giving campaign.",
+    household_not_found: "We could not find your household.",
+    profile_not_found: "We could not find your profile.",
+    photo_not_found: "There is no photo on file.",
+    not_head_of_household: "Only the head of household can make this change.",
+    not_household_member: "That person is not part of your household.",
+    directory_forbidden: "You do not have access to the member directory.",
+    pledge_forbidden: "You do not have permission to change this pledge.",
+    validation_failed: "Please check the highlighted fields and try again.",
+    no_file: "Please choose a file first.",
+    invalid_file_type: "Please upload a JPEG, PNG, GIF or WebP image.",
+    // The two upload routes enforce different limits (5MB profile, 10MB
+    // household), so the number stays in the server's English `message` for the
+    // log and the rendered sentence is limit-free rather than sometimes wrong.
+    file_too_large: "That file is too large. Please choose a smaller image.",
   },
 
   localeSelector: {

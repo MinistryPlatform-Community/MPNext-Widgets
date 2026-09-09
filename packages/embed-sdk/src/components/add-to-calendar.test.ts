@@ -108,10 +108,42 @@ describe("<next-add-to-calendar>", () => {
   });
 
   describe("loading and errors", () => {
-    it("shows a spinner before the event resolves", () => {
+    it("shows a spinner before the event resolves", async () => {
+      // Hold the event request open, so the loading state is observable rather
+      // than a race. Two things made the old synchronous assertion unreliable:
+      // `connectedCallback` now awaits `initLocale()` before the first paint
+      // (deliberate — the loading line carries copy, and painting it before the
+      // catalogue resolves would show a Spanish visitor English first), and with
+      // an immediately-resolving mock the spinner could come and go between
+      // `waitFor` polls.
+      let release!: (r: Response) => void;
+      const pending = new Promise<Response>((resolve) => {
+        release = resolve;
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = typeof input === "string" ? input : input.toString();
+          if (url.includes("/api/embed/auth/config")) {
+            return jsonResponse({ mode: "legacy" });
+          }
+          if (url.includes("/api/embed/session")) {
+            return jsonResponse({ token: makeJwt() });
+          }
+          if (url.includes("/api/embed/add-to-calendar")) return pending;
+          return jsonResponse({ error: "not_found" }, 404);
+        }),
+      );
+
       const el = mount();
-      expect(shadow(el).querySelector(".nw-atc-spinner")).not.toBeNull();
+      await vi.waitFor(() =>
+        expect(shadow(el).querySelector(".nw-atc-spinner")).not.toBeNull(),
+      );
       expect(trigger(el)).toBeNull();
+
+      // Let it finish, so the pending promise does not leak into the next test.
+      release(jsonResponse(eventPayload));
+      await vi.waitFor(() => expect(trigger(el)).not.toBeNull());
     });
 
     it("errors without fetching when event-id is missing", async () => {
@@ -122,19 +154,34 @@ describe("<next-add-to-calendar>", () => {
       await vi.waitFor(() =>
         expect(shadow(el).querySelector(".nw-atc-error")).not.toBeNull(),
       );
-      expect(shadow(el).textContent).toContain("Missing or invalid event-id");
+      // A congregant should never read an attribute name. The developer detail
+      // goes to the console instead; the panel gets a translated sentence.
+      expect(shadow(el).textContent).toContain(
+        "This calendar link is not configured correctly.",
+      );
+      expect(shadow(el).textContent).not.toContain("event-id");
       expect(
         fetchSpy.mock.calls.filter(([u]) => String(u).includes("/add-to-calendar")),
       ).toHaveLength(0);
     });
 
-    it("surfaces the API error message", async () => {
-      mockFetch(() => jsonResponse({ error: "Event not found: 42" }, 404));
+    it("renders a translated sentence, not the server's English, on an API error", async () => {
+      // Routes answer `{ error: "<code>", message: "<English>" }` and the
+      // English half is debug-only. This route still answers with prose in
+      // `error`, so the code is unmapped and `errorText` degrades to
+      // `errors.generic` — the point being that nothing raw reaches the panel.
+      mockFetch(() =>
+        jsonResponse(
+          { error: "event_not_found", message: "Event not found: 42" },
+          404,
+        ),
+      );
       const el = mount();
       await vi.waitFor(() =>
         expect(shadow(el).querySelector(".nw-atc-error")).not.toBeNull(),
       );
-      expect(shadow(el).textContent).toContain("Event not found: 42");
+      expect(shadow(el).textContent).toContain("We could not find that event.");
+      expect(shadow(el).textContent).not.toContain("Event not found: 42");
     });
 
     it("emits calendarEventLoaded on success", async () => {

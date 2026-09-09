@@ -1,4 +1,5 @@
 import { MPNextWidget } from "../shared/base-widget";
+import { parseWallClock } from "../i18n";
 import {
   validateForm,
   bindLiveValidation,
@@ -113,8 +114,13 @@ export class GroupDetailsWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
-    this.render();
-    this.init();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish; the fetch hides inside the loading state
+    // this widget already paints while it queries the API.
+    void this.initLocale().then(() => {
+      this.render();
+      this.init();
+    });
   }
 
   // ── Attribute helpers ──
@@ -151,7 +157,7 @@ export class GroupDetailsWidget extends MPNextWidget {
 
     const groupId = this.resolveGroupId();
     if (!groupId) {
-      this.error = "No group specified.";
+      this.error = this.t("groupDetails.noGroupSpecified");
       this.loading = false;
       this.render();
       this.attachListeners();
@@ -171,11 +177,12 @@ export class GroupDetailsWidget extends MPNextWidget {
         `/api/embed/group-details/${encodeURIComponent(groupId)}${qs ? `?${qs}` : ""}`
       );
       if (!res.ok) {
-        if (res.status === 404) throw new Error("This group is not available.");
-        throw new Error(`HTTP ${res.status}`);
+        if (res.status === 404) throw new Error(this.t("errors.group_not_found"));
+        const body = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(body));
       }
       const data: { group: GroupDetail } = await res.json();
-      if (!data || !data.group) throw new Error("This group is not available.");
+      if (!data || !data.group) throw new Error(this.t("errors.group_not_found"));
       this.group = data.group;
 
       // Seed dropdown selections + prior-activity warnings.
@@ -189,7 +196,10 @@ export class GroupDetailsWidget extends MPNextWidget {
       this.activeTab = this.defaultTab();
       this.emit("groupDetailLoaded", { groupId: this.group.id, title: this.group.title });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "No group found.";
+      // `errorText` has already produced a translated sentence; a thrown
+      // non-Error (a dropped connection) becomes the generic network message
+      // rather than leaking English.
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.group = null;
       this.emit("groupDetailError", { error: this.error });
     } finally {
@@ -249,7 +259,7 @@ export class GroupDetailsWidget extends MPNextWidget {
     if (!form || !this.group) return;
 
     if (!validateForm(form).valid) {
-      this.setMessage("danger", "Please complete the required fields.");
+      this.setMessage("danger", this.t("validation.formIncomplete"));
       return;
     }
 
@@ -258,7 +268,7 @@ export class GroupDetailsWidget extends MPNextWidget {
     const contactId = contactRaw && contactRaw !== "blank" ? Number(contactRaw) : null;
 
     if (tab === "signup" && (contactId == null || contactId <= 0)) {
-      this.setMessage("danger", "Please choose who is signing up.");
+      this.setMessage("danger", this.t("groupDetails.chooseSignup"));
       return;
     }
 
@@ -289,29 +299,48 @@ export class GroupDetailsWidget extends MPNextWidget {
         .catch(() => ({ success: false }));
 
       if (res.status === 401) {
-        this.setMessage("warning", "Please sign in to continue.");
+        this.setMessage("warning", this.t("errors.authRequired"));
         this.requestLogin("group-details");
         this.setSubmitDisabled(false);
         return;
       }
       if (!data.success) {
-        this.setMessage("danger", data.message || "Something went wrong. Please try again.");
+        // The route's `message` is English and debug-only, so render the
+        // translated sentence instead.
+        this.setMessage("danger", this.errorText(data));
         this.setSubmitDisabled(false);
         return;
       }
 
+      // Two whole sentences per outcome rather than one with an optional
+      // clause: the greeting's punctuation and word order differ by language,
+      // so splicing a name into the middle of a translated string does not
+      // travel.
       const who = this.displayNameFor(tab, payload);
       if (tab === "inquire") {
         this.emit("inquirySubmitted", { groupId: this.group.id });
-        this.setMessage("success", `Thanks${who ? `, ${who}` : ""}! Your message has been sent to the group.`);
+        this.setMessage(
+          "success",
+          who
+            ? this.t("groupDetails.inquirySentNamed", { name: who })
+            : this.t("groupDetails.inquirySent")
+        );
       } else {
         this.emit("signupSubmitted", { groupId: this.group.id });
-        this.setMessage("success", `You're signed up${who ? `, ${who}` : ""}! The group leader will be in touch.`);
+        this.setMessage(
+          "success",
+          who
+            ? this.t("groupDetails.signedUpNamed", { name: who })
+            : this.t("groupDetails.signedUp")
+        );
       }
       form.reset();
       this.setSubmitDisabled(false);
     } catch (err) {
-      this.setMessage("danger", err instanceof Error ? err.message : "Submission failed.");
+      this.setMessage(
+        "danger",
+        err instanceof Error ? err.message : this.t("errors.submitFailed")
+      );
       this.setSubmitDisabled(false);
     }
   }
@@ -447,14 +476,14 @@ export class GroupDetailsWidget extends MPNextWidget {
 
   render() {
     if (this.loading) {
-      this.root.innerHTML = `<div class="gd">${this.renderState(this.spinnerSvg(), "Loading group…")}</div>`;
+      this.root.innerHTML = `<div class="gd">${this.renderState(this.spinnerSvg(), this.t("groupDetails.loading"))}</div>`;
       return;
     }
     if (this.error || !this.group) {
       this.root.innerHTML = `
         <div class="gd">
           ${this.renderBackLink()}
-          <div class="gd-state gd-error"><p>${this.escapeHtml(this.error || "No group found.")}</p></div>
+          <div class="gd-state gd-error"><p>${this.escapeHtml(this.error || this.t("errors.group_not_found"))}</p></div>
         </div>`;
       return;
     }
@@ -470,7 +499,7 @@ export class GroupDetailsWidget extends MPNextWidget {
 
   private renderBackLink(): string {
     if (!this.returnUrl) return "";
-    return `<div class="gd-back"><a href="${this.escapeAttr(this.returnUrl)}">&larr; Back to groups</a></div>`;
+    return `<div class="gd-back"><a href="${this.escapeAttr(this.returnUrl)}">&larr; ${this.escapeHtml(this.t("groupDetails.backToGroups"))}</a></div>`;
   }
 
   private renderMessage(): string {
@@ -496,20 +525,32 @@ export class GroupDetailsWidget extends MPNextWidget {
       : "";
 
     const capacity = this.capacityLabel(g);
-    const capacityHtml = capacity ? this.specialText("Capacity", capacity) : "";
+    const capacityHtml = capacity
+      ? this.specialText(this.t("groupDetails.capacity"), capacity)
+      : "";
 
     const start = this.formatStart(g.startDate);
-    const startHtml = start ? this.specialText("Starts", start) : "";
+    const startHtml = start
+      ? this.specialText(this.t("groupDetails.starts"), start)
+      : "";
 
-    const focus = g.groupFocus ? this.specialText("Group Focus", g.groupFocus) : "";
-    const life = g.lifeStage ? this.specialText("Life Stage", g.lifeStage) : "";
-    const location = g.location ? this.specialText("Location", g.location) : "";
+    // The focus, life-stage and location *values* are MP-authored and stay as
+    // MP supplies them; only their labels are translated.
+    const focus = g.groupFocus
+      ? this.specialText(this.t("groupDetails.groupFocus"), g.groupFocus)
+      : "";
+    const life = g.lifeStage
+      ? this.specialText(this.t("groupDetails.lifeStage"), g.lifeStage)
+      : "";
+    const location = g.location
+      ? this.specialText(this.t("fields.location"), g.location)
+      : "";
 
     return `
       <div class="gd-detail">
         ${img}
         <h1 class="gd-title">${this.escapeHtml(g.title)}</h1>
-        ${g.meetsOnline ? `<span class="gd-badge">Meets Online</span>` : ""}
+        ${g.meetsOnline ? `<span class="gd-badge">${this.escapeHtml(this.t("groupDetails.meetsOnline"))}</span>` : ""}
         ${scheduleHtml}
         ${description}
         ${focus}
@@ -527,9 +568,14 @@ export class GroupDetailsWidget extends MPNextWidget {
   }
 
   private capacityLabel(g: GroupDetail): string {
-    if (g.isFull || (g.targetSize != null && g.totalParticipantsCount >= g.targetSize)) return "Full";
+    if (g.isFull || (g.targetSize != null && g.totalParticipantsCount >= g.targetSize)) {
+      return this.t("groupDetails.full");
+    }
     if (g.targetSize != null && g.totalParticipantsCount < g.targetSize) {
-      return `${g.totalParticipantsCount} of ${g.targetSize}`;
+      return this.t("groupDetails.capacityOf", {
+        filled: this.fmt.number(g.totalParticipantsCount),
+        total: this.fmt.number(g.targetSize),
+      });
     }
     return "";
   }
@@ -549,7 +595,7 @@ export class GroupDetailsWidget extends MPNextWidget {
         return `<li class="gd-contact">${badge}<span>${inner}</span></li>`;
       })
       .join("");
-    return `<div class="gd-special"><div class="gd-special-title">Group Leader(s)</div><ul class="gd-contacts">${items}</ul></div>`;
+    return `<div class="gd-special"><div class="gd-special-title">${this.escapeHtml(this.t("groupDetails.leaders"))}</div><ul class="gd-contacts">${items}</ul></div>`;
   }
 
   private contactName(c: GroupContact): string {
@@ -567,12 +613,12 @@ export class GroupDetailsWidget extends MPNextWidget {
     return `
       <div class="gd-map">
         <iframe
-          title="Group location map"
+          title="${this.escapeAttr(this.t("groupDetails.mapTitle"))}"
           src="https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed"
           loading="lazy"
           referrerpolicy="no-referrer-when-downgrade"></iframe>
         ${addr}
-        <a class="gd-link" href="${this.escapeAttr(directions)}" target="_blank" rel="noopener">Get Directions &rsaquo;</a>
+        <a class="gd-link" href="${this.escapeAttr(directions)}" target="_blank" rel="noopener">${this.escapeHtml(this.t("common.getDirections"))} &rsaquo;</a>
       </div>`;
   }
 
@@ -585,7 +631,7 @@ export class GroupDetailsWidget extends MPNextWidget {
 
     if (!showInquire && !showSignup) {
       if (g.isFull) {
-        return `<div class="gd-form-wrap"><div class="gd-message gd-message--warning">This group is currently full.</div></div>`;
+        return `<div class="gd-form-wrap"><div class="gd-message gd-message--warning">${this.escapeHtml(this.t("groupDetails.groupFull"))}</div></div>`;
       }
       return "";
     }
@@ -596,12 +642,12 @@ export class GroupDetailsWidget extends MPNextWidget {
     const tabs: string[] = [];
     if (showInquire) {
       tabs.push(
-        `<button type="button" class="gd-tab ${this.activeTab === "inquire" ? "gd-tab--active" : ""}" data-tab="inquire">Contact this Group</button>`
+        `<button type="button" class="gd-tab ${this.activeTab === "inquire" ? "gd-tab--active" : ""}" data-tab="inquire">${this.escapeHtml(this.t("groupDetails.contactTab"))}</button>`
       );
     }
     if (showSignup) {
       tabs.push(
-        `<button type="button" class="gd-tab ${this.activeTab === "signup" ? "gd-tab--active" : ""}" data-tab="signup">Sign Up for this Group</button>`
+        `<button type="button" class="gd-tab ${this.activeTab === "signup" ? "gd-tab--active" : ""}" data-tab="signup">${this.escapeHtml(this.t("groupDetails.signupTab"))}</button>`
       );
     }
 
@@ -619,7 +665,7 @@ export class GroupDetailsWidget extends MPNextWidget {
     const showBlank = !this.isAuthenticated || !this.inquireContactId || this.inquireContactId === "blank";
     return `
       <div id="gd-inquire-warning" class="gd-message gd-message--info" style="display:${this.inquireWarning ? "" : "none"}">
-        You have already contacted this group.
+        ${this.escapeHtml(this.t("groupDetails.alreadyContacted"))}
       </div>
       <form id="gd-inquire-form" class="gd-form" novalidate>
         ${asPicker}
@@ -627,11 +673,11 @@ export class GroupDetailsWidget extends MPNextWidget {
           ${this.renderBlankFields(showBlank)}
         </div>
         <div class="gd-field">
-          <label for="gd-inquire-message">Message</label>
+          <label for="gd-inquire-message">${this.escapeHtml(this.t("fields.message"))}</label>
           <textarea id="gd-inquire-message" class="gd-input" name="message" maxlength="500" rows="4"></textarea>
         </div>
         <div class="gd-actions">
-          <button type="button" class="gd-btn gd-btn--primary gd-submit" data-tab="inquire">Send Message</button>
+          <button type="button" class="gd-btn gd-btn--primary gd-submit" data-tab="inquire">${this.escapeHtml(this.t("groupDetails.sendMessage"))}</button>
         </div>
       </form>`;
   }
@@ -640,22 +686,22 @@ export class GroupDetailsWidget extends MPNextWidget {
     if (!this.isAuthenticated) {
       return `
         <div class="gd-login-panel">
-          <p>Please sign in to sign up for this group.</p>
-          <button class="gd-btn gd-btn--primary" type="button" data-action="login">Sign In</button>
+          <p>${this.escapeHtml(this.t("groupDetails.signInToSignUp"))}</p>
+          <button class="gd-btn gd-btn--primary" type="button" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button>
         </div>`;
     }
     return `
       <div id="gd-signup-warning" class="gd-message gd-message--info" style="display:${this.signupWarning ? "" : "none"}">
-        You are already signed up for this group.
+        ${this.escapeHtml(this.t("groupDetails.alreadySignedUp"))}
       </div>
       <form id="gd-signup-form" class="gd-form" novalidate>
         ${this.renderAsPicker("signup")}
         <div class="gd-field">
-          <label for="gd-signup-message">Message <span class="gd-optional">(optional)</span></label>
+          <label for="gd-signup-message">${this.escapeHtml(this.t("fields.message"))} <span class="gd-optional">(${this.escapeHtml(this.t("common.optional"))})</span></label>
           <textarea id="gd-signup-message" class="gd-input" name="message" maxlength="500" rows="3"></textarea>
         </div>
         <div class="gd-actions">
-          <button type="button" class="gd-btn gd-btn--primary gd-submit" data-tab="signup">Sign Up</button>
+          <button type="button" class="gd-btn gd-btn--primary gd-submit" data-tab="signup">${this.escapeHtml(this.t("groupDetails.signUp"))}</button>
         </div>
       </form>`;
   }
@@ -669,7 +715,10 @@ export class GroupDetailsWidget extends MPNextWidget {
       : [
           {
             contactId: this.contact.contactId,
-            displayName: [this.contact.firstName, this.contact.lastName].filter(Boolean).join(" ") || "My Info",
+            displayName:
+              [this.contact.firstName, this.contact.lastName]
+                .filter(Boolean)
+                .join(" ") || this.t("groupDetails.myInfo"),
           },
         ];
     const opts = members
@@ -681,13 +730,15 @@ export class GroupDetailsWidget extends MPNextWidget {
     // Inquiry permits an anonymous "Blank Form"; sign-up always needs a contact.
     const blankOpt =
       tab === "inquire"
-        ? `<option value="blank" ${selected === "blank" ? "selected" : ""}>Someone else…</option>`
+        ? `<option value="blank" ${selected === "blank" ? "selected" : ""}>${this.escapeHtml(this.t("groupDetails.someoneElse"))}</option>`
         : "";
     const id = tab === "inquire" ? "gd-inquire-as" : "gd-signup-as";
-    const label = tab === "inquire" ? "Contact as" : "Sign up as";
+    const label = this.t(
+      tab === "inquire" ? "groupDetails.contactAs" : "groupDetails.signUpAs"
+    );
     return `
       <div class="gd-field">
-        <label for="${id}">${label}${requiredStar()}</label>
+        <label for="${id}">${this.escapeHtml(label)}${requiredStar()}</label>
         <select id="${id}" class="gd-input" name="contactId">
           ${opts}
           ${blankOpt}
@@ -699,12 +750,12 @@ export class GroupDetailsWidget extends MPNextWidget {
     const req = required ? "required" : "";
     return `
       <div class="gd-grid2">
-        <div class="gd-field"><label>First Name${requiredStar()}</label><input class="gd-input" name="firstName" data-required ${req}></div>
-        <div class="gd-field"><label>Last Name${requiredStar()}</label><input class="gd-input" name="lastName" data-required ${req}></div>
+        <div class="gd-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="gd-input" name="firstName" data-required ${req}></div>
+        <div class="gd-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="gd-input" name="lastName" data-required ${req}></div>
       </div>
       <div class="gd-grid2">
-        <div class="gd-field"><label>Email${requiredStar()}</label><input class="gd-input" type="email" name="emailAddress" data-required ${req}></div>
-        <div class="gd-field"><label>Mobile Phone</label><input class="gd-input" type="tel" name="mobilePhoneNumber"></div>
+        <div class="gd-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="gd-input" type="email" name="emailAddress" data-required ${req}></div>
+        <div class="gd-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}</label><input class="gd-input" type="tel" name="mobilePhoneNumber"></div>
       </div>`;
   }
 
@@ -714,35 +765,27 @@ export class GroupDetailsWidget extends MPNextWidget {
 
   // ── Date / text helpers ──
 
-  private parseMpDate(value: string | null): Date | null {
-    if (!value) return null;
-    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
-    if (!m) {
-      const fallback = new Date(value);
-      return isNaN(fallback.getTime()) ? null : fallback;
-    }
-    return new Date(
-      Number(m[1]),
-      Number(m[2]) - 1,
-      Number(m[3]),
-      m[4] ? Number(m[4]) : 0,
-      m[5] ? Number(m[5]) : 0
-    );
-  }
-
   private formatStart(value: string | null): string {
-    const d = this.parseMpDate(value);
+    // `parseWallClock` is the same parse the deleted local `parseMpDate` did —
+    // calendar parts into a local Date, no offset maths — so MP's wall clock
+    // survives and `fmt` formats it with no time zone.
+    const d = parseWallClock(value);
     if (!d) return "";
-    if (d.getTime() < Date.now()) return "Already meeting";
-    return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+    if (d.getTime() < Date.now()) return this.t("groupDetails.alreadyMeeting");
+    return this.fmt.date(d, "full");
   }
 
+  /**
+   * Format an MP time-of-day string ("18:30:00" or "1900-01-01T18:30:00").
+   * Kept local rather than routed through `parseWallClock`, which needs a date
+   * part; the hours/minutes go onto an arbitrary date so `fmt.time` can render
+   * them in the visitor's locale.
+   */
   private formatMeetingTime(value: string | null): string {
     if (!value) return "";
     const m = value.match(/(\d{2}):(\d{2})/);
     if (!m) return "";
-    const d = new Date(1900, 0, 1, Number(m[1]), Number(m[2]));
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    return this.fmt.time(new Date(1900, 0, 1, Number(m[1]), Number(m[2])));
   }
 
   private sanitizeHtml(html: string): string {

@@ -43,11 +43,17 @@ export class MyInvoicesWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
-    this.render();
-    this.loadInvoices();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish; it hides inside the loading state this
+    // widget paints anyway while it queries the API.
+    void this.initLocale().then(() => {
+      this.render();
+      this.loadInvoices();
+    });
   }
 
   disconnectedCallback() {
+    super.disconnectedCallback();
     this.cleanupCheckoutPortal();
   }
 
@@ -65,14 +71,17 @@ export class MyInvoicesWidget extends MPNextWidget {
     try {
       const res = await this.fetch("/api/embed/invoices");
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: { invoices: InvoiceListItem[] } = await res.json();
       this.invoices = data.invoices;
       this.emit("invoicesLoaded", { count: data.invoices.length });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "Failed to load invoices";
+      // `errorText` has already turned an API machine code into a translated
+      // sentence; anything else (a dropped connection) becomes the generic
+      // network message rather than leaking English.
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("invoiceError", { error: this.error });
     } finally {
       this.loading = false;
@@ -91,14 +100,14 @@ export class MyInvoicesWidget extends MPNextWidget {
     try {
       const res = await this.fetch(`/api/embed/invoices/${invoiceId}`);
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data, "errors.invoice_not_found"));
       }
       const data: InvoiceDetailResponse = await res.json();
       this.selectedDetail = data;
       this.emit("invoiceSelected", { invoiceId });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "Failed to load invoice details";
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("invoiceError", { error: this.error });
     } finally {
       this.detailLoading = false;
@@ -166,7 +175,7 @@ export class MyInvoicesWidget extends MPNextWidget {
     portal.innerHTML = `
       <div class="nw-invoice-checkout-container">
         <button class="nw-invoice-checkout-back" id="nw-checkout-back-btn">
-          &larr; Back to Invoice
+          &larr; ${this.escapeHtml(this.t("myInvoices.backToInvoice"))}
         </button>
         <mpp-checkout invoiceid="${invoiceId}"></mpp-checkout>
       </div>
@@ -238,7 +247,7 @@ export class MyInvoicesWidget extends MPNextWidget {
           <div class="header">
             <div class="loading-row">
               ${this.spinnerSvg()}
-              <span>Loading invoices...</span>
+              <span>${this.escapeHtml(this.t("myInvoices.loading"))}</span>
             </div>
           </div>
         </div>`;
@@ -249,11 +258,11 @@ export class MyInvoicesWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-invoices">
           <div class="header">
-            <div class="title">Unable to Load</div>
+            <div class="title">${this.escapeHtml(this.t("common.unableToLoad"))}</div>
             <p class="subtitle">${this.escapeHtml(this.error)}</p>
           </div>
           <div class="retry-section">
-            <button class="retry-btn" data-action="retry">Try Again</button>
+            <button class="retry-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
           </div>
         </div>`;
       const retryBtn = this.root.querySelector('[data-action="retry"]');
@@ -276,26 +285,26 @@ export class MyInvoicesWidget extends MPNextWidget {
     return `
       <div class="nw-invoices">
         <div class="header">
-          <div class="title">My Invoices</div>
-          <p class="subtitle">${this.invoices.length} invoice${this.invoices.length !== 1 ? "s" : ""}</p>
+          <div class="title">${this.escapeHtml(this.t("myInvoices.title"))}</div>
+          <p class="subtitle">${this.escapeHtml(this.t("myInvoices.invoiceCount", { count: this.invoices.length }))}</p>
         </div>
         <div class="list-body">
           ${this.invoices.length > 3
             ? `<div class="search-bar">
-                <input type="text" id="invoice-search" placeholder="Search invoices..."
+                <input type="text" id="invoice-search" placeholder="${this.escapeHtml(this.t("myInvoices.searchPlaceholder"))}"
                   value="${this.escapeHtml(this.searchQuery)}">
               </div>`
             : ""}
           ${filtered.length === 0
             ? `<div class="empty-state">
-                ${this.searchQuery ? "No invoices match your search." : "No invoices found."}
+                ${this.escapeHtml(this.t(this.searchQuery ? "myInvoices.noMatches" : "myInvoices.empty"))}
               </div>`
             : `<div class="invoice-table">
                 <div class="table-header">
-                  <span class="col-date">Date</span>
-                  <span class="col-desc">Description</span>
-                  <span class="col-status">Status</span>
-                  <span class="col-total">Total</span>
+                  <span class="col-date">${this.escapeHtml(this.t("fields.date"))}</span>
+                  <span class="col-desc">${this.escapeHtml(this.t("myInvoices.description"))}</span>
+                  <span class="col-status">${this.escapeHtml(this.t("myInvoices.status"))}</span>
+                  <span class="col-total">${this.escapeHtml(this.t("common.total"))}</span>
                 </div>
                 ${filtered.map((inv) => this.renderInvoiceRow(inv)).join("")}
               </div>`}
@@ -311,14 +320,14 @@ export class MyInvoicesWidget extends MPNextWidget {
     const hasBalance = !isPaid && !isCancelled && inv.Invoice_Total > 0;
     return `
       <div class="table-row ${hasBalance ? "table-row--payable" : ""}" data-invoice-id="${inv.Invoice_ID}">
-        <span class="col-date">${this.formatDate(inv.Invoice_Date)}</span>
+        <span class="col-date">${this.escapeHtml(this.fmt.date(inv.Invoice_Date))}</span>
         <span class="col-desc">${this.escapeHtml(description)}</span>
         <span class="col-status">
           <span class="badge ${statusClass}">${this.escapeHtml(inv.Invoice_Status)}</span>
         </span>
         <span class="col-total">
-          ${this.formatCurrency(inv.Invoice_Total, inv.Currency)}
-          ${hasBalance ? `<span class="pay-link">Pay &rarr;</span>` : ""}
+          ${this.escapeHtml(this.fmt.currency(inv.Invoice_Total, inv.Currency))}
+          ${hasBalance ? `<span class="pay-link">${this.escapeHtml(this.t("myInvoices.pay"))} &rarr;</span>` : ""}
         </span>
       </div>`;
   }
@@ -330,7 +339,7 @@ export class MyInvoicesWidget extends MPNextWidget {
           <div class="header">
             <div class="loading-row">
               ${this.spinnerSvg()}
-              <span>Loading invoice details...</span>
+              <span>${this.escapeHtml(this.t("myInvoices.loadingDetail"))}</span>
             </div>
           </div>
         </div>`;
@@ -340,11 +349,11 @@ export class MyInvoicesWidget extends MPNextWidget {
       return `
         <div class="nw-invoices">
           <div class="header">
-            <div class="title">Unable to Load</div>
-            <p class="subtitle">${this.escapeHtml(this.error || "Invoice not found")}</p>
+            <div class="title">${this.escapeHtml(this.t("common.unableToLoad"))}</div>
+            <p class="subtitle">${this.escapeHtml(this.error || this.t("errors.invoice_not_found"))}</p>
           </div>
           <div class="detail-body">
-            <button class="back-btn" data-action="back">&larr; Back to Invoices</button>
+            <button class="back-btn" data-action="back">&larr; ${this.escapeHtml(this.t("myInvoices.backToList"))}</button>
           </div>
         </div>`;
     }
@@ -357,36 +366,36 @@ export class MyInvoicesWidget extends MPNextWidget {
     return `
       <div class="nw-invoices">
         <div class="header">
-          <div class="title">Invoice Details</div>
+          <div class="title">${this.escapeHtml(this.t("myInvoices.detailTitle"))}</div>
         </div>
         <div class="detail-body">
-          <button class="back-btn" data-action="back">&larr; Back to Invoices</button>
+          <button class="back-btn" data-action="back">&larr; ${this.escapeHtml(this.t("myInvoices.backToList"))}</button>
           <div class="detail-header">
             <div class="detail-meta">
               <div class="detail-field">
-                <span class="detail-label">Invoice Date:</span>
-                ${this.formatDateLong(inv.Invoice_Date)}
+                <span class="detail-label">${this.escapeHtml(this.t("myInvoices.invoiceDate"))}:</span>
+                ${this.escapeHtml(this.fmt.date(inv.Invoice_Date, "long"))}
               </div>
               <div class="detail-field">
-                <span class="detail-label">Status:</span>
+                <span class="detail-label">${this.escapeHtml(this.t("myInvoices.status"))}:</span>
                 <span class="badge ${statusClass}">${this.escapeHtml(inv.Invoice_Status)}</span>
               </div>
             </div>
             <div class="detail-total">
-              <span class="detail-total-label">Total:</span>
-              <span class="detail-total-amount">${this.formatCurrency(inv.Invoice_Total, inv.Currency)}</span>
+              <span class="detail-total-label">${this.escapeHtml(this.t("common.total"))}:</span>
+              <span class="detail-total-amount">${this.escapeHtml(this.fmt.currency(inv.Invoice_Total, inv.Currency))}</span>
             </div>
           </div>
           ${items.length > 0
             ? `<div class="line-items-section">
-                <div class="section-label">Line Items</div>
+                <div class="section-label">${this.escapeHtml(this.t("myInvoices.lineItems"))}</div>
                 <div class="line-items-table">
                   <div class="li-header">
-                    <span class="li-col-product">Product</span>
-                    <span class="li-col-desc">Description</span>
-                    <span class="li-col-qty">Qty</span>
-                    <span class="li-col-price">Unit Price</span>
-                    <span class="li-col-total">Total</span>
+                    <span class="li-col-product">${this.escapeHtml(this.t("myInvoices.product"))}</span>
+                    <span class="li-col-desc">${this.escapeHtml(this.t("myInvoices.description"))}</span>
+                    <span class="li-col-qty">${this.escapeHtml(this.t("myInvoices.quantity"))}</span>
+                    <span class="li-col-price">${this.escapeHtml(this.t("myInvoices.unitPrice"))}</span>
+                    <span class="li-col-total">${this.escapeHtml(this.t("common.total"))}</span>
                   </div>
                   ${items.map((item) => this.renderLineItem(item)).join("")}
                 </div>
@@ -394,13 +403,13 @@ export class MyInvoicesWidget extends MPNextWidget {
             : ""}
           ${inv.Notes
             ? `<div class="notes-section">
-                <div class="section-label">Notes</div>
+                <div class="section-label">${this.escapeHtml(this.t("fields.notes"))}</div>
                 <div class="notes-content">${this.escapeHtml(inv.Notes)}</div>
               </div>`
             : ""}
           ${!isPaid
             ? `<div class="pay-section">
-                <button class="pay-btn" data-action="pay">Pay Now</button>
+                <button class="pay-btn" data-action="pay">${this.escapeHtml(this.t("myInvoices.payNow"))}</button>
               </div>`
             : ""}
         </div>
@@ -413,9 +422,9 @@ export class MyInvoicesWidget extends MPNextWidget {
       <div class="li-row">
         <span class="li-col-product">${this.escapeHtml(item.Product_Name)}</span>
         <span class="li-col-desc">${this.escapeHtml(item.Description || "")}</span>
-        <span class="li-col-qty">${item.Item_Quantity}</span>
-        <span class="li-col-price">${this.formatCurrency(unitPrice)}</span>
-        <span class="li-col-total">${this.formatCurrency(item.Line_Total)}</span>
+        <span class="li-col-qty">${this.escapeHtml(this.fmt.number(item.Item_Quantity))}</span>
+        <span class="li-col-price">${this.escapeHtml(this.fmt.currency(unitPrice))}</span>
+        <span class="li-col-total">${this.escapeHtml(this.fmt.currency(item.Line_Total))}</span>
       </div>`;
   }
 
@@ -426,15 +435,17 @@ export class MyInvoicesWidget extends MPNextWidget {
       (inv) =>
         this.getInvoiceDescription(inv).toLowerCase().includes(q) ||
         inv.Invoice_Status.toLowerCase().includes(q) ||
-        this.formatDate(inv.Invoice_Date).toLowerCase().includes(q) ||
+        this.fmt.date(inv.Invoice_Date).toLowerCase().includes(q) ||
         String(inv.Invoice_Total).includes(q) ||
         (inv.Product_Summary && inv.Product_Summary.toLowerCase().includes(q))
     );
   }
 
   private getInvoiceDescription(inv: InvoiceListItem): string {
+    // `Product_Summary` is MP-authored and stays as MP wrote it; only the
+    // fallback is ours to translate.
     if (inv.Product_Summary) return inv.Product_Summary;
-    return `Invoice #${inv.Invoice_ID}`;
+    return this.t("myInvoices.invoiceNumber", { id: inv.Invoice_ID });
   }
 
   private getStatusClass(statusId: number): string {
@@ -444,20 +455,6 @@ export class MyInvoicesWidget extends MPNextWidget {
       case CANCELLED_STATUS_ID: return "badge-cancelled";
       default: return "badge-default";
     }
-  }
-
-  private formatDate(dateString: string): string {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  }
-
-  private formatDateLong(dateString: string): string {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-  }
-
-  private formatCurrency(amount: number, currency?: string | null): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format(amount);
   }
 
   private escapeHtml(text: string): string {

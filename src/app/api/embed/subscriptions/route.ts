@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required" },
+        { error: "auth_required", message: "Authentication required" },
         { status: 401, headers }
       );
     }
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 
     if (!contactId) {
       return NextResponse.json(
-        { error: "User not found" },
+        { error: "user_not_found", message: "User not found" },
         { status: 404, headers }
       );
     }
@@ -69,7 +69,7 @@ export async function PUT(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required" },
+        { error: "auth_required", message: "Authentication required" },
         { status: 401, headers }
       );
     }
@@ -79,7 +79,7 @@ export async function PUT(req: NextRequest) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: z.flattenError(parsed.error).fieldErrors },
+        { error: "validation_failed", message: "Validation failed", details: z.flattenError(parsed.error).fieldErrors },
         { status: 400, headers }
       );
     }
@@ -89,7 +89,7 @@ export async function PUT(req: NextRequest) {
 
     if (!contactId) {
       return NextResponse.json(
-        { error: "User not found" },
+        { error: "user_not_found", message: "User not found" },
         { status: 404, headers }
       );
     }

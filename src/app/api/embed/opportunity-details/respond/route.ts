@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       payload = (await req.json()) as Record<string, string>;
     } catch {
       return NextResponse.json(
-        { success: false, error: "Invalid JSON body" },
+        { success: false, error: "invalid_body", message: "Invalid JSON body" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     const opportunityId = Number(payload.OpportunityId);
     if (!opportunityId || Number.isNaN(opportunityId)) {
       return NextResponse.json(
-        { success: false, error: "Missing or invalid OpportunityId" },
+        { success: false, error: "invalid_request", message: "Missing or invalid OpportunityId" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }

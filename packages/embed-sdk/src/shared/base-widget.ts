@@ -2,6 +2,7 @@ import { getAuthSession, type AuthSession } from "./auth-session";
 import {
   getFormatters,
   getLocaleSession,
+  onOverridesChange,
   tEnglish,
   type Formatters,
   type LocaleCode,
@@ -9,6 +10,28 @@ import {
   type MessageKey,
   type Translator,
 } from "../i18n";
+
+/**
+ * Wire error codes whose catalogue key is spelled differently, plus the ones
+ * that deliberately share a sentence.
+ *
+ * `src/app/api/embed/**` answers with a snake_case machine code; the catalogue
+ * uses this repo's camelCase key convention for the generic errors. Mapping
+ * here keeps each sentence written exactly once across three locales instead of
+ * carrying `authRequired` and `auth_required` side by side.
+ *
+ * `invalid_body` and `invalid_request` collapse onto one sentence on purpose:
+ * both mean the widget sent something malformed, which a congregant can do
+ * nothing about and should never see spelled out.
+ */
+export const WIRE_CODE_KEYS: Record<string, MessageKey> = {
+  auth_required: "errors.authRequired",
+  session_expired: "errors.sessionExpired",
+  rate_limited: "errors.rateLimited",
+  invalid_request: "errors.invalidRequest",
+  invalid_body: "errors.invalidRequest",
+  internal_error: "errors.generic",
+};
 
 /**
  * Base class for MPNext embeddable widgets
@@ -35,6 +58,7 @@ export abstract class MPNextWidget extends HTMLElement {
   protected locale: LocaleCode = "en";
 
   private localeUnsubscribe: (() => void) | null = null;
+  private overridesUnsubscribe: (() => void) | null = null;
   private langObserver: MutationObserver | null = null;
 
   /**
@@ -233,6 +257,19 @@ export abstract class MPNextWidget extends HTMLElement {
       });
     }
 
+    // Label overrides are a separate signal and must NOT go through the check
+    // above: `MPNextEmbed.setMessages()` changes the copy without changing the
+    // locale, so a locale-equality guard would swallow it and the override
+    // would only appear on the next unrelated re-render. Found by
+    // `e2e/widget/localisation.spec.ts`, which set an override on an
+    // already-Spanish page and watched nothing happen.
+    if (!this.overridesUnsubscribe) {
+      this.overridesUnsubscribe = onOverridesChange(() => {
+        this.applyLocale();
+        if (this.isConnected) this.render();
+      });
+    }
+
     // A page author changing `lang` on the element after mount should switch
     // that widget. Watched with a MutationObserver rather than through
     // `observedAttributes` for two reasons: it needs no edit to the 30
@@ -320,10 +357,14 @@ export abstract class MPNextWidget extends HTMLElement {
    * Turn an API error response into a sentence for the visitor.
    *
    * Routes answer `{ error: "<machine_code>", message: "<English>" }`. The code
-   * is looked up in the `errors` namespace; the English `message` is a debug aid
-   * that is logged and **never rendered**, so a congregant never reads
-   * "Missing formId or formGuid" — in any language. An unmapped code degrades to
-   * `errors.generic`, which is what makes adding a route safe.
+   * is the contract; the English `message` is a debug aid that is logged and
+   * **never rendered**, so a congregant never reads "Missing formId or formGuid"
+   * — in any language. An unmapped code degrades to `errors.generic`, which is
+   * what makes adding a route safe.
+   *
+   * Most codes are named identically to their catalogue key, so the lookup is
+   * just `errors.<code>`. `WIRE_CODE_KEYS` covers the ones that are not, rather
+   * than duplicating the same sentence under two spellings in three catalogues.
    */
   protected errorText(
     payload: unknown,
@@ -333,7 +374,7 @@ export abstract class MPNextWidget extends HTMLElement {
     const code = typeof body.error === "string" ? body.error : "";
 
     if (code) {
-      const key = `errors.${code}` as MessageKey;
+      const key = WIRE_CODE_KEYS[code] ?? (`errors.${code}` as MessageKey);
       const text = this.t(key);
       // `t()` returns the key itself when nothing matches, in `en` either.
       if (text !== key) return text;
@@ -355,6 +396,8 @@ export abstract class MPNextWidget extends HTMLElement {
   disconnectedCallback(): void {
     this.localeUnsubscribe?.();
     this.localeUnsubscribe = null;
+    this.overridesUnsubscribe?.();
+    this.overridesUnsubscribe = null;
     this.langObserver?.disconnect();
     this.langObserver = null;
   }

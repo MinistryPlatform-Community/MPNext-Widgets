@@ -42,6 +42,8 @@ export type DateStyle =
   | "medium"
   /** Thu, Sep 10 — event cards, where the year is implied */
   | "weekdayShort"
+  /** Sun, Apr 5, 2026 — weekday *and* year, for a single dated summary line */
+  | "weekdayMedium"
   /** Sep 10 */
   | "monthDay"
   /** September 2026 — calendar headers */
@@ -58,6 +60,12 @@ const DATE_STYLES: Record<DateStyle, Intl.DateTimeFormatOptions> = {
   long: { month: "long", day: "numeric", year: "numeric" },
   medium: { month: "short", day: "numeric", year: "numeric" },
   weekdayShort: { weekday: "short", month: "short", day: "numeric" },
+  weekdayMedium: {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  },
   monthDay: { month: "short", day: "numeric" },
   monthYear: { month: "long", year: "numeric" },
   numeric: { year: "numeric", month: "2-digit", day: "2-digit" },
@@ -134,6 +142,21 @@ export interface Formatters {
    * Replaces six subtly different implementations.
    */
   dateRange(
+    start: Date | string | null | undefined,
+    end: Date | string | null | undefined,
+    style?: DateStyle,
+  ): string;
+  /**
+   * A date-only range with the shared parts written once:
+   * "Sep 6 – 12, 2026", "6–12 sept 2026", "6 – 12 de set. de 2026".
+   *
+   * Uses `Intl.DateTimeFormat.formatRange`, which knows per locale which
+   * components are shared and where the separator goes. Doing this by hand only
+   * works in month-first locales — Spanish and Portuguese lead with the day, so
+   * a hand-collapsed "Sep 6 – 12, 2026" becomes "6 sept – 12, 2026", where the
+   * trailing 12 reads as a second month.
+   */
+  dateRangeCompact(
     start: Date | string | null | undefined,
     end: Date | string | null | undefined,
     style?: DateStyle,
@@ -223,6 +246,26 @@ export function getFormatters(locale: LocaleCode): Formatters {
       const eTime = fmt.time(e);
       if (sameDay) return `${sDate}, ${sTime} – ${eTime}`;
       return `${sDate}, ${sTime} – ${fmt.date(e, style)}, ${eTime}`;
+    },
+
+    dateRangeCompact(start, end, style = "medium") {
+      const s = parseWallClock(start);
+      const e = parseWallClock(end);
+      if (!s) return "";
+      if (!e) return fmt.date(s, style);
+
+      const formatter = dateFormatter(locale, style, DATE_STYLES[style]);
+      // `formatRange` is ES2021. Widely available, but these widgets run on
+      // whatever browser a congregant brings, so fall back to two full dates
+      // rather than throwing inside a render path.
+      if (typeof formatter.formatRange !== "function") {
+        return `${fmt.date(s, style)} – ${fmt.date(e, style)}`;
+      }
+      try {
+        return formatter.formatRange(s, e);
+      } catch {
+        return `${fmt.date(s, style)} – ${fmt.date(e, style)}`;
+      }
     },
 
     currency(amount, code) {

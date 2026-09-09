@@ -43,42 +43,17 @@ const PREFIX = "packages/embed-sdk/src/";
 const NEWLINE = String.fromCharCode(10);
 
 /**
- * Remaining markup-embedded English literals per file.
+ * Files still carrying hardcoded English, with the count each still has.
  *
- * Lower an entry in the same commit that converts the strings, and delete it
- * when it reaches 0. A file absent from this table must contain none at all.
+ * **Empty, and it should stay that way.** The conversion completed on
+ * 2026-09-09: all 30 widget sources route their copy through `this.t(...)`, so
+ * the ratchet's job is now purely to keep new literals out. It started from a
+ * baseline of 395 across 27 files.
  *
- * `event-finder.ts` is the Phase 1 pilot and is already absent: it went to 0.
+ * An entry here means someone is mid-migration on a newly added widget. Add one
+ * only with a plan to remove it — never to silence a failure.
  */
-const BUDGET: Record<string, number> = {
-  "components/add-to-calendar.ts": 2,
-  "components/checkout-complete.ts": 2,
-  "components/checkout.ts": 16,
-  "components/custom-form.ts": 9,
-  "components/event-details.ts": 44,
-  "components/full-calendar-list.ts": 1,
-  "components/full-calendar-modal.ts": 8,
-  "components/full-calendar.ts": 4,
-  "components/group-details.ts": 19,
-  "components/group-finder.ts": 27,
-  "components/my-contribution-statement.ts": 8,
-  "components/my-giving.ts": 20,
-  "components/my-groups.ts": 9,
-  "components/my-household.ts": 37,
-  "components/my-invoices.ts": 27,
-  "components/my-pledges.ts": 10,
-  "components/online-directory.ts": 19,
-  "components/opportunity-details.ts": 16,
-  "components/opportunity-finder.ts": 18,
-  "components/pay.ts": 8,
-  "components/plan-your-visit.ts": 28,
-  "components/pledge-campaign.ts": 14,
-  "components/profile.ts": 23,
-  "components/statement-preferences.ts": 7,
-  "components/subscriptions.ts": 6,
-  "components/user-menu.ts": 11,
-  "shared/custom-form.ts": 2,
-};
+const BUDGET: Record<string, number> = {};
 
 const counts = scanCounts(repoRoot) as Record<string, number>;
 

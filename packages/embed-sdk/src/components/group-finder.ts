@@ -1,4 +1,5 @@
 import { MPNextWidget } from "../shared/base-widget";
+import { parseWallClock } from "../i18n";
 import {
   validateForm,
   bindLiveValidation,
@@ -33,23 +34,6 @@ interface Configurations {
   groupFocuses: FilterOption[];
   lifeStages: FilterOption[];
 }
-
-const MEETING_DAYS: { value: number; label: string }[] = [
-  { value: 1, label: "Sunday" },
-  { value: 2, label: "Monday" },
-  { value: 3, label: "Tuesday" },
-  { value: 4, label: "Wednesday" },
-  { value: 5, label: "Thursday" },
-  { value: 6, label: "Friday" },
-  { value: 7, label: "Saturday" },
-];
-
-const MEETING_TIMES: { value: string; label: string }[] = [
-  { value: "morning", label: "Morning" },
-  { value: "lunchtime", label: "Lunchtime" },
-  { value: "afternoon", label: "Afternoon" },
-  { value: "evening", label: "Evening" },
-];
 
 /**
  * `next-group-finder` — public, filterable group search rendering result cards
@@ -123,8 +107,34 @@ export class GroupFinderWidget extends MPNextWidget {
   connectedCallback() {
     this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
     this.seedFromAttributes();
-    this.render();
-    this.init();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish. Free in practice: the fetch lands inside
+    // the loading state this widget already paints while it queries the API.
+    void this.initLocale().then(() => {
+      this.render();
+      this.init();
+    });
+  }
+
+  /**
+   * MP's `Meeting_Day_ID` runs 1 = Sunday … 7 = Saturday and
+   * `weekdayNames()` is indexed the same way, so the label is simply the
+   * locale's own name for that day — no hardcoded day table to translate.
+   */
+  private meetingDayOptions(): { value: number; label: string }[] {
+    return this.fmt
+      .weekdayNames("long")
+      .map((label, i) => ({ value: i + 1, label }));
+  }
+
+  /** The four coarse time-of-day buckets the legacy widget filtered on. */
+  private meetingTimeOptions(): { value: string; label: string }[] {
+    return [
+      { value: "morning", label: this.t("groupFinder.morning") },
+      { value: "lunchtime", label: this.t("groupFinder.lunchtime") },
+      { value: "afternoon", label: this.t("groupFinder.afternoon") },
+      { value: "evening", label: this.t("groupFinder.evening") },
+    ];
   }
 
   /** Public hook so demo pages can force a reload. */
@@ -207,14 +217,17 @@ export class GroupFinderWidget extends MPNextWidget {
     try {
       const res = await this.fetch(`/api/embed/group-finder${this.buildQuery()}`);
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: { groups: GroupCard[] } = await res.json();
       this.groups = data.groups || [];
       this.emit("groupsLoaded", { count: this.groups.length });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "Failed to load groups";
+      // `errorText` has already turned an API machine code into a translated
+      // sentence; anything else (a thrown TypeError from a dropped connection)
+      // becomes the generic network message rather than leaking English.
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("groupFinderError", { error: this.error });
     } finally {
       this.loading = false;
@@ -343,7 +356,7 @@ export class GroupFinderWidget extends MPNextWidget {
 
   private async submitSuggestion(form: HTMLFormElement) {
     if (!validateForm(form).valid) {
-      this.setSuggestMessage("danger", "Please complete the required fields.");
+      this.setSuggestMessage("danger", this.t("validation.formIncomplete"));
       return;
     }
     const fd = new FormData(form);
@@ -375,23 +388,32 @@ export class GroupFinderWidget extends MPNextWidget {
         .catch(() => ({ success: false }));
 
       if (res.status === 401) {
-        this.setSuggestMessage("warning", "Please sign in to suggest a group.");
+        this.setSuggestMessage("warning", this.t("groupFinder.signInToSuggest"));
         this.requestLogin("group-finder");
         if (submitBtn) submitBtn.disabled = false;
         return;
       }
       if (!data.success) {
-        this.setSuggestMessage("danger", data.message || "Unable to submit your suggestion.");
+        // The route's `message` is English and debug-only, so render the
+        // translated sentence — and let `errorText` pick up a machine code if
+        // this route ever grows one.
+        this.setSuggestMessage(
+          "danger",
+          this.errorText(data, "groupFinder.suggestFailed")
+        );
         if (submitBtn) submitBtn.disabled = false;
         return;
       }
 
       form.reset();
       this.emit("groupSuggested", {});
-      this.setSuggestMessage("success", "Thanks! Your group suggestion has been submitted.");
+      this.setSuggestMessage("success", this.t("groupFinder.suggestSuccess"));
       if (submitBtn) submitBtn.disabled = false;
     } catch (err) {
-      this.setSuggestMessage("danger", err instanceof Error ? err.message : "Submission failed.");
+      this.setSuggestMessage(
+        "danger",
+        err instanceof Error ? err.message : this.t("errors.submitFailed")
+      );
       if (submitBtn) submitBtn.disabled = false;
     }
   }
@@ -438,14 +460,18 @@ export class GroupFinderWidget extends MPNextWidget {
   }
 
   private renderSearchForm(): string {
-    const dayChecks = MEETING_DAYS.map(
-      (d) =>
-        `<label class="nw-gf-check"><input type="checkbox" name="meetingDays" value="${d.value}" ${this.meetingDays.includes(String(d.value)) ? "checked" : ""}> ${d.label}</label>`
-    ).join("");
-    const timeChecks = MEETING_TIMES.map(
-      (t) =>
-        `<label class="nw-gf-check"><input type="checkbox" name="meetingTimes" value="${t.value}" ${this.meetingTimes.includes(t.value) ? "checked" : ""}> ${t.label}</label>`
-    ).join("");
+    const dayChecks = this.meetingDayOptions()
+      .map(
+        (d) =>
+          `<label class="nw-gf-check"><input type="checkbox" name="meetingDays" value="${d.value}" ${this.meetingDays.includes(String(d.value)) ? "checked" : ""}> ${this.escapeHtml(d.label)}</label>`
+      )
+      .join("");
+    const timeChecks = this.meetingTimeOptions()
+      .map(
+        (t) =>
+          `<label class="nw-gf-check"><input type="checkbox" name="meetingTimes" value="${t.value}" ${this.meetingTimes.includes(t.value) ? "checked" : ""}> ${this.escapeHtml(t.label)}</label>`
+      )
+      .join("");
 
     return `
       <form id="gf-form" class="nw-gf-form">
@@ -454,53 +480,53 @@ export class GroupFinderWidget extends MPNextWidget {
             id="gf-keyword"
             type="text"
             class="nw-gf-input"
-            placeholder="Search groups…"
+            placeholder="${this.escapeAttr(this.t("groupFinder.searchPlaceholder"))}"
             value="${this.escapeAttr(this.keyword)}"
-            aria-label="Search groups">
-          <button type="submit" class="nw-gf-btn">Search</button>
+            aria-label="${this.escapeAttr(this.t("groupFinder.searchLabel"))}">
+          <button type="submit" class="nw-gf-btn">${this.escapeHtml(this.t("common.search"))}</button>
         </div>
         <a href="#" class="nw-gf-advanced-link" data-action="toggle-advanced">
-          ${this.advancedOpen ? "Hide Advanced Search" : "Advanced Search"}
+          ${this.escapeHtml(this.t(this.advancedOpen ? "groupFinder.hideAdvanced" : "groupFinder.showAdvanced"))}
         </a>
         <div class="nw-gf-advanced" style="display:${this.advancedOpen ? "grid" : "none"}">
           <div class="nw-gf-field">
-            <label for="gf-congregation">Congregation</label>
+            <label for="gf-congregation">${this.escapeHtml(this.t("fields.congregation"))}</label>
             <select id="gf-congregation" class="nw-gf-select">
-              ${this.optionList(this.config.congregations, this.congregationId, "All Congregations")}
+              ${this.optionList(this.config.congregations, this.congregationId, this.t("groupFinder.allCongregations"))}
             </select>
           </div>
           <div class="nw-gf-field">
-            <label for="gf-parent">Neighborhood</label>
+            <label for="gf-parent">${this.escapeHtml(this.t("groupFinder.neighborhood"))}</label>
             <select id="gf-parent" class="nw-gf-select">
-              ${this.optionList(this.config.parentGroups, this.parentGroupId, "All Neighborhoods")}
+              ${this.optionList(this.config.parentGroups, this.parentGroupId, this.t("groupFinder.allNeighborhoods"))}
             </select>
           </div>
           <div class="nw-gf-field">
-            <label for="gf-city">City or Postal Code</label>
+            <label for="gf-city">${this.escapeHtml(this.t("groupFinder.cityOrPostalCode"))}</label>
             <input id="gf-city" type="text" class="nw-gf-input" value="${this.escapeAttr(this.cityPostalCode)}">
           </div>
           <div class="nw-gf-field">
-            <label for="gf-focus">Group Focus</label>
+            <label for="gf-focus">${this.escapeHtml(this.t("groupFinder.groupFocus"))}</label>
             <select id="gf-focus" class="nw-gf-select">
-              ${this.optionList(this.config.groupFocuses, this.groupFocusId, "All Focuses")}
+              ${this.optionList(this.config.groupFocuses, this.groupFocusId, this.t("groupFinder.allFocuses"))}
             </select>
           </div>
           <div class="nw-gf-field">
-            <label for="gf-life">Life Stage</label>
+            <label for="gf-life">${this.escapeHtml(this.t("groupFinder.lifeStage"))}</label>
             <select id="gf-life" class="nw-gf-select">
-              ${this.optionList(this.config.lifeStages, this.lifeStageId, "All Life Stages")}
+              ${this.optionList(this.config.lifeStages, this.lifeStageId, this.t("groupFinder.allLifeStages"))}
             </select>
           </div>
           <div class="nw-gf-field nw-gf-field--full">
-            <label>Meeting Days</label>
+            <label>${this.escapeHtml(this.t("groupFinder.meetingDays"))}</label>
             <div class="nw-gf-checks">${dayChecks}</div>
           </div>
           <div class="nw-gf-field nw-gf-field--full">
-            <label>Meeting Times</label>
+            <label>${this.escapeHtml(this.t("groupFinder.meetingTimes"))}</label>
             <div class="nw-gf-checks">${timeChecks}</div>
           </div>
           <div class="nw-gf-field">
-            <label class="nw-gf-check"><input type="checkbox" id="gf-online" ${this.meetsOnline ? "checked" : ""}> Meets Online</label>
+            <label class="nw-gf-check"><input type="checkbox" id="gf-online" ${this.meetsOnline ? "checked" : ""}> ${this.escapeHtml(this.t("groupFinder.meetsOnline"))}</label>
           </div>
         </div>
       </form>`;
@@ -508,23 +534,23 @@ export class GroupFinderWidget extends MPNextWidget {
 
   private renderResults(): string {
     if (this.loading) {
-      return `<div class="nw-gf-state">${this.spinnerSvg()}<span>Loading groups…</span></div>`;
+      return `<div class="nw-gf-state">${this.spinnerSvg()}<span>${this.escapeHtml(this.t("groupFinder.loading"))}</span></div>`;
     }
     if (this.error) {
       return `
         <div class="nw-gf-state nw-gf-error">
           <p>${this.escapeHtml(this.error)}</p>
-          <button class="nw-gf-btn" data-action="retry">Try Again</button>
+          <button class="nw-gf-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
         </div>`;
     }
     if (this.groups.length === 0) {
-      return `<div class="nw-gf-state nw-gf-empty">No groups found.</div>`;
+      return `<div class="nw-gf-state nw-gf-empty">${this.escapeHtml(this.t("groupFinder.empty"))}</div>`;
     }
     const grid = `<div class="nw-gf-grid">${this.groups.map((g) => this.renderCard(g)).join("")}</div>`;
     // Mirror the legacy "showing first results" hint when many groups match.
     const more =
       this.groups.length > 20
-        ? `<div class="nw-gf-more">Showing the first results — refine your search to narrow them down.</div>`
+        ? `<div class="nw-gf-more">${this.escapeHtml(this.t("groupFinder.truncated"))}</div>`
         : "";
     return grid + more;
   }
@@ -533,11 +559,19 @@ export class GroupFinderWidget extends MPNextWidget {
     const hasLink = !!this.getAttribute("target-url");
     const img = g.imageUrl
       ? `<img class="nw-gf-card-img" src="${this.escapeAttr(g.imageUrl)}" alt="" loading="lazy">`
-      : `<div class="nw-gf-card-img nw-gf-card-img--placeholder">${this.escapeHtml(g.noImageText || "Group")}</div>`;
+      : `<div class="nw-gf-card-img nw-gf-card-img--placeholder">${this.escapeHtml(g.noImageText || this.t("groupFinder.imagePlaceholder"))}</div>`;
 
     const badges: string[] = [];
-    if (g.isFull) badges.push(`<span class="nw-gf-badge nw-gf-badge--full">Full</span>`);
-    if (g.meetsOnline) badges.push(`<span class="nw-gf-badge nw-gf-badge--online">Meets Online</span>`);
+    if (g.isFull) {
+      badges.push(
+        `<span class="nw-gf-badge nw-gf-badge--full">${this.escapeHtml(this.t("groupFinder.full"))}</span>`
+      );
+    }
+    if (g.meetsOnline) {
+      badges.push(
+        `<span class="nw-gf-badge nw-gf-badge--online">${this.escapeHtml(this.t("groupFinder.meetsOnline"))}</span>`
+      );
+    }
 
     const subtitles: string[] = [];
     if (g.location) subtitles.push(this.escapeHtml(g.location));
@@ -564,17 +598,20 @@ export class GroupFinderWidget extends MPNextWidget {
           <h3 class="nw-gf-card-title">${this.escapeHtml(g.title)}</h3>
           ${subtitleHtml}
           ${description}
-          ${hasLink ? `<span class="nw-gf-card-cta">See Details &rarr;</span>` : ""}
+          ${hasLink ? `<span class="nw-gf-card-cta">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
         </div>
       </div>`;
   }
 
   private capacityLabel(g: GroupCard): string {
     if (g.isFull || (g.targetSize != null && g.totalParticipantsCount >= g.targetSize)) {
-      return "Full";
+      return this.t("groupFinder.full");
     }
     if (g.targetSize != null && g.totalParticipantsCount < g.targetSize) {
-      return `${g.totalParticipantsCount} of ${g.targetSize}`;
+      return this.t("groupFinder.capacity", {
+        filled: this.fmt.number(g.totalParticipantsCount),
+        total: this.fmt.number(g.targetSize),
+      });
     }
     return "";
   }
@@ -584,7 +621,7 @@ export class GroupFinderWidget extends MPNextWidget {
     if (this.loading || this.error) return "";
     return `
       <div class="nw-gf-suggest-cta">
-        <button type="button" class="nw-gf-btn nw-gf-btn--secondary" data-action="open-suggest">Suggest a Group</button>
+        <button type="button" class="nw-gf-btn nw-gf-btn--secondary" data-action="open-suggest">${this.escapeHtml(this.t("groupFinder.suggestGroup"))}</button>
       </div>`;
   }
 
@@ -593,87 +630,84 @@ export class GroupFinderWidget extends MPNextWidget {
       ? `<div id="gf-suggest-message" class="gf-message gf-message--${this.escapeAttr(this.suggestMessage.type)}">${this.escapeHtml(this.suggestMessage.text)}</div>`
       : `<div id="gf-suggest-message" class="gf-message" style="display:none"></div>`;
 
-    const dayOptions = [`<option value="">Any Day</option>`]
-      .concat(MEETING_DAYS.map((d) => `<option value="${d.value}">${d.label}</option>`))
+    const dayOptions = [
+      `<option value="">${this.escapeHtml(this.t("groupFinder.anyDay"))}</option>`,
+    ]
+      .concat(
+        this.meetingDayOptions().map(
+          (d) => `<option value="${d.value}">${this.escapeHtml(d.label)}</option>`
+        )
+      )
       .join("");
 
     return `
-      <a href="#" class="nw-gf-advanced-link" data-action="suggest-back">&larr; Back to results</a>
-      <h2 class="nw-gf-suggest-title">Suggest a Group</h2>
+      <a href="#" class="nw-gf-advanced-link" data-action="suggest-back">&larr; ${this.escapeHtml(this.t("groupFinder.backToResults"))}</a>
+      <h2 class="nw-gf-suggest-title">${this.escapeHtml(this.t("groupFinder.suggestGroup"))}</h2>
       ${message}
       <form id="gf-suggest-form" class="nw-gf-suggest" novalidate>
         <div class="nw-gf-field">
-          <label for="gf-s-name">Group Name${requiredStar()}</label>
+          <label for="gf-s-name">${this.escapeHtml(this.t("groupFinder.groupName"))}${requiredStar()}</label>
           <input id="gf-s-name" class="nw-gf-input" name="groupName" required>
         </div>
         <div class="nw-gf-field">
-          <label for="gf-s-desc">Description${requiredStar()}</label>
+          <label for="gf-s-desc">${this.escapeHtml(this.t("groupFinder.description"))}${requiredStar()}</label>
           <textarea id="gf-s-desc" class="nw-gf-input" name="description" required></textarea>
         </div>
         <div class="nw-gf-field">
-          <label for="gf-s-cong">Congregation${requiredStar()}</label>
+          <label for="gf-s-cong">${this.escapeHtml(this.t("fields.congregation"))}${requiredStar()}</label>
           <select id="gf-s-cong" class="nw-gf-select" name="newGroupCongregationId" required>
-            ${this.optionList(this.config.congregations, "", "Select a congregation")}
+            ${this.optionList(this.config.congregations, "", this.t("groupFinder.selectCongregation"))}
           </select>
         </div>
         <div class="nw-gf-field">
-          <label for="gf-s-focus">Group Focus</label>
+          <label for="gf-s-focus">${this.escapeHtml(this.t("groupFinder.groupFocus"))}</label>
           <select id="gf-s-focus" class="nw-gf-select" name="newGroupGroupFocusId">
-            ${this.optionList(this.config.groupFocuses, "", "None")}
+            ${this.optionList(this.config.groupFocuses, "", this.t("groupFinder.none"))}
           </select>
         </div>
         <div class="nw-gf-field">
-          <label for="gf-s-life">Life Stage</label>
+          <label for="gf-s-life">${this.escapeHtml(this.t("groupFinder.lifeStage"))}</label>
           <select id="gf-s-life" class="nw-gf-select" name="newGroupLifeStageId">
-            ${this.optionList(this.config.lifeStages, "", "None")}
+            ${this.optionList(this.config.lifeStages, "", this.t("groupFinder.none"))}
           </select>
         </div>
         <div class="nw-gf-field">
-          <label for="gf-s-day">Meeting Day</label>
+          <label for="gf-s-day">${this.escapeHtml(this.t("groupFinder.meetingDay"))}</label>
           <select id="gf-s-day" class="nw-gf-select" name="newGroupMeetingDayId">${dayOptions}</select>
         </div>
         <div class="nw-gf-field">
-          <label for="gf-s-time">Meeting Time</label>
+          <label for="gf-s-time">${this.escapeHtml(this.t("groupFinder.meetingTime"))}</label>
           <input id="gf-s-time" class="nw-gf-input" type="time" name="newGroupMeetingTime">
         </div>
         <div class="nw-gf-suggest-actions">
-          <button type="submit" class="nw-gf-btn">Submit Suggestion</button>
+          <button type="submit" class="nw-gf-btn">${this.escapeHtml(this.t("groupFinder.submitSuggestion"))}</button>
         </div>
       </form>`;
   }
 
   // ── Date / text helpers ──
 
-  private parseMpDate(value: string | null): Date | null {
-    if (!value) return null;
-    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
-    if (!m) {
-      const fallback = new Date(value);
-      return isNaN(fallback.getTime()) ? null : fallback;
-    }
-    return new Date(
-      Number(m[1]),
-      Number(m[2]) - 1,
-      Number(m[3]),
-      m[4] ? Number(m[4]) : 0,
-      m[5] ? Number(m[5]) : 0
-    );
-  }
-
   private formatStart(value: string | null): string {
-    const d = this.parseMpDate(value);
+    // `parseWallClock` is the same parse the deleted local `parseMpDate` did —
+    // calendar parts into a local Date, no offset maths — so the wall clock MP
+    // stores survives, and `fmt` formats it with no time zone.
+    const d = parseWallClock(value);
     if (!d) return "";
-    if (d.getTime() < Date.now()) return "Already meeting";
-    return `Starts ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+    if (d.getTime() < Date.now()) return this.t("groupFinder.alreadyMeeting");
+    return this.t("groupFinder.startsOn", { date: this.fmt.date(d, "medium") });
   }
 
-  /** Format an MP time-of-day string ("18:30:00" or "1900-01-01T18:30:00"). */
+  /**
+   * Format an MP time-of-day string ("18:30:00" or "1900-01-01T18:30:00").
+   * Kept local rather than routed through `parseWallClock`, which needs a date
+   * part; the hours/minutes go onto an arbitrary date so `fmt.time` can render
+   * them in the visitor's locale.
+   */
   private formatMeetingTime(value: string | null): string {
     if (!value) return "";
     const m = value.match(/(\d{2}):(\d{2})/);
     if (!m) return "";
-    const d = new Date(1900, 0, 1, Number(m[1]), Number(m[2]));
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    return this.fmt.time(new Date(1900, 0, 1, Number(m[1]), Number(m[2])));
   }
 
   private truncate(text: string, max: number): string {

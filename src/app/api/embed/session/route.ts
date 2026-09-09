@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       body = (await req.json()) as SessionRequest;
     } catch {
       return NextResponse.json(
-        { error: "Invalid or empty JSON body" },
+        { error: "invalid_body", message: "Invalid or empty JSON body" },
         { status: 400, headers: fallbackCors },
       );
     }
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
 
     if (!wid || typeof wid !== "string") {
       return NextResponse.json(
-        { error: "Missing required field: wid" },
+        { error: "invalid_request", message: "Missing required field: wid" },
         { status: 400, headers: fallbackCors },
       );
     }
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     const rate = await checkRateLimit(`ip:${getClientIp(req)}`);
     if (!rate.ok) {
       return NextResponse.json(
-        { error: "Too many requests" },
+        { error: "rate_limited", message: "Too many requests" },
         { status: 429, headers: { ...corsHeaders, "Retry-After": "60" } },
       );
     }

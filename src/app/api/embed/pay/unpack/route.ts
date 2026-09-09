@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     const token = req.nextUrl.searchParams.get("token")?.trim();
     if (!token) {
       return NextResponse.json(
-        { error: "Missing token" },
+        { error: "invalid_request", message: "Missing token" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }

@@ -81,8 +81,13 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
-    this.render();
-    this.init();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish; the fetch hides inside the loading state
+    // this widget already paints while it verifies the token.
+    void this.initLocale().then(() => {
+      this.render();
+      this.init();
+    });
   }
 
   // ── Attribute helpers ──
@@ -133,7 +138,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
     } catch (err) {
       this.message = {
         type: "danger",
-        text: err instanceof Error ? err.message : "Something went wrong.",
+        text: err instanceof Error ? err.message : this.t("errors.generic"),
       };
     } finally {
       this.loading = false;
@@ -214,22 +219,30 @@ export class PlanYourVisitWidget extends MPNextWidget {
       if (data.contactExists) {
         this.contactExists = true;
         this.emit("contactExists", {});
-        this.setMessage("warning", data.message || "An account already exists for that email.");
+        // The route's `message` is English and debug-only, so render the
+        // translated sentence instead.
+        this.setMessage("warning", this.t("planYourVisit.accountExists"));
         this.render();
         this.attachListeners();
         return;
       }
       if (!data.success) {
-        this.setMessage("danger", data.message || "We couldn't send the verification email.");
+        this.setMessage(
+          "danger",
+          this.errorText(data, "planYourVisit.verificationFailed")
+        );
         this.setButtonsDisabled(false);
         return;
       }
 
       this.emit("verificationSent", { email: payload.email });
-      this.setMessage("success", "Check your email — we've sent you a link to finish planning your visit.");
+      this.setMessage("success", this.t("planYourVisit.verificationSent"));
       form.reset();
     } catch (err) {
-      this.setMessage("danger", err instanceof Error ? err.message : "Submission failed.");
+      this.setMessage(
+        "danger",
+        err instanceof Error ? err.message : this.t("errors.submitFailed")
+      );
     } finally {
       this.setButtonsDisabled(false);
     }
@@ -239,7 +252,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   private async submitDetails(form: HTMLFormElement) {
     if (!validateForm(form).valid) {
-      this.setMessage("warning", "Please complete the required fields.");
+      this.setMessage("warning", this.t("validation.formIncomplete"));
       return;
     }
     if (!this.verify) return;
@@ -303,15 +316,18 @@ export class PlanYourVisitWidget extends MPNextWidget {
       });
       const data = await res.json().catch(() => ({ success: false }));
       if (!data.success) {
-        this.setMessage("danger", data.message || "We couldn't save your information.");
+        this.setMessage("danger", this.errorText(data, "planYourVisit.saveFailed"));
         this.setButtonsDisabled(false);
         return;
       }
       this.emit("visitPlanned", { email: this.verify.email });
-      this.setMessage("success", "Thank you! Your visit details have been received. We can't wait to meet you.");
+      this.setMessage("success", this.t("planYourVisit.submitted"));
       this.hideDetailsForm();
     } catch (err) {
-      this.setMessage("danger", err instanceof Error ? err.message : "Submission failed.");
+      this.setMessage(
+        "danger",
+        err instanceof Error ? err.message : this.t("errors.submitFailed")
+      );
       this.setButtonsDisabled(false);
     }
   }
@@ -431,7 +447,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   render() {
     if (this.loading) {
-      this.root.innerHTML = `<div class="pyv">${this.stateBlock(this.spinnerSvg(), "Loading…")}</div>`;
+      this.root.innerHTML = `<div class="pyv">${this.stateBlock(this.spinnerSvg(), this.t("common.loading"))}</div>`;
       return;
     }
     this.root.innerHTML = `
@@ -448,19 +464,19 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   private renderInitialPhase(): string {
     const signIn = this.contactExists
-      ? `<div class="pyv-signin"><button type="button" class="pyv-btn pyv-btn--ghost" data-action="login">Sign In</button></div>`
+      ? `<div class="pyv-signin"><button type="button" class="pyv-btn pyv-btn--ghost" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button></div>`
       : "";
     return `
-      <h2 class="pyv-title">Plan Your Visit</h2>
-      <p class="pyv-lead">Tell us a little about you and we'll email you a link to finish planning your first visit.</p>
+      <h2 class="pyv-title">${this.escapeHtml(this.t("planYourVisit.title"))}</h2>
+      <p class="pyv-lead">${this.escapeHtml(this.t("planYourVisit.lead"))}</p>
       <form id="pyv-verify-form" class="pyv-form" novalidate>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>First Name${requiredStar()}</label><input class="pyv-input" name="firstName" required></div>
-          <div class="pyv-field"><label>Last Name${requiredStar()}</label><input class="pyv-input" name="lastName" required></div>
+          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="pyv-input" name="firstName" required></div>
+          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="pyv-input" name="lastName" required></div>
         </div>
-        <div class="pyv-field"><label>Email${requiredStar()}</label><input class="pyv-input" type="email" name="email" required></div>
+        <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="pyv-input" type="email" name="email" required></div>
         <div class="pyv-actions">
-          <button type="submit" class="pyv-btn pyv-btn--primary pyv-submit">Send Verification Email</button>
+          <button type="submit" class="pyv-btn pyv-btn--primary pyv-submit">${this.escapeHtml(this.t("planYourVisit.sendVerification"))}</button>
         </div>
       </form>
       ${signIn}`;
@@ -468,15 +484,16 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   private renderVerifyPhase(): string {
     if (!this.verify) {
-      const text =
+      const text = this.t(
         this.verifyFailed === "exists"
-          ? "An account already exists for this email. Please sign in instead."
-          : "This link is invalid or has expired. Please start again.";
+          ? "planYourVisit.linkAccountExists"
+          : "planYourVisit.linkInvalid"
+      );
       const signIn =
         this.verifyFailed === "exists"
-          ? `<div class="pyv-signin"><button type="button" class="pyv-btn pyv-btn--ghost" data-action="login">Sign In</button></div>`
+          ? `<div class="pyv-signin"><button type="button" class="pyv-btn pyv-btn--ghost" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button></div>`
           : "";
-      return `<h2 class="pyv-title">Plan Your Visit</h2><p class="pyv-lead">${this.escapeHtml(text)}</p>${signIn}`;
+      return `<h2 class="pyv-title">${this.escapeHtml(this.t("planYourVisit.title"))}</h2><p class="pyv-lead">${this.escapeHtml(text)}</p>${signIn}`;
     }
     return this.renderDetailsForm();
   }
@@ -488,38 +505,38 @@ export class PlanYourVisitWidget extends MPNextWidget {
       .join("");
 
     return `
-      <h2 class="pyv-title">Plan Your Visit</h2>
-      <p class="pyv-lead">Please fill out the information below so we can make your visit special.</p>
+      <h2 class="pyv-title">${this.escapeHtml(this.t("planYourVisit.title"))}</h2>
+      <p class="pyv-lead">${this.escapeHtml(this.t("planYourVisit.detailsLead"))}</p>
       <form id="pyv-details-form" class="pyv-form" novalidate>
-        <h3 class="pyv-section">Visit Details</h3>
+        <h3 class="pyv-section">${this.escapeHtml(this.t("planYourVisit.visitDetails"))}</h3>
         <div class="pyv-field">
-          <label for="pyv-congregation">Congregation${requiredStar()}</label>
+          <label for="pyv-congregation">${this.escapeHtml(this.t("fields.congregation"))}${requiredStar()}</label>
           <select id="pyv-congregation" class="pyv-input" name="congregationId" required>
-            <option value="">Select a congregation</option>
+            <option value="">${this.escapeHtml(this.t("planYourVisit.selectCongregation"))}</option>
             ${congOptions}
           </select>
         </div>
-        <div class="pyv-field"><label>When can we expect you?${requiredStar()}</label><input class="pyv-input" name="whenCanWeExpectYou" required></div>
+        <div class="pyv-field"><label>${this.escapeHtml(this.t("planYourVisit.whenCanWeExpectYou"))}${requiredStar()}</label><input class="pyv-input" name="whenCanWeExpectYou" required></div>
 
-        <h3 class="pyv-section">Your Details</h3>
+        <h3 class="pyv-section">${this.escapeHtml(this.t("planYourVisit.yourDetails"))}</h3>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>First Name${requiredStar()}</label><input class="pyv-input" name="headFirstName" value="${this.escapeAttr(v.firstName || "")}" required></div>
-          <div class="pyv-field"><label>Last Name${requiredStar()}</label><input class="pyv-input" name="headLastName" value="${this.escapeAttr(v.lastName || "")}" required></div>
+          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="pyv-input" name="headFirstName" value="${this.escapeAttr(v.firstName || "")}" required></div>
+          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="pyv-input" name="headLastName" value="${this.escapeAttr(v.lastName || "")}" required></div>
         </div>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>Email</label><input class="pyv-input pyv-readonly" type="email" value="${this.escapeAttr(v.email || "")}" readonly></div>
-          <div class="pyv-field"><label>Mobile Phone${requiredStar()}</label><input class="pyv-input" type="tel" name="headMobilePhone" ${this.phonePattern()} required></div>
+          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.email"))}</label><input class="pyv-input pyv-readonly" type="email" value="${this.escapeAttr(v.email || "")}" readonly></div>
+          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}${requiredStar()}</label><input class="pyv-input" type="tel" name="headMobilePhone" ${this.phonePattern()} required></div>
         </div>
         ${this.renderAddress()}
 
-        <h3 class="pyv-section">Additional Family Members</h3>
+        <h3 class="pyv-section">${this.escapeHtml(this.t("planYourVisit.familyMembers"))}</h3>
         ${this.renderSpouse()}
         <div id="pyv-children">${this.childRows.map((c) => this.renderChild(c)).join("")}</div>
-        <div class="pyv-add-child"><button type="button" class="pyv-link" data-action="add-child">+ Add child</button></div>
+        <div class="pyv-add-child"><button type="button" class="pyv-link" data-action="add-child">+ ${this.escapeHtml(this.t("planYourVisit.addChild"))}</button></div>
 
         ${this.hiddenMilestones()}
         <div class="pyv-actions">
-          <button type="submit" class="pyv-btn pyv-btn--primary pyv-submit">Submit</button>
+          <button type="submit" class="pyv-btn pyv-btn--primary pyv-submit">${this.escapeHtml(this.t("common.submit"))}</button>
         </div>
       </form>`;
   }
@@ -527,37 +544,43 @@ export class PlanYourVisitWidget extends MPNextWidget {
   private renderSpouse(): string {
     return `
       <fieldset class="pyv-fieldset">
-        <legend>Spouse</legend>
-        <div class="pyv-field"><label>First Name</label><input class="pyv-input" name="spouseFirstName"></div>
+        <legend>${this.escapeHtml(this.t("planYourVisit.spouse"))}</legend>
+        <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.firstName"))}</label><input class="pyv-input" name="spouseFirstName"></div>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>Email</label><input class="pyv-input" type="email" name="spouseEmail"></div>
-          <div class="pyv-field"><label>Mobile Phone</label><input class="pyv-input" type="tel" name="spousePhone" ${this.phonePattern()}></div>
+          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.email"))}</label><input class="pyv-input" type="email" name="spouseEmail"></div>
+          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}</label><input class="pyv-input" type="tel" name="spousePhone" ${this.phonePattern()}></div>
         </div>
       </fieldset>`;
   }
 
   private renderChild(c: ChildState): string {
-    const genderOptions = [`<option value="">Gender</option>`]
+    // The gender and age/grade *values* come from MP and stay as MP supplies
+    // them; the empty first option is the widget's own placeholder.
+    const genderOptions = [
+      `<option value="">${this.escapeHtml(this.t("fields.gender"))}</option>`,
+    ]
       .concat(this.config.genders.map((g) => `<option value="${g.id}">${this.escapeHtml(g.name)}</option>`))
       .join("");
     return `
       <fieldset class="pyv-fieldset" id="pyv-child-${c.key}">
-        <legend>Child <button type="button" class="pyv-remove" data-action="remove-child" data-child-key="${c.key}" aria-label="Remove child">&times;</button></legend>
+        <legend>${this.escapeHtml(this.t("planYourVisit.child"))} <button type="button" class="pyv-remove" data-action="remove-child" data-child-key="${c.key}" aria-label="${this.escapeAttr(this.t("planYourVisit.removeChild"))}">&times;</button></legend>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>First Name${requiredStar()}</label><input class="pyv-input" name="child-${c.key}-firstName" required></div>
-          <div class="pyv-field"><label>Last Name${requiredStar()}</label><input class="pyv-input" name="child-${c.key}-lastName" value="${this.escapeAttr(this.verify?.lastName || "")}" required></div>
+          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="pyv-input" name="child-${c.key}-firstName" required></div>
+          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="pyv-input" name="child-${c.key}-lastName" value="${this.escapeAttr(this.verify?.lastName || "")}" required></div>
         </div>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>Date of Birth${requiredStar()}</label><input class="pyv-input" type="date" name="child-${c.key}-dob" data-role="child-dob" data-child-key="${c.key}" value="${this.escapeAttr(c.dob || "")}" required></div>
-          <div class="pyv-field"><label>Gender</label><select class="pyv-input" name="child-${c.key}-gender">${genderOptions}</select></div>
+          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.dateOfBirth"))}${requiredStar()}</label><input class="pyv-input" type="date" name="child-${c.key}-dob" data-role="child-dob" data-child-key="${c.key}" value="${this.escapeAttr(c.dob || "")}" required></div>
+          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.gender"))}</label><select class="pyv-input" name="child-${c.key}-gender">${genderOptions}</select></div>
         </div>
-        <div class="pyv-field"><label>Age or Grade Group</label><select class="pyv-input" name="child-${c.key}-ageGroup">${this.ageGroupOptions(c.dob)}</select></div>
+        <div class="pyv-field"><label>${this.escapeHtml(this.t("planYourVisit.ageOrGradeGroup"))}</label><select class="pyv-input" name="child-${c.key}-ageGroup">${this.ageGroupOptions(c.dob)}</select></div>
       </fieldset>`;
   }
 
   private ageGroupOptions(dob: string): string {
     const groups = dob ? this.sortAgeGroups([...this.ageGroups], dob) : this.ageGroups;
-    return [`<option value="">Select a group</option>`]
+    return [
+      `<option value="">${this.escapeHtml(this.t("planYourVisit.selectGroup"))}</option>`,
+    ]
       .concat(groups.map((g) => `<option value="${g.id}">${this.escapeHtml(g.value)}</option>`))
       .join("");
   }
@@ -580,7 +603,9 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   private renderAddress(): string {
     if (!this.collectAddress) return "";
-    const countryOptions = [`<option value="">Country</option>`]
+    const countryOptions = [
+      `<option value="">${this.escapeHtml(this.t("fields.country"))}</option>`,
+    ]
       .concat(
         this.config.countries.map(
           (c) =>
@@ -589,15 +614,15 @@ export class PlanYourVisitWidget extends MPNextWidget {
       )
       .join("");
     return `
-      <h3 class="pyv-section">Address</h3>
-      <div class="pyv-field"><label>Address${requiredStar()}</label><input class="pyv-input" name="addressLine1" required></div>
+      <h3 class="pyv-section">${this.escapeHtml(this.t("fields.address"))}</h3>
+      <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.address"))}${requiredStar()}</label><input class="pyv-input" name="addressLine1" required></div>
       <div class="pyv-grid2">
-        <div class="pyv-field"><label>City${requiredStar()}</label><input class="pyv-input" name="addressCity" required></div>
-        <div class="pyv-field"><label>State / Province${requiredStar()}</label><input class="pyv-input" name="addressState" required></div>
+        <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.city"))}${requiredStar()}</label><input class="pyv-input" name="addressCity" required></div>
+        <div class="pyv-field"><label>${this.escapeHtml(this.t("planYourVisit.stateProvince"))}${requiredStar()}</label><input class="pyv-input" name="addressState" required></div>
       </div>
       <div class="pyv-grid2">
-        <div class="pyv-field"><label>Zip / Postal Code${requiredStar()}</label><input class="pyv-input" name="addressPostal" required></div>
-        <div class="pyv-field"><label>Country</label><select class="pyv-input" name="addressCountry">${countryOptions}</select></div>
+        <div class="pyv-field"><label>${this.escapeHtml(this.t("planYourVisit.zipPostalCode"))}${requiredStar()}</label><input class="pyv-input" name="addressPostal" required></div>
+        <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.country"))}</label><select class="pyv-input" name="addressCountry">${countryOptions}</select></div>
       </div>`;
   }
 

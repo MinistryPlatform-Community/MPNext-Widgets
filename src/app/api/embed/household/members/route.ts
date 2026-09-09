@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required. Please sign in." },
+        { error: "auth_required", message: "Authentication required. Please sign in." },
         { status: 401, headers: getCorsHeaders(origin) }
       );
     }
@@ -33,14 +33,14 @@ export async function POST(req: NextRequest) {
 
     if (!user || user.householdId == null) {
       return NextResponse.json(
-        { error: "Household not found" },
+        { error: "household_not_found", message: "Household not found" },
         { status: 404, headers: getCorsHeaders(origin) }
       );
     }
 
     if (!user.isHeadOfHousehold) {
       return NextResponse.json(
-        { error: "Only the head of household can edit." },
+        { error: "not_head_of_household", message: "Only the head of household can edit." },
         { status: 403, headers: getCorsHeaders(origin) }
       );
     }
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: z.flattenError(parsed.error).fieldErrors },
+        { error: "validation_failed", message: "Validation failed", details: z.flattenError(parsed.error).fieldErrors },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       );
       if (!inHousehold) {
         return NextResponse.json(
-          { error: "Contact is not a member of this household." },
+          { error: "not_household_member", message: "Contact is not a member of this household." },
           { status: 403, headers: getCorsHeaders(origin) }
         );
       }

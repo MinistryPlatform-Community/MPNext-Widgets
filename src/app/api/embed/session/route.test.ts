@@ -88,14 +88,20 @@ describe('POST /api/embed/session', () => {
     it('rejects invalid JSON with 400', async () => {
       const res = await POST(post('{not json'));
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: 'Invalid or empty JSON body' });
+      expect(await res.json()).toEqual({
+        error: 'invalid_body',
+        message: 'Invalid or empty JSON body',
+      });
       expect(res.headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN);
     });
 
     it('rejects a missing wid with 400', async () => {
       const res = await POST(post({}));
       expect(res.status).toBe(400);
-      expect(await res.json()).toEqual({ error: 'Missing required field: wid' });
+      expect(await res.json()).toEqual({
+        error: 'invalid_request',
+        message: 'Missing required field: wid',
+      });
     });
 
     it('rejects a disallowed origin with 403', async () => {
@@ -384,7 +390,10 @@ describe('POST /api/embed/session', () => {
       expect((await POST(post({ wid: 'user-menu' }, ip))).status).toBe(200);
       const third = await POST(post({ wid: 'user-menu' }, ip));
       expect(third.status).toBe(429);
-      expect(await third.json()).toEqual({ error: 'Too many requests' });
+      expect(await third.json()).toEqual({
+        error: 'rate_limited',
+        message: 'Too many requests',
+      });
       expect(third.headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN);
       expect(third.headers.get('Retry-After')).toBe('60');
 

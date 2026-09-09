@@ -206,6 +206,29 @@ function isUserFacing(text) {
   return true;
 }
 
+/**
+ * Is the template literal starting at `offset` an argument to a `console.*`
+ * call?
+ *
+ * Looks back over the preceding characters, skipping the argument list that may
+ * sit between the call and this literal (`console.warn("prefix", \`…\`)`). The
+ * window is bounded so a `console` call earlier in the function cannot capture
+ * an unrelated template.
+ */
+function isConsoleArgument(source, offset) {
+  const WINDOW = 200;
+  // `offset` points at the body, i.e. one past the opening backtick — so stop at
+  // `offset - 1` to leave that backtick out. Including it made the
+  // `[^()\`]*$` tail fail every time and the whole check a no-op.
+  const before = source.slice(Math.max(0, offset - WINDOW), Math.max(0, offset - 1));
+  // The last call-opening paren before this literal, with only argument-ish
+  // characters in between.
+  const match = before.match(
+    /console\s*\.\s*(?:log|warn|error|info|debug|trace)\s*\([^()`]*$/,
+  );
+  return match !== null;
+}
+
 /** Every user-facing literal in one source file, with its line number. */
 export function scanSource(source, file = "<source>") {
   const cleaned = stripComments(source);
@@ -225,6 +248,13 @@ export function scanSource(source, file = "<source>") {
   };
 
   for (const { start, body } of templateLiterals(cleaned)) {
+    // A developer diagnostic is not congregant-facing copy and must never be
+    // translated — a Spanish console warning helps nobody. These get counted
+    // anyway when the message embeds sample markup, e.g. `user-menu.ts`
+    // advising a site owner to add `<script id="MPWidgets" …>`, which puts prose
+    // between a `>` and a `<`.
+    if (isConsoleArgument(cleaned, start)) continue;
+
     const masked = maskInterpolations(body);
 
     // 1. Text nodes: >Some text<

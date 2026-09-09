@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required. Please sign in." },
+        { error: "auth_required", message: "Authentication required. Please sign in." },
         { status: 401, headers: getCorsHeaders(origin) }
       );
     }
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     const user = await service.getUserByGuid(claims.sub);
     if (!user) {
       return NextResponse.json(
-        { error: "User not found" },
+        { error: "user_not_found", message: "User not found" },
         { status: 404 }
       );
     }
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required. Please sign in." },
+        { error: "auth_required", message: "Authentication required. Please sign in." },
         { status: 401, headers: getCorsHeaders(origin) }
       );
     }
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     const result = CancelPledgeRequestSchema.safeParse(body);
     if (!result.success) {
       return NextResponse.json(
-        { error: "Invalid request body." },
+        { error: "invalid_body", message: "Invalid request body." },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     const user = await service.getUserByGuid(claims.sub);
     if (!user) {
       return NextResponse.json(
-        { error: "User not found" },
+        { error: "user_not_found", message: "User not found" },
         { status: 404 }
       );
     }
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     );
     if (!owned) {
       return NextResponse.json(
-        { error: "You do not have permission to cancel this pledge." },
+        { error: "pledge_forbidden", message: "You do not have permission to cancel this pledge." },
         { status: 403, headers: getCorsHeaders(origin) }
       );
     }

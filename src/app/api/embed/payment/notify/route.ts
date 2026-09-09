@@ -37,14 +37,14 @@ export async function POST(req: NextRequest) {
       token = (await readToken(req)).trim();
     } catch {
       return NextResponse.json(
-        { error: "Invalid request body" },
+        { error: "invalid_body", message: "Invalid request body" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
 
     if (!token) {
       return NextResponse.json(
-        { error: "Missing token" },
+        { error: "invalid_request", message: "Missing token" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }

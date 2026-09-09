@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
     if (!formId && !formGuid) {
       return NextResponse.json(
-        { error: "Missing formId or formGuid" },
+        { error: "invalid_request", message: "Missing formId or formGuid" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     const definition = await service.getDefinition({ formId, formGuid });
     if (!definition) {
       return NextResponse.json(
-        { error: "Form not found" },
+        { error: "form_not_found", message: "Form not found" },
         { status: 404, headers: getCorsHeaders(origin) }
       );
     }

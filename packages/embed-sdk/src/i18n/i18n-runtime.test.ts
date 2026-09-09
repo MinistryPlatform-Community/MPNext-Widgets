@@ -170,7 +170,7 @@ describe("createTranslator", () => {
     const enT = createTranslator("en", {
       ...en,
       common: { ...en.common, save: "{days}" },
-    } as typeof en);
+    } as unknown as typeof en);
     // Note the serial comma: that is what Intl gives for en, and taking it
     // from the platform rather than the catalogue is the point.
     expect(enT("common.save", { days: ["Mon", "Wed", "Fri"] })).toBe(

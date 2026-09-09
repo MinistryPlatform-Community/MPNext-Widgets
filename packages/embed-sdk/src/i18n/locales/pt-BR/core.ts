@@ -115,6 +115,18 @@ export const ptBRCore = {
     group_not_found: "Não encontramos esse grupo.",
     opportunity_not_found: "Não encontramos essa oportunidade.",
     payment_declined: "O pagamento foi recusado. Tente outro método.",
+    campaign_not_found: "Não encontramos essa campanha de doações.",
+    household_not_found: "Não encontramos sua família.",
+    profile_not_found: "Não encontramos seu perfil.",
+    photo_not_found: "Não há nenhuma foto cadastrada.",
+    not_head_of_household: "Somente o responsável pela família pode fazer esta alteração.",
+    not_household_member: "Essa pessoa não faz parte da sua família.",
+    directory_forbidden: "Você não tem acesso ao diretório de membros.",
+    pledge_forbidden: "Você não tem permissão para alterar esta promessa de doação.",
+    validation_failed: "Verifique os campos destacados e tente novamente.",
+    no_file: "Escolha um arquivo primeiro.",
+    invalid_file_type: "Envie uma imagem JPEG, PNG, GIF ou WebP.",
+    file_too_large: "Esse arquivo é muito grande. Escolha uma imagem menor.",
   },
 
   localeSelector: {

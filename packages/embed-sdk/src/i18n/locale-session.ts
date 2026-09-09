@@ -34,7 +34,6 @@ import {
 } from "./registry";
 import { createTranslator, type Translator } from "./t";
 import { getFormatters, type Formatters } from "./formatters";
-import { onOverridesChange } from "./overrides";
 
 export const LOCALE_KEY = "nw_locale";
 
@@ -63,7 +62,12 @@ export class LocaleSession {
   constructor() {
     this.locale = this.resolveFromEnvironment();
     this.ready = this.load(this.locale);
-    onOverridesChange(() => this.notify());
+    // Deliberately NOT re-broadcasting override changes here. This session's
+    // listeners are locale listeners, and `base-widget.ts` guards them with a
+    // locale-equality check so a page-wide switch does not re-render a widget
+    // pinned by its own `lang`. Folding overrides into the same signal made
+    // that guard swallow them. Widgets subscribe to `onOverridesChange`
+    // separately instead.
   }
 
   // ── Resolution ───────────────────────────────────────────────────────────

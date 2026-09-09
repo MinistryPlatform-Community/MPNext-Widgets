@@ -1,3 +1,5 @@
+import type { Formatters, Translator } from "../i18n";
+
 // ── Types (local, not imported) ──
 
 interface CalendarEvent {
@@ -31,6 +33,12 @@ interface RenderDetailModalOptions {
   isAdmin: boolean;
   onClose: () => void;
   getEventColor: (typeId: number | null) => string;
+  /**
+   * Translator and formatters from `full-calendar.ts` — this module builds the
+   * modal as a plain function, so there is no `this.t` in scope.
+   */
+  t: Translator;
+  fmt: Formatters;
 }
 
 // ── SVG Icons ──
@@ -86,30 +94,19 @@ function sanitizeHtml(html: string): string {
   return Array.from(doc.body.childNodes).map(clean).join("");
 }
 
-function formatDateTime(date: Date): string {
-  return date.toLocaleString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
 // ── Exported Render Function ──
 
 export function renderDetailModal(options: RenderDetailModalOptions): HTMLElement {
-  const { event, fcEvent, isAdmin, onClose, getEventColor } = options;
+  const { event, fcEvent, isAdmin, onClose, getEventColor, t, fmt } = options;
 
   // Resolve start/end dates: prefer fcEvent dates, fall back to parsing event strings
   const startDate = fcEvent?.start ?? new Date(event.Event_Start_Date);
   const endDate = fcEvent?.end ?? new Date(event.Event_End_Date);
 
-  const startStr = formatDateTime(startDate);
-  const endStr = formatDateTime(endDate);
-  const dateRange = endStr && endStr !== startStr ? `${startStr} \u2013 ${endStr}` : startStr;
+  // `fmt.dateRange` collapses the repeated date on a same-day event, which the
+  // two-full-timestamps join this replaces never did: it renders "Thu, Sep 10,
+  // 7:00 PM - 9:00 PM" rather than spelling out the date twice.
+  const dateRange = fmt.dateRange(startDate, endDate, "medium");
 
   const typeColor = getEventColor(event.Event_Type_ID);
 
@@ -136,7 +133,7 @@ export function renderDetailModal(options: RenderDetailModalOptions): HTMLElemen
     badgesHtml += `<span class="nw-fc-badge nw-fc-badge-campus">${escapeHtml(event.Congregation_Name)}</span>`;
   }
   if (event.Featured_On_Calendar) {
-    badgesHtml += `<span class="nw-fc-badge nw-fc-badge-featured">Featured</span>`;
+    badgesHtml += `<span class="nw-fc-badge nw-fc-badge-featured">${escapeHtml(t("fullCalendar.featured"))}</span>`;
   }
 
   // ── Build body rows ──
@@ -172,7 +169,7 @@ export function renderDetailModal(options: RenderDetailModalOptions): HTMLElemen
   if (event.Registration_URL) {
     bodyHtml += `
       <div class="nw-fc-modal-actions">
-        <a class="nw-fc-register-btn" href="${escapeHtml(event.Registration_URL)}" target="_blank" rel="noopener noreferrer">Register</a>
+        <a class="nw-fc-register-btn" href="${escapeHtml(event.Registration_URL)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t("fullCalendar.register"))}</a>
       </div>`;
   }
 
@@ -199,27 +196,27 @@ export function renderDetailModal(options: RenderDetailModalOptions): HTMLElemen
     if (event.MP_Detail_URL) {
       mpLinkHtml = `
         <a class="nw-fc-mp-link" href="${escapeHtml(event.MP_Detail_URL)}" target="_blank" rel="noopener noreferrer">
-          Open in Ministry Platform ${ICON_EXTERNAL}
+          ${escapeHtml(t("fullCalendar.openInMinistryPlatform"))} ${ICON_EXTERNAL}
         </a>`;
     }
 
     adminHtml = `
       <div class="nw-fc-admin-section">
-        <div class="nw-fc-admin-divider">Admin Details</div>
+        <div class="nw-fc-admin-divider">${escapeHtml(t("fullCalendar.adminDetails"))}</div>
         <div class="nw-fc-admin-row">
-          <span class="nw-fc-admin-label">Participants</span>
+          <span class="nw-fc-admin-label">${escapeHtml(t("fullCalendar.participants"))}</span>
           <span class="nw-fc-admin-value">${participantCount} / ${participantsExpected}</span>
         </div>
         <div class="nw-fc-admin-row">
-          <span class="nw-fc-admin-label">Registration</span>
+          <span class="nw-fc-admin-label">${escapeHtml(t("fullCalendar.registration"))}</span>
           <span class="nw-fc-admin-value">${escapeHtml(registrationProduct)}</span>
         </div>
         <div class="nw-fc-admin-row">
-          <span class="nw-fc-admin-label">Ministry</span>
+          <span class="nw-fc-admin-label">${escapeHtml(t("fields.ministry"))}</span>
           <span class="nw-fc-admin-value">${escapeHtml(ministry)}</span>
         </div>
         <div class="nw-fc-admin-row">
-          <span class="nw-fc-admin-label">Contact</span>
+          <span class="nw-fc-admin-label">${escapeHtml(t("fields.contact"))}</span>
           <span class="nw-fc-admin-value">${contactHtml}</span>
         </div>
         ${mpLinkHtml}
@@ -233,7 +230,7 @@ export function renderDetailModal(options: RenderDetailModalOptions): HTMLElemen
       <div class="nw-fc-modal-header" style="border-left: 4px solid ${typeColor};">
         <div class="nw-fc-modal-title-row">
           <h2 class="nw-fc-modal-title">${escapeHtml(event.Event_Title)}</h2>
-          <button class="nw-fc-modal-close" aria-label="Close">&times;</button>
+          <button class="nw-fc-modal-close" aria-label="${escapeHtml(t("common.close"))}">&times;</button>
         </div>
         <div class="nw-fc-modal-badges">
           ${badgesHtml}

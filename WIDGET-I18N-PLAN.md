@@ -527,3 +527,99 @@ per-tenant setup.
   widget a church may or may not embed, so the `<html lang>` rung (§4) is what most sites
   will actually rely on. Document that rung first in the customer setup notes; the selector
   is the fallback for sites that cannot set `lang`.
+
+---
+
+# Implementation record — 2026-09-09
+
+Shipped on `feature/widget-i18n`. This section records where the plan above was
+wrong, because those are the parts worth reading before changing any of this.
+
+## Corrections to this plan, found while building
+
+**1. The `timeZone` claim was wrong and acting on it would have added a bug.**
+Corrected in place in §5 above. The widgets already parse MP wall-clock strings
+into a *local* `Date` and format with no zone; adding the domain zone
+re-introduces the day-shift that parsing exists to avoid. `formatters.ts` takes
+no `timeZone` and exposes no way to pass one.
+
+**2. `observedAttributes` was the wrong mechanism for watching `lang`.** The
+plan said to add `"lang"` to all 30 components' static lists. A
+`MutationObserver` in the base class is strictly better: no edit to 30 files (11
+of which have no `observedAttributes` at all), and it sidesteps
+`attributeChangedCallback`, several implementations of which ignore the first set
+(C39). It also has to sidestep them — the base class *reflects* the resolved
+locale onto the host as `lang` for assistive tech, so a naive implementation
+reads its own output back as input and pins the widget's locale forever.
+`declaredLang()` is the distinction that makes this safe, and
+`widget-locale.test.ts` guards it.
+
+**3. Lazy locale chunks worked, but the naming nearly shipped a 404.** The plan
+flagged code-splitting in Vite lib mode as a risk needing a spike; it works. The
+real hazard was one the plan did not anticipate: rolldown's default
+`chunkFileNames` produces a name `scripts/copy-sdk.js` does not recognise as
+build-owned, so the chunk is built, never published, and 404s in production —
+and does **not** reproduce under `vite dev`, which serves the import off the
+filesystem. `vite.config.ts` now pins a `next-embed`-prefixed pattern, and
+`vercel.json` carries the matching CORS entry.
+
+**4. `Intl.PluralRules` reports a `many` category for `es` and `pt-BR`.** The
+plan asserted all three shipped locales are `one`/`other`. They are not: both
+Spanish and Portuguese select `many` for whole millions, and Brazilian
+Portuguese selects **`one` for zero** ("0 evento", not "0 eventos"). Every
+plural message therefore needs three branches in those locales, which
+`catalogue-parity.test.ts` enforces. This is also a retroactive argument for the
+design: a `count === 1` check would have been wrong for `pt-BR` at zero, in a
+way no English-speaking reviewer would have noticed.
+
+**5. The literal scanner was wrong twice before it was right.** Worth recording
+because both drafts looked plausible:
+- Scanning whole files reported TypeScript generics as UI copy — `Promise<void>`
+  opens an angle bracket the next `<` appears to pair with — putting ~200
+  phantom findings in files containing no English at all.
+- Scanning only top-level template literals missed every string inside a nested
+  ternary template, which is how these widgets build most conditional markup. It
+  under-counted `my-invoices.ts` at 13 when it had 27, and would have let a file
+  be declared "done" with a third of its copy still hardcoded.
+- A third pass excluded `console.*` arguments: developer diagnostics are not
+  congregant-facing copy, and one in `user-menu.ts` embeds sample markup
+  (`<script id="MPWidgets" …>`) that reads as prose between `>` and `<`.
+
+## Delivered beyond the plan
+
+- **`pnpm i18n:check` / `i18n:sync`** with real staleness detection, backed by
+  recorded source hashes in `packages/embed-sdk/i18n-sources/`. Verified by
+  changing an English string and watching both locales report stale.
+- **`error-codes.test.ts`** — reads the codes straight out of
+  `src/app/api/embed/**` and asserts each resolves to a message in all three
+  locales, and that no route answers with English prose. This is what makes
+  adding a route safe; nothing else catches a new code with no translation,
+  because the response is well-formed and the widget renders a plausible
+  sentence.
+- **`WIRE_CODE_KEYS`** so a wire code whose catalogue key is spelled differently
+  (`auth_required` → `errors.authRequired`) does not duplicate its sentence
+  across three catalogues.
+- **`e2e/widget/localisation.spec.ts`** — asserts the lazy chunk is fetched
+  exactly once and never for English, that it returns 200 with a JS content
+  type, and that English is never painted before Spanish arrives. jsdom cannot
+  cover any of those.
+
+## Known-open, deliberately
+
+- **`{{userLocale}}` is not forwarded to payment vendors.** MP's
+  `mpp-smart-link` passed the chosen locale out to the giving vendor; a visitor
+  who picks Spanish here still lands on the vendor's default language. Needs the
+  vendor's parameter contract; tracked with C74.
+- **`user-menu.ts` in `legacy` mode.** It renders MP's own `<mpp-user-login>`,
+  whose copy comes from `GetLabels` in *MP's* locale. A Spanish page can show a
+  Spanish menu around an English MP login control. `dual`/`hardened` uses our own
+  Sign In and is unaffected.
+- **`my-invoices.ts` searches the *formatted* date string**, so the searchable
+  text is now locale-dependent — typing "sep" will not match `sept.` in Spanish.
+  Pre-existing design, surfaced by this work; changing search semantics was out
+  of scope.
+- **No RTL audit.** `dir` is wired from the registry and reflected onto every
+  host, but no shipped locale is RTL and ~1,300 lines of widget CSS have not been
+  reviewed for logical properties.
+- **No demo page for `next-locale-selector`**, by request. `<html lang="es">` on
+  any existing demo page exercises the whole path.

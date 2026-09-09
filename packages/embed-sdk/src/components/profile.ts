@@ -9,9 +9,13 @@ import {
 // Injected at build time from VITE_ORG_NAME (see vite.config.ts). Empty when unset.
 declare const __ORG_NAME__: string;
 
-/** Organization display name for consent copy; neutral fallback when unconfigured. */
+/**
+ * Organization display name for the consent copy. Empty when the build did not
+ * configure one; the widget then falls back to a translated placeholder, which
+ * is why the fallback cannot live here.
+ */
 const ORG_NAME =
-  (typeof __ORG_NAME__ !== "undefined" && __ORG_NAME__) || "our organization";
+  (typeof __ORG_NAME__ !== "undefined" && __ORG_NAME__) || "";
 
 interface ProfileData {
   Contact_ID: number;
@@ -68,11 +72,17 @@ export class ProfileWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
-    this.render();
-    this.loadProfile();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish; the fetch hides inside the loading state
+    // this widget paints anyway while it queries the API.
+    void this.initLocale().then(() => {
+      this.render();
+      this.loadProfile();
+    });
   }
 
   disconnectedCallback() {
+    super.disconnectedCallback();
     if (this.successTimer) clearTimeout(this.successTimer);
     if (this.passwordSuccessTimer) clearTimeout(this.passwordSuccessTimer);
     if (this.photoUrl) URL.revokeObjectURL(this.photoUrl);
@@ -86,8 +96,8 @@ export class ProfileWidget extends MPNextWidget {
     try {
       const res = await this.fetch("/api/embed/profile");
       if (!res.ok) {
-        const body = await res.json();
-        throw new Error(body.error || `Failed to load profile (${res.status})`);
+        const body = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(body));
       }
       const data = await res.json();
       this.profile = data.profile;
@@ -100,7 +110,9 @@ export class ProfileWidget extends MPNextWidget {
       this.loadPhoto();
     } catch (err) {
       this.loading = false;
-      this.error = err instanceof Error ? err.message : "Failed to load profile";
+      // `errorText` has already translated an API code; anything else (a
+      // dropped connection) becomes the generic network message.
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.render();
       this.emit("profileError", { error: this.error });
     }
@@ -128,12 +140,12 @@ export class ProfileWidget extends MPNextWidget {
   private async handlePhotoUpload(file: File) {
     const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
     if (!allowedTypes.includes(file.type)) {
-      this.error = "Please upload a JPEG, PNG, GIF, or WebP image.";
+      this.error = this.t("profile.photoTypeInvalid");
       this.render();
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      this.error = "Photo must be under 5MB.";
+      this.error = this.t("profile.photoTooLarge");
       this.render();
       return;
     }
@@ -151,9 +163,9 @@ export class ProfileWidget extends MPNextWidget {
         body: formData,
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to upload photo");
+        throw new Error(this.errorText(data, "errors.saveFailed"));
       }
 
       this.uploadingPhoto = false;
@@ -161,7 +173,8 @@ export class ProfileWidget extends MPNextWidget {
       this.loadPhoto();
     } catch (err) {
       this.uploadingPhoto = false;
-      this.error = err instanceof Error ? err.message : "Failed to upload photo";
+      this.error =
+        err instanceof Error ? err.message : this.t("errors.saveFailed");
       this.render();
     }
   }
@@ -174,7 +187,7 @@ export class ProfileWidget extends MPNextWidget {
       container.innerHTML = `
         <div class="nw-loading">
           <div class="nw-spinner"></div>
-          <p>Loading profile...</p>
+          <p>${this.esc(this.t("profile.loading"))}</p>
         </div>`;
       if (!this.root.querySelector(".nw-profile")) this.root.appendChild(container);
       return;
@@ -184,7 +197,7 @@ export class ProfileWidget extends MPNextWidget {
       container.innerHTML = `
         <div class="nw-error-box">
           <p>${this.esc(this.error)}</p>
-          <button class="nw-btn nw-btn-primary" data-action="retry">Try Again</button>
+          <button class="nw-btn nw-btn-primary" data-action="retry">${this.esc(this.t("common.retry"))}</button>
         </div>`;
       if (!this.root.querySelector(".nw-profile")) this.root.appendChild(container);
       this.root.querySelector('[data-action="retry"]')?.addEventListener("click", () => this.loadProfile());
@@ -195,6 +208,11 @@ export class ProfileWidget extends MPNextWidget {
 
     const p = this.profile;
     const l = this.lookups;
+
+    // MP-authored: the greeting is the person's own name as the church holds it.
+    const greetingName = [p.Nickname || p.First_Name || "", p.Last_Name || ""]
+      .filter(Boolean)
+      .join(" ");
 
     // Parse DOB
     let dobMonth = "";
@@ -212,7 +230,7 @@ export class ProfileWidget extends MPNextWidget {
     container.innerHTML = `
       <div class="nw-photo-section">
         <div class="nw-photo-wrap">
-          <img class="nw-photo-img${this.photoUrl ? " nw-photo-loaded" : ""}" src="${this.photoUrl || ""}" alt="Profile photo" />
+          <img class="nw-photo-img${this.photoUrl ? " nw-photo-loaded" : ""}" src="${this.photoUrl || ""}" alt="${this.esc(this.t("profile.photoAlt"))}" />
           <div class="nw-photo-placeholder${this.photoUrl ? " nw-hidden" : ""}">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </div>
@@ -224,43 +242,43 @@ export class ProfileWidget extends MPNextWidget {
           <input type="file" class="nw-photo-input" accept="image/jpeg,image/png,image/gif,image/webp" />
         </div>
         <div class="nw-photo-text">
-          <div class="nw-photo-greeting">Hi, ${this.esc(this.profile?.Nickname || this.profile?.First_Name || "")} ${this.esc(this.profile?.Last_Name || "")}!</div>
-          <p class="nw-photo-subtext">Enter your information below, then click Save. This will only be visible to church staff unless you choose to share it with others.</p>
+          <div class="nw-photo-greeting">${this.esc(this.t("profile.greeting", { name: greetingName }))}</div>
+          <p class="nw-photo-subtext">${this.esc(this.t("profile.intro"))}</p>
         </div>
       </div>
 
-      ${this.saveSuccess ? '<div class="nw-toast nw-toast-success">Profile saved successfully.</div>' : ""}
+      ${this.saveSuccess ? `<div class="nw-toast nw-toast-success">${this.esc(this.t("profile.saved"))}</div>` : ""}
       ${this.error ? `<div class="nw-toast nw-toast-error">${this.esc(this.error)}</div>` : ""}
 
       <form id="profile-form" novalidate>
         <fieldset class="nw-section">
-          <legend class="nw-section-label">Name</legend>
+          <legend class="nw-section-label">${this.esc(this.t("fields.name"))}</legend>
           <div class="nw-grid">
             <div class="nw-field">
-              <label for="Prefix_ID">Prefix</label>
+              <label for="Prefix_ID">${this.esc(this.t("fields.prefix"))}</label>
               <select id="Prefix_ID" name="Prefix_ID">
                 <option value="">—</option>
                 ${l.prefixes.map((o) => `<option value="${o.id}"${p.Prefix_ID === o.id ? " selected" : ""}>${this.esc(o.label)}</option>`).join("")}
               </select>
             </div>
             <div class="nw-field">
-              <label for="First_Name">First Name${requiredStar()}</label>
+              <label for="First_Name">${this.esc(this.t("fields.firstName"))}${requiredStar()}</label>
               <input id="First_Name" name="First_Name" type="text" value="${this.esc(p.First_Name || "")}" required />
             </div>
             <div class="nw-field">
-              <label for="Middle_Name">Middle Name</label>
+              <label for="Middle_Name">${this.esc(this.t("fields.middleName"))}</label>
               <input id="Middle_Name" name="Middle_Name" type="text" value="${this.esc(p.Middle_Name || "")}" />
             </div>
             <div class="nw-field">
-              <label for="Last_Name">Last Name${requiredStar()}</label>
+              <label for="Last_Name">${this.esc(this.t("fields.lastName"))}${requiredStar()}</label>
               <input id="Last_Name" name="Last_Name" type="text" value="${this.esc(p.Last_Name || "")}" required />
             </div>
             <div class="nw-field">
-              <label for="Nickname">Nickname</label>
+              <label for="Nickname">${this.esc(this.t("fields.nickname"))}</label>
               <input id="Nickname" name="Nickname" type="text" value="${this.esc(p.Nickname || "")}" />
             </div>
             <div class="nw-field">
-              <label for="Suffix_ID">Suffix</label>
+              <label for="Suffix_ID">${this.esc(this.t("fields.suffix"))}</label>
               <select id="Suffix_ID" name="Suffix_ID">
                 <option value="">—</option>
                 ${l.suffixes.map((o) => `<option value="${o.id}"${p.Suffix_ID === o.id ? " selected" : ""}>${this.esc(o.label)}</option>`).join("")}
@@ -270,35 +288,37 @@ export class ProfileWidget extends MPNextWidget {
         </fieldset>
 
         <fieldset class="nw-section">
-          <legend class="nw-section-label">Personal Details</legend>
+          <legend class="nw-section-label">${this.esc(this.t("fields.personalDetails"))}</legend>
           <div class="nw-grid">
             <div class="nw-field">
-              <label for="Gender_ID">Gender</label>
+              <label for="Gender_ID">${this.esc(this.t("fields.gender"))}</label>
               <select id="Gender_ID" name="Gender_ID">
                 <option value="">—</option>
                 ${l.genders.map((o) => `<option value="${o.id}"${p.Gender_ID === o.id ? " selected" : ""}>${this.esc(o.label)}</option>`).join("")}
               </select>
             </div>
             <div class="nw-field nw-field-dob">
-              <label>Date of Birth</label>
+              <label>${this.esc(this.t("fields.dateOfBirth"))}</label>
               <div class="nw-dob-row">
                 <select id="dob-month" name="dob-month">
-                  <option value="">Month</option>
-                  ${Array.from({ length: 12 }, (_, i) => {
-                    const m = String(i + 1);
-                    const label = new Date(2000, i).toLocaleString("default", { month: "long" });
-                    return `<option value="${m}"${dobMonth === m ? " selected" : ""}>${label}</option>`;
-                  }).join("")}
+                  <option value="">${this.esc(this.t("profile.month"))}</option>
+                  ${this.fmt
+                    .monthNames()
+                    .map((label, i) => {
+                      const m = String(i + 1);
+                      return `<option value="${m}"${dobMonth === m ? " selected" : ""}>${this.esc(label)}</option>`;
+                    })
+                    .join("")}
                 </select>
                 <select id="dob-day" name="dob-day">
-                  <option value="">Day</option>
+                  <option value="">${this.esc(this.t("profile.day"))}</option>
                   ${Array.from({ length: 31 }, (_, i) => {
                     const d = String(i + 1);
                     return `<option value="${d}"${dobDay === d ? " selected" : ""}>${d}</option>`;
                   }).join("")}
                 </select>
                 <select id="dob-year" name="dob-year">
-                  <option value="">Year</option>
+                  <option value="">${this.esc(this.t("profile.year"))}</option>
                   ${(() => {
                     const currentYear = new Date().getFullYear();
                     const years: string[] = [];
@@ -312,7 +332,7 @@ export class ProfileWidget extends MPNextWidget {
               </div>
             </div>
             <div class="nw-field">
-              <label for="Marital_Status_ID">Marital Status</label>
+              <label for="Marital_Status_ID">${this.esc(this.t("fields.maritalStatus"))}</label>
               <select id="Marital_Status_ID" name="Marital_Status_ID">
                 <option value="">—</option>
                 ${l.maritalStatuses.map((o) => `<option value="${o.id}"${p.Marital_Status_ID === o.id ? " selected" : ""}>${this.esc(o.label)}</option>`).join("")}
@@ -322,32 +342,32 @@ export class ProfileWidget extends MPNextWidget {
         </fieldset>
 
         <fieldset class="nw-section">
-          <legend class="nw-section-label">Contact Information</legend>
+          <legend class="nw-section-label">${this.esc(this.t("profile.contactInformation"))}</legend>
           <div class="nw-grid">
             <div class="nw-field">
-              <label for="Mobile_Phone">Mobile Phone</label>
+              <label for="Mobile_Phone">${this.esc(this.t("fields.mobilePhone"))}</label>
               <input id="Mobile_Phone" name="Mobile_Phone" type="tel" value="${this.esc(p.Mobile_Phone || "")}" placeholder="999-999-9999" data-phone />
             </div>
             <div class="nw-field">
-              <label for="Company_Phone">Work Phone</label>
+              <label for="Company_Phone">${this.esc(this.t("fields.workPhone"))}</label>
               <input id="Company_Phone" name="Company_Phone" type="tel" value="${this.esc(p.Company_Phone || "")}" placeholder="999-999-9999" data-phone />
             </div>
             <div class="nw-field nw-field-full">
-              <label for="Email_Address">Email${requiredStar()}</label>
+              <label for="Email_Address">${this.esc(this.t("fields.email"))}${requiredStar()}</label>
               <input id="Email_Address" name="Email_Address" type="email" value="${this.esc(p.Email_Address || "")}" required />
             </div>
             <div class="nw-field nw-field-full nw-comm-prefs">
-              <div class="nw-comm-header">How should we contact you?</div>
+              <div class="nw-comm-header">${this.esc(this.t("profile.contactPrompt"))}</div>
               <label class="nw-checkbox-label">
                 <input type="checkbox" id="sms-opt-in" ${!p.Do_Not_Text ? "checked" : ""} />
                 <div>
-                  <span>I agree to opt in to text messages from ${this.esc(ORG_NAME)}</span>
-                  <small class="nw-checkbox-hint">Message and data rates may apply. Message frequency varies and you may opt out at any time.</small>
+                  <span>${this.esc(this.t("profile.smsOptIn", { org: ORG_NAME || this.t("profile.orgFallback") }))}</span>
+                  <small class="nw-checkbox-hint">${this.esc(this.t("profile.smsRates"))}</small>
                 </div>
               </label>
               <label class="nw-checkbox-label">
                 <input type="checkbox" id="bulk-email-opt-out" ${p.Bulk_Email_Opt_Out ? "checked" : ""} />
-                <span>Do not send me bulk email messages</span>
+                <span>${this.esc(this.t("profile.bulkEmailOptOut"))}</span>
               </label>
             </div>
           </div>
@@ -355,33 +375,33 @@ export class ProfileWidget extends MPNextWidget {
 
         <div class="nw-actions">
           <button type="submit" class="nw-btn nw-btn-primary" ${this.saving ? "disabled" : ""}>
-            ${this.saving ? '<span class="nw-spinner-sm"></span> Saving...' : "Save Profile"}
+            ${this.saving ? `<span class="nw-spinner-sm"></span> ${this.esc(this.t("common.saving"))}` : this.esc(this.t("profile.saveProfile"))}
           </button>
         </div>
       </form>
 
       <form id="password-form" novalidate>
         <fieldset class="nw-section">
-          <legend class="nw-section-label">Change Password</legend>
-          ${this.passwordSuccess ? '<div class="nw-toast nw-toast-success">Password changed successfully.</div>' : ""}
+          <legend class="nw-section-label">${this.esc(this.t("profile.changePassword"))}</legend>
+          ${this.passwordSuccess ? `<div class="nw-toast nw-toast-success">${this.esc(this.t("profile.passwordChanged"))}</div>` : ""}
           ${this.passwordError ? `<div class="nw-toast nw-toast-error">${this.esc(this.passwordError)}</div>` : ""}
           <div class="nw-grid nw-grid-single">
             <div class="nw-field nw-field-full">
-              <label for="oldPassword">Current Password${requiredStar()}</label>
+              <label for="oldPassword">${this.esc(this.t("profile.currentPassword"))}${requiredStar()}</label>
               <div class="nw-password-wrap">
                 <input id="oldPassword" name="oldPassword" type="${this.showOldPassword ? "text" : "password"}" required autocomplete="current-password" />
                 <button type="button" class="nw-eye-btn" data-toggle="oldPassword">${this.eyeIcon(this.showOldPassword)}</button>
               </div>
             </div>
             <div class="nw-field nw-field-full">
-              <label for="newPassword">New Password${requiredStar()}</label>
+              <label for="newPassword">${this.esc(this.t("profile.newPassword"))}${requiredStar()}</label>
               <div class="nw-password-wrap">
                 <input id="newPassword" name="newPassword" type="${this.showNewPassword ? "text" : "password"}" required autocomplete="new-password" minlength="8" />
                 <button type="button" class="nw-eye-btn" data-toggle="newPassword">${this.eyeIcon(this.showNewPassword)}</button>
               </div>
             </div>
             <div class="nw-field nw-field-full">
-              <label for="confirmPassword">Confirm New Password${requiredStar()}</label>
+              <label for="confirmPassword">${this.esc(this.t("profile.confirmPassword"))}${requiredStar()}</label>
               <div class="nw-password-wrap">
                 <input id="confirmPassword" name="confirmPassword" type="${this.showConfirmPassword ? "text" : "password"}" required autocomplete="new-password" />
                 <button type="button" class="nw-eye-btn" data-toggle="confirmPassword">${this.eyeIcon(this.showConfirmPassword)}</button>
@@ -390,7 +410,7 @@ export class ProfileWidget extends MPNextWidget {
           </div>
           <div class="nw-actions">
             <button type="submit" class="nw-btn nw-btn-primary" ${this.savingPassword ? "disabled" : ""}>
-              ${this.savingPassword ? '<span class="nw-spinner-sm"></span> Saving...' : "Change Password"}
+              ${this.savingPassword ? `<span class="nw-spinner-sm"></span> ${this.esc(this.t("common.saving"))}` : this.esc(this.t("profile.changePassword"))}
             </button>
           </div>
         </fieldset>
@@ -512,7 +532,7 @@ export class ProfileWidget extends MPNextWidget {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to save profile");
+        throw new Error(this.errorText(data, "errors.saveFailed"));
       }
 
       if (this.profile) {
@@ -531,7 +551,8 @@ export class ProfileWidget extends MPNextWidget {
       }, 3000);
     } catch (err) {
       this.saving = false;
-      this.error = err instanceof Error ? err.message : "Failed to save profile";
+      this.error =
+        err instanceof Error ? err.message : this.t("errors.saveFailed");
       this.render();
       this.emit("profileError", { error: this.error });
     }
@@ -565,7 +586,7 @@ export class ProfileWidget extends MPNextWidget {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to change password");
+        throw new Error(this.errorText(data, "errors.saveFailed"));
       }
 
       this.savingPassword = false;
@@ -585,7 +606,8 @@ export class ProfileWidget extends MPNextWidget {
       }, 3000);
     } catch (err) {
       this.savingPassword = false;
-      this.passwordError = err instanceof Error ? err.message : "Failed to change password";
+      this.passwordError =
+        err instanceof Error ? err.message : this.t("errors.saveFailed");
       this.render();
       this.emit("passwordError", { error: this.passwordError });
     }
@@ -606,23 +628,23 @@ export class ProfileWidget extends MPNextWidget {
   /** Shared validation config for the profile form (submit + live-clear). */
   private profileValidationOpts() {
     const phoneRegex = /^\d{3}-\d{3}-\d{4}$/;
+    // No per-field `messages`: they only restated the shared layer's own
+    // `validation.required`, which is translated.
     return {
-      messages: {
-        First_Name: "First name is required",
-        Last_Name: "Last name is required",
-        Email_Address: "Email is required",
-      },
+      t: this.t,
       customValidators: {
         First_Name: (v: string) =>
           /&/.test(v) || /\band\b/i.test(v)
-            ? 'Please enter only your first name (no "&" or "and")'
+            ? this.t("profile.firstNameOnly")
             : null,
         Email_Address: (v: string) =>
-          v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? "Invalid email address" : null,
+          v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+            ? this.t("validation.email")
+            : null,
         Mobile_Phone: (v: string) =>
-          v && !phoneRegex.test(v) ? "Use format: 999-999-9999" : null,
+          v && !phoneRegex.test(v) ? this.t("profile.phoneFormat") : null,
         Company_Phone: (v: string) =>
-          v && !phoneRegex.test(v) ? "Use format: 999-999-9999" : null,
+          v && !phoneRegex.test(v) ? this.t("profile.phoneFormat") : null,
       },
     };
   }
@@ -630,18 +652,14 @@ export class ProfileWidget extends MPNextWidget {
   /** Shared validation config for the password form (submit + live-clear). */
   private passwordValidationOpts() {
     return {
-      messages: {
-        oldPassword: "Current password is required",
-        newPassword: "New password is required",
-        confirmPassword: "Please confirm your new password",
-      },
+      t: this.t,
       customValidators: {
         newPassword: (v: string) =>
-          v && v.length < 8 ? "Must be at least 8 characters" : null,
+          v && v.length < 8 ? this.t("validation.tooShort", { min: 8 }) : null,
         confirmPassword: (v: string, form: HTMLFormElement) =>
           v &&
           v !== (form.querySelector('[name="newPassword"]') as HTMLInputElement | null)?.value
-            ? "Passwords do not match"
+            ? this.t("profile.passwordsDoNotMatch")
             : null,
       },
     };

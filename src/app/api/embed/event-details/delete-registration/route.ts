@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       body = (await req.json()) as { invoiceDetailId?: number };
     } catch {
       return NextResponse.json(
-        { success: false, error: "Invalid JSON body" },
+        { success: false, error: "invalid_body", message: "Invalid JSON body" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     const invoiceDetailId = Number(body.invoiceDetailId);
     if (!invoiceDetailId) {
       return NextResponse.json(
-        { success: false, error: "Missing invoiceDetailId" },
+        { success: false, error: "invalid_request", message: "Missing invoiceDetailId" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }

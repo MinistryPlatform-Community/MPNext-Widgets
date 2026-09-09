@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
       payload = (await req.json()) as Record<string, string>;
     } catch {
       return NextResponse.json(
-        { success: false, error: "Invalid JSON body" },
+        { success: false, error: "invalid_body", message: "Invalid JSON body" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }

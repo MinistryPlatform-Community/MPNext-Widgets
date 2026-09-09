@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     const eventId = parseInt(req.nextUrl.searchParams.get("eventId") ?? "", 10);
     if (isNaN(eventId) || eventId <= 0) {
       return NextResponse.json(
-        { error: "eventId must be a positive integer" },
+        { error: "invalid_request", message: "eventId must be a positive integer" },
         { status: 400, headers: buildFallbackCorsHeaders(origin) }
       );
     }

@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required" },
+        { error: "auth_required", message: "Authentication required" },
         { status: 401, headers: tenantHeaders }
       );
     }
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 
     if (!profile) {
       return NextResponse.json(
-        { error: "Profile not found" },
+        { error: "profile_not_found", message: "Profile not found" },
         { status: 404, headers: tenantHeaders }
       );
     }
@@ -65,7 +65,7 @@ export async function PUT(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required" },
+        { error: "auth_required", message: "Authentication required" },
         { status: 401, headers: tenantHeaders }
       );
     }
@@ -75,7 +75,7 @@ export async function PUT(req: NextRequest) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: z.flattenError(parsed.error).fieldErrors },
+        { error: "validation_failed", message: "Validation failed", details: z.flattenError(parsed.error).fieldErrors },
         { status: 400, headers: tenantHeaders }
       );
     }
@@ -85,7 +85,7 @@ export async function PUT(req: NextRequest) {
 
     if (!profile) {
       return NextResponse.json(
-        { error: "Profile not found" },
+        { error: "profile_not_found", message: "Profile not found" },
         { status: 404, headers: tenantHeaders }
       );
     }

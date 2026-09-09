@@ -21,8 +21,12 @@ export class SubscriptionsWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
-    this.render();
-    this.loadSubscriptions();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish.
+    void this.initLocale().then(() => {
+      this.render();
+      this.loadSubscriptions();
+    });
   }
 
   public retryLoad() {
@@ -38,14 +42,14 @@ export class SubscriptionsWidget extends MPNextWidget {
     try {
       const res = await this.fetch("/api/embed/subscriptions");
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: { subscriptions: SubscriptionItem[] } = await res.json();
       this.items = data.subscriptions || [];
       this.emit("subscriptionsLoaded", { count: this.items.length });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "Failed to load subscriptions";
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("subscriptionError", { error: this.error });
     } finally {
       this.loading = false;
@@ -82,17 +86,23 @@ export class SubscriptionsWidget extends MPNextWidget {
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data, "errors.saveFailed"));
       }
       const data: { success: boolean; error?: string } = await res.json();
       if (!data.success) {
-        throw new Error(data.error || "Update failed");
+        throw new Error(this.errorText(data, "errors.saveFailed"));
       }
 
+      // The publication title is MP-authored, so only the sentence around it
+      // is translated. Two keys rather than one with a verb placeholder: the
+      // preposition and the participle agree differently in each direction.
       this.message = {
         type: "success",
-        text: `${nextChecked ? "Subscribed to" : "Unsubscribed from"} ${item.Title}`,
+        text: this.t(
+          nextChecked ? "subscriptions.subscribed" : "subscriptions.unsubscribed",
+          { title: item.Title }
+        ),
       };
       this.emit("subscriptionChanged", { publicationId: pubId, subscribed: nextChecked });
     } catch (err) {
@@ -100,9 +110,9 @@ export class SubscriptionsWidget extends MPNextWidget {
       item.subscribed = previous;
       this.message = {
         type: "error",
-        text: "Could not update subscription, please try again.",
+        text: this.t("subscriptions.updateFailed"),
       };
-      const errText = err instanceof Error ? err.message : "Failed to update subscription";
+      const errText = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("subscriptionError", { error: errText });
     } finally {
       this.savingIds.delete(pubId);
@@ -147,7 +157,7 @@ export class SubscriptionsWidget extends MPNextWidget {
           <div class="header">
             <div class="loading-row">
               ${this.spinnerSvg()}
-              <span>Loading subscriptions...</span>
+              <span>${this.escapeHtml(this.t("subscriptions.loading"))}</span>
             </div>
           </div>
         </div>`;
@@ -158,11 +168,11 @@ export class SubscriptionsWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-subscriptions">
           <div class="header">
-            <div class="title">Unable to Load</div>
+            <div class="title">${this.escapeHtml(this.t("common.unableToLoad"))}</div>
             <p class="subtitle">${this.escapeHtml(this.error)}</p>
           </div>
           <div class="retry-section">
-            <button class="retry-btn" data-action="retry">Try Again</button>
+            <button class="retry-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
           </div>
         </div>`;
       return;
@@ -177,18 +187,20 @@ export class SubscriptionsWidget extends MPNextWidget {
 
     const list =
       filtered.length === 0
-        ? `<div class="empty-state">${
-            this.searchQuery
-              ? "No publications match your search."
-              : "No publications available."
-          }</div>`
+        ? `<div class="empty-state">${this.escapeHtml(
+            this.t(
+              this.searchQuery
+                ? "subscriptions.noMatches"
+                : "subscriptions.empty"
+            )
+          )}</div>`
         : `<div class="sub-list">${filtered.map((i) => this.renderRow(i)).join("")}</div>`;
 
     return `
       <div class="nw-subscriptions">
         <div class="header">
-          <div class="title">My Subscriptions</div>
-          <p class="subtitle">Choose which publications you'd like to receive.</p>
+          <div class="title">${this.escapeHtml(this.t("subscriptions.title"))}</div>
+          <p class="subtitle">${this.escapeHtml(this.t("subscriptions.subtitle"))}</p>
         </div>
         <div class="body">
           ${this.message
@@ -196,8 +208,8 @@ export class SubscriptionsWidget extends MPNextWidget {
             : ""}
           ${showSearch
             ? `<div class="search-bar">
-                <input type="text" id="sub-search" placeholder="Search publications…"
-                  value="${this.escapeHtml(this.searchQuery)}">
+                <input type="text" id="sub-search" placeholder="${this.escapeAttr(this.t("subscriptions.searchPlaceholder"))}"
+                  value="${this.escapeAttr(this.searchQuery)}">
               </div>`
             : ""}
           ${list}
@@ -237,6 +249,10 @@ export class SubscriptionsWidget extends MPNextWidget {
     const el = document.createElement("span");
     el.textContent = text;
     return el.innerHTML;
+  }
+
+  private escapeAttr(text: string): string {
+    return this.escapeHtml(text).replace(/"/g, "&quot;");
   }
 
   private spinnerSvg(): string {

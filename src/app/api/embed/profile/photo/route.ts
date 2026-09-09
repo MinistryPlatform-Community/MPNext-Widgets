@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required" },
+        { error: "auth_required", message: "Authentication required" },
         { status: 401, headers: tenantHeaders }
       );
     }
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
     if (!profile) {
       return NextResponse.json(
-        { error: "Profile not found" },
+        { error: "profile_not_found", message: "Profile not found" },
         { status: 404, headers: tenantHeaders }
       );
     }
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
 
     if (!photo) {
       return NextResponse.json(
-        { error: "No profile photo" },
+        { error: "photo_not_found", message: "No profile photo" },
         { status: 404, headers: tenantHeaders }
       );
     }
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required" },
+        { error: "auth_required", message: "Authentication required" },
         { status: 401, headers: tenantHeaders }
       );
     }
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json(
-        { error: "No photo file provided" },
+        { error: "no_file", message: "No photo file provided" },
         { status: 400, headers: tenantHeaders }
       );
     }
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
     const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
-        { error: "Invalid file type. Please upload a JPEG, PNG, GIF, or WebP image." },
+        { error: "invalid_file_type", message: "Invalid file type. Please upload a JPEG, PNG, GIF, or WebP image." },
         { status: 400, headers: tenantHeaders }
       );
     }
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
     // Validate file size (5MB max)
     if (file.size > 5 * 1024 * 1024) {
       return NextResponse.json(
-        { error: "File too large. Maximum size is 5MB." },
+        { error: "file_too_large", message: "File too large. Maximum size is 5MB." },
         { status: 400, headers: tenantHeaders }
       );
     }
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
 
     if (!profile) {
       return NextResponse.json(
-        { error: "Profile not found" },
+        { error: "profile_not_found", message: "Profile not found" },
         { status: 404, headers: tenantHeaders }
       );
     }

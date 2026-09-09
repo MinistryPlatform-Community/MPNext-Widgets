@@ -16,13 +16,6 @@ interface Pledge {
   pledgeTotalToDate: number;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  Active: "Active",
-  Completed: "Completed",
-  Discontinued: "Discontinued",
-  Pending: "Pending",
-};
-
 export class MyPledgesWidget extends MPNextWidget {
   private pledges: Pledge[] = [];
   private loading = true;
@@ -48,8 +41,12 @@ export class MyPledgesWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
-    this.render();
-    this.loadPledges();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish.
+    void this.initLocale().then(() => {
+      this.render();
+      this.loadPledges();
+    });
   }
 
   attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
@@ -71,14 +68,14 @@ export class MyPledgesWidget extends MPNextWidget {
     try {
       const res = await this.fetch("/api/embed/my-pledges");
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: { pledges: Pledge[] } = await res.json();
       this.pledges = data.pledges || [];
       this.emit("pledgesLoaded", { count: this.pledges.length });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "Failed to load pledges";
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("pledgeError", { error: this.error });
     } finally {
       this.loading = false;
@@ -110,19 +107,19 @@ export class MyPledgesWidget extends MPNextWidget {
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
 
       const data: { pledges: Pledge[] } = await res.json();
       this.pledges = data.pledges || [];
-      this.message = { type: "success", text: "Pledge canceled" };
+      this.message = { type: "success", text: this.t("myPledges.canceled") };
       this.emit("pledgeCanceled", { pledgeId });
     } catch (err) {
-      const errorText = err instanceof Error ? err.message : "Failed to cancel pledge";
+      const errorText = err instanceof Error ? err.message : this.t("errors.network");
       this.message = {
         type: "error",
-        text: "Error canceling the pledge, please try again.",
+        text: this.t("myPledges.cancelFailed"),
       };
       this.emit("pledgeError", { error: errorText });
     } finally {
@@ -178,7 +175,7 @@ export class MyPledgesWidget extends MPNextWidget {
           <div class="header">
             <div class="loading-row">
               ${this.spinnerSvg()}
-              <span>Loading pledges...</span>
+              <span>${this.escapeHtml(this.t("myPledges.loading"))}</span>
             </div>
           </div>
         </div>`;
@@ -189,11 +186,11 @@ export class MyPledgesWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-pledges">
           <div class="header">
-            <div class="title">Unable to Load</div>
+            <div class="title">${this.escapeHtml(this.t("common.unableToLoad"))}</div>
             <p class="subtitle">${this.escapeHtml(this.error)}</p>
           </div>
           <div class="retry-section">
-            <button class="retry-btn" data-action="retry">Try Again</button>
+            <button class="retry-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
           </div>
         </div>`;
       return;
@@ -205,13 +202,13 @@ export class MyPledgesWidget extends MPNextWidget {
   private renderMain(): string {
     const body =
       this.pledges.length === 0
-        ? `<div class="empty-state">You are not associated with any pledges.</div>`
+        ? `<div class="empty-state">${this.escapeHtml(this.t("myPledges.empty"))}</div>`
         : `<div class="pledge-grid">${this.pledges.map((p) => this.renderPledgeCard(p)).join("")}</div>`;
 
     return `
       <div class="nw-pledges">
         <div class="header">
-          <div class="title">My Pledges</div>
+          <div class="title">${this.escapeHtml(this.t("myPledges.title"))}</div>
         </div>
         <div class="body">
           ${this.message
@@ -223,7 +220,7 @@ export class MyPledgesWidget extends MPNextWidget {
   }
 
   private renderPledgeCard(p: Pledge): string {
-    const statusLabel = STATUS_LABELS[p.pledgeStatus] || p.pledgeStatus;
+    const statusLabel = this.statusLabel(p.pledgeStatus);
     const statusClass = this.getStatusClass(p.pledgeStatus);
 
     const media = p.imageUrl
@@ -234,9 +231,16 @@ export class MyPledgesWidget extends MPNextWidget {
     const showOwner = owner.length > 0 && owner.toLowerCase() !== "null null";
 
     const pct = this.computePercent(p.pledgeTotalToDate, p.totalPledge);
-    const barText = `${this.formatCurrency(p.pledgeTotalToDate)} of ${this.formatCurrency(p.totalPledge)} (${pct}%)`;
+    const barText = this.t("myPledges.progress", {
+      paid: this.fmt.currency(p.pledgeTotalToDate),
+      total: this.fmt.currency(p.totalPledge),
+      percent: this.fmt.percent(pct),
+    });
 
-    const description = `${p.installmentsPlanned} installments beginning ${this.formatInstallmentDate(p.firstInstallmentDate)}`;
+    const description = this.t("myPledges.installments", {
+      count: p.installmentsPlanned,
+      date: this.fmt.date(p.firstInstallmentDate, "medium"),
+    });
 
     const showCancel = this.hideCancelButton === false && p.pledgeStatus === "Active";
     let cancelArea = "";
@@ -245,18 +249,20 @@ export class MyPledgesWidget extends MPNextWidget {
         const busy = this.cancelingId === p.pledgeId;
         cancelArea = `
           <div class="cancel-confirm">
-            <span class="cancel-confirm-text">Cancel this pledge?</span>
+            <span class="cancel-confirm-text">${this.escapeHtml(this.t("myPledges.confirmCancel"))}</span>
             <div class="cancel-confirm-actions">
               <button class="cancel-btn cancel-btn--danger" data-action="confirm-cancel" data-id="${p.pledgeId}" ${busy ? "disabled" : ""}>
-                ${busy ? `${this.spinnerSvg()}<span>Canceling...</span>` : "Cancel pledge"}
+                ${busy
+                  ? `${this.spinnerSvg()}<span>${this.escapeHtml(this.t("myPledges.canceling"))}</span>`
+                  : this.escapeHtml(this.t("myPledges.confirmCancelYes"))}
               </button>
-              <button class="cancel-btn cancel-btn--ghost" data-action="dismiss-cancel" ${busy ? "disabled" : ""}>Keep</button>
+              <button class="cancel-btn cancel-btn--ghost" data-action="dismiss-cancel" ${busy ? "disabled" : ""}>${this.escapeHtml(this.t("myPledges.keep"))}</button>
             </div>
           </div>`;
       } else {
         cancelArea = `
           <div class="cancel-area">
-            <button class="cancel-btn cancel-btn--request" data-action="request-cancel" data-id="${p.pledgeId}">Cancel Pledge</button>
+            <button class="cancel-btn cancel-btn--request" data-action="request-cancel" data-id="${p.pledgeId}">${this.escapeHtml(this.t("myPledges.cancel"))}</button>
           </div>`;
       }
     }
@@ -288,6 +294,26 @@ export class MyPledgesWidget extends MPNextWidget {
     return Math.trunc((toDate / total) * 100);
   }
 
+  /**
+   * MP's four shipped pledge statuses, translated. A domain that has added a
+   * status of its own falls through to MP's value — the church's own wording,
+   * which is better than a key name.
+   */
+  private statusLabel(status: string): string {
+    switch (status) {
+      case "Active":
+        return this.t("myPledges.status.active");
+      case "Completed":
+        return this.t("myPledges.status.completed");
+      case "Discontinued":
+        return this.t("myPledges.status.discontinued");
+      case "Pending":
+        return this.t("myPledges.status.pending");
+      default:
+        return status;
+    }
+  }
+
   private getStatusClass(status: string): string {
     switch (status) {
       case "Active":
@@ -303,49 +329,18 @@ export class MyPledgesWidget extends MPNextWidget {
     }
   }
 
-  /**
-   * Parse the YYYY-MM-DD portion of a date defensively, avoiding the timezone
-   * day-shift that `new Date(isoString)` introduces when the string carries a
-   * trailing Z.
-   */
-  private parseDateParts(dateString: string): { year: number; month: number; day: number } | null {
-    if (!dateString) return null;
-    const match = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (!match) {
-      const fallback = new Date(dateString);
-      if (isNaN(fallback.getTime())) return null;
-      return {
-        year: fallback.getFullYear(),
-        month: fallback.getMonth() + 1,
-        day: fallback.getDate(),
-      };
-    }
-    return {
-      year: parseInt(match[1], 10),
-      month: parseInt(match[2], 10),
-      day: parseInt(match[3], 10),
-    };
-  }
-
-  private formatInstallmentDate(dateString: string): string {
-    const parts = this.parseDateParts(dateString);
-    if (!parts) return dateString;
-    const date = new Date(parts.year, parts.month - 1, parts.day);
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  }
-
-  private formatCurrency(amount: number): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
-  }
-
   private escapeHtml(text: string): string {
     const el = document.createElement("span");
     el.textContent = text;
     return el.innerHTML;
   }
 
+  private escapeAttr(text: string): string {
+    return this.escapeHtml(text).replace(/"/g, "&quot;");
+  }
+
   private heartSvg(): string {
-    return `<svg viewBox="0 0 24 24" fill="#004C97" class="heart-icon" role="img" aria-label="Pledge">
+    return `<svg viewBox="0 0 24 24" fill="#004C97" class="heart-icon" role="img" aria-label="${this.escapeAttr(this.t("myPledges.iconLabel"))}">
       <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
     </svg>`;
   }

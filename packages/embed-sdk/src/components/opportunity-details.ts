@@ -1,4 +1,5 @@
 import { MPNextWidget } from "../shared/base-widget";
+import { parseWallClock } from "../i18n";
 import {
   renderCustomFormFields,
   bindCustomFormDependsOn,
@@ -106,8 +107,13 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles() + CUSTOM_FORM_STYLES + FORM_VALIDATION_STYLES);
-    this.render();
-    this.init();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish; the fetch hides inside the loading state
+    // this widget already paints while it queries the API.
+    void this.initLocale().then(() => {
+      this.render();
+      this.init();
+    });
   }
 
   /** Public hook so demo pages can force a reload (e.g. after sign-in). */
@@ -151,7 +157,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
     const opportunityId = this.resolveOpportunityId();
     if (!opportunityId) {
-      this.error = "No opportunity specified.";
+      this.error = this.t("opportunityDetails.noOpportunitySpecified");
       this.loading = false;
       this.render();
       this.attachListeners();
@@ -163,10 +169,13 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       const res = await this.fetch(
         `/api/embed/opportunity-details/${encodeURIComponent(opportunityId)}`
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(body, "errors.opportunity_not_found"));
+      }
       const data: { opportunity: OpportunityDetail } = await res.json();
       if (!data || !data.opportunity) {
-        throw new Error("This opportunity is not available.");
+        throw new Error(this.t("errors.opportunity_not_found"));
       }
       this.opportunity = data.opportunity;
 
@@ -189,7 +198,10 @@ export class OpportunityDetailsWidget extends MPNextWidget {
         await this.checkHasResponded(Number(this.respondAs) || null);
       }
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "No opportunity found.";
+      // `errorText` has already produced a translated sentence; a thrown
+      // non-Error (a dropped connection) becomes the generic network message
+      // rather than leaking English.
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.opportunity = null;
       this.loading = false;
       this.render();
@@ -280,7 +292,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     if (!form) return;
 
     if (!validateForm(form).valid) {
-      this.setMessage("warning", "Please verify the response details.");
+      this.setMessage("warning", this.t("opportunityDetails.verifyDetails"));
       return;
     }
 
@@ -298,7 +310,9 @@ export class OpportunityDetailsWidget extends MPNextWidget {
         .catch(() => ({ success: false }));
 
       if (!data.success) {
-        const msg = data.message || "Unable to save your response.";
+        // The route's `message` is English and debug-only, so render the
+        // translated sentence instead.
+        const msg = this.errorText(data, "opportunityDetails.responseFailed");
         this.setMessage("danger", msg);
         this.emit("responseError", { error: msg });
         this.setSubmitDisabled(false);
@@ -307,15 +321,21 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
       this.submitted = true;
       this.emit("responseSaved", { responseId: data.responseId ?? null });
+      // Two whole sentences rather than one with an optional clause: the
+      // greeting's punctuation and word order differ by language, so splicing a
+      // name into the middle of a translated string does not travel.
       const name = this.responderName(payload);
       this.message = {
         type: "success",
-        text: name ? `Thank you, ${name}! Your response has been received.` : "Thank you! Your response has been received.",
+        text: name
+          ? this.t("opportunityDetails.responseReceivedNamed", { name })
+          : this.t("opportunityDetails.responseReceived"),
       };
       this.render();
       this.attachListeners();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Response failed.";
+      const msg =
+        err instanceof Error ? err.message : this.t("errors.submitFailed");
       this.setMessage("danger", msg);
       this.emit("responseError", { error: msg });
       this.setSubmitDisabled(false);
@@ -417,14 +437,14 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
   render() {
     if (this.loading) {
-      this.root.innerHTML = `<div class="od">${this.renderState(this.spinnerSvg(), "Loading opportunity…")}</div>`;
+      this.root.innerHTML = `<div class="od">${this.renderState(this.spinnerSvg(), this.t("opportunityDetails.loading"))}</div>`;
       return;
     }
     if (this.error || !this.opportunity) {
       this.root.innerHTML = `
         <div class="od">
           ${this.renderBackLink()}
-          <div class="od-state od-error"><p>${this.escapeHtml(this.error || "No opportunity found.")}</p></div>
+          <div class="od-state od-error"><p>${this.escapeHtml(this.error || this.t("errors.opportunity_not_found"))}</p></div>
         </div>`;
       return;
     }
@@ -440,7 +460,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
   private renderBackLink(): string {
     if (!this.returnUrl) return "";
-    return `<div class="od-back"><a href="${this.escapeAttr(this.returnUrl)}">&larr; Back to opportunities</a></div>`;
+    return `<div class="od-back"><a href="${this.escapeAttr(this.returnUrl)}">&larr; ${this.escapeHtml(this.t("opportunityDetails.backToOpportunities"))}</a></div>`;
   }
 
   private renderMessage(): string {
@@ -466,10 +486,17 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
     const remaining =
       op.remainingNeeded != null
-        ? this.specialText("Volunteers Needed", String(op.remainingNeeded))
+        ? this.specialText(
+            this.t("opportunityDetails.volunteersNeeded"),
+            this.fmt.number(op.remainingNeeded)
+          )
         : "";
     const contacts = this.renderContacts();
-    const location = op.location ? this.specialText("Location", op.location) : "";
+    // The location *value* is MP-authored and stays as MP supplies it; only its
+    // label is translated.
+    const location = op.location
+      ? this.specialText(this.t("fields.location"), op.location)
+      : "";
     const map = this.renderMap();
 
     return `
@@ -505,7 +532,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
         return `<li class="od-contact">${badge}<span>${inner}</span></li>`;
       })
       .join("");
-    return `<div class="od-special"><div class="od-special-title">Contact</div><ul class="od-contacts">${items}</ul></div>`;
+    return `<div class="od-special"><div class="od-special-title">${this.escapeHtml(this.t("fields.contact"))}</div><ul class="od-contacts">${items}</ul></div>`;
   }
 
   private renderMap(): string {
@@ -515,11 +542,11 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     return `
       <div class="od-map">
         <iframe
-          title="Opportunity location map"
+          title="${this.escapeAttr(this.t("opportunityDetails.mapTitle"))}"
           src="https://www.google.com/maps?q=${q}&output=embed"
           loading="lazy"
           referrerpolicy="no-referrer-when-downgrade"></iframe>
-        <a class="od-link" href="https://www.google.com/maps?q=${q}" target="_blank" rel="noopener">Get Directions &rsaquo;</a>
+        <a class="od-link" href="https://www.google.com/maps?q=${q}" target="_blank" rel="noopener">${this.escapeHtml(this.t("common.getDirections"))} &rsaquo;</a>
       </div>`;
   }
 
@@ -531,28 +558,28 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     if (this.submitted) {
       return `
         <div class="od-reg">
-          <button class="od-btn od-btn--secondary" type="button" data-action="respond-again">Submit Another Response</button>
+          <button class="od-btn od-btn--secondary" type="button" data-action="respond-again">${this.escapeHtml(this.t("opportunityDetails.submitAnother"))}</button>
         </div>`;
     }
 
     // Maximum-needed gate.
     if (op.remainingNeeded != null && op.remainingNeeded <= 0) {
-      return `<div class="od-reg"><div class="od-message od-message--warning">The maximum number of volunteers has been reached.</div></div>`;
+      return `<div class="od-reg"><div class="od-message od-message--warning">${this.escapeHtml(this.t("opportunityDetails.maximumReached"))}</div></div>`;
     }
 
     // forceLogin + anonymous → sign-in panel only.
     if (op.forceLogin && !this.isAuthenticated) {
       return `
         <div class="od-reg od-login-panel">
-          <p>Please sign in to respond to this opportunity.</p>
-          <button class="od-btn od-btn--primary" type="button" data-action="login">Sign In</button>
+          <p>${this.escapeHtml(this.t("opportunityDetails.signInToRespond"))}</p>
+          <button class="od-btn od-btn--primary" type="button" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button>
         </div>`;
     }
 
     return `
       <div class="od-reg">
-        <h2 class="od-reg-title">Respond</h2>
-        <div id="od-has-responded" class="od-message od-message--info" style="display:${this.hasResponded ? "" : "none"}">You have already responded to this opportunity.</div>
+        <h2 class="od-reg-title">${this.escapeHtml(this.t("opportunityDetails.respondTitle"))}</h2>
+        <div id="od-has-responded" class="od-message od-message--info" style="display:${this.hasResponded ? "" : "none"}">${this.escapeHtml(this.t("opportunityDetails.alreadyResponded"))}</div>
         <form id="od-form" class="od-form" novalidate>
           ${this.renderHiddenInputs()}
           ${this.renderRespondAs()}
@@ -560,7 +587,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
           ${this.renderMessageField()}
           ${this.renderCustomFormSection()}
           <div class="od-buttons">
-            <button class="od-btn od-btn--primary od-submit" type="button">Submit Response</button>
+            <button class="od-btn od-btn--primary od-submit" type="button">${this.escapeHtml(this.t("opportunityDetails.submitResponse"))}</button>
           </div>
         </form>
       </div>`;
@@ -602,31 +629,31 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       .join("");
     return `
       <div class="od-field">
-        <label for="od-respond-as">Respond As${requiredStar()}</label>
+        <label for="od-respond-as">${this.escapeHtml(this.t("opportunityDetails.respondAs"))}${requiredStar()}</label>
         <select id="od-respond-as" class="od-input">
           ${opts}
-          <option value="" ${this.respondAs === "" ? "selected" : ""}>Someone Else (Blank Form)</option>
+          <option value="" ${this.respondAs === "" ? "selected" : ""}>${this.escapeHtml(this.t("opportunityDetails.someoneElse"))}</option>
         </select>
       </div>`;
   }
 
   private memberDisplayName(m: HouseholdMemberLite): string {
     const first = m.nickName || m.firstName;
-    return `${first} ${m.lastName}`.trim() || "My Info";
+    return `${first} ${m.lastName}`.trim() || this.t("opportunityDetails.myInfo");
   }
 
   private renderBlankForm(): string {
     if (!this.blankForm) return "";
     return `
       <fieldset class="od-fieldset">
-        <legend>Your Information</legend>
+        <legend>${this.escapeHtml(this.t("opportunityDetails.yourInformation"))}</legend>
         <div class="od-grid2">
-          <div class="od-field"><label>First Name${requiredStar()}</label><input class="od-input" name="FirstName" required></div>
-          <div class="od-field"><label>Last Name${requiredStar()}</label><input class="od-input" name="LastName" required></div>
+          <div class="od-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="od-input" name="FirstName" required></div>
+          <div class="od-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="od-input" name="LastName" required></div>
         </div>
         <div class="od-grid2">
-          <div class="od-field"><label>Email${requiredStar()}</label><input class="od-input" type="email" name="EmailAddress" required></div>
-          <div class="od-field"><label>Mobile Phone${requiredStar()}</label><input class="od-input" name="MobilePhoneNumber" required></div>
+          <div class="od-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="od-input" type="email" name="EmailAddress" required></div>
+          <div class="od-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}${requiredStar()}</label><input class="od-input" name="MobilePhoneNumber" required></div>
         </div>
       </fieldset>`;
   }
@@ -634,8 +661,8 @@ export class OpportunityDetailsWidget extends MPNextWidget {
   private renderMessageField(): string {
     return `
       <div class="od-field">
-        <label for="od-message-field">Message</label>
-        <textarea id="od-message-field" class="od-input" name="Message" maxlength="500" placeholder="Anything you'd like the contact to know?"></textarea>
+        <label for="od-message-field">${this.escapeHtml(this.t("fields.message"))}</label>
+        <textarea id="od-message-field" class="od-input" name="Message" maxlength="500" placeholder="${this.escapeAttr(this.t("opportunityDetails.messagePlaceholder"))}"></textarea>
       </div>`;
   }
 
@@ -644,8 +671,8 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     const op = this.opportunity!;
     return `
       <div class="od-customform">
-        <h3 class="od-reg-subtitle">Additional Information</h3>
-        ${renderCustomFormFields(this.customFields, { formId: op.customFormId })}
+        <h3 class="od-reg-subtitle">${this.escapeHtml(this.t("opportunityDetails.additionalInformation"))}</h3>
+        ${renderCustomFormFields(this.customFields, { formId: op.customFormId, t: this.t })}
       </div>`;
   }
 
@@ -655,36 +682,29 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
   // ── Date / text helpers ──
 
-  private parseMpDate(value: string): Date | null {
-    if (!value) return null;
-    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
-    if (!m) {
-      const fallback = new Date(value);
-      return isNaN(fallback.getTime()) ? null : fallback;
-    }
-    return new Date(
-      Number(m[1]),
-      Number(m[2]) - 1,
-      Number(m[3]),
-      m[4] ? Number(m[4]) : 0,
-      m[5] ? Number(m[5]) : 0
-    );
-  }
-
+  /**
+   * MP stores `meetingDay` as its own text — the sentinel "Ongoing", or a day
+   * name used when the opportunity carries no concrete start. The sentinel and
+   * the recurrence wrapper are translated; the day name itself stays as MP
+   * supplies it, since "Mondays" pluralises in a way no other language copies.
+   *
+   * `parseWallClock` replaces the local `parseMpDate`: same calendar-parts
+   * parse into a local Date, so MP's wall clock survives and `fmt` formats it
+   * with no time zone.
+   */
   private formatDateTime(op: OpportunityDetail): string {
     const day = (op.meetingDay ?? "").toLowerCase();
-    if (day === "ongoing") return "Ongoing";
-    const d = this.parseMpDate(op.startDate);
-    if (!d) return op.meetingDay ? `${op.meetingDay}s` : "";
-    const dateStr = d.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
+    if (day === "ongoing") return this.t("opportunityDetails.ongoing");
+    const d = parseWallClock(op.startDate);
+    if (!d) {
+      return op.meetingDay
+        ? this.t("opportunityDetails.everyDay", { day: op.meetingDay })
+        : "";
+    }
+    const dateStr = this.fmt.date(d, "full");
+    // Midnight means the record has a date but no real time component.
     if (d.getHours() === 0 && d.getMinutes() === 0) return dateStr;
-    const timeStr = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-    return `${dateStr}, ${timeStr}`;
+    return `${dateStr}, ${this.fmt.time(d)}`;
   }
 
   private sanitizeHtml(html: string): string {

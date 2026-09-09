@@ -125,16 +125,28 @@ export class MyHouseholdWidget extends MPNextWidget {
     );
   }
 
-  // Shared validation options: this widget wraps every input in `.nw-field`.
-  private static VALIDATION_OPTS = { wrapperSelector: ".nw-field" } as const;
+  /**
+   * Shared validation options: this widget wraps every input in `.nw-field`.
+   * Per-instance rather than static so the built-in constraint messages come
+   * from *this* element's locale.
+   */
+  private validationOpts() {
+    return { wrapperSelector: ".nw-field", t: this.t } as const;
+  }
 
   connectedCallback() {
     this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
-    this.render();
-    this.loadHousehold();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish; the fetch hides inside the loading state
+    // this widget paints anyway while it queries the API.
+    void this.initLocale().then(() => {
+      this.render();
+      this.loadHousehold();
+    });
   }
 
   disconnectedCallback() {
+    super.disconnectedCallback();
     if (this.photoPreviewUrl) URL.revokeObjectURL(this.photoPreviewUrl);
   }
 
@@ -152,10 +164,8 @@ export class MyHouseholdWidget extends MPNextWidget {
     try {
       const res = await this.fetch("/api/embed/household");
       if (!res.ok) {
-        const body = await res
-          .json()
-          .catch(() => ({ error: res.statusText }));
-        throw new Error(body.error || `Failed to load household (${res.status})`);
+        const body = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(body));
       }
       const data: HouseholdData = await res.json();
       this.data = data;
@@ -165,8 +175,10 @@ export class MyHouseholdWidget extends MPNextWidget {
       this.emit("householdLoaded", { memberCount: data.members?.length ?? 0 });
     } catch (err) {
       this.loading = false;
+      // `errorText` has already translated an API code; anything else (a
+      // dropped connection) becomes the generic network message.
       this.error =
-        err instanceof Error ? err.message : "Failed to load household";
+        err instanceof Error ? err.message : this.t("errors.network");
       this.render();
       this.attachListeners();
       this.emit("householdError", { error: this.error });
@@ -198,35 +210,6 @@ export class MyHouseholdWidget extends MPNextWidget {
     )}-${String(p.d).padStart(2, "0")}`;
   }
 
-  private static MONTHS_SHORT = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-
-  /** "MMM D" (no year), defensively parsed. */
-  private formatMonthDay(value: string | null): string {
-    const p = this.parseYmd(value);
-    if (!p || p.m < 1 || p.m > 12) return "";
-    return `${MyHouseholdWidget.MONTHS_SHORT[p.m - 1]} ${p.d}`;
-  }
-
-  /** "M/D/YYYY" defensively parsed. */
-  private formatSlashDate(value: string | null): string {
-    const p = this.parseYmd(value);
-    if (!p) return "";
-    return `${p.m}/${p.d}/${p.y}`;
-  }
-
   /**
    * Mirror legacy validity logic for the alternative/seasonal address:
    * show it when it is currently active or upcoming. If repeatAnnually, the
@@ -252,17 +235,19 @@ export class MyHouseholdWidget extends MPNextWidget {
 
   private formatAltDateRange(h: Household): string {
     if (h.alternativeAddressRepeatAnnually) {
-      const s = this.formatMonthDay(h.alternativeAddressStart);
-      const e = this.formatMonthDay(h.alternativeAddressEnd);
-      if (s && e) return `${s} – ${e} annually`;
-      if (s) return `${s} annually`;
+      // The year is meaningless for a range that recurs, so month and day only.
+      const s = this.fmt.date(h.alternativeAddressStart, "monthDay");
+      const e = this.fmt.date(h.alternativeAddressEnd, "monthDay");
+      if (s && e)
+        return this.t("myHousehold.seasonRangeAnnual", { start: s, end: e });
+      if (s) return this.t("myHousehold.seasonStartAnnual", { start: s });
       return "";
     }
-    const s = this.formatSlashDate(h.alternativeAddressStart);
-    const e = this.formatSlashDate(h.alternativeAddressEnd);
+    const s = this.fmt.date(h.alternativeAddressStart, "numeric");
+    const e = this.fmt.date(h.alternativeAddressEnd, "numeric");
     if (s && e) return `${s} – ${e}`;
-    if (s) return `From ${s}`;
-    if (e) return `Until ${e}`;
+    if (s) return this.t("myHousehold.seasonFrom", { date: s });
+    if (e) return this.t("myHousehold.seasonUntil", { date: e });
     return "";
   }
 
@@ -270,14 +255,16 @@ export class MyHouseholdWidget extends MPNextWidget {
   // Rendering
   // ---------------------------------------------------------------------------
   render() {
+    const title = this.escapeHtml(this.t("myHousehold.title"));
+
     if (this.loading) {
       this.root.innerHTML = `
         <div class="nw-household">
-          <div class="header"><div class="title">My Household</div></div>
+          <div class="header"><div class="title">${title}</div></div>
           <div class="body">
             <div class="loading-row">
               ${this.spinnerSvg()}
-              <span>Loading household...</span>
+              <span>${this.escapeHtml(this.t("myHousehold.loading"))}</span>
             </div>
           </div>
         </div>`;
@@ -287,11 +274,11 @@ export class MyHouseholdWidget extends MPNextWidget {
     if (this.error && !this.data) {
       this.root.innerHTML = `
         <div class="nw-household">
-          <div class="header"><div class="title">My Household</div></div>
+          <div class="header"><div class="title">${title}</div></div>
           <div class="body">
             <div class="error-box">
               <p>${this.escapeHtml(this.error)}</p>
-              <button class="nw-btn nw-btn-primary" data-action="retry">Try Again</button>
+              <button class="nw-btn nw-btn-primary" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
             </div>
           </div>
         </div>`;
@@ -304,9 +291,9 @@ export class MyHouseholdWidget extends MPNextWidget {
     if (!this.data.household) {
       this.root.innerHTML = `
         <div class="nw-household">
-          <div class="header"><div class="title">My Household</div></div>
+          <div class="header"><div class="title">${title}</div></div>
           <div class="body">
-            <div class="empty-state">No household found for your account.</div>
+            <div class="empty-state">${this.escapeHtml(this.t("myHousehold.empty"))}</div>
           </div>
         </div>`;
       this.attachListeners();
@@ -331,7 +318,10 @@ export class MyHouseholdWidget extends MPNextWidget {
   }
 
   private renderAddressBlock(addr: HouseholdAddress | null): string {
-    if (!addr) return `<div class="addr-empty">No address on file.</div>`;
+    const empty = `<div class="addr-empty">${this.escapeHtml(
+      this.t("myHousehold.noAddress"),
+    )}</div>`;
+    if (!addr) return empty;
     const lines: string[] = [];
     if (addr.country) lines.push(this.escapeHtml(addr.country));
     if (addr.addressLine1) lines.push(this.escapeHtml(addr.addressLine1));
@@ -344,8 +334,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       .join("")
       .trim();
     if (cityLine) lines.push(this.escapeHtml(cityLine));
-    if (lines.length === 0)
-      return `<div class="addr-empty">No address on file.</div>`;
+    if (lines.length === 0) return empty;
     return `<div class="addr-lines">${lines
       .map((l) => `<div>${l}</div>`)
       .join("")}</div>`;
@@ -359,8 +348,9 @@ export class MyHouseholdWidget extends MPNextWidget {
     const name =
       m.displayName ||
       [m.firstName, m.lastName].filter(Boolean).join(" ") ||
-      "Member";
-    const dob = this.formatMonthDay(m.dateOfBirth);
+      this.t("myHousehold.memberFallbackName");
+    // Month and day only: the card celebrates a birthday, not an age.
+    const dob = this.fmt.date(m.dateOfBirth, "monthDay");
     const photo = m.imageUrl
       ? `<img class="member-photo" src="${this.escapeHtml(
           m.imageUrl,
@@ -380,7 +370,7 @@ export class MyHouseholdWidget extends MPNextWidget {
         ${dob ? `<div class="member-dob">${this.escapeHtml(dob)}</div>` : ""}
         ${
           canEdit
-            ? `<button class="member-edit-btn" data-action="edit-member" data-contact-id="${m.contactId}">Edit</button>`
+            ? `<button class="member-edit-btn" data-action="edit-member" data-contact-id="${m.contactId}">${this.escapeHtml(this.t("common.edit"))}</button>`
             : ""
         }
       </div>`;
@@ -394,11 +384,12 @@ export class MyHouseholdWidget extends MPNextWidget {
     const altRange = showAlt ? this.formatAltDateRange(h) : "";
 
     const showAddMember = !this.hideAddMember && head;
+    const editLabel = this.escapeHtml(this.t("myHousehold.editHousehold"));
 
     return `
       <div class="nw-household">
         <div class="header">
-          <div class="title">My Household</div>
+          <div class="title">${this.escapeHtml(this.t("myHousehold.title"))}</div>
         </div>
         <div class="body">
           ${this.renderAlert(this.householdAlert)}
@@ -407,11 +398,11 @@ export class MyHouseholdWidget extends MPNextWidget {
           <div class="section">
             <div class="section-titlebar">
               <h3 class="household-name">${this.escapeHtml(
-                h.name || "Household",
+                h.name || this.t("myHousehold.householdLabel"),
               )}</h3>
               ${
                 head
-                  ? `<button class="icon-btn" data-action="edit-household" title="Edit household" aria-label="Edit household">
+                  ? `<button class="icon-btn" data-action="edit-household" title="${editLabel}" aria-label="${editLabel}">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     </button>`
                   : ""
@@ -419,14 +410,18 @@ export class MyHouseholdWidget extends MPNextWidget {
             </div>
             ${
               h.congregationName
-                ? `<div class="meta-row"><span class="meta-label">Congregation</span><span class="meta-value">${this.escapeHtml(
+                ? `<div class="meta-row"><span class="meta-label">${this.escapeHtml(
+                    this.t("fields.congregation"),
+                  )}</span><span class="meta-value">${this.escapeHtml(
                     h.congregationName,
                   )}</span></div>`
                 : ""
             }
             ${
               h.homePhone
-                ? `<div class="meta-row"><span class="meta-label">Home Phone</span><span class="meta-value">${this.escapeHtml(
+                ? `<div class="meta-row"><span class="meta-label">${this.escapeHtml(
+                    this.t("fields.homePhone"),
+                  )}</span><span class="meta-value">${this.escapeHtml(
                     h.homePhone,
                   )}</span></div>`
                 : ""
@@ -435,13 +430,17 @@ export class MyHouseholdWidget extends MPNextWidget {
 
           <div class="address-grid">
             <div class="address-card">
-              <div class="address-card-label">Primary Address</div>
+              <div class="address-card-label">${this.escapeHtml(
+                this.t("myHousehold.primaryAddress"),
+              )}</div>
               ${this.renderAddressBlock(h.address)}
             </div>
             ${
               showAlt
                 ? `<div class="address-card">
-                    <div class="address-card-label">Seasonal Address</div>
+                    <div class="address-card-label">${this.escapeHtml(
+                      this.t("myHousehold.seasonalAddress"),
+                    )}</div>
                     ${this.renderAddressBlock(h.alternativeAddress)}
                     ${
                       altRange
@@ -457,10 +456,10 @@ export class MyHouseholdWidget extends MPNextWidget {
 
           <div class="section">
             <div class="section-titlebar">
-              <div class="section-label">Members</div>
+              <div class="section-label">${this.escapeHtml(this.t("myHousehold.members"))}</div>
               ${
                 showAddMember
-                  ? `<button class="nw-btn nw-btn-secondary" data-action="add-member">+ Add Household Member</button>`
+                  ? `<button class="nw-btn nw-btn-secondary" data-action="add-member">${this.escapeHtml(this.t("myHousehold.addMember"))}</button>`
                   : ""
               }
             </div>
@@ -528,37 +527,37 @@ export class MyHouseholdWidget extends MPNextWidget {
     return `
       <div class="nw-grid">
         <div class="nw-field nw-field-full">
-          <label for="${prefix}-country">Country</label>
+          <label for="${prefix}-country">${this.escapeHtml(this.t("fields.country"))}</label>
           <select id="${prefix}-country" name="${prefix}-country">
             ${this.countryOptions(countries, a.countryCode)}
           </select>
         </div>
         <div class="nw-field nw-field-full">
-          <label for="${prefix}-line1">Address Line 1</label>
+          <label for="${prefix}-line1">${this.escapeHtml(this.t("fields.addressLine1"))}</label>
           <input id="${prefix}-line1" name="${prefix}-line1" type="text" value="${this.escapeHtml(
             a.addressLine1 || "",
           )}" autocomplete="off" />
         </div>
         <div class="nw-field nw-field-full">
-          <label for="${prefix}-line2">Address Line 2</label>
+          <label for="${prefix}-line2">${this.escapeHtml(this.t("fields.addressLine2"))}</label>
           <input id="${prefix}-line2" name="${prefix}-line2" type="text" value="${this.escapeHtml(
             a.addressLine2 || "",
           )}" autocomplete="off" />
         </div>
         <div class="nw-field">
-          <label for="${prefix}-city">City</label>
+          <label for="${prefix}-city">${this.escapeHtml(this.t("fields.city"))}</label>
           <input id="${prefix}-city" name="${prefix}-city" type="text" value="${this.escapeHtml(
             a.city || "",
           )}" autocomplete="off" />
         </div>
         <div class="nw-field">
-          <label for="${prefix}-state">State / Region</label>
+          <label for="${prefix}-state">${this.escapeHtml(this.t("fields.stateRegion"))}</label>
           <input id="${prefix}-state" name="${prefix}-state" type="text" value="${this.escapeHtml(
             a.stateRegion || "",
           )}" autocomplete="off" />
         </div>
         <div class="nw-field">
-          <label for="${prefix}-postal">Postal Code</label>
+          <label for="${prefix}-postal">${this.escapeHtml(this.t("fields.postalCode"))}</label>
           <input id="${prefix}-postal" name="${prefix}-postal" type="text" value="${this.escapeHtml(
             a.postalCode || "",
           )}" autocomplete="off" />
@@ -572,27 +571,27 @@ export class MyHouseholdWidget extends MPNextWidget {
     const l = d.lookups;
     return `
       <div class="nw-household">
-        <div class="header"><div class="title">Edit Household</div></div>
+        <div class="header"><div class="title">${this.escapeHtml(this.t("myHousehold.editHousehold"))}</div></div>
         <div class="body">
           ${this.renderAlert(this.householdAlert)}
           <form id="household-form" novalidate>
             <fieldset class="nw-section">
-              <legend class="nw-section-label">Household</legend>
+              <legend class="nw-section-label">${this.escapeHtml(this.t("myHousehold.householdLabel"))}</legend>
               <div class="nw-grid">
                 <div class="nw-field nw-field-full">
-                  <label for="hh-name">Household Name${requiredStar()}</label>
+                  <label for="hh-name">${this.escapeHtml(this.t("myHousehold.householdName"))}${requiredStar()}</label>
                   <input id="hh-name" name="hh-name" type="text" value="${this.escapeHtml(
                     h.name || "",
                   )}" required />
                 </div>
                 <div class="nw-field">
-                  <label for="hh-phone">Home Phone</label>
+                  <label for="hh-phone">${this.escapeHtml(this.t("fields.homePhone"))}</label>
                   <input id="hh-phone" name="hh-phone" type="tel" value="${this.escapeHtml(
                     h.homePhone || "",
                   )}" />
                 </div>
                 <div class="nw-field">
-                  <label for="hh-congregation">Congregation</label>
+                  <label for="hh-congregation">${this.escapeHtml(this.t("fields.congregation"))}</label>
                   <select id="hh-congregation" name="hh-congregation">
                     ${this.selectOptions(l.congregations, h.congregationId)}
                   </select>
@@ -601,26 +600,26 @@ export class MyHouseholdWidget extends MPNextWidget {
             </fieldset>
 
             <fieldset class="nw-section">
-              <legend class="nw-section-label">Primary Address</legend>
+              <legend class="nw-section-label">${this.escapeHtml(this.t("myHousehold.primaryAddress"))}</legend>
               ${this.renderAddressFields("primary", h.address, l.countries)}
               <div class="nw-checkrow">
                 <label class="nw-checkbox-label">
                   <input type="checkbox" id="hh-phone-unlisted" ${
                     h.homePhoneUnlisted ? "checked" : ""
                   } />
-                  <span>Home Phone Unlisted</span>
+                  <span>${this.escapeHtml(this.t("myHousehold.homePhoneUnlisted"))}</span>
                 </label>
                 <label class="nw-checkbox-label">
                   <input type="checkbox" id="hh-address-unlisted" ${
                     h.homeAddressUnlisted ? "checked" : ""
                   } />
-                  <span>Home Address Unlisted</span>
+                  <span>${this.escapeHtml(this.t("myHousehold.homeAddressUnlisted"))}</span>
                 </label>
               </div>
             </fieldset>
 
             <fieldset class="nw-section">
-              <legend class="nw-section-label">Seasonal / Alternative Address</legend>
+              <legend class="nw-section-label">${this.escapeHtml(this.t("myHousehold.seasonalAddressSection"))}</legend>
               ${this.renderAddressFields(
                 "alt",
                 h.alternativeAddress,
@@ -628,13 +627,13 @@ export class MyHouseholdWidget extends MPNextWidget {
               )}
               <div class="nw-grid">
                 <div class="nw-field">
-                  <label for="alt-start">Season Start</label>
+                  <label for="alt-start">${this.escapeHtml(this.t("myHousehold.seasonStart"))}</label>
                   <input id="alt-start" name="alt-start" type="date" value="${this.ymdToInputValue(
                     h.alternativeAddressStart,
                   )}" />
                 </div>
                 <div class="nw-field">
-                  <label for="alt-end">Season End</label>
+                  <label for="alt-end">${this.escapeHtml(this.t("myHousehold.seasonEnd"))}</label>
                   <input id="alt-end" name="alt-end" type="date" value="${this.ymdToInputValue(
                     h.alternativeAddressEnd,
                   )}" />
@@ -645,7 +644,7 @@ export class MyHouseholdWidget extends MPNextWidget {
                   <input type="checkbox" id="alt-repeat" ${
                     h.alternativeAddressRepeatAnnually ? "checked" : ""
                   } />
-                  <span>Repeat Annually</span>
+                  <span>${this.escapeHtml(this.t("myHousehold.repeatAnnually"))}</span>
                 </label>
               </div>
             </fieldset>
@@ -656,11 +655,11 @@ export class MyHouseholdWidget extends MPNextWidget {
               }>
                 ${
                   this.saving
-                    ? '<span class="nw-spinner-sm"></span> Saving...'
-                    : "Save Household"
+                    ? `<span class="nw-spinner-sm"></span> ${this.escapeHtml(this.t("common.saving"))}`
+                    : this.escapeHtml(this.t("myHousehold.saveHousehold"))
                 }
               </button>
-              <button type="button" class="nw-btn nw-btn-text" data-action="cancel-household">Cancel</button>
+              <button type="button" class="nw-btn nw-btn-text" data-action="cancel-household">${this.escapeHtml(this.t("common.cancel"))}</button>
             </div>
           </form>
         </div>
@@ -675,9 +674,11 @@ export class MyHouseholdWidget extends MPNextWidget {
     const headerName = m
       ? m.displayName ||
         [m.firstName, m.lastName].filter(Boolean).join(" ") ||
-        "Member"
+        this.t("myHousehold.memberFallbackName")
       : "";
-    const title = isEdit ? `Edit ${headerName}` : "Add Member";
+    const title = isEdit
+      ? this.t("myHousehold.editMemberTitle", { name: headerName })
+      : this.t("myHousehold.addMemberTitle");
 
     const previewSrc =
       this.photoPreviewUrl || (m && m.imageUrl ? m.imageUrl : "");
@@ -697,56 +698,62 @@ export class MyHouseholdWidget extends MPNextWidget {
                   hasPhoto
                     ? `<img class="member-photo-preview" src="${this.escapeHtml(
                         previewSrc,
-                      )}" alt="Member photo" />`
+                      )}" alt="${this.escapeHtml(this.t("myHousehold.memberPhotoAlt"))}" />`
                     : `<div class="member-photo-preview member-photo-fallback">${this.personSvg()}</div>`
                 }
               </div>
               <div>
                 <button type="button" class="nw-btn nw-btn-secondary" data-action="pick-photo">
-                  ${hasPhoto ? "Change Photo" : "Add Photo"}
+                  ${this.escapeHtml(
+                    this.t(
+                      hasPhoto
+                        ? "myHousehold.changePhoto"
+                        : "myHousehold.addPhoto",
+                    ),
+                  )}
                 </button>
                 <input type="file" id="member-photo-input" accept="image/*" style="display:none" />
-                <p class="photo-hint">JPEG, PNG, GIF or WebP. Max 10MB.</p>
+                <p class="photo-hint">${this.escapeHtml(this.t("myHousehold.photoHint"))}</p>
               </div>
             </div>
 
             <fieldset class="nw-section">
-              <legend class="nw-section-label">Name</legend>
+              <legend class="nw-section-label">${this.escapeHtml(this.t("fields.name"))}</legend>
               <div class="nw-grid">
                 <div class="nw-field">
-                  <label for="mb-prefix">Prefix</label>
+                  <label for="mb-prefix">${this.escapeHtml(this.t("fields.prefix"))}</label>
                   <select id="mb-prefix">${this.selectOptions(
                     l.prefixes,
                     m?.prefixId ?? null,
                   )}</select>
                 </div>
                 <div class="nw-field">
-                  <label for="mb-suffix">Suffix</label>
+                  <label for="mb-suffix">${this.escapeHtml(this.t("fields.suffix"))}</label>
                   <select id="mb-suffix">${this.selectOptions(
                     l.suffixes,
                     m?.suffixId ?? null,
                   )}</select>
                 </div>
                 <div class="nw-field">
-                  <label for="mb-first">First Name${requiredStar()}</label>
+                  <label for="mb-first">${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label>
                   <input id="mb-first" name="mb-first" type="text" value="${this.escapeHtml(
                     m?.firstName || "",
                   )}" required />
                 </div>
                 <div class="nw-field">
-                  <label for="mb-middle">Middle Name</label>
+                  <label for="mb-middle">${this.escapeHtml(this.t("fields.middleName"))}</label>
                   <input id="mb-middle" type="text" value="${this.escapeHtml(
                     m?.middleName || "",
                   )}" />
                 </div>
                 <div class="nw-field">
-                  <label for="mb-last">Last Name${requiredStar()}</label>
+                  <label for="mb-last">${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label>
                   <input id="mb-last" name="mb-last" type="text" value="${this.escapeHtml(
                     m?.lastName || "",
                   )}" required />
                 </div>
                 <div class="nw-field">
-                  <label for="mb-nick">Nickname</label>
+                  <label for="mb-nick">${this.escapeHtml(this.t("fields.nickname"))}</label>
                   <input id="mb-nick" type="text" value="${this.escapeHtml(
                     m?.nickName || "",
                   )}" />
@@ -755,30 +762,30 @@ export class MyHouseholdWidget extends MPNextWidget {
             </fieldset>
 
             <fieldset class="nw-section">
-              <legend class="nw-section-label">Personal Details</legend>
+              <legend class="nw-section-label">${this.escapeHtml(this.t("fields.personalDetails"))}</legend>
               <div class="nw-grid">
                 <div class="nw-field">
-                  <label for="mb-gender">Gender</label>
+                  <label for="mb-gender">${this.escapeHtml(this.t("fields.gender"))}</label>
                   <select id="mb-gender">${this.selectOptions(
                     l.genders,
                     m?.genderId ?? null,
                   )}</select>
                 </div>
                 <div class="nw-field">
-                  <label for="mb-dob">Date of Birth</label>
+                  <label for="mb-dob">${this.escapeHtml(this.t("fields.dateOfBirth"))}</label>
                   <input id="mb-dob" type="date" value="${this.ymdToInputValue(
                     m?.dateOfBirth ?? null,
                   )}" />
                 </div>
                 <div class="nw-field">
-                  <label for="mb-marital">Marital Status</label>
+                  <label for="mb-marital">${this.escapeHtml(this.t("fields.maritalStatus"))}</label>
                   <select id="mb-marital">${this.selectOptions(
                     l.maritalStatuses,
                     m?.maritalStatusId ?? null,
                   )}</select>
                 </div>
                 <div class="nw-field">
-                  <label for="mb-position">Household Position</label>
+                  <label for="mb-position">${this.escapeHtml(this.t("myHousehold.householdPosition"))}</label>
                   <select id="mb-position">${this.selectOptions(
                     l.householdPositions,
                     m?.householdPositionId ?? null,
@@ -788,22 +795,22 @@ export class MyHouseholdWidget extends MPNextWidget {
             </fieldset>
 
             <fieldset class="nw-section">
-              <legend class="nw-section-label">Contact Information</legend>
+              <legend class="nw-section-label">${this.escapeHtml(this.t("myHousehold.contactInformation"))}</legend>
               <div class="nw-grid">
                 <div class="nw-field nw-field-full">
-                  <label for="mb-email">Email Address</label>
+                  <label for="mb-email">${this.escapeHtml(this.t("fields.email"))}</label>
                   <input id="mb-email" type="email" value="${this.escapeHtml(
                     m?.emailAddress || "",
                   )}" />
                 </div>
                 <div class="nw-field">
-                  <label for="mb-mobile">Mobile Phone</label>
+                  <label for="mb-mobile">${this.escapeHtml(this.t("fields.mobilePhone"))}</label>
                   <input id="mb-mobile" type="tel" value="${this.escapeHtml(
                     m?.mobilePhoneNumber || "",
                   )}" />
                 </div>
                 <div class="nw-field">
-                  <label for="mb-work">Work Phone</label>
+                  <label for="mb-work">${this.escapeHtml(this.t("fields.workPhone"))}</label>
                   <input id="mb-work" type="tel" value="${this.escapeHtml(
                     m?.workPhoneNumber || "",
                   )}" />
@@ -812,37 +819,37 @@ export class MyHouseholdWidget extends MPNextWidget {
             </fieldset>
 
             <fieldset class="nw-section">
-              <legend class="nw-section-label">Communication Preferences</legend>
+              <legend class="nw-section-label">${this.escapeHtml(this.t("myHousehold.communicationPreferences"))}</legend>
               <div class="nw-comm-prefs">
                 <label class="nw-checkbox-label">
                   <input type="checkbox" id="mb-email-unlisted" ${
                     m?.emailUnlisted ? "checked" : ""
                   } />
-                  <span>Email Unlisted</span>
+                  <span>${this.escapeHtml(this.t("myHousehold.emailUnlisted"))}</span>
                 </label>
                 <label class="nw-checkbox-label">
                   <input type="checkbox" id="mb-mobile-unlisted" ${
                     m?.mobilePhoneUnlisted ? "checked" : ""
                   } />
-                  <span>Mobile Phone Unlisted</span>
+                  <span>${this.escapeHtml(this.t("myHousehold.mobilePhoneUnlisted"))}</span>
                 </label>
                 <label class="nw-checkbox-label">
                   <input type="checkbox" id="mb-do-not-text" ${
                     m?.doNotText ? "checked" : ""
                   } />
-                  <span>Do Not Text</span>
+                  <span>${this.escapeHtml(this.t("myHousehold.doNotText"))}</span>
                 </label>
                 <label class="nw-checkbox-label">
                   <input type="checkbox" id="mb-bulk-opt-out" ${
                     m?.bulkEmailOptOut ? "checked" : ""
                   } />
-                  <span>Bulk Email Opt Out</span>
+                  <span>${this.escapeHtml(this.t("myHousehold.bulkEmailOptOut"))}</span>
                 </label>
                 <label class="nw-checkbox-label">
                   <input type="checkbox" id="mb-remove-directory" ${
                     m?.removeFromDirectory ? "checked" : ""
                   } />
-                  <span>Remove From Directory</span>
+                  <span>${this.escapeHtml(this.t("myHousehold.removeFromDirectory"))}</span>
                 </label>
               </div>
             </fieldset>
@@ -853,11 +860,11 @@ export class MyHouseholdWidget extends MPNextWidget {
               }>
                 ${
                   this.saving
-                    ? '<span class="nw-spinner-sm"></span> Saving...'
-                    : "Save Member"
+                    ? `<span class="nw-spinner-sm"></span> ${this.escapeHtml(this.t("common.saving"))}`
+                    : this.escapeHtml(this.t("myHousehold.saveMember"))
                 }
               </button>
-              <button type="button" class="nw-btn nw-btn-text" data-action="cancel-member">Cancel</button>
+              <button type="button" class="nw-btn nw-btn-text" data-action="cancel-member">${this.escapeHtml(this.t("common.cancel"))}</button>
             </div>
           </form>
         </div>
@@ -924,7 +931,7 @@ export class MyHouseholdWidget extends MPNextWidget {
         e.preventDefault();
         this.submitHousehold();
       });
-      bindLiveValidation(householdForm, MyHouseholdWidget.VALIDATION_OPTS);
+      bindLiveValidation(householdForm, this.validationOpts());
     }
 
     const memberForm = this.root.querySelector(
@@ -935,7 +942,7 @@ export class MyHouseholdWidget extends MPNextWidget {
         e.preventDefault();
         this.submitMember();
       });
-      bindLiveValidation(memberForm, MyHouseholdWidget.VALIDATION_OPTS);
+      bindLiveValidation(memberForm, this.validationOpts());
     }
 
     // Photo picker
@@ -973,7 +980,10 @@ export class MyHouseholdWidget extends MPNextWidget {
 
   private handlePhotoSelect(file: File) {
     if (file.size > 10 * 1024 * 1024) {
-      this.memberAlert = { kind: "warning", text: "Photo must be under 10MB." };
+      this.memberAlert = {
+        kind: "warning",
+        text: this.t("myHousehold.photoTooLarge"),
+      };
       this.render();
       return;
     }
@@ -1079,16 +1089,15 @@ export class MyHouseholdWidget extends MPNextWidget {
       "#household-form",
     ) as HTMLFormElement | null;
     if (form) {
-      const opts = {
-        ...MyHouseholdWidget.VALIDATION_OPTS,
-        messages: { "hh-name": "Household Name is required." },
-      };
+      // No per-field message overrides any more: they only restated the
+      // shared layer's own `validation.required`, which is translated.
+      const opts = this.validationOpts();
       if (!validateForm(form, opts).valid) {
         // Field-level errors are the primary feedback; keep a summary banner.
         // Re-apply inline errors after render() rebuilds the form markup.
         this.householdAlert = {
           kind: "warning",
-          text: "Please fix the highlighted fields.",
+          text: this.t("myHousehold.fixHighlighted"),
         };
         this.render();
         const reRendered = this.root.querySelector(
@@ -1125,7 +1134,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || `Failed to save household (${res.status})`);
+        throw new Error(this.errorText(data, "errors.saveFailed"));
       }
 
       if (this.data && data.household) {
@@ -1136,7 +1145,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       this.view = "details";
       this.householdAlert = {
         kind: "success",
-        text: "Household saved successfully.",
+        text: this.t("myHousehold.householdSaved"),
       };
       this.render();
       this.emit("householdUpdated", { household: data.household });
@@ -1144,7 +1153,8 @@ export class MyHouseholdWidget extends MPNextWidget {
       this.saving = false;
       this.householdAlert = {
         kind: "error",
-        text: err instanceof Error ? err.message : "Failed to save household",
+        text:
+          err instanceof Error ? err.message : this.t("errors.saveFailed"),
       };
       this.render();
       this.emit("householdError", { error: this.householdAlert.text });
@@ -1158,19 +1168,13 @@ export class MyHouseholdWidget extends MPNextWidget {
       "#member-form",
     ) as HTMLFormElement | null;
     if (form) {
-      const opts = {
-        ...MyHouseholdWidget.VALIDATION_OPTS,
-        messages: {
-          "mb-first": "First Name is required.",
-          "mb-last": "Last Name is required.",
-        },
-      };
+      const opts = this.validationOpts();
       if (!validateForm(form, opts).valid) {
         // Field-level errors are the primary feedback; keep a summary banner.
         // Re-apply inline errors after render() rebuilds the form markup.
         this.memberAlert = {
           kind: "warning",
-          text: "Please fix the highlighted fields.",
+          text: this.t("myHousehold.fixHighlighted"),
         };
         this.render();
         const reRendered = this.root.querySelector(
@@ -1227,7 +1231,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || `Failed to save member (${res.status})`);
+        throw new Error(this.errorText(data, "errors.saveFailed"));
       }
 
       const returnedContactId: number | undefined = data.contactId;
@@ -1259,7 +1263,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       this.view = "details";
       this.memberAlert = {
         kind: "success",
-        text: "Member saved successfully.",
+        text: this.t("myHousehold.memberSaved"),
       };
       this.render();
       this.emit("memberSaved", { contactId: returnedContactId });
@@ -1267,7 +1271,8 @@ export class MyHouseholdWidget extends MPNextWidget {
       this.saving = false;
       this.memberAlert = {
         kind: "error",
-        text: err instanceof Error ? err.message : "Failed to save member",
+        text:
+          err instanceof Error ? err.message : this.t("errors.saveFailed"),
       };
       this.render();
       this.emit("householdError", { error: this.memberAlert.text });
