@@ -16,16 +16,19 @@ ls packages/embed-sdk/demo-*.html | wc -l
 ls src/app/api/embed/ ; ls src/services/*.ts | grep -v '\.test\.'
 ```
 
-Snapshot at 2026-09-09 (re-measured): **29** registered `next-*` elements, 28 demo
-pages, 30 `src/app/api/embed/` route directories, 29 services. The counts diverge on
+Snapshot at 2026-09-09 (re-measured): **30** registered `next-*` elements, 29 demo
+pages, 31 `src/app/api/embed/` route directories, 30 services. The counts diverge on
 purpose: `next-locale-selector` has no demo page, because it needs no API, no token and
 no configuration to demonstrate — `<html lang="es">` on any existing demo page exercises
 the whole localisation path. The service count no longer moves with the widget count
 either: `next-subscribe-to-publication` extends `subscriptionService.ts` rather than
 forking a second file for the same two MP tables, and `src/services/_shared/` is a
-directory the `ls src/services/*.ts` glob does not reach. (An earlier snapshot said
-26/25/27/27 and had already fallen behind `next-unsubscribe`, which is exactly why the
-paragraph above says not to trust the number over the disk.)
+directory the `ls src/services/*.ts` glob does not reach. The route-directory count runs
+one *ahead* of the element count for the opposite reason — `auth/` and `session/` are
+route directories with no widget, while `next-pre-check` owns one directory holding two
+routes (`pre-check/` and `pre-check/qr/`). (An earlier snapshot said 26/25/27/27 and had
+already fallen behind `next-unsubscribe`, which is exactly why the paragraph above says
+not to trust the number over the disk.)
 
 ## Structure
 
@@ -186,14 +189,15 @@ returns. Full incident and the "grep the built chunk" diagnostic:
 
 **Design**: Web Components + Shadow DOM (no framework deps), JWT+CORS auth, multi-tenant origin allowlists, MP tokens only in the encrypted server session (never in the JWT or host-page storage in `hardened`). Widget forms use the shared `packages/embed-sdk/src/shared/form-validation.ts` (no native `reportValidity` popup).
 
-**The element roster** (29 as of 2026-09-09 — this is the one place it is listed; re-measure with the command in Overview rather than trusting it):
+**The element roster** (30 as of 2026-09-09 — this is the one place it is listed; re-measure with the command in Overview rather than trusting it):
 `next-add-to-calendar`, `next-checkout`, `next-checkout-complete`, `next-custom-form`,
 `next-event-details`, `next-event-finder`, `next-full-calendar`, `next-group-details`,
 `next-group-finder`, `next-my-contribution-statement`, `next-my-giving`,
 `next-my-groups`, `next-my-household`, `next-my-invoices`, `next-my-pledges`,
 `next-locale-selector`, `next-online-directory`, `next-opportunity-details`,
 `next-opportunity-finder`,
-`next-pay`, `next-plan-your-visit`, `next-prayer-feedback`, `next-pledge-campaign`,
+`next-pay`, `next-plan-your-visit`, `next-prayer-feedback`, `next-pre-check`,
+`next-pledge-campaign`,
 `next-profile`, `next-statement-preferences`, `next-subscribe-to-publication`,
 `next-subscriptions`, `next-unsubscribe`, `next-user-menu`.
 

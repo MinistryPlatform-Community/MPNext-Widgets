@@ -87,7 +87,7 @@ Three things the caveat feared are settled, and one new fact replaces them:
 
 **Resolved 2026-09-09** by `next-pre-check` — see
 `.claude/TODO/Comparison/Plans/pre-check.md` for the design and
-`README.md` "Event Pre-Check" for the customer setup steps.
+`README.md` "Event Pre Check-In" for the customer setup steps.
 
 ## Why it matters
 

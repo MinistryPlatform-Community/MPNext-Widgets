@@ -40,6 +40,7 @@ Embeddable Web Component widgets for [Ministry Platform](https://www.ministrypla
 - [Widget Unsubscribe Links](#widget-unsubscribe-links)
 - [Prayer & Feedback Intake](#prayer--feedback-intake)
 - [Newsletter Sign-Up](#newsletter-sign-up)
+- [Event Pre Check-In](#event-pre-check-in)
 - [Testing](#testing)
 - [Development](#development)
 - [Claude Code Commands](#claude-code-commands)
@@ -1265,6 +1266,153 @@ a duplicate contact.
 - Not implemented yet: the `recaptcha-site-key` opt-in bot check. The server
   accepts and verifies a `recaptchaToken` when one is posted, but the element
   does not render a challenge.
+
+
+## Event Pre Check-In
+
+`<next-pre-check>` lets a family check itself in for a day's check-in events
+before it arrives, so the household is already on the check-in station's
+*expected* list on Sunday morning. It replaces legacy's `mpp-pre-check`.
+
+**This widget requires a signed-in MP user.** It reads and writes a household's
+attendance, so unlike the newsletter and prayer widgets it will not work for an
+anonymous visitor — a signed-out page renders a sign-in prompt instead.
+
+### Before it will work: what your MP domain needs
+
+Four things. The first is the only one that is not usually already true.
+
+1. **The stored procedure `api_MPPW_GetPreCheckEvents` must be installed and
+   granted to your API client.** It ships in MinistryPlatform's own widget
+   database scripts, in the same registration and grant block as eight
+   procedures this SDK already uses (`api_MPPW_GetMyPledges`,
+   `api_MPPW_GetEvents`, `api_MPPW_SearchGroups`, …) — so if any of the event,
+   giving or group widgets work for you, this one almost certainly will too.
+   If it is missing, the widget renders *"Check-in is not set up for this site
+   yet. Please contact the church."* and writes nothing. Ask your MP
+   administrator to run the widget database scripts.
+2. **Your events must have Allow Check-in ticked.** The widget only ever lists
+   events on the chosen date with that flag set. An event without it is
+   invisible here, which is the intended behaviour, not a fault.
+3. **Understand the Search Results setting on each event**, because it decides
+   who is listed and it is the single most common reason a family sees an empty
+   page on a day that definitely has services:
+
+   | Event's *Search Results* | Who the widget lists |
+   |---|---|
+   | Allow Guests (Show Everyone) | every member of the household |
+   | Allow Expected Only (Show Everyone) | every member of the household |
+   | **Allow Expected Only (Show Expected Only)** | **only members who already belong to one of the event's groups, or who already have a registration for it** |
+
+   The third is MP's default on many check-in events. With it, a household whose
+   children are not in that event's groups sees nobody — correctly. If parents
+   report "the page is blank", check the event's groups before anything else.
+4. **The API client's user needs write access to `Event_Participants`** (and to
+   `Participants`, for the case below). The widget writes as your API client,
+   attributing each change to the signed-in parent for the audit trail.
+
+### Adding it to a page
+
+```html
+<!-- Defaults to today in your MP domain's time zone, resolved on the server -->
+<next-pre-check></next-pre-check>
+```
+
+That is the whole production form. The date is resolved server-side in the
+church's own time zone, so a visitor in another zone still gets the church's
+idea of today.
+
+| Attribute | Default | What it does |
+|---|---|---|
+| `event-date` | today, in the MP domain's zone | Pin a specific day. Must be `YYYY-MM-DD`. |
+| `allow-date-picker` | `false` | Show a date field so a visitor can move between days without a new URL. |
+| `read-query-string` | `false` | Opt back into legacy's `?eventDate=` host-page query parameter. Off by default because silently obeying an arbitrary URL parameter is a surprise on a shared CMS page. |
+| `show-qr` | `false` | Render the check-in QR code. **See the warning below before turning this on.** |
+| `api-host` | auto | Standard across the SDK. |
+
+### The QR code is off by default, deliberately
+
+Legacy always drew a QR code encoding `pre|M/d/yyyy|householdId`. This widget
+can produce a byte-identical one, but ships with it **off**, and you should
+leave it off until you have tested it.
+
+The reason: that payload predates MP's newer `Allow QR Check-in` /
+`QR Redirect URL` event fields, which are a different (URL-redirect) mechanism.
+Whether a *current* check-in station still scans the older barcode can only be
+answered at a physical station, not from any source code. **Print one, scan it
+at your own check-in station, and turn `show-qr="true"` on only if it works.**
+
+Nothing is lost by leaving it off. The pre-check submission is what actually
+shortens the queue — it writes the registration rows that put the family on the
+station's expected list — and it works with or without a code on screen.
+
+### What a submission actually does
+
+Ticking a box and pressing *Check In* writes an `Event_Participants` row at
+status **02 Registered** for that person and event, creating one or updating the
+existing one. Unticking a box sets the existing row to **05 Cancelled**.
+
+- **No row is ever deleted.** A cancellation is a status change, so the history
+  of who had planned to come survives.
+- **A person a station has already scanned in cannot be changed.** Rows at
+  *03 Attended* or *04 Confirmed* render checked and greyed out, and the server
+  refuses to write them in either direction. This is a deliberate fix to a
+  legacy defect: `mpp-pre-check` would overwrite an attendance record with
+  *Cancelled* if a parent opened the page after check-in and unticked the box.
+- **A household member with no Participant record gets one**, created with the
+  participant type from your `PORTAL` / `DefaultParticipantTypeID` configuration
+  setting and noted `Created by Web Widget` — the same thing legacy did.
+- Nothing else is written. `Time In`, `Room`, `Check-in Station` and RSVP status
+  are the station's to set; a pre-check must not look like an attendance.
+
+**Check for your own Processes and Webhooks on `Event_Participants` before you
+launch this.** One household submitting on a Saturday night can write a dozen
+rows in a second. Nothing MP ships reacts to these rows, but a church-authored
+automation would fire once per row.
+
+### Migrating from `mpp-pre-check` — five things changed
+
+1. **Signed-out visitors get a way in.** Legacy printed *"You need to log in"*
+   with no login control at all. This renders a sign-in prompt — with a working
+   Sign In button in `dual`/`hardened` auth mode, and instructions pointing at
+   your page's own sign-in link in `legacy` mode, where the SDK cannot start a
+   sign-in itself.
+2. **The date no longer depends on the visitor's time zone.** Legacy read
+   `?eventDate=` and ran it through the browser's clock, so a visitor west of
+   UTC opening the page on a Saturday evening asked the server for Sunday. The
+   date is now resolved on the server in the church's zone.
+3. **Times display in the visitor's language.** Legacy hardcoded US English
+   formatting, so a Spanish-speaking parent read `9:00 AM` where `9:00` is
+   correct.
+4. **A submission can only ever touch the signed-in user's own household.**
+   Legacy's server accepted six record ids from the browser and wrote them
+   without checking any of them. Nothing sent by the browser is now used as an
+   id.
+5. **The `?eventDate=` URL parameter is off unless you ask for it.** Set
+   `read-query-string="true"` if you are porting a page that already links with
+   it.
+
+### What this widget cannot translate
+
+Event titles, group names and role titles come from MinistryPlatform and are
+shown exactly as your staff entered them. Only the widget's own labels are
+available in Spanish and Portuguese.
+
+### Notes for whoever reviews this later
+
+- `MPHelper.getProcedures()` searches by **exact name**, not substring — the
+  availability probe passes the full `api_MPPW_GetPreCheckEvents`. A friendlier
+  partial term returns an empty list on every domain, installed or not, and
+  would make the widget permanently report itself unavailable.
+- On the reference sample domain the only date where household 5 (the
+  `Check-me-in` family) resolves rows is `2018-06-12` — event 2 is the one
+  check-in event whose *Search Results* is `Allow Guests`. The 2025 Sunday and
+  Tuesday class series are `Show Expected Only` and their groups do not overlap
+  that household's, so they correctly list nobody. `demo-pre-check.html` pins
+  that date for exactly this reason.
+- The QR encoder is `src/lib/qr/encode.ts`, written here rather than taken as a
+  dependency. Its tests decode their own output, so a change that breaks
+  scannability fails the suite rather than shipping a picture nobody can read.
 
 
 ## Testing
