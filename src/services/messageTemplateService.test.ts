@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MessageTemplateService } from '@/services/messageTemplateService';
+import {
+  MessageTemplateService,
+  MessageTemplateError,
+  NoFromAddressError,
+  NoRecipientError,
+  TemplateNotFoundError,
+  TemplateSendFailedError,
+  renderTemplate,
+} from '@/services/messageTemplateService';
 
 const mockGetTableRecords = vi.fn();
 const mockSendMessage = vi.fn();
@@ -80,7 +88,7 @@ describe('MessageTemplateService', () => {
       const service = await MessageTemplateService.getInstance();
       await expect(
         service.sendMessageTemplate(999, { email: 'v@example.com', name: 'V' }, {})
-      ).rejects.toThrow('Email template 999 not found.');
+      ).rejects.toThrow(TemplateNotFoundError);
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
   });
@@ -113,7 +121,7 @@ describe('MessageTemplateService', () => {
       const service = await MessageTemplateService.getInstance();
       await expect(
         service.sendCommunicationTemplate(999, { email: 'v@example.com', name: 'V' }, {})
-      ).rejects.toThrow('Communication template 999 not found.');
+      ).rejects.toThrow(TemplateNotFoundError);
     });
   });
 
@@ -195,7 +203,7 @@ describe('MessageTemplateService', () => {
       const service = await MessageTemplateService.getInstance();
       await expect(
         service.sendMessageTemplate(1, { email: 'v@example.com', name: 'V' }, {})
-      ).rejects.toThrow('Email template has no valid From contact.');
+      ).rejects.toThrow(NoFromAddressError);
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
@@ -208,7 +216,7 @@ describe('MessageTemplateService', () => {
       const service = await MessageTemplateService.getInstance();
       await expect(
         service.sendMessageTemplate(1, { email: 'v@example.com', name: 'V' }, {})
-      ).rejects.toThrow('Email template has no valid From contact.');
+      ).rejects.toThrow(NoFromAddressError);
     });
 
     it('falls back to the address as display name when the contact is unnamed', async () => {
@@ -249,7 +257,7 @@ describe('MessageTemplateService', () => {
     const service = await MessageTemplateService.getInstance();
     await expect(
       service.sendMessageTemplate(1, { email: '', name: 'V' }, {})
-    ).rejects.toThrow('No recipient email address.');
+    ).rejects.toThrow(NoRecipientError);
     expect(mockSendMessage).not.toHaveBeenCalled();
   });
 
@@ -262,5 +270,278 @@ describe('MessageTemplateService', () => {
     expect(mockSendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ Subject: '', Body: '' })
     );
+  });
+
+  describe('HTML escaping of merge values', () => {
+    it('escapes a merge value in the body — the stored-XSS case legacy shipped', async () => {
+      queueTemplateThenFromContact({
+        Subject: 'Prayer request',
+        Body: '<div>[Summary]</div>',
+        From_Contact: 7,
+      });
+
+      const service = await MessageTemplateService.getInstance();
+      await service.sendMessageTemplate(1, { email: 'staff@church.example', name: 'S' }, {
+        Summary: '<script>fetch("//evil")</script>',
+      });
+
+      const body = mockSendMessage.mock.calls[0][0].Body as string;
+      expect(body).toBe('<div>&lt;script&gt;fetch(&quot;//evil&quot;)&lt;/script&gt;</div>');
+      expect(body).not.toContain('<script>');
+    });
+
+    it('escapes a quote so a value cannot break out of an attribute', async () => {
+      queueTemplateThenFromContact({
+        Subject: 's',
+        Body: '<a href="[Url]">go</a>',
+        From_Contact: 7,
+      });
+
+      const service = await MessageTemplateService.getInstance();
+      await service.sendMessageTemplate(1, { email: 'v@example.com', name: 'V' }, {
+        Url: '" onmouseover="alert(1)',
+      });
+
+      const body = mockSendMessage.mock.calls[0][0].Body as string;
+      expect(body).toBe('<a href="&quot; onmouseover=&quot;alert(1)">go</a>');
+    });
+
+    it('does NOT escape the subject, which is a plain-text header', async () => {
+      // Escaping here would put a literal "&amp;" in the subject line, which
+      // the recipient sees. The body of the same send is still escaped.
+      queueTemplateThenFromContact({
+        Subject: 'Gift from [Name]',
+        Body: '<p>[Name]</p>',
+        From_Contact: 7,
+      });
+
+      const service = await MessageTemplateService.getInstance();
+      await service.sendMessageTemplate(1, { email: 'v@example.com', name: 'V' }, {
+        Name: 'Doug & Marie',
+      });
+
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          Subject: 'Gift from Doug & Marie',
+          Body: '<p>Doug &amp; Marie</p>',
+        })
+      );
+    });
+
+    it('escapes & first, so escapes are not double-escaped', async () => {
+      queueTemplateThenFromContact({ Subject: 's', Body: '[V]', From_Contact: 7 });
+
+      const service = await MessageTemplateService.getInstance();
+      await service.sendMessageTemplate(1, { email: 'v@example.com', name: 'V' }, {
+        V: '<b>&amp;</b>',
+      });
+
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ Body: '&lt;b&gt;&amp;amp;&lt;/b&gt;' })
+      );
+    });
+
+    it('inserts a $ in a merge value literally, not as a regex backreference', async () => {
+      // `String.replace` reads `$&` in the replacement as "the whole match", so
+      // an unescaped value containing one would echo the token instead.
+      queueTemplateThenFromContact({ Subject: '[Amt]', Body: '[Amt]', From_Contact: 7 });
+
+      const service = await MessageTemplateService.getInstance();
+      await service.sendMessageTemplate(1, { email: 'v@example.com', name: 'V' }, {
+        Amt: '$&100 $1',
+      });
+
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          Subject: '$&100 $1',
+          // The body additionally escapes the `&`, per the rule above.
+          Body: '$&amp;100 $1',
+        })
+      );
+    });
+  });
+
+  describe('renderTemplate — exported for preview and direct testing', () => {
+    it('renders without sending', () => {
+      const out = renderTemplate({ subject: 'Hi [N]', body: '<p>[N]</p>' }, { N: 'A & B' });
+      expect(out).toEqual({ subject: 'Hi A & B', body: '<p>A &amp; B</p>' });
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op on empty subject and body', () => {
+      expect(renderTemplate({ subject: '', body: '' }, { N: 'x' })).toEqual({
+        subject: '',
+        body: '',
+      });
+    });
+  });
+
+  describe('multiple recipients', () => {
+    it('sends one message addressed to every recipient', async () => {
+      queueTemplateThenFromContact({ Subject: 's', Body: 'b', From_Contact: 7 });
+
+      const service = await MessageTemplateService.getInstance();
+      await service.sendMessageTemplate(
+        1,
+        [
+          { email: 'a@example.com', name: 'A' },
+          { email: 'b@example.com', name: 'B' },
+        ],
+        {}
+      );
+
+      expect(mockSendMessage).toHaveBeenCalledTimes(1);
+      expect(mockSendMessage.mock.calls[0][0].ToAddresses).toEqual([
+        { DisplayName: 'A', Address: 'a@example.com' },
+        { DisplayName: 'B', Address: 'b@example.com' },
+      ]);
+    });
+
+    it('drops recipients with no address', async () => {
+      queueTemplateThenFromContact({ Subject: 's', Body: 'b', From_Contact: 7 });
+
+      const service = await MessageTemplateService.getInstance();
+      await service.sendMessageTemplate(
+        1,
+        [
+          { email: '', name: 'A' },
+          { email: 'b@example.com', name: 'B' },
+        ],
+        {}
+      );
+
+      expect(mockSendMessage.mock.calls[0][0].ToAddresses).toEqual([
+        { DisplayName: 'B', Address: 'b@example.com' },
+      ]);
+    });
+
+    it('throws when every recipient lacks an address', async () => {
+      queueTemplateThenFromContact({ Subject: 's', Body: 'b', From_Contact: 7 });
+
+      const service = await MessageTemplateService.getInstance();
+      await expect(
+        service.sendMessageTemplate(1, [{ email: '', name: 'A' }], {})
+      ).rejects.toThrow(NoRecipientError);
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('fromContactId fallback', () => {
+    it('uses the caller fallback when the template has no From_Contact', async () => {
+      mockGetTableRecords.mockResolvedValueOnce([
+        { Subject: 's', Body: 'b', From_Contact: null },
+      ]);
+      mockGetTableRecords.mockResolvedValueOnce([
+        {
+          Contact_ID: 99,
+          First_Name: 'Office',
+          Last_Name: null,
+          Email_Address: 'office@church.example',
+        },
+      ]);
+
+      const service = await MessageTemplateService.getInstance();
+      await service.sendMessageTemplate(
+        1,
+        { email: 'v@example.com', name: 'V' },
+        {},
+        { fromContactId: 99 }
+      );
+
+      expect(mockGetTableRecords).toHaveBeenNthCalledWith(2, {
+        table: 'Contacts',
+        select: 'Contact_ID,First_Name,Last_Name,Email_Address',
+        filter: 'Contact_ID = 99',
+        top: 1,
+      });
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          FromAddress: { DisplayName: 'Office', Address: 'office@church.example' },
+        })
+      );
+    });
+
+    it("prefers the template's own From_Contact over the fallback", async () => {
+      queueTemplateThenFromContact({ Subject: 's', Body: 'b', From_Contact: 7 });
+
+      const service = await MessageTemplateService.getInstance();
+      await service.sendMessageTemplate(
+        1,
+        { email: 'v@example.com', name: 'V' },
+        {},
+        { fromContactId: 99 }
+      );
+
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          FromAddress: { DisplayName: 'Grace Okafor', Address: 'grace@church.example' },
+        })
+      );
+    });
+
+    it('falls through to the fallback when the template contact has no email', async () => {
+      mockGetTableRecords.mockResolvedValueOnce([
+        { Subject: 's', Body: 'b', From_Contact: 7 },
+      ]);
+      mockGetTableRecords.mockResolvedValueOnce([
+        { Contact_ID: 7, First_Name: 'No', Last_Name: 'Mail', Email_Address: null },
+      ]);
+      mockGetTableRecords.mockResolvedValueOnce([
+        {
+          Contact_ID: 99,
+          First_Name: null,
+          Last_Name: null,
+          Email_Address: 'office@church.example',
+        },
+      ]);
+
+      const service = await MessageTemplateService.getInstance();
+      await service.sendMessageTemplate(
+        1,
+        { email: 'v@example.com', name: 'V' },
+        {},
+        { fromContactId: 99 }
+      );
+
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          FromAddress: { DisplayName: 'office@church.example', Address: 'office@church.example' },
+        })
+      );
+    });
+  });
+
+  describe('error taxonomy', () => {
+    it('wraps a send failure as TemplateSendFailedError, not a config error', async () => {
+      queueTemplateThenFromContact({ Subject: 's', Body: 'b', From_Contact: 7 });
+      mockSendMessage.mockRejectedValueOnce(new Error('MP 503'));
+
+      const service = await MessageTemplateService.getInstance();
+      await expect(
+        service.sendMessageTemplate(1, { email: 'v@example.com', name: 'V' }, {})
+      ).rejects.toThrow(TemplateSendFailedError);
+    });
+
+    it('every error is a MessageTemplateError, so a route can catch one class', async () => {
+      mockGetTableRecords.mockResolvedValueOnce([]);
+
+      const service = await MessageTemplateService.getInstance();
+      await expect(
+        service.sendMessageTemplate(1, { email: 'v@example.com', name: 'V' }, {})
+      ).rejects.toThrow(MessageTemplateError);
+    });
+
+    it('names the template id and table on a not-found error', async () => {
+      mockGetTableRecords.mockResolvedValueOnce([]);
+
+      const service = await MessageTemplateService.getInstance();
+      const err = await service
+        .sendMessageTemplate(404, { email: 'v@example.com', name: 'V' }, {})
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(TemplateNotFoundError);
+      expect((err as TemplateNotFoundError).templateId).toBe(404);
+      expect((err as Error).message).toContain('dp_Communications');
+    });
   });
 });

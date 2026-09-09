@@ -36,6 +36,22 @@ import { MPHelper } from "@/lib/providers/ministry-platform";
  * Tokens absent from the template are simply not substituted; tokens in the
  * template with no supplied value are left as-is, exactly as MP's own send
  * pipeline leaves them.
+ *
+ * ## Merge values are HTML-escaped, with no opt-out
+ *
+ * A template `Body` is HTML and the values substituted into it are not: they
+ * are congregant-authored text (a prayer request), a person's name, or a URL.
+ * The legacy .NET widget substituted them raw, which made every one of these
+ * templates a stored-XSS vector into a staff mailbox — type a `<script>` into a
+ * public prayer form and it renders in whatever reads the notification.
+ *
+ * So substitution escapes, and there is deliberately **no flag to turn it off**.
+ * An opt-out would be reached for the first time someone wanted bold text in a
+ * merge value and would silently re-open the hole for every other caller. A
+ * template that needs markup puts the markup in the template, which is where
+ * the church authors it anyway. Escaping is also correct inside an attribute —
+ * `&` → `&amp;` in an `href` is what HTML requires — so URLs pass through
+ * unharmed.
  */
 
 /** Where a rendered template is sent. */
@@ -47,6 +63,56 @@ export interface TemplateRecipient {
 
 /** `[Token_Name]` → replacement, matched case-insensitively. */
 export type TemplateMergeData = Record<string, string>;
+
+export interface SendTemplateOptions {
+  /**
+   * Used when the template row carries no `From_Contact`. Lets a caller that
+   * knows a sensible sender (a congregation's own contact, say) supply one,
+   * without this service inventing a global default.
+   */
+  fromContactId?: number;
+}
+
+/**
+ * Base class for the failures a caller may want to distinguish. Routes branch
+ * on these rather than string-matching a message, so a church misconfiguration
+ * (`template_not_configured`) is not reported as a transient send failure
+ * (`email_send_failed`).
+ */
+export class MessageTemplateError extends Error {}
+
+/** The configured template id does not exist in the table it should be in. */
+export class TemplateNotFoundError extends MessageTemplateError {
+  constructor(public readonly templateId: number, table: string) {
+    super(`Template ${templateId} not found in ${table}.`);
+    this.name = "TemplateNotFoundError";
+  }
+}
+
+/** The template has no `From_Contact`, and no fallback was supplied. */
+export class NoFromAddressError extends MessageTemplateError {
+  constructor(public readonly templateId: number) {
+    super(`Template ${templateId} has no valid From contact.`);
+    this.name = "NoFromAddressError";
+  }
+}
+
+/** MP accepted the request but the send itself failed. */
+export class TemplateSendFailedError extends MessageTemplateError {
+  constructor(cause: unknown) {
+    super(`Sending a template message failed: ${String(cause)}`);
+    this.name = "TemplateSendFailedError";
+    this.cause = cause;
+  }
+}
+
+/** No recipient address to send to. */
+export class NoRecipientError extends MessageTemplateError {
+  constructor() {
+    super("No recipient email address.");
+    this.name = "NoRecipientError";
+  }
+}
 
 interface MessageTemplate {
   subject: string;
@@ -67,11 +133,58 @@ function toNumberOrNull(value: number | string | null | undefined): number | nul
   return Number.isNaN(n) ? null : n;
 }
 
+/**
+ * Escape a merge value for insertion into an HTML template body.
+ *
+ * `&` first, or the escapes introduced by the later replacements get
+ * double-escaped. Quotes are included because a value may land inside an
+ * attribute (`href="[MPP_Verify_Email_URL]"`), where an unescaped `"` ends the
+ * attribute and everything after it becomes markup.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /** Substitute one `[key]` merge token, case-insensitively. */
 function replaceToken(text: string, key: string, value: string): string {
   if (!text) return text;
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return text.replace(new RegExp(`\\[${escaped}\\]`, "gi"), value);
+  // `$` in the replacement is a backreference to the regex engine (`$&`, `$1`),
+  // so a merge value containing one would corrupt the output. `$$` is the
+  // literal.
+  const safeValue = value.replace(/\$/g, "$$$$");
+  return text.replace(new RegExp(`\\[${escaped}\\]`, "gi"), safeValue);
+}
+
+/**
+ * Render a template's subject and body against merge data, without sending.
+ *
+ * **The body is escaped and the subject is not**, because they are different
+ * media: a template `Body` is HTML, while an email `Subject` is a plain-text
+ * header. Escaping the subject too would be the obvious-looking mistake — it
+ * puts a literal `&amp;` in the subject line of every email about "Doug &
+ * Marie", which the recipient sees.
+ *
+ * Exported so the substitution rules can be tested directly, and so a caller
+ * that wants to preview church-authored copy does not have to send an email to
+ * see it.
+ */
+export function renderTemplate(
+  template: { subject: string; body: string },
+  merge: TemplateMergeData
+): { subject: string; body: string } {
+  let subject = template.subject;
+  let body = template.body;
+  for (const [key, value] of Object.entries(merge)) {
+    subject = replaceToken(subject, key, value);
+    body = replaceToken(body, key, escapeHtml(value));
+  }
+  return { subject, body };
 }
 
 export class MessageTemplateService {
@@ -106,23 +219,25 @@ export class MessageTemplateService {
    */
   public async sendMessageTemplate(
     templateId: number,
-    to: TemplateRecipient,
-    merge: TemplateMergeData
+    to: TemplateRecipient | TemplateRecipient[],
+    merge: TemplateMergeData,
+    options: SendTemplateOptions = {}
   ): Promise<void> {
     const template = await this.getMessageTemplate(templateId);
-    if (!template) throw new Error(`Email template ${templateId} not found.`);
-    await this.renderAndSend(template, to, merge);
+    if (!template) throw new TemplateNotFoundError(templateId, "dp_Communications");
+    await this.renderAndSend(templateId, template, to, merge, options);
   }
 
   /** Render and send a `dp_Communication_Templates` template. */
   public async sendCommunicationTemplate(
     templateId: number,
-    to: TemplateRecipient,
-    merge: TemplateMergeData
+    to: TemplateRecipient | TemplateRecipient[],
+    merge: TemplateMergeData,
+    options: SendTemplateOptions = {}
   ): Promise<void> {
     const template = await this.getCommunicationTemplate(templateId);
-    if (!template) throw new Error(`Communication template ${templateId} not found.`);
-    await this.renderAndSend(template, to, merge);
+    if (!template) throw new TemplateNotFoundError(templateId, "dp_Communication_Templates");
+    await this.renderAndSend(templateId, template, to, merge, options);
   }
 
   /** Read a `dp_Communications` message template. */
@@ -168,46 +283,59 @@ export class MessageTemplateService {
   }
 
   private async renderAndSend(
+    templateId: number,
     template: MessageTemplate,
-    to: TemplateRecipient,
-    merge: TemplateMergeData
+    to: TemplateRecipient | TemplateRecipient[],
+    merge: TemplateMergeData,
+    options: SendTemplateOptions
   ): Promise<void> {
-    if (!to.email) throw new Error("No recipient email address.");
+    const recipients = (Array.isArray(to) ? to : [to]).filter((r) => Boolean(r.email));
+    if (recipients.length === 0) throw new NoRecipientError();
 
-    const from = await this.resolveFromAddress(template.fromContactId);
+    const from = await this.resolveFromAddress(templateId, template.fromContactId, options);
+    const { subject, body } = renderTemplate(template, merge);
 
-    let subject = template.subject;
-    let body = template.body;
-    for (const [key, value] of Object.entries(merge)) {
-      subject = replaceToken(subject, key, value);
-      body = replaceToken(body, key, value);
+    try {
+      await this.mp!.sendMessage({
+        FromAddress: from,
+        ToAddresses: recipients.map((r) => ({ DisplayName: r.name, Address: r.email })),
+        Subject: subject,
+        Body: body,
+      });
+    } catch (error) {
+      // Distinguished from the misconfiguration errors above so a route can
+      // answer `email_send_failed` (transient, worth retrying) rather than
+      // `template_not_configured` (the church must fix something).
+      throw new TemplateSendFailedError(error);
     }
-
-    await this.mp!.sendMessage({
-      FromAddress: from,
-      ToAddresses: [{ DisplayName: to.name, Address: to.email }],
-      Subject: subject,
-      Body: body,
-    });
   }
 
   /**
-   * The From address is the template's own From contact. There is deliberately
-   * no fallback to a configured default: an email that appears to come from the
-   * wrong person is worse than an email that does not send, and the failure
-   * points straight at the template the church needs to fix.
+   * The From address is the template's own From contact, falling back to a
+   * caller-supplied `fromContactId`.
+   *
+   * There is deliberately no *global* default sender: an email that appears to
+   * come from the wrong person is worse than an email that does not send, and
+   * the failure points straight at the template the church needs to fix. A
+   * per-call fallback is a different thing — the caller knows a specific
+   * sensible sender for that one flow (a congregation's own contact, say) and
+   * is stating it explicitly at the call site.
    */
   private async resolveFromAddress(
-    fromContactId: number | null
+    templateId: number,
+    fromContactId: number | null,
+    options: SendTemplateOptions
   ): Promise<{ DisplayName: string; Address: string }> {
-    if (fromContactId != null) {
-      const contact = await this.getContactById(fromContactId);
+    const candidates = [fromContactId, options.fromContactId ?? null];
+    for (const candidate of candidates) {
+      if (candidate == null) continue;
+      const contact = await this.getContactById(candidate);
       if (contact?.Email_Address) {
         const name = `${contact.First_Name ?? ""} ${contact.Last_Name ?? ""}`.trim();
         return { DisplayName: name || contact.Email_Address, Address: contact.Email_Address };
       }
     }
-    throw new Error("Email template has no valid From contact.");
+    throw new NoFromAddressError(templateId);
   }
 
   private async getContactById(contactId: number): Promise<ContactRow | null> {
