@@ -916,3 +916,176 @@ describe("<next-pre-check> saving", () => {
     expect(saveBtn(el)).toBeNull();
   });
 });
+
+/**
+ * The `show-qr` panel.
+ *
+ * The assertion that matters is the first: **off by default.** The `pre|…`
+ * payload predates MP's `Events.Allow_QR_Check_In` / `QR_Redirect_Url`
+ * mechanism, and whether a current check-in station still scans it cannot be
+ * verified from any repo. A church opts in once it has tested its own station;
+ * everyone else gets a working widget rather than a dead image.
+ */
+describe("<next-pre-check> check-in code", () => {
+  const QR_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 132 132"><rect/></svg>';
+
+  /**
+   * GET the list; serve `/qr` through `onQr`.
+   *
+   * The list handler **echoes the requested date**, as the real route does. It
+   * matters: the widget asks for the code for the date the *server* confirmed,
+   * not the one it requested, so a stub that always returns the same
+   * `eventDate` would make the refetch test assert the wrong thing.
+   */
+  function mockQr(onQr: (url: string) => Response, listBody?: unknown) {
+    return mockFetch((url) => {
+      if (url.includes("/api/embed/pre-check/qr")) return onQr(url);
+      if (listBody !== undefined) return jsonResponse(listBody);
+      const requested = new URL(url, HOST).searchParams.get("eventDate");
+      return jsonResponse({ ...OK_BODY, eventDate: requested ?? OK_BODY.eventDate });
+    });
+  }
+
+  function qrCalls(fn: ReturnType<typeof mockFetch>): string[] {
+    return fn.mock.calls
+      .map(([input]) => String(input))
+      .filter((u) => u.includes("/api/embed/pre-check/qr"));
+  }
+
+  const panel = (el: HTMLElement) => el.shadowRoot!.querySelector(".pc-qr");
+
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    delete (window as unknown as { __nextAuthSession?: unknown }).__nextAuthSession;
+    __resetLocaleSession();
+    document.documentElement.removeAttribute("lang");
+    window.history.replaceState(null, "", PAGE);
+    window.__nextTokenProvider = {
+      get: () => getAuthSession(HOST).getToken("pre-check"),
+      refresh: () => getAuthSession(HOST).refreshToken("pre-check"),
+    };
+    window.__nextSDKReady = Promise.resolve();
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+    window.history.replaceState(null, "", PAGE);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("is OFF by default — no panel, and no request for one", async () => {
+    const fn = mockQr(() => jsonResponse({ svg: QR_SVG, eventDate: "2018-06-12" }));
+    const el = await mountSettled('event-date="2018-06-12"');
+
+    expect(panel(el)).toBeNull();
+    expect(qrCalls(fn)).toHaveLength(0);
+  });
+
+  it("stays off for show-qr=\"false\"", async () => {
+    const fn = mockQr(() => jsonResponse({ svg: QR_SVG, eventDate: "2018-06-12" }));
+    const el = await mountSettled('event-date="2018-06-12" show-qr="false"');
+
+    expect(panel(el)).toBeNull();
+    expect(qrCalls(fn)).toHaveLength(0);
+  });
+
+  it("renders the code when the church opts in", async () => {
+    mockQr(() => jsonResponse({ svg: QR_SVG, eventDate: "2018-06-12" }));
+    const el = await mountSettled('event-date="2018-06-12" show-qr="true"');
+
+    expect(panel(el)).not.toBeNull();
+    expect(el.shadowRoot!.querySelector(".pc-qr-code svg")).not.toBeNull();
+    expect(el.shadowRoot!.textContent).toContain("Your check-in code");
+    expect(el.shadowRoot!.textContent).toContain("Show this code at the check-in station.");
+  });
+
+  it("asks for the code for the day being shown, and sends no household id", async () => {
+    const fn = mockQr(() => jsonResponse({ svg: QR_SVG, eventDate: "2018-06-12" }));
+    await mountSettled('event-date="2018-06-12" show-qr="true"');
+
+    expect(qrCalls(fn)).toHaveLength(1);
+    expect(qrCalls(fn)[0]).toContain("eventDate=2018-06-12");
+    // The route takes the household from the session; the widget must not try
+    // to name one.
+    expect(qrCalls(fn)[0]).not.toContain("householdId");
+  });
+
+  it("renders a note, not the error state, when the code cannot be fetched", async () => {
+    // The submission is what puts a family on the station's expected list, and
+    // it works whether or not a code was drawn.
+    mockQr(() => jsonResponse({ error: "internal_error", message: "boom" }, 500));
+    const el = await mountSettled('event-date="2018-06-12" show-qr="true"');
+
+    expect(el.shadowRoot!.textContent).toContain(
+      "The check-in code is not available right now.",
+    );
+    expect(el.shadowRoot!.textContent).not.toContain("Unable to Load");
+    // The list is still there and still usable.
+    expect(el.shadowRoot!.querySelectorAll(".pc-row")).toHaveLength(1);
+    expect(el.shadowRoot!.querySelector('[data-action="save"]')).not.toBeNull();
+  });
+
+  it("rejects a payload that is not an svg element", async () => {
+    mockQr(() => jsonResponse({ svg: "<img src=x onerror=alert(1)>" }));
+    const el = await mountSettled('event-date="2018-06-12" show-qr="true"');
+
+    expect(el.shadowRoot!.querySelector("img")).toBeNull();
+    expect(el.shadowRoot!.textContent).toContain(
+      "The check-in code is not available right now.",
+    );
+  });
+
+  it("refetches the code when the date changes", async () => {
+    const fn = mockQr(() => jsonResponse({ svg: QR_SVG, eventDate: "2018-06-12" }));
+    const el = await mountSettled(
+      'event-date="2018-06-12" show-qr="true" allow-date-picker="true"',
+    );
+    expect(qrCalls(fn)).toHaveLength(1);
+
+    const input = el.shadowRoot!.querySelector<HTMLInputElement>("#pc-date")!;
+    input.value = "2025-05-18";
+    input.dispatchEvent(new Event("change"));
+
+    await vi.waitFor(() => expect(qrCalls(fn).length).toBe(2));
+    expect(qrCalls(fn)[1]).toContain("eventDate=2025-05-18");
+  });
+
+  it("renders the panel on a day with no events", async () => {
+    // The code is per household and date, not per event — a family may want it
+    // in hand before the list fills.
+    mockQr(() => jsonResponse({ svg: QR_SVG, eventDate: "2025-05-20" }), {
+      ...OK_BODY,
+      eventDate: "2025-05-20",
+      members: [],
+    });
+    const el = await mountSettled('event-date="2025-05-20" show-qr="true"');
+
+    expect(panel(el)).not.toBeNull();
+    expect(el.shadowRoot!.textContent).toContain("There are no check-in events on");
+  });
+
+  it("localises the panel copy", async () => {
+    document.documentElement.setAttribute("lang", "es");
+    mockQr(() => jsonResponse({ svg: QR_SVG, eventDate: "2018-06-12" }));
+    const el = await mountSettled('event-date="2018-06-12" show-qr="true"');
+
+    expect(el.shadowRoot!.textContent).toContain("Su código de entrada");
+    expect(el.shadowRoot!.textContent).toContain(
+      "Muestre este código en el puesto de registro.",
+    );
+  });
+
+  it("reloads when show-qr is turned on after mount (C39)", async () => {
+    const fn = mockQr(() => jsonResponse({ svg: QR_SVG, eventDate: "2018-06-12" }));
+    const el = await mountSettled('event-date="2018-06-12"');
+    expect(qrCalls(fn)).toHaveLength(0);
+
+    // `oldValue === null`: the C39 shape again, on the fourth watched attribute.
+    el.setAttribute("show-qr", "true");
+
+    await vi.waitFor(() => expect(qrCalls(fn).length).toBe(1));
+    await vi.waitFor(() => expect(panel(el)).not.toBeNull());
+  });
+});

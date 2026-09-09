@@ -239,6 +239,14 @@
           <code>Search_Results = 3</code> (Show Expected Only) and their groups do not
           overlap this household's, so MP correctly shows nobody for them — a useful
           second case to try.
+          <br>
+          <strong>The check-in code is on here, and off everywhere else.</strong>
+          <code>show-qr</code> defaults to <code>false</code>: the
+          <code>pre|M/d/yyyy|householdId</code> payload predates MP's
+          <code>Allow_QR_Check_In</code> / <code>QR_Redirect_Url</code> columns, which are
+          a different (URL-redirect) mechanism, and whether a current check-in station
+          still scans the older barcode can only be confirmed at a physical station.
+          Turn it on once your campus has tested it.
         </div>
 
         <!-- User menu for authentication -->
@@ -253,6 +261,7 @@
             api-host="http://localhost:3000"
             event-date="2018-06-12"
             allow-date-picker="true"
+            show-qr="true"
           ></next-pre-check>
 
           <!-- Production form: no attributes at all. Defaults to today in the
@@ -296,6 +305,11 @@
      Off by default: silently obeying an arbitrary URL parameter is a
      surprise on a shared CMS page. --&gt;
 &lt;next-pre-check read-query-string="true"&gt;&lt;/next-pre-check&gt;
+
+&lt;!-- The check-in QR code is OFF by default. Turn it on only once you
+     have confirmed a check-in station at your campus scans the payload
+     "pre|M/d/yyyy|householdId". --&gt;
+&lt;next-pre-check show-qr="true"&gt;&lt;/next-pre-check&gt;
 
 &lt;!-- Listen to events --&gt;
 &lt;script&gt;
