@@ -200,7 +200,8 @@ describe("guardPublicationVerifyData", () => {
     // Without it a handle minted on one allowlisted church site redeems from
     // another — and `requireWidgetAuth` cannot catch that, because both origins
     // are legitimately allowlisted.
-    const { origin: _origin, ...withoutOrigin } = data;
+    const withoutOrigin: Record<string, unknown> = { ...data };
+    delete withoutOrigin.origin;
     expect(guardPublicationVerifyData(withoutOrigin)).toBeNull();
     expect(guardPublicationVerifyData({ ...data, origin: "  " })).toBeNull();
   });
