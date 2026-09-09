@@ -4,8 +4,8 @@
  *
  * Covers `next-my-giving`, `next-my-pledges`, `next-pledge-campaign`,
  * `next-my-contribution-statement`, `next-statement-preferences`,
- * `next-checkout`, `next-checkout-complete`, `next-pay` and
- * `next-subscriptions`.
+ * `next-checkout`, `next-checkout-complete`, `next-pay`,
+ * `next-subscriptions` and `next-subscribe-to-publication`.
  *
  * What is deliberately absent: fund, program and publication names, invoice
  * line-item text, gateway status strings, and the statement PDFs themselves.
@@ -208,5 +208,78 @@ export const giving = {
     subscribed: "Subscribed to {title}",
     unsubscribed: "Unsubscribed from {title}",
     updateFailed: "Could not update subscription, please try again.",
+  },
+  /**
+   * `next-subscribe-to-publication` (C70) — the anonymous, email-verified
+   * opt-in that legacy had and the new stack did not.
+   *
+   * Here rather than in `core.ts` because none of it is shared, and here rather
+   * than in `people.ts` because this is the publication lifecycle: the same two
+   * tables and the same subscription state as `subscriptions` twenty lines
+   * above.
+   *
+   * Seeded from legacy's 13 `mpp-subscribe-to-publication` labels, which
+   * shipped with vetted Spanish and Portuguese. Two things had to be fixed
+   * rather than copied, and both are recorded in the translated files: the
+   * register (legacy's Spanish is `tú`, its Portuguese European `tu`, ours are
+   * `usted` / `você`), and the **merge token**, which legacy's own translations
+   * dropped from `emailSentConfirmation` and *translated* in the Portuguese
+   * `publicationDescription` — `[Título de Publicação]` would simply not
+   * interpolate. `catalogue-parity.test.ts` now makes that class of mistake a
+   * test failure rather than worse copy.
+   *
+   * **No plurals.** Nothing here counts anything, so the CLDR trap does not
+   * arise — worth stating, because `es` and `pt-BR` both report `many` and a
+   * two-branch plural would fail parity for both.
+   *
+   * Reused rather than re-added, which is what `core.ts` is for:
+   * `fields.firstName` / `lastName` / `email` (legacy had all three),
+   * `validation.formIncomplete` (legacy's `validationFailedMessage`),
+   * `common.loading` / `submitting` / `retry` / `unableToLoad`, and the
+   * `errors.*` set — including the three `verification_*` sentences C69 wrote
+   * neutrally for exactly this reason.
+   */
+  subscribeToPublication: {
+    /** Accessible name for the `role="status"` region every state paints into. */
+    title: "Email Subscription",
+    /** Legacy's `publicationDescription`, split: the heading half. */
+    heading: "Subscribe to {title}",
+    /** And the instruction half, which legacy ran into the same sentence. */
+    lead: "Complete the form below and we'll email you a link to confirm your subscription.",
+    loading: "Loading publication…",
+    /**
+     * Legacy's button read "Send" (*Enviar*), which describes the mechanism
+     * rather than what the visitor is doing. They are subscribing.
+     */
+    submit: "Subscribe",
+    checkEmailTitle: "Check your email",
+    checkEmail:
+      "We've sent a confirmation link to {email}. Open it to finish subscribing to {title}.",
+    verifying: "Confirming your subscription…",
+    verifiedTitle: "You're subscribed",
+    verified: "You'll start receiving {title} at {email}.",
+    /**
+     * Three link states, not one "bad link" message, because they differ in
+     * **affordance**: this one offers a fresh sign-up…
+     */
+    linkExpired: "That confirmation link has expired. Sign up again to get a new one.",
+    /** …this one the same… */
+    linkInvalid: "That confirmation link isn't valid. Please sign up again.",
+    /**
+     * …and this one neither, because the likeliest cause is a second click on
+     * a link that already worked. Legacy's links were replayable, so this
+     * state could not arise there.
+     *
+     * It leads with the reassurance and never with "already been used", which
+     * reads as a rebuke for succeeding: the visitor almost certainly is
+     * subscribed and is simply seeing the page twice. It must not read as an
+     * error, and it must not imply they need to do anything.
+     */
+    linkUsed: "You're all set — this link has already been confirmed.",
+    /** Legacy's `publicationDoesNotExist`, phrased for a visitor. */
+    notAvailable: "This publication isn't available for online sign-up.",
+    signUpAgain: "Sign Up Again",
+    privacyNote: "We'll only email you {title}, and you can unsubscribe from any message.",
+    managePreferences: "Manage all your email preferences",
   },
 } as const;

@@ -156,6 +156,11 @@ export const core = {
     form_not_found: "We could not find that form.",
     group_not_found: "We could not find that group.",
     opportunity_not_found: "We could not find that opportunity.",
+    // `next-subscribe-to-publication` (C70). Covers a publication that does
+    // not exist **and** one that is not `Available_Online`, because the route
+    // answers the same code for both — a distinguishable pair would let the
+    // id space be probed for internal publications.
+    publication_not_found: "We could not find that publication.",
     payment_declined: "The payment was declined. Please try another method.",
     campaign_not_found: "We could not find that giving campaign.",
     household_not_found: "We could not find your household.",

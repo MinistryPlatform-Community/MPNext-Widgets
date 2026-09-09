@@ -128,6 +128,7 @@ export const esCore = {
     form_not_found: "No encontramos ese formulario.",
     group_not_found: "No encontramos ese grupo.",
     opportunity_not_found: "No encontramos esa oportunidad.",
+    publication_not_found: "No encontramos esa publicación.",
     payment_declined: "El pago fue rechazado. Intente con otro método.",
     campaign_not_found: "No encontramos esa campaña de donaciones.",
     household_not_found: "No encontramos su hogar.",

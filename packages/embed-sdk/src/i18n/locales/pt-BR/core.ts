@@ -128,6 +128,7 @@ export const ptBRCore = {
     form_not_found: "Não encontramos esse formulário.",
     group_not_found: "Não encontramos esse grupo.",
     opportunity_not_found: "Não encontramos essa oportunidade.",
+    publication_not_found: "Não encontramos essa publicação.",
     payment_declined: "O pagamento foi recusado. Tente outro método.",
     campaign_not_found: "Não encontramos essa campanha de doações.",
     household_not_found: "Não encontramos sua família.",

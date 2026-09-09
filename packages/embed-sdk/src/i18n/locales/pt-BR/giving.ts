@@ -193,4 +193,46 @@ export const ptBRGiving = {
     unsubscribed: "Você cancelou a assinatura de {title}",
     updateFailed: "Não foi possível atualizar a assinatura. Tente novamente.",
   },
+  /**
+   * `next-subscribe-to-publication` (C70).
+   *
+   * Seeded from legacy's Portuguese labels, with three changes:
+   *
+   * - **`você`, and Brazilian rather than European.** Legacy is
+   *   second-person-informal European (`tu`/`teu`); this catalogue is `você`
+   *   throughout, and *e-mail* rather than legacy's *correio eletrônico*.
+   * - **The merge token is a token again.** Legacy's Portuguese
+   *   `publicationDescription` reads *"Preencha o seguinte formulário para se
+   *   inscrever em [Título de Publicação]"* — it **translated the merge token
+   *   itself**, which would never have interpolated, and its
+   *   `emailSentConfirmation` dropped the token entirely. Both are restored as
+   *   `{title}`, which `catalogue-parity.test.ts` now enforces.
+   * - **`linkExpired` is written fresh.** Legacy's *"Tente novamente"* was
+   *   never updated after its English was tightened to name the expiry.
+   *
+   * Vocabulary follows `subscriptions` in this same file — *assinatura* for a
+   * publication subscription — rather than `unsubscribe`'s *inscrição*, since
+   * the two namespaces here describe the same two MP tables.
+   */
+  subscribeToPublication: {
+    title: "Assinatura de e-mail",
+    heading: "Assine {title}",
+    lead: "Preencha o formulário abaixo e enviaremos um link por e-mail para confirmar sua assinatura.",
+    loading: "Carregando a publicação…",
+    submit: "Assinar",
+    checkEmailTitle: "Verifique seu e-mail",
+    checkEmail:
+      "Enviamos um link de confirmação para {email}. Abra-o para concluir sua assinatura de {title}.",
+    verifying: "Confirmando sua assinatura…",
+    verifiedTitle: "Assinatura confirmada",
+    verified: "Você começará a receber {title} em {email}.",
+    linkExpired: "Esse link de confirmação expirou. Assine novamente para receber um novo.",
+    linkInvalid: "Esse link de confirmação não é válido. Assine novamente.",
+    linkUsed: "Tudo pronto — este link já foi confirmado.",
+    notAvailable: "Esta publicação não está disponível para assinatura online.",
+    signUpAgain: "Assinar novamente",
+    privacyNote:
+      "Enviaremos apenas {title}, e você pode cancelar a assinatura em qualquer mensagem.",
+    managePreferences: "Gerenciar todas as suas preferências de e-mail",
+  },
 } satisfies Partial<Messages>;
