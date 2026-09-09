@@ -402,7 +402,11 @@ describe('PrayerFeedbackService', () => {
       expect(entry.Ongoing_Need).toBe(false);
       expect(entry.Contact_ID).toBe(42);
       expect(entry.Entry_Title).toBe('Please pray for my family');
-      expect(result).toEqual({ feedbackEntryId: 555, contactId: 42, contactCreated: false });
+      expect(result).toMatchObject({
+        feedbackEntryId: 555,
+        contactId: 42,
+        contactCreated: false,
+      });
     });
 
     it('never writes a staff triage field', async () => {
@@ -498,7 +502,11 @@ describe('PrayerFeedbackService', () => {
         'Contacts',
         'Feedback_Entries',
       ]);
-      expect(result).toEqual({ feedbackEntryId: 555, contactId: 901, contactCreated: true });
+      expect(result).toMatchObject({
+        feedbackEntryId: 555,
+        contactId: 901,
+        contactCreated: true,
+      });
       expect(created('Feedback_Entries').Contact_ID).toBe(901);
     });
 

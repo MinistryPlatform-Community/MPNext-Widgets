@@ -1,6 +1,7 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { HouseholdService } from "@/services/householdService";
+import { MessageTemplateService } from "@/services/messageTemplateService";
 import {
   FEEDBACK_DESCRIPTION_MAX,
   FEEDBACK_SUMMARY_MAX,
@@ -83,11 +84,72 @@ export interface PendingFeedback {
   programId: number | null;
 }
 
+/**
+ * What a `prayer-feedback` pending action seals into the session store.
+ *
+ * The whole submission, plus the acknowledgement template chosen at submit
+ * time. The template travels **in the sealed payload rather than in `/verify`'s
+ * body** so the landing page cannot redirect the acknowledgement to a template
+ * of its own; the token is the authority on everything the redemption does.
+ */
+export interface PendingFeedbackAction extends PendingFeedback {
+  acknowledgementEmailTemplateId: number | null;
+}
+
+/**
+ * Narrow a sealed pending payload, or reject it.
+ *
+ * Runs after the envelope's signature check, so this is not a provenance
+ * boundary — it is a shape check against deploy skew: a record written by an
+ * older build whose fields we no longer recognise is reported as `invalid`
+ * rather than half-trusted and written to MP.
+ */
+export function guardPendingFeedbackAction(data: unknown): PendingFeedbackAction | null {
+  if (typeof data !== "object" || data === null) return null;
+  const d = data as Record<string, unknown>;
+
+  const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+  const optInt = (v: unknown): number | null =>
+    typeof v === "number" && Number.isInteger(v) ? v : null;
+
+  const firstName = str(d.firstName);
+  const lastName = str(d.lastName);
+  const email = str(d.email);
+  const summary = str(d.summary);
+  const feedbackTypeId = optInt(d.feedbackTypeId);
+
+  if (firstName === null || lastName === null || email === null) return null;
+  if (summary === null || summary.trim() === "") return null;
+  if (feedbackTypeId === null || feedbackTypeId <= 0) return null;
+
+  // `contactId` is expected to be `null` on this path — the anonymous flow has
+  // no contact until redemption — but a signed-in blank-form submission carries
+  // one legitimately, so both shapes are accepted and anything else refused.
+  const contactId = d.contactId === null ? null : optInt(d.contactId);
+  if (d.contactId !== null && (contactId === null || contactId <= 0)) return null;
+
+  return {
+    contactId,
+    firstName,
+    lastName,
+    email,
+    mobilePhone: str(d.mobilePhone),
+    feedbackTypeId,
+    summary,
+    description: str(d.description),
+    isPrivate: d.isPrivate === true,
+    programId: optInt(d.programId),
+    acknowledgementEmailTemplateId: optInt(d.acknowledgementEmailTemplateId),
+  };
+}
+
 export interface CreatedFeedbackEntry {
   feedbackEntryId: number;
   contactId: number;
   /** A new `Households` + `Contacts` pair was minted for this submission. */
   contactCreated: boolean;
+  /** As written: the domain's wall clock, `YYYY-MM-DD HH:mm:ss`. */
+  dateSubmitted: string;
 }
 
 /** One person's name and address, for the acknowledgement email. */
@@ -410,11 +472,13 @@ export class PrayerFeedbackService {
       contactCreated = true;
     }
 
+    const dateSubmitted = await this.now();
+
     const record: Record<string, unknown> = {
       Contact_ID: contactId,
       Entry_Title: cap(clean(input.summary) ?? "", FEEDBACK_SUMMARY_MAX),
       Feedback_Type_ID: input.feedbackTypeId,
-      Date_Submitted: await this.now(),
+      Date_Submitted: dateSubmitted,
       // Legacy's mapping, and correct: a private request is Staff Only, and
       // everything else is Public *visibility* — which publishes nothing on its
       // own, because `Approved` is always false. A church building a prayer wall
@@ -445,7 +509,7 @@ export class PrayerFeedbackService {
     const feedbackEntryId = toNumberOrNull(created[0]?.Feedback_Entry_ID ?? null);
     if (feedbackEntryId == null) throw new Error("Failed to create feedback entry.");
 
-    return { feedbackEntryId, contactId, contactCreated };
+    return { feedbackEntryId, contactId, contactCreated, dateSubmitted };
   }
 
   /**
@@ -477,6 +541,54 @@ export class PrayerFeedbackService {
     } catch (error) {
       console.warn(
         "PrayerFeedbackService: backfilling the contact email failed:",
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+
+  /**
+   * Send the acknowledgement email for a written entry. Never throws.
+   *
+   * Sent on **both** paths, including the signed-in one. Dropping the
+   * verification round-trip for a signed-in member removes a step they do not
+   * need — we already hold a verified identity — but it must not remove the
+   * church's only confirmation to the submitter, which would be a regression
+   * dressed as a simplification.
+   *
+   * The description is deliberately **not** merged. A prayer request echoed
+   * back into an unencrypted mailbox is a disclosure the submitter did not ask
+   * for, and the summary is enough to identify which request it confirms.
+   *
+   * Best-effort because the row is already saved by the time this runs: a mail
+   * failure must not report failure to the congregant, whose request *was*
+   * filed.
+   */
+  public async sendAcknowledgement(args: {
+    templateId: number;
+    to: { email: string; name: string };
+    firstName: string;
+    lastName: string;
+    feedbackTypeId: number;
+    summary: string;
+    dateSubmitted: string;
+  }): Promise<void> {
+    if (!args.to.email) return;
+
+    try {
+      const types = await this.allFeedbackTypes();
+      const typeName = types.find((t) => t.id === args.feedbackTypeId)?.name ?? "";
+
+      const templates = await MessageTemplateService.getInstance();
+      await templates.sendMessageTemplate(args.templateId, args.to, {
+        mpp_contact_first_name: args.firstName,
+        mpp_contact_last_name: args.lastName,
+        mpp_feedback_type: typeName,
+        mpp_feedback_summary: args.summary,
+        mpp_date_submitted: args.dateSubmitted,
+      });
+    } catch (error) {
+      console.warn(
+        "PrayerFeedbackService: the acknowledgement email failed:",
         error instanceof Error ? error.message : error
       );
     }

@@ -136,8 +136,13 @@ export type ParsedPrayerFeedbackSubmitRequest = z.output<
  * emailed link is a navigation to a *page*; the widget on that page issues this.
  */
 export const PrayerFeedbackVerifyRequestSchema = z.object({
+  /**
+   * The handle from the emailed link. **The only field**: the acknowledgement
+   * template was chosen at submit time and travels inside the sealed payload,
+   * so the landing page cannot redirect the acknowledgement to a template of
+   * its own choosing.
+   */
   token: z.string().min(1).max(4096),
-  acknowledgementEmailTemplateId: z.number().int().positive().nullish(),
 });
 export type PrayerFeedbackVerifyRequest = z.infer<
   typeof PrayerFeedbackVerifyRequestSchema
