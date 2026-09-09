@@ -511,17 +511,80 @@ MPNext-Widgets/
 
 ## Widgets
 
-Five framework-agnostic Web Components, each registered as a custom element by the embed SDK and rendered in Shadow DOM.
+**30 framework-agnostic Web Components**, each registered as a custom element by the embed
+SDK and rendered in Shadow DOM. They share a base class
+(`packages/embed-sdk/src/shared/base-widget.ts`) that handles token fetching, automatic 401
+refresh, localisation and the Shadow DOM lifecycle.
+
+Every widget has a demo page at `packages/embed-sdk/demo-<name>.html` except
+`next-locale-selector`, which needs no API, no token and no configuration to demonstrate —
+setting `<html lang="es">` on any other demo page exercises the whole localisation path.
+
+To re-measure this roster rather than trusting the count:
+
+```bash
+grep -rho 'customElements\.define(\s*"next-[a-z-]*' packages/embed-sdk/src | sort -u
+```
+
+### Events
 
 | Element | Purpose | Service | API route |
 |---|---|---|---|
-| `<next-user-menu>` | User profile dropdown with sign-in/out | `userService` | `/api/embed/session`, `/api/embed/auth/*` |
-| `<next-add-to-calendar>` | Subscribe to event reminders via email/SMS | `addToCalendarService` | `/api/embed/add-to-calendar` |
-| `<next-full-calendar>` | Public events calendar (cards, list, mini-cal, modal) | `fullCalendarService` | `/api/embed/full-calendar` |
-| `<next-profile>` | View and edit signed-in user profile | `profileService` | `/api/embed/profile` |
-| `<next-my-invoices>` | List and view user invoices | `invoiceService` | `/api/embed/invoices` |
+| `<next-event-finder>` | Search and filter public events | `eventFinderService` | `/api/embed/event-finder` |
+| `<next-event-details>` | One event, with registration | `eventDetailsService` | `/api/embed/event-details` |
+| `<next-full-calendar>` | Events calendar (cards, list, mini-cal, modal) | `fullCalendarService` | `/api/embed/full-calendar` |
+| `<next-add-to-calendar>` | Add an event to Google / Outlook / Yahoo / `.ics` | `addToCalendarService` | `/api/embed/add-to-calendar` |
+| `<next-pre-check>` | Household pre-check for a service date, with check-in QR | `preCheckService` | `/api/embed/pre-check` |
 
-All five widgets share a base class (`packages/embed-sdk/src/shared/base-widget.ts`) that handles token fetching, automatic 401 refresh, and Shadow DOM lifecycle.
+### Groups and serving
+
+| Element | Purpose | Service | API route |
+|---|---|---|---|
+| `<next-group-finder>` | Search and filter groups | `groupsService` | `/api/embed/group-finder` |
+| `<next-group-details>` | One group, with inquiry and sign-up | `groupsService` | `/api/embed/group-details` |
+| `<next-my-groups>` | The signed-in user's groups | `myGroupsService` | `/api/embed/my-groups` |
+| `<next-opportunity-finder>` | Search serving opportunities | `opportunityFinderService` | `/api/embed/opportunity-finder` |
+| `<next-opportunity-details>` | One opportunity, with response | `opportunityDetailsService` | `/api/embed/opportunity-details` |
+
+### Giving and payments
+
+| Element | Purpose | Service | API route |
+|---|---|---|---|
+| `<next-my-giving>` | Giving history and by-month chart | `myGivingService` | `/api/embed/my-giving` |
+| `<next-my-pledges>` | Pledges, with cancel | `myPledgesService` | `/api/embed/my-pledges` |
+| `<next-pledge-campaign>` | Make a pledge to a campaign | `pledgeCampaignService` | `/api/embed/pledge-campaign` |
+| `<next-my-contribution-statement>` | Contribution statements | `contributionStatementService` | `/api/embed/contribution-statements` |
+| `<next-statement-preferences>` | Paperless statement opt-in | `statementPreferencesService` | `/api/embed/statement-preferences` |
+| `<next-my-invoices>` | List and view invoices | `invoiceService` | `/api/embed/invoices` |
+| `<next-checkout>` | Cart checkout | `checkoutService` | `/api/embed/checkout` |
+| `<next-checkout-complete>` | Post-payment confirmation | `checkoutService` | `/api/embed/checkout` |
+| `<next-pay>` | Payment capture | `paymentService` | `/api/embed/pay`, `/api/embed/payment` |
+
+### People and account
+
+| Element | Purpose | Service | API route |
+|---|---|---|---|
+| `<next-user-menu>` | Profile dropdown with sign-in/out | `userService` | `/api/embed/session`, `/api/embed/auth/*` |
+| `<next-profile>` | View and edit the signed-in profile | `profileService` | `/api/embed/profile` |
+| `<next-my-household>` | Household members | `householdService` | `/api/embed/household` |
+| `<next-online-directory>` | Church member directory | `onlineDirectoryService` | `/api/embed/online-directory` |
+| `<next-plan-your-visit>` | Anonymous first-visit registration, email-verified | `planYourVisitService` | `/api/embed/plan-your-visit` |
+| `<next-prayer-feedback>` | Prayer and feedback intake → `Feedback_Entries` | `prayerFeedbackService` | `/api/embed/prayer-feedback` |
+| `<next-custom-form>` | Renders an MP Custom Form | `customFormService` | `/api/embed/custom-form` |
+
+### Publications
+
+| Element | Purpose | Service | API route |
+|---|---|---|---|
+| `<next-subscribe-to-publication>` | Anonymous newsletter opt-in, double opt-in by email | `subscriptionService` | `/api/embed/subscribe-to-publication` |
+| `<next-subscriptions>` | Signed-in subscription management | `subscriptionService` | `/api/embed/subscriptions` |
+| `<next-unsubscribe>` | One-click unsubscribe from an emailed link | `subscriptionService` | `/api/embed/unsubscribe` |
+
+### Cross-cutting
+
+| Element | Purpose | Service | API route |
+|---|---|---|---|
+| `<next-locale-selector>` | Language picker (`en`, `es`, `pt-BR`) | — | — |
 
 ## Ministry Platform Integration
 

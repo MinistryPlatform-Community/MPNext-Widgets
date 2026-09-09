@@ -5,11 +5,47 @@
 recommendation each. **No per-widget implementation plan is written until one is picked up** —
 this file exists so the decisions get made deliberately rather than discovered at cutover.
 
+> ## Tier 1 is built — 2026-09-09
+>
+> **All four Tier 1 widgets shipped** on `feature/tier1-missing-widgets`: `next-unsubscribe`
+> (C72), `next-prayer-feedback` (C69), `next-subscribe-to-publication` (C70) and
+> `next-pre-check` (C78). Each has a plan beside this file, a demo page, complete `en`/`es`/
+> `pt-BR` copy, and a resolution section on its `C`-numbered finding. The catalogue went from
+> 26 elements to 30. (The body below says 25, which was correct when it was written —
+> `next-locale-selector` landed between the comparison run and this build.)
+>
+> **Three things this file got wrong, corrected in place below** — read them before using the
+> Tier 2–4 rankings, because two of them are about how the *estimates* were made, not just
+> about these four items:
+>
+> 1. **The one open question at the foot of this file is answered: no.** MP's send pipeline
+>    generates no unsubscribe link at all — 0 of 1047 communications on the reference domain
+>    contain one. C72's severity stands where it was filed.
+> 2. **C72's suggested fix was unimplementable**, not merely improvable. MP's merge engine
+>    substitutes field tokens and cannot compute an HMAC, so a sealed token can never reach a
+>    bulk-send link. See the corrected entry.
+> 3. **C78 was ranked as the risky one and it was the safest.** The whole legacy *server* —
+>    controllers, services, data managers, stored procedures and MP's own translated label
+>    files — is on disk at `S:\MP\mp-Widgets`, which nobody had looked at. Every estimate in
+>    this file was made without it. **Anyone sizing a Tier 2–4 item should look there first.**
+>
+> The three shared primitives this file called for were all extracted rather than duplicated:
+> `src/services/messageTemplateService.ts`, `src/lib/embed/action-token.ts` +
+> `pending-action.ts`, and `src/lib/embed/anonymous-write.ts`.
+
 ## The shape of the gap
 
-The legacy catalogue is 36 tags; ours is 25 elements. Eleven legacy widgets have no `next-*`
-counterpart. They are not a uniform set: three are compliance- or flow-critical, one is a whole
-product domain, three are platform infrastructure, and four are conveniences.
+The legacy catalogue is 36 tags; ours is **30 elements** — it was 25 when this was written, and
+the four Tier 1 items below account for the difference (plus `next-locale-selector`, which
+landed with the i18n work). **Six** of the original eleven still have no `next-*` counterpart:
+five are closed — the four Tier 1 items and C73.
+
+The original eleven were not a uniform set: three were compliance- or flow-critical, one is a
+whole product domain, three are platform infrastructure, and four are conveniences. **The four
+that are gone are the compliance- and flow-critical ones plus prayer intake** — which is the
+outcome this ranking was for. What remains is one product domain (mission trips, C76), the
+platform-infrastructure pair blocked on an auth decision (C74/C75), the two items owned by
+`CROSS-5` (C77 — C73 is done), a contact-attributes surface (C52) and a feed reader (C71).
 
 **And two BRIEF pair-table entries are wrong in ways that matter** — correct them before anyone
 re-measures:
@@ -25,7 +61,11 @@ re-measures:
 
 ## Build order
 
-### Tier 1 — build (in this order)
+### Tier 1 — ~~build (in this order)~~ **BUILT, 2026-09-09**
+
+Built in the order C72 → C69 → C70 → C78, not the ranked order. C69 moved ahead of C70 because it
+defines the `verification_*` error keys C70 inherits, and C70 sits next to C72 because both
+extend `subscriptionService`. C78 went last because it shares nothing with the other three.
 
 | # | Widget | Why it ranks here |
 |---|---|---|
@@ -68,7 +108,7 @@ Build C74 first and share its token-substitution helper.
 
 | # | Widget | Status |
 |---|---|---|
-| **10** | **C73 `mpp-locale-selector`** | **Committed as part of `CROSS-5-theming-labels-locale.md`.** Not a standalone build. It is on **all 21** pages of MP's own sample site and the choice is plumbed outward to third parties, so it is a supported deployment, not an edge case — but **it must not be built before C67's label mechanism**, or it switches a preference no label honours. |
+| **10** ✅ | **C73 `mpp-locale-selector`** → **`next-locale-selector`, built** | **RESOLVED 2026-09-09 with C67**, as part of `CROSS-5-theming-labels-locale.md`. The sequencing constraint below was honoured: the label mechanism landed first, so the selector switches a preference the copy actually honours. It is the one element with no demo page, because `<html lang="es">` on any other demo page exercises the whole path. Original entry: not a standalone build. It is on **all 21** pages of MP's own sample site and the choice is plumbed outward to third parties, so it is a supported deployment, not an edge case — but **it must not be built before C67's label mechanism**, or it switches a preference no label honours. |
 | **11** | **C77 `mpp-user-label`** | **Blocked on C67, and it is C67's best end-to-end test** — the cheapest possible consumer of the label pipeline, worth building immediately after the endpoint lands and before 25 widgets are converted onto it. Filed at `ux` rather than `functional` because a church *can* hard-code the word into its own page markup; what it loses is single-sourcing, so the page and the widgets drift into two names for the same ministry. One deliberate decision: if `bare="true"` means "renders as host-page text", this element should skip the shadow root and write to its own light DOM — the only element in the SDK that would. |
 
 ## What builds cheaply once, and serves several of these

@@ -117,3 +117,33 @@ would have turned a silent no-op into a build-time or request-time error.
 
 **Do not fix by renaming the column in MP.** `Status` is not a legacy alias that MP resolves;
 it is simply not a column, and the write is being ignored.
+
+---
+
+## Resolved — 2026-09-09
+
+`src/services/planYourVisitService.ts` now writes `Contact_Status_ID: c.statusId`, with a
+comment naming the legacy source of the mistake so a future port does not reintroduce it.
+
+**Which way MP fails is still not settled**, and deliberately so: answering it means
+creating a `Contacts` row on a live domain, which was out of scope for this branch. The
+question stays open above, and it decides only the severity label — the fix is the same
+either way, and is now in.
+
+**A guard came with it, because the fix alone protects one line and the defect is a
+class.** `src/services/mp-column-names.test.ts` scans every service source for record-literal
+keys that MP has disproved, anchored so it does not match `Contact_Status_ID:`,
+`Participation_Status_ID:`, a comment, or the word inside a `$select`. It carries a paired
+assertion that the *right* column is still written, so deleting the line rather than fixing
+it does not satisfy the scan. Verified by reintroducing the bug: the guard fails and names
+the file and the correct column.
+
+`FORBIDDEN` in that file is the place to record the next one. It is a source scan rather
+than a behavioural test because `createContact` is private behind `saveVisitDetails` — a
+flow that writes a household, an address, several contacts, participants and milestones —
+and because the scan catches how the defect actually arrives: a record literal copied out
+of the legacy .NET source, which is wrong about this column and may be wrong about others.
+
+**Three services create contacts now** — `planYourVisitService`, `prayerFeedbackService` and
+`subscriptionService` (C70). The latter two were written against `mp_lookup` rather than
+against the legacy port and use the real column; the scan covers all three from here.
