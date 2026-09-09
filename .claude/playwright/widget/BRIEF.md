@@ -74,8 +74,10 @@ attribute names the demo page could have set.
 >    which the sample site does not link to. So `next-checkout` / `next-pay` **do** have
 >    legacy counterparts.
 > 2. `next-custom-form` pairs with **`mpp-custom-form`** (`formguid`), not with the
->    Prayer & Feedback page. `mpp-prayer-feedback-form` is a separate legacy widget with
->    no counterpart at all.
+>    Prayer & Feedback page. `mpp-prayer-feedback-form` is a separate legacy widget —
+>    it had no counterpart at all when this brief was written, and `next-prayer-feedback`
+>    is now it (C69, 2026-09-09). The two are not interchangeable: a Custom Form writes
+>    `Form_Responses`, which never reaches the prayer queue.
 > 3. `next-event-details`, `next-group-details`, `next-opportunity-details` and
 >    `next-statement-preferences` are **not** "new only" — each has a legacy counterpart
 >    (`/widgets/event_details.aspx`, `/widgets/group_details.aspx`,
@@ -104,7 +106,8 @@ attribute names the demo page could have set.
 | `next-online-directory` | Online Directory | |
 | `next-plan-your-visit` | Plan Your Visit | |
 | `next-profile` | About Me | |
-| `next-custom-form` | Prayer And Feedback | old page is a custom form instance |
+| `next-custom-form` | `mpp-custom-form` (`formguid`) | the sample site has **no page** for it — place the tag by hand (CONFIG-MAP.md §5) |
+| `next-prayer-feedback` | Prayer And Feedback (`mpp-prayer-feedback-form`) | built for C69, 2026-09-09. Not a custom-form instance: it writes `Feedback_Entries`, not `Form_Responses` |
 | `next-checkout` / `next-pay` / `next-checkout-complete` | Give Online | old `giving.aspx` covers the whole payment flow |
 | `next-full-calendar` | — | new only; compare data against Event Finder / MP |
 | `next-add-to-calendar` | — | new only |

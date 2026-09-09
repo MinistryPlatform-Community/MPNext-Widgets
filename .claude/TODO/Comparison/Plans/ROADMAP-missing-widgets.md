@@ -15,6 +15,7 @@ product domain, three are platform infrastructure, and four are conveniences.
 re-measures:
 
 - `next-custom-form` pairs with `mpp-custom-form`, **not** `mpp-prayer-feedback-form` (C69).
+  The latter's counterpart is `next-prayer-feedback`, built 2026-09-09.
   They are separate tags in MPWidgets.js's loader table with disjoint attribute surfaces.
 - `next-checkout` / `next-pay` / `next-checkout-complete` pair with `/widgets/Checkout`,
   `/widgets/pay` and `mpp-checkout-complete` — **not** `/widgets/giving.aspx`, which is an
@@ -31,7 +32,7 @@ re-measures:
 | **1** | **C72 `mpp-unsubscribe`** — one-click unsubscribe — **DONE 2026-09-09, `next-unsubscribe`** | **The only item in this file with a compliance edge.** A bulk email needs a working unsubscribe that does not require authentication — CAN-SPAM baseline in the US, GDPR/PECR practice elsewhere, and what mailbox providers score senders on. On our stack the link in an already-sent email has nowhere to point: `/api/embed/subscriptions` 401s `sub === "public"` outright. A recipient who cannot unsubscribe marks the message as spam, which damages deliverability for every subsequent send from that domain. |
 | **2** | **C70 `mpp-subscribe-to-publication`** — anonymous, email-verified opt-in | "Sign up for our newsletter" on a church home page is the most common publication touchpoint and is **by definition anonymous** — the visitor has no MP login and will not create one to join a mailing list. On our stack the only way onto a publication is to sign in first, which turns a one-field form into a registration funnel. Pairs with C72: we shipped the signed-in middle of the publication lifecycle and neither end. |
 | **3** | **C78 `mpp-pre-check`** — event pre-check / check-in QR | Children's check-in is one of the highest-traffic Sunday operations a church runs, and pre-check is what keeps the queue short. **No host-page workaround exists** — a church cannot hand-author a QR code bound to MP's check-in. A church using it today must keep MPWidgets.js on that page, with the dual-login cost that implies. |
-| **4** | **C69 `mpp-prayer-feedback-form`** | Prayer intake is, for many churches, the **first thing on the website that writes to MP**. The near-miss is the danger: a church could hand-build a Custom Form for it, but that writes `Form_Responses` rather than `Feedback_Entries`, populates no Feedback Type and no Program, and **never appears in the tools staff use to work a prayer queue**. Submissions land somewhere the prayer team does not look. |
+| **4** | **C69 `mpp-prayer-feedback-form`** — prayer / praise / feedback intake — **DONE 2026-09-09, `next-prayer-feedback`** | Prayer intake is, for many churches, the **first thing on the website that writes to MP**. The near-miss is the danger: a church could hand-build a Custom Form for it, but that writes `Form_Responses` rather than `Feedback_Entries`, populates no Feedback Type and no Program, and **never appears in the tools staff use to work a prayer queue**. Submissions land somewhere the prayer team does not look. |
 
 ### Tier 2 — decide, then build or document
 
@@ -75,10 +76,17 @@ Build C74 first and share its token-substitution helper.
 Three primitives are named across the tiers. Building any of them for one widget and not
 extracting it is how we end up with four hand-rolled versions.
 
-1. **`sendTemplateMessage(templateId, to, mergeData)`** on the MP provider. Needed by C69
-   (acknowledgement email) and C70 (verification email), **already needed by C11 in
-   `group-details.md`** and **C66 in `checkout-pay.md`**. `planYourVisitService.ts` already
-   implements this inline and is the thing to extract. Four consumers — extract it once.
+1. **Template send — BUILT, `src/services/messageTemplateService.ts`.** Extracted from
+   `planYourVisitService.ts`, which had it inline, and now consumed by C69 for both the
+   verification and the acknowledgement email. Two named methods rather than one call with a
+   `source` flag, because the two MP template tables (`dp_Communications` /
+   `dp_Communication_Templates`) have different column names and the caller always knows
+   which kind of id it was handed. Merge values are HTML-escaped **with no opt-out** — the
+   legacy widget substituted them raw, which made every one of these templates a stored-XSS
+   vector into a staff mailbox; the subject is deliberately *not* escaped, being a plain-text
+   header. `TemplateNotFoundError` / `NoFromAddressError` / `TemplateSendFailedError` let a
+   route answer `template_not_configured` versus `email_send_failed` without string-matching.
+   Still wanted by **C11 in `group-details.md`** and **C66 in `checkout-pay.md`**.
 2. **Sealed anonymous action tokens — BUILT, `src/lib/embed/action-token.ts`.**
    `createActionToken` / `verifyActionToken` over a closed `ActionTokenType` union, with
    per-flow expiry in `ACTION_TOKEN_EXPIRY` (`unsubscribe` is 180 days — a short-lived
@@ -86,7 +94,10 @@ extracting it is how we end up with four hand-rolled versions.
    compared, never read off the token and trusted; without that comparison every flow's tokens
    become capability for every other flow. `src/lib/embed/pending-action.ts` wraps it with a
    store-backed one-time burn for the flows that must not be replayable — deliberately **not**
-   unsubscribe, which must stay replayable.
+   unsubscribe, which must stay replayable. First consumer of `pending-action.ts` is C69's
+   `prayer-feedback/verify`, whose four outcomes (`invalid` / `expired` / `used` /
+   `unavailable`) each map to a distinct answer; note that `unavailable` is the fail-closed
+   store error and must never be reported as a successful write.
    Note the design conclusion C72 reached and this file's original framing did not: a sealed
    token cannot be the *only* identifier for a bulk unsubscribe, because MP's merge engine
    cannot produce one. See the answered open question below.
@@ -94,7 +105,9 @@ extracting it is how we end up with four hand-rolled versions.
    `withAnonymousWrite(req, { widget, limits, failClosed }, handler)`: POST-only, a widget JWT
    still required (`sub === "public"` merely *accepted*), every rate-limit bucket checked before
    the handler, and one `rate_limited` code for every bucket so which bucket was hit is not
-   itself an oracle. First consumer is `src/app/api/embed/unsubscribe/route.ts`.
+   itself an oracle. First consumer is `src/app/api/embed/unsubscribe/route.ts`; C69's
+   `prayer-feedback/submit` is the second, and the first to use the **callback** form of
+   `limits` so a per-email bucket can be keyed off the parsed body after authentication.
 
 ## The one open question, answered — C72's severity stands
 

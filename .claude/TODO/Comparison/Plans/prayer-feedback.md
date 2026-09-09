@@ -1023,3 +1023,68 @@ things to say, not one:
    visibility alone.
 
 Small, and the item is not closed without it.
+
+---
+
+## As built — 2026-09-09
+
+Shipped in five commits on `feature/tier1-missing-widgets`. Every ruling above was
+implemented as written. Five things differ from the plan's *mechanics*, none from its
+decisions; they are recorded here so a reader is not left comparing the plan to the tree
+and wondering which is wrong.
+
+1. **Phases 3 and 4 were reseamed.** The plan split them by *path* — the signed-in path
+   end to end, then the anonymous one — which would have landed a commit whose widget
+   posted its signed-out branch to a route that did not exist yet. The split is by
+   *layer* instead: phase 3 is the whole server, phase 4 the whole widget. Each commit is
+   coherent and green, and it also suits the i18n ratchet, which effectively requires the
+   component to land fully localised in one go.
+
+2. **A fourth route, `GET /prayer-feedback/submitter`.** The plan lists three routes but
+   also specifies a `form-signed-in` state whose loading spinner waits on "the submitter
+   options", with `getSubmitterOptions` on the service — so an endpoint was always
+   implied. It is separate from `/types` rather than a branch inside it because `/types`
+   is `Cache-Control: public, max-age=600`, and folding per-household data into it would
+   put one household's member names in a shared cache. It answers a `hasEmail` **boolean**
+   rather than the household's addresses: the widget's only question is whether to show
+   the email field.
+
+3. **Two body fields the plan's sketch omitted.** `verifyParamName`, because the server
+   composes the verification URL and therefore needs the `verify-param-name` value; and
+   `acknowledgementEmailTemplateId` was **removed** from `/verify`'s body and moved into
+   the sealed payload instead, so a landing page cannot redirect the acknowledgement to a
+   template of its own choosing. The token is the authority on everything the redemption
+   does.
+
+4. **`getFeedbackTypes` applies both removal predicates in TypeScript**, not the id half
+   in the MP query. The plan asked for the id filter server-side, but it also asks for
+   `isKnownFeedbackType` and `getRemovalTypeIds` to be "cached alongside the list" — and a
+   query narrowed to one caller's allowlist cannot serve the next caller's. One cached
+   read of the whole (five-row, on a stock domain) table serves all three. Every asserted
+   behaviour is unchanged, including the two that matter: excluded by id, and excluded by
+   name when the id differs.
+
+5. **A fifth registration site.** The plan's "all four, or the widget gets no token" list
+   for `index.ts` is right, but `shared/base-widget.ts` carries its own copy of the
+   api-host sibling selector. Without an entry there, a `next-prayer-feedback` mounted
+   alone under `vite dev` resolves the wrong origin.
+
+**The signed-in blank-form case, which the plan left implicit.** "Provide Feedback As"
+offers a blank-form option, and the plan's submit body puts `firstName`/`lastName`/`email`
+on the anonymous path only — so what a signed-in member filing for a non-household person
+does was undefined. It takes the verification round-trip, exactly as a stranger does: the
+submitter's verified identity is *theirs*, and says nothing about a third party whose
+details they have just typed. That is also what legacy did (it verified everyone), and it
+creates no new "signed-in users may mint contacts" privilege. The option is hidden
+entirely when no verification template is configured, so it can never fail at submit.
+
+**Both open questions, resolved as proposed.** `Household_Sources` → `Website` by name
+through `getIdByValue`, with the column omitted when the domain has no such row (tested
+both ways). `Care_Case_ID` left unwritten, as legacy leaves it — still a workflow question
+for someone who works a prayer queue, and writing nothing remains the reversible choice.
+
+**One defect found in a shared primitive**, and it is in this widget's own use of the
+convention rather than in the primitive: an unconditional per-email rate-limit bucket
+would key every signed-in submission under one "no address" hash, because a signed-in body
+carries no `email` — capping a whole congregation at 3/hour. The bucket is added only when
+an address was actually submitted. Asserted directly.

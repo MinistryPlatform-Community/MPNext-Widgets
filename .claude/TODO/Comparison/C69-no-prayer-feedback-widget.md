@@ -97,3 +97,88 @@ Attribute surface should be `program-id`, `feedback-type-ids`,
 Also: correct the pair table in `.claude/playwright/widget/BRIEF.md` — `next-custom-form`
 pairs with `mpp-custom-form`, for which the sample site has **no page**, so that
 comparison needs the tag placed by hand (CONFIG-MAP.md section 5).
+
+---
+
+## Resolved — 2026-09-09, `next-prayer-feedback`
+
+Built as its own element, as the *Suggested fix* asked, rather than by bending
+`next-custom-form`. Plan and rulings: `.claude/TODO/Comparison/Plans/prayer-feedback.md`.
+Customer-facing documentation: README, *Prayer & Feedback Intake*.
+
+| Piece | Where |
+|---|---|
+| Element | `packages/embed-sdk/src/components/prayer-feedback.ts` (+ `demo-prayer-feedback.html`) |
+| Service | `src/services/prayerFeedbackService.ts` — writes `Feedback_Entries` |
+| Routes | `src/app/api/embed/prayer-feedback/{types,submitter,submit,verify}` |
+| Wire types | `packages/types/src/prayer-feedback.ts` |
+
+**The pair-table correction this finding asked for is done.**
+`.claude/playwright/widget/BRIEF.md` now maps `next-custom-form` ↔ `mpp-custom-form`
+(no page on the sample site; place the tag by hand, CONFIG-MAP.md §5) and
+`next-prayer-feedback` ↔ `mpp-prayer-feedback-form`.
+
+**Where the *Suggested fix* above was followed.** `next-plan-your-visit` was indeed the
+closest in-repo template — anonymous submitter, required fields through
+`shared/form-validation.ts`, a `dp_Communications` template send, a `return-url` for the
+verification bounce — and the template-send half is now shared rather than copied
+(`src/services/messageTemplateService.ts`, extracted from `planYourVisitService.ts` for
+this and three other pending widgets).
+
+**Where it was not.** The suggested attribute name was `verification-email-template`;
+the built surface uses **`verification-email-template-id`**, matching the `-id` spelling
+the two newest and closest widgets already use, and adds
+`acknowledgement-email-template-id`. Those are two different contracts, not one
+renamed: the verification template *must* render `[mpp_verify_email_url]`, so reusing it
+on the signed-in path — which skips verification — would email a dead link.
+
+Also not followed: a single `route.ts`. Four routes, because they have genuinely
+different properties — `/types` is publicly cacheable for 10 minutes, `/submitter` is
+per-household and `no-store`, `/submit` and `/verify` are rate-limited POSTs. Folding
+`/submitter` into `/types` would have put one household's member names into a shared
+cache.
+
+**Four legacy defects were fixed rather than ported**, each with a regression test:
+
+1. **The email cannon.** `PrayerFeedbackApiController.cs:66` was `[AllowAnonymous]` and
+   took `ContactId` straight off the form: post a stranger's id and the server looked
+   them up, harvested their real name and address, and mailed them a link that would
+   file a prayer request against them. No auth, no household check, no rate limit. A
+   contact id is now read only on a signed-in path, and only after a server-side
+   household check.
+2. **The duplicate guard**, which interpolated `Entry_Title` and `Description` into an
+   MP filter *and* compared an untruncated value against a column it had truncated, so
+   entries over 1000 characters never matched their own guard. Replaced by a single-use
+   handle — an atomic read-and-burn in the session store, so single-use is a property of
+   the storage rather than something a comparison has to get right.
+3. **The disagreeing description limit.** The textarea said 2000, the column allows
+   2000, and both the token and the insert cut at 1000. All 2000 survive end to end.
+4. **The unconditional `Email_Address` overwrite** (`PrayerFeedbackService.cs:189`),
+   which meant a typo in a public prayer form silently broke a member's giving
+   statements and every other email MP sent them. The submitted address is written only
+   when the contact has none on file — the case legacy's own UI was built for.
+
+A fifth was found while porting and filed separately: legacy's
+`ContactManager.CreateContact` writes `{"Status", …}`, and `Contacts` has no such
+column. The real one is `Contact_Status_ID` (**C83**).
+
+**One deliberate divergence a church will notice.** Omitting `feedbacktypeids` used to
+offer all five feedback types, including `User Removal Request` — a GDPR erasure
+workflow wearing a prayer-form costume. The default now excludes it, by both its stock
+id and a `/removal/i` name match so the guard survives a re-seeded lookup table. An
+explicit `feedback-type-ids` listing it is honoured, with a warning. It is a safety
+default, not a control: a determined caller can post the id, because MP's foreign key
+accepts it. Documented in the README migration note.
+
+**What is accepted rather than solved.** The `feedback-type-ids` allowlist is host-page
+markup, so the server enforces it as a *correctness* check and not as a boundary — a
+caller can send any list. `isKnownFeedbackType` is the real guard, against a bogus FK.
+Anyone wanting a hard restriction is asking for server-side tenant config, which is out
+of scope, and the route's header comment says so plainly rather than implying the
+attribute restricts anything.
+
+**Out of scope, and stated in the plan.** E2E coverage: the flow needs a real mailbox,
+and there is no mail-capture endpoint. `Feedback_Entries.Care_Case_ID` is left unwritten,
+as legacy leaves it — whether MP expects the submitting widget to open a Care Case or
+staff to do it from the Platform is a workflow question for someone who works a prayer
+queue, not one the schema can answer.

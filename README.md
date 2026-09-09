@@ -38,6 +38,7 @@ Embeddable Web Component widgets for [Ministry Platform](https://www.ministrypla
   - [Troubleshooting Widget Auth](#troubleshooting-widget-auth)
 - [Widget Languages](#widget-languages)
 - [Widget Unsubscribe Links](#widget-unsubscribe-links)
+- [Prayer & Feedback Intake](#prayer--feedback-intake)
 - [Testing](#testing)
 - [Development](#development)
 - [Claude Code Commands](#claude-code-commands)
@@ -1008,6 +1009,132 @@ full preferences as the way out. It makes no request at all.
   button needs a `List-Unsubscribe` / `List-Unsubscribe-Post` header on the
   outbound message, emitted by MP's SMTP path, which this stack does not
   control. The link in the body is the supported path.
+
+
+## Prayer & Feedback Intake
+
+`<next-prayer-feedback>` writes MinistryPlatform's **Feedback Entries** — prayer
+requests, praise reports and general comments. It is the counterpart of the
+legacy `mpp-prayer-feedback-form`, and for many churches it is the first thing
+on the website that writes to MP.
+
+**A hand-built Custom Form is not a substitute.** It writes `Form_Responses`,
+populates no Feedback Type and no Program, and never appears in the tools staff
+use to work a prayer queue — so the submissions land somewhere the prayer team
+does not look. That is a different record in a different table, not a
+configuration difference.
+
+### Setup
+
+The page's origin must be in `EMBED_ALLOWED_ORIGINS` (`src/lib/embed/config.ts`),
+or `/api/embed/session` mints no token and every visitor sees an error. **This is
+setup failure number one.**
+
+```html
+<next-prayer-feedback verification-email-template-id="5125"></next-prayer-feedback>
+```
+
+`verification-email-template-id` is a `dp_Communications` id whose **Body must
+render `[mpp_verify_email_url]`**. It is required for signed-out submissions,
+which is nearly all of them: with it absent the widget renders a configuration
+notice instead of a submit button, so a misconfigured page fails visibly at load
+rather than after a visitor has typed 2000 characters.
+
+| Attribute | Required | Meaning |
+|---|---|---|
+| `verification-email-template-id` | for signed-out visitors | `dp_Communications` id. Must render `[mpp_verify_email_url]`. Also merges `[mpp_contact_first_name]` and `[mpp_contact_last_name]` — legacy's exact three tokens, so an existing template drops straight in. |
+| `acknowledgement-email-template-id` | no | Sent once the entry is written, on **both** paths. Merges `[mpp_contact_first_name]`, `[mpp_contact_last_name]`, `[mpp_feedback_type]`, `[mpp_feedback_summary]`, `[mpp_date_submitted]`. |
+| `feedback-type-ids` | no | Comma-separated `Feedback_Type_ID` allowlist for the dropdown. See the migration note below — the default changed. |
+| `program-id` | no | `Feedback_Entries.Program_ID`. A positive integer; omitted from the write when absent. |
+| `return-url` | no | Where the emailed link lands. Defaults to the current page with its query string stripped, so the common case needs no attribute. Must be **same-origin** with the page. |
+| `verify-param-name` | no | Defaults to `mpp-verify-id`, legacy's spelling, so an existing MP template and an old bookmark keep working. |
+| `default-private` | no | `"true"` pre-ticks Private. |
+| `hide-private-option` | no | `"true"` hides the checkbox and forces the value from `default-private` — for a page whose whole framing is confidential pastoral care. |
+
+### What a submission actually does
+
+**Signed out** — nothing is written to MP. The submission is sealed server-side,
+a one-time link is emailed, and the `Feedback_Entries` row (plus, for an address
+MP has never seen, a `Households` + `Contacts` pair) is created only when that
+link is opened. That double opt-in is what makes creating a contact safe:
+without it an unauthenticated POST could mint rows in the CRM as fast as a script
+can manage, and MP has no good bulk undo.
+
+**Signed in** — the entry is written immediately, with no verification email. The
+member may file for themselves or for a household member ("Provide Feedback As");
+household membership is re-checked server-side on every write, so the picker is a
+convenience rather than the boundary. Choosing "Someone else" takes the emailed
+round-trip, because a signed-in member's verified identity says nothing about a
+third party whose details they have just typed.
+
+Either way the entry is written with `Approved = false` and, unless Private is
+ticked, `Visibility_Level_ID = 4` (Public). Private submissions get
+`Visibility_Level_ID = 2` (Staff Only).
+
+### Migrating from `mpp-prayer-feedback-form` — four things changed
+
+1. **A Custom Form is still not equivalent** (see above). If a church built one
+   as a workaround, its historical submissions stay in `Form_Responses`; only new
+   submissions reach the prayer queue.
+2. **Omitting `feedback-type-ids` no longer offers every type.** Legacy offered
+   all five, including `User Removal Request` — a GDPR erasure workflow wearing a
+   prayer-form costume, which no church should be offering website visitors by
+   accident. The default is now every `Feedback_Types` row *except* the removal
+   type, excluded by both its stock id and a `/removal/i` name match so the guard
+   survives a domain that renumbered the lookup. **List it explicitly
+   (`feedback-type-ids="1,2,5"`) to get it back** — an explicit configuration is
+   honoured, with one warning in the server log. It is a safety default, not a
+   control: a determined caller can post the id directly, because MP's own
+   foreign key accepts it.
+3. **Signed-in submitters get no verification email** — only the acknowledgement,
+   if one is configured. Fewer emails is the intended behaviour, not a broken
+   template.
+4. **A prayer-wall page must filter on `Approved = 1 AND Visibility_Level_ID = 4`,
+   never on visibility alone.** Nothing publishes automatically, because
+   `Approved` is always `false` at intake and there is deliberately no attribute
+   to change that — an `auto-approve` flag would be a one-attribute path to
+   unmoderated text on a church's website. A wall that filters on visibility
+   only would expose unreviewed submissions.
+
+Two smaller legacy behaviours also changed, both fixes:
+
+- **The full 2000-character description survives.** Legacy's textarea allowed
+  2000 and both its token and its insert cut at 1000, so a congregant's last
+  thousand characters vanished silently.
+- **A member's `Email_Address` is never overwritten.** Legacy rewrote it
+  unconditionally with whatever the form held, so a typo in a public prayer form
+  silently broke that member's giving statements and every other email MP sent
+  them. The submitted address is now written **only** when the contact has none
+  on file — which is the case legacy's own UI was built for.
+
+### Notes for whoever reviews this later
+
+- **The signed-out path performs zero MP writes.** That is the property the
+  match-or-create design rests on, and it is asserted directly in
+  `src/app/api/embed/prayer-feedback/submit/route.test.ts`.
+- **No email-existence oracle.** `POST /submit` answers
+  `{ status: "verification_sent" }` with the same body and status whether or not
+  the address matches a contact — a deliberate divergence from
+  `plan-your-visit`, which answers `contactExists: true`.
+- **No entry against another person.** A contact id is never accepted from an
+  unauthenticated caller. Legacy's `SendVerificationEmail` was `[AllowAnonymous]`
+  and took `ContactId` off the form, so posting a stranger's id made the server
+  harvest their real name and address and mail them a link that would file a
+  prayer request against them.
+- **The redemption is a POST**, so the handle never lands in an access log, a
+  `Referer`, or a mail scanner's fetch of the emailed URL. The link resolves to a
+  page that only renders; the widget on it issues the write. The handle is also
+  single-use by construction (an atomic read-and-burn in the session store),
+  which replaces legacy's duplicate guard — that guard interpolated user text
+  into SQL and never matched for any entry over 1000 characters.
+- Rate limits: **5/min per IP** and **3/hour per submitted address** (hashed),
+  both checked before any MP call and any send.
+- **Merge values are HTML-escaped.** A prayer summary is congregant-authored free
+  text going into a template body that lands in a staff mailbox; legacy
+  substituted it raw.
+- The acknowledgement deliberately **does not merge the description**. A prayer
+  request echoed back into an unencrypted mailbox is a disclosure the submitter
+  did not ask for, and the summary identifies which request it confirms.
 
 
 ## Testing
