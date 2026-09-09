@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPNext Unsubscribe Widget - Demo</title>
+  <!-- Classic (non-module) script: Vite's transformIndexHtml substitutes
+       __API_HOST__ in markup but NOT inside inline module scripts, which it
+       extracts into a separate html-proxy chunk before the HTML transform
+       runs. Non-module scripts stay in the HTML, so this global is the one
+       place the placeholder resolves — the module script below (and the SDK's
+       own host detection) reads the API host from here. -->
+  <script>
+    window.__nextEmbedApiHost = "__API_HOST__";
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: #f9fafb;
+      color: #2D2926;
+    }
+    .page {
+      max-width: 1024px;
+      margin: 0 auto;
+      padding: 32px 16px;
+    }
+    .back-link {
+      display: inline-block;
+      margin-bottom: 16px;
+      color: #004C97;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .back-link:hover { text-decoration: underline; }
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #004C97;
+      margin-bottom: 4px;
+    }
+    .description {
+      color: #6b7280;
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+    .tag-code {
+      display: inline-block;
+      font-size: 12px;
+      color: #9ca3af;
+      margin-bottom: 24px;
+    }
+    .space-y > * + * { margin-top: 24px; }
+
+    /* Caution banner — this widget writes to MP on load */
+    .caution {
+      border: 2px solid #FF6D6A;
+      background: #fff1f2;
+      border-radius: 12px;
+      padding: 16px 20px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #7f1d1d;
+    }
+    .caution strong { color: #991b1b; }
+
+    /* Controls card */
+    .controls-card {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 12px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .control-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #6b7280;
+    }
+    .control-group input {
+      padding: 6px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #111827;
+    }
+    #cg-input { width: 320px; font-family: 'Courier New', monospace; }
+    #pubid-input { width: 128px; }
+    .control-group input:focus {
+      outline: none;
+      border-color: #004C97;
+      box-shadow: 0 0 0 1px #004C97;
+    }
+    .apply-btn {
+      padding: 6px 16px;
+      background: #004C97;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .apply-btn:hover { background: #002855; }
+    .hint {
+      flex-basis: 100%;
+      font-size: 12px;
+      color: #6b7280;
+      line-height: 1.5;
+    }
+
+    /* Widget demo container */
+    .demo-box {
+      min-height: 200px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      padding: 24px;
+    }
+
+    /* Status messages */
+    .status {
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .status.success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #10b981;
+    }
+    .status.error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #ef4444;
+    }
+
+    /* Card */
+    .card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .card-header h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #002855;
+    }
+    .card-header span {
+      font-size: 12px;
+      font-weight: 400;
+      color: #6b7280;
+      margin-left: 8px;
+    }
+    .clear-btn {
+      background: none;
+      border: none;
+      font-size: 12px;
+      color: #6b7280;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .clear-btn:hover { background: #f3f4f6; }
+    .copy-btn {
+      background: #004C97;
+      color: white;
+      border: none;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .copy-btn:hover { background: #002855; }
+
+    /* Event log */
+    .event-log {
+      background: #1f2937;
+      color: #10b981;
+      padding: 16px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .event-entry {
+      margin-bottom: 8px;
+      padding: 8px;
+      background: rgba(16, 185, 129, 0.1);
+      border-radius: 4px;
+    }
+
+    /* Code blocks */
+    pre {
+      background: #1f2937;
+      color: #e5e7eb;
+      padding: 16px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 0;
+    }
+    pre code {
+      background: transparent;
+      color: #e5e7eb;
+      padding: 0;
+    }
+    code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #004C97;
+      font-size: 13px;
+    }
+
+    /* Universal setup card */
+    .setup-card {
+      border: 2px dashed #fcd34d;
+      background: #fffbeb;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .setup-card .card-header {
+      border-bottom: 1px solid #fde68a;
+    }
+    .setup-card .card-header span {
+      color: #92400e;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a href="/" class="back-link">&larr; All Widgets</a>
+    <h1>Unsubscribe</h1>
+    <p class="description">Landing page for the unsubscribe link in a bulk email. No sign-in: the recipient is identified by the link itself.</p>
+    <code class="tag-code">&lt;next-unsubscribe&gt;</code>
+
+    <div class="space-y">
+      <div class="caution">
+        <strong>This widget writes to MinistryPlatform the moment it mounts</strong> &mdash; that is
+        the whole point (following the link must complete the opt-out; a confirm click is
+        measurable drop-off on the one flow a sender is obliged to make easy). With a real
+        <code>Contact_GUID</code> below it will set <code>dp_Contact_Publications.Unsubscribed</code>
+        or <code>Contacts.Bulk_Email_Opt_Out</code> for that contact. Use a test contact, and use
+        <strong>Undo</strong> to put it back.
+      </div>
+
+      <!-- Controls: these navigate, because that is the production flow -->
+      <div class="controls-card">
+        <div class="control-group">
+          <label for="cg-input">Contact GUID (<code>cg</code>)</label>
+          <input type="text" id="cg-input" placeholder="00000000-0000-0000-0000-000000000000">
+        </div>
+        <div class="control-group">
+          <label for="pubid-input">Publication ID (<code>pubid</code>)</label>
+          <input type="number" id="pubid-input" min="0" placeholder="blank = bulk">
+        </div>
+        <button class="apply-btn" id="apply-btn" type="button">Load the link</button>
+        <p class="hint">
+          &ldquo;Load the link&rdquo; navigates to <code>?cg=&hellip;&amp;pubid=&hellip;</code>, exactly
+          as a recipient arriving from an email does. Leave the publication blank (or set
+          <code>0</code>) for the &ldquo;stop all bulk email&rdquo; path. The widget strips both
+          parameters out of the address bar as soon as it has read them, so the GUID does not
+          survive in history &mdash; that is why the boxes come back empty after a load.
+        </p>
+      </div>
+
+      <!-- Demo container -->
+      <div class="demo-box">
+        <div id="status"></div>
+        <next-unsubscribe
+          api-host="__API_HOST__"
+          my-subscriptions-url="/demo-subscriptions.html"></next-unsubscribe>
+      </div>
+
+      <!-- Event log -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Event Log</h3>
+          <button class="clear-btn" onclick="document.getElementById('event-log').innerHTML=''">Clear</button>
+        </div>
+        <div id="event-log" class="event-log">
+          <div class="event-entry">Initializing widget...</div>
+        </div>
+      </div>
+
+      <!-- Widget code -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Widget Code<span>Put this on the page your unsubscribe links point at</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="widget-code">&lt;!-- Use the widget. No sign-in, no next-user-menu: the whole point is
+     that it works for someone with no MP login. --&gt;
+&lt;next-unsubscribe
+  my-subscriptions-url="https://www.example.church/email-preferences"&gt;
+&lt;/next-unsubscribe&gt;
+
+&lt;!-- The page's origin MUST be in EMBED_ALLOWED_ORIGINS, or no token is
+     minted and every visitor sees an error. This is setup failure #1. --&gt;
+
+&lt;!-- Then add a footer to every bulk-email template in MP. MP generates
+     no unsubscribe link of its own, so a church that skips this has no
+     unsubscribe at all. `pubid` is hardcoded per template; escape the
+     ampersand as &amp;amp; inside MP's HTML editor. --&gt;
+&lt;a href="https://www.example.church/unsubscribe?cg=[Contact_GUID]&amp;amp;pubid=4"&gt;
+  Unsubscribe from the Weekly Newsletter
+&lt;/a&gt;
+&lt;a href="https://www.example.church/unsubscribe?cg=[Contact_GUID]"&gt;
+  Stop all bulk email
+&lt;/a&gt;
+
+&lt;!-- Optional: a church CMS that already owns ?cg= can rename the params --&gt;
+&lt;next-unsubscribe cg-param="contact" pubid-param="publication"&gt;&lt;/next-unsubscribe&gt;
+
+&lt;!-- Optional: show nothing at all about the address (default is masked) --&gt;
+&lt;next-unsubscribe show-email="false"&gt;&lt;/next-unsubscribe&gt;
+
+&lt;!-- Listen to events --&gt;
+&lt;script&gt;
+  const widget = document.querySelector("next-unsubscribe");
+  widget.addEventListener("unsubscribed", (e) =&gt; {
+    console.log("Unsubscribed:", e.detail); // { scope, publicationId }
+  });
+  widget.addEventListener("resubscribed", (e) =&gt; {
+    console.log("Undone:", e.detail);
+  });
+  widget.addEventListener("unsubscribeError", (e) =&gt; {
+    console.error("Error:", e.detail);
+  });
+&lt;/script&gt;</code></pre>
+      </div>
+
+      <!-- Universal setup -->
+      <div class="setup-card">
+        <div class="card-header">
+          <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="setup-code">__UNIVERSAL_SETUP__</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load the SDK from source (development mode) -->
+  <script type="module">
+    import "./src/index.ts";
+    // SDK auto-initializes — no init() call needed
+
+    const statusEl = document.getElementById("status");
+    const eventLog = document.getElementById("event-log");
+    const cgInput = document.getElementById("cg-input");
+    const pubidInput = document.getElementById("pubid-input");
+    const applyBtn = document.getElementById("apply-btn");
+
+    function showStatus(message, type = "info") {
+      statusEl.className = `status ${type}`;
+      statusEl.innerHTML = message;
+    }
+
+    function logEvent(type, detail) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.className = "event-entry";
+      entry.innerHTML = `<strong>${timestamp}</strong> - <em>${type}</em>: ${JSON.stringify(detail, null, 2)}`;
+      eventLog.insertBefore(entry, eventLog.firstChild);
+    }
+
+    const widget = document.querySelector("next-unsubscribe");
+
+    widget.addEventListener("unsubscribed", (e) => {
+      logEvent("unsubscribed", e.detail);
+      showStatus(
+        e.detail.scope === "publication"
+          ? `Unsubscribed from publication ${e.detail.publicationId}.`
+          : "Removed from bulk email.",
+        "success",
+      );
+    });
+
+    widget.addEventListener("resubscribed", (e) => {
+      logEvent("resubscribed", e.detail);
+      showStatus("Undone — the opt-out has been reversed.", "success");
+    });
+
+    widget.addEventListener("unsubscribeError", (e) => {
+      logEvent("unsubscribeError", e.detail);
+      showStatus(`Error (${e.detail.action}): ${e.detail.error}`, "error");
+    });
+
+    // The widget strips ?cg= / &pubid= as soon as it reads them, so by the time
+    // this runs the address bar is already clean. Navigate to set them: that is
+    // the real flow — a GET that only renders, with the write issued as a POST
+    // from JavaScript once the widget has mounted.
+    applyBtn.addEventListener("click", () => {
+      const cg = cgInput.value.trim();
+      if (!cg) {
+        showStatus("Enter a Contact GUID first (any real contact's Contact_GUID).", "error");
+        return;
+      }
+      const params = new URLSearchParams({ cg });
+      const pubid = pubidInput.value.trim();
+      if (pubid) params.set("pubid", pubid);
+      window.location.search = `?${params.toString()}`;
+    });
+
+    logEvent(
+      "info",
+      "Widget mounted. With no ?cg= in the URL it renders its bad-link state and makes zero requests.",
+    );
+  </script>
+</body>
+</html>

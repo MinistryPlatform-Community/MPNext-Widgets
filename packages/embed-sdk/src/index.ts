@@ -45,6 +45,7 @@ export { MyHouseholdWidget } from "./components/my-household";
 export { MyPledgesWidget } from "./components/my-pledges";
 export { MyGroupsWidget } from "./components/my-groups";
 export { SubscriptionsWidget } from "./components/subscriptions";
+export { UnsubscribeWidget } from "./components/unsubscribe";
 export { EventFinderWidget } from "./components/event-finder";
 export { EventDetailsWidget } from "./components/event-details";
 export { GroupFinderWidget } from "./components/group-finder";
@@ -90,6 +91,7 @@ import "./components/my-household";
 import "./components/my-pledges";
 import "./components/my-groups";
 import "./components/subscriptions";
+import "./components/unsubscribe";
 import "./components/event-finder";
 import "./components/event-details";
 import "./components/group-finder";
@@ -142,7 +144,7 @@ function detectApiHost(): string {
   // 4. Read api-host from the first widget element on the page
   //    (handles Vite dev where the SDK is a local module import)
   const widget = document.querySelector(
-    "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices, next-my-contribution-statement, next-statement-preferences, next-my-giving, next-my-household, next-my-pledges, next-my-groups, next-subscriptions, next-event-finder, next-event-details, next-group-finder, next-group-details, next-opportunity-finder, next-opportunity-details, next-plan-your-visit, next-online-directory, next-pledge-campaign, next-custom-form, next-checkout, next-pay, next-checkout-complete, next-locale-selector",
+    "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices, next-my-contribution-statement, next-statement-preferences, next-my-giving, next-my-household, next-my-pledges, next-my-groups, next-subscriptions, next-unsubscribe, next-event-finder, next-event-details, next-group-finder, next-group-details, next-opportunity-finder, next-opportunity-details, next-plan-your-visit, next-online-directory, next-pledge-campaign, next-custom-form, next-checkout, next-pay, next-checkout-complete, next-locale-selector",
   );
   if (widget) {
     const host = widget.getAttribute("api-host");
@@ -181,6 +183,7 @@ function detectFirstWidgetId(): string | null {
     "NEXT-MY-PLEDGES": "my-pledges",
     "NEXT-MY-GROUPS": "my-groups",
     "NEXT-SUBSCRIPTIONS": "subscriptions",
+    "NEXT-UNSUBSCRIBE": "unsubscribe",
     "NEXT-EVENT-FINDER": "event-finder",
     "NEXT-EVENT-DETAILS": "event-details",
     "NEXT-GROUP-FINDER": "group-finder",

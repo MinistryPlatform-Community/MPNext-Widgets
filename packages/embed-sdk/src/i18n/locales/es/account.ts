@@ -41,6 +41,42 @@ export const esAccount = {
     unitPrice: "Precio unitario",
   },
 
+  /**
+   * `next-unsubscribe`.
+   *
+   * Seeded from `mpp-unsubscribe.json`'s Spanish, which a church has been
+   * reading in production — the vocabulary and sentence structure are legacy's.
+   * The **person** is not: legacy addresses `tú` ("Has sido desuscrito",
+   * "Deshaz"), and this catalogue is `usted` throughout, so mixing them would
+   * make one document speak in two registers. `Deshacer` is person-neutral and
+   * is adopted verbatim.
+   *
+   * Only the **first sentence** of each success label is kept. Legacy's full
+   * string names two buttons in prose ("Deshaz o actualiza tus preferencias …
+   * a través de Mis Suscripciones"), which breaks when the manage link is not
+   * configured, duplicates the accessible name of controls that are right
+   * there, and triples the length of the one sentence a `role="status"` region
+   * reads aloud.
+   *
+   * `undoFailed` is written fresh. Legacy's Spanish for it — "No es posible
+   * anular la suscripción" — is identical to its *unsubscribe* failure label
+   * and describes the opposite action.
+   */
+  unsubscribe: {
+    working: "Un momento: estamos actualizando sus preferencias de correo electrónico…",
+    // Distinct verbs, as in legacy: "cancelar la suscripción" for one
+    // publication, "eliminar del servicio de notificaciones" for bulk email.
+    donePublication: "Su suscripción ha sido cancelada.",
+    doneBulk: "Ha sido eliminado de nuestro servicio de notificaciones.",
+    undoButton: "Deshacer",
+    undone: "Ha vuelto a suscribirse.",
+    undoFailed: "No se ha podido deshacer la cancelación.",
+    manageLink: "Administrar todas mis preferencias de correo electrónico",
+    badLink:
+      "Este enlace para darse de baja está incompleto. Utilice el enlace de un correo electrónico reciente que le hayamos enviado.",
+    title: "Preferencias de correo electrónico",
+  },
+
   userMenu: {
     menuLabel: "Menú de usuario",
     myAccount: "Mi cuenta",

@@ -214,6 +214,18 @@ export const widgetRegistry: WidgetMeta[] = [
     events: ["formLoaded", "formSubmitted", "formError", "loginRequired"],
   },
 
+  {
+    slug: "unsubscribe",
+    tag: "next-unsubscribe",
+    title: "Unsubscribe",
+    description:
+      "Landing page for the unsubscribe link in a bulk email. Identifies the recipient from the link (?cg= / &pubid=, or a sealed token), opts them out on load with no sign-in, and offers Undo plus a link to full email preferences.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: ["unsubscribed", "resubscribed", "unsubscribeError"],
+  },
+
   // ── Payments ─────────────────────────────────────────────
   {
     slug: "checkout",

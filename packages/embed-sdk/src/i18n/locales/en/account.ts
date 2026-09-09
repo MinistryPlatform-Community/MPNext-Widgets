@@ -43,6 +43,54 @@ export const account = {
    * come from MP's own `GetLabels` in MP's locale and cannot be reached from
    * here. Sign In / Sign Out live in `common`, shared with eight other widgets.
    */
+  /**
+   * `next-unsubscribe` — the landing page for the unsubscribe link in a bulk
+   * email. Lives here rather than beside `subscriptions` (which sits in
+   * `giving.ts`, a misfiling: publications are not giving) because `account.ts`
+   * is where account-level communication preferences belong. Moving
+   * `subscriptions` across is `subscriptions.md`'s job.
+   *
+   * Nine keys, and nothing more: `common.retry`, `fields.email` and the whole
+   * `errors.*` namespace via `errorText` cover the rest of the surface.
+   *
+   * **No plurals in this namespace.** Nothing here is counted, so
+   * `catalogue-parity`'s plural-branch assertion has nothing to check and the
+   * `es` / `pt-BR` `many` category is not in play. Worth stating, because the
+   * guard test's existence implies a plural is expected somewhere.
+   *
+   * Seeded from the seven legacy `mpp-unsubscribe` labels, which shipped with
+   * vetted Spanish and Portuguese — see the notes in the translated files for
+   * what was adopted, adapted and rewritten.
+   */
+  unsubscribe: {
+    /** Legacy showed a bare spinner; a sentence is kinder and is announced. */
+    working: "One moment — updating your email preferences…",
+    /**
+     * Two headlines rather than one with a `{scope}` placeholder. Legacy has
+     * exactly this split, and its Spanish and Portuguese confirm it is
+     * structural rather than lexical — "Has sido desuscrito" and "Has sido
+     * eliminado de nuestro servicio de notificaciones" share no verb.
+     *
+     * Neither names the publication: we never read `dp_Publications.Title` on
+     * this path, and naming it would confirm that the link's `pubid` maps to a
+     * real publication — a small oracle for no gain.
+     */
+    donePublication: "You have been unsubscribed.",
+    doneBulk: "You have been removed from bulk email.",
+    undoButton: "Undo",
+    undone: "You have been re-subscribed.",
+    undoFailed: "Unable to undo unsubscribe.",
+    /**
+     * Legacy's button read "My Subscriptions" — a widget's name, not an
+     * action. A deliberate copy improvement.
+     */
+    manageLink: "Manage all my email preferences",
+    badLink:
+      "This unsubscribe link is incomplete. Please use the link in a recent email from us.",
+    /** Accessible name for the `role="status"` region the headline lives in. */
+    title: "Email Preferences",
+  },
+
   userMenu: {
     /** Accessible name for the avatar button, which shows only a photo or initials. */
     menuLabel: "User menu",
