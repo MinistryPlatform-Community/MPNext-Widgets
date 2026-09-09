@@ -13,6 +13,7 @@ export * from "./online-directory";
 export * from "./opportunities";
 export * from "./payment-token";
 export * from "./plan-your-visit";
+export * from "./prayer-feedback";
 export * from "./pledge-campaign";
 export * from "./profile";
 export * from "./statement-preferences";
