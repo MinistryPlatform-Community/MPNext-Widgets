@@ -174,9 +174,9 @@ returns. Full incident and the "grep the built chunk" diagnostic:
 1. External site loads `/embed-sdk/next-embed.js` (the stable loader; it imports the content-hashed `next-embed.<hash>.es.js`) via `<script type="module">`. The demo pages and the customer copy-paste snippet use this path — never `next-embed.es.js`, which the build does not publish.
 2. SDK auto-wires a token provider backed by the page-wide `AuthSession` (`MPNextEmbed.init()` overrides it)
 3. `AuthSession` fetches `GET /api/embed/auth/config` once → mode for this origin (`legacy` on any failure)
-4. Token ladder: `#nw_auth` handoff code → `POST /api/embed/auth/exchange` → `sid` (localStorage `nw_sid`; sessionStorage with `session-scope="tab"`); then `POST /api/embed/session { wid, sid }` → JWT v2; `401 invalid_session` clears the sid. Outside `hardened`, a valid legacy `mpp-widgets_AuthToken` is sent as `mpUserToken` (v1 in `legacy`; silent upgrade to a `sid` in `dual`). Otherwise a public JWT.
+4. Token ladder: `#nextwidgets_auth` handoff code → `POST /api/embed/auth/exchange` → `sid` (localStorage `nextwidgets_sid`; sessionStorage with `session-scope="tab"`); then `POST /api/embed/session { wid, sid }` → JWT v2; `401 invalid_session` clears the sid. Outside `hardened`, a valid legacy `mpp-widgets_AuthToken` is sent as `mpUserToken` (v1 in `legacy`; silent upgrade to a `sid` in `dual`). Otherwise a public JWT.
 5. JWT (5-min expiry) is cached in memory until 30s before `exp`; widgets render in Shadow DOM and call the API with Bearer + auto-refresh on 401
-6. Sign In (dual/hardened) = top-level redirect to `/api/embed/auth/login` → MP authorize → `/api/embed/auth/callback` creates the encrypted server session and returns to the page with `#nw_auth=<code>`
+6. Sign In (dual/hardened) = top-level redirect to `/api/embed/auth/login` → MP authorize → `/api/embed/auth/callback` creates the encrypted server session and returns to the page with `#nextwidgets_auth=<code>`
 
 **Design**: Web Components + Shadow DOM (no framework deps), JWT+CORS auth, multi-tenant origin allowlists, MP tokens only in the encrypted server session (never in the JWT or host-page storage in `hardened`). Widget forms use the shared `packages/embed-sdk/src/shared/form-validation.ts` (no native `reportValidity` popup).
 
@@ -247,7 +247,7 @@ the day-shift that parsing exists to avoid. This module changes the **locale onl
 which is a different problem.
 
 **Locale resolution** (`i18n/locale-session.ts`, shaped like `shared/auth-session.ts`),
-highest first: element `lang` -> `MPNextEmbed.setLocale()` -> visitor's stored `nw_locale`
+highest first: element `lang` -> `MPNextEmbed.setLocale()` -> visitor's stored `nextwidgets_locale`
 -> nearest `[lang]` ancestor or `<html lang>` -> `navigator.languages` -> `en`. The
 `<html lang>` rung is the one that matters in practice - a bilingual CMS already sets it,
 so those sites need no snippet change.
@@ -368,9 +368,30 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 - **Route gate**: `src/proxy.ts` is deny-by-default. `isPublicPath()` allowlists `/api`, `/signin`, `/demo`, `/embed-sdk`, matched as path **segments** (so a future `/demo-admin` stays gated). `/embed-sdk/` must stay exempt — host sites fetch those static files anonymously and cross-origin, and a redirect to `/signin` hands them HTML where a JS module or stylesheet was expected.
 - **Widget auth**: JWT (jose HS256, `iss`/`aud`, 5-min expiry, `origin` claim must match the request origin) with tenant-based CORS. `requireWidgetAuth(req, { widget: 'name' })` in API routes. Claims `ver: 2` carry an opaque `sid` (server session); `ver: 1` (legacy) carry `mpAccessToken`. Routes only read `claims.sub`; the ones that need the user's own MP token call `getMpUserAccessToken(claims)` (`src/lib/embed/embed-session.ts`), which handles both versions and refreshes via MP under a store lock.
 - **Auth mode**: `resolveAuthMode(origin)` (`src/lib/embed/auth-mode.ts`) from `EMBED_AUTH_MODE` (`legacy` default | `dual` | `hardened`) with `EMBED_AUTH_MODE_ORIGINS` per-origin overrides. `legacy`: `mpUserToken` only. `dual`: `sid` or `mpUserToken` (silent upgrade returns a `sid`). `hardened`: `sid` only. Server setting; the SDK discovers it via `GET /api/embed/auth/config`.
-- **Server sessions**: `EmbedSessionRecord` keyed by `sha256(sid)` in `EmbedSessionStore` (Upstash Redis REST via `UPSTASH_REDIS_REST_URL`, else in-memory — required in production, where `getSessionStore()` throws without it unless `REDIS_ALLOW_MEMORY_FALLBACK=1`). MP access/refresh/id tokens sealed with AES-256-GCM (`EMBED_SESSION_ENC_KEY`). Sliding idle + absolute TTLs. One-time 60s handoff codes bridge the OAuth callback to the SDK (`#nw_auth` fragment, never a query string).
-- **Login routes** (`src/app/api/embed/auth/`): `login` (validates origin + same-origin `return_to`, signed state cookie `nw_oauth_state`, 302 to MP) → `callback` (state check, code exchange, userinfo, create session, handoff) → `exchange` (POST, single-use, origin-bound). `logout` deletes the session and returns the MP end-session URL; `me` reports the signed-in user for a v2 token. `login`/`callback` are top-level navigations (no CORS). Unauthenticated routes are rate-limited per IP (`checkRateLimit`).
-- **MP OAuth client**: register `https://<widget-host>/api/embed/auth/callback` as redirect URI and `${BETTER_AUTH_URL}/signin` as the **only** post-logout URI. Host-site origins are deliberately **never** registered and never sent to MP: MP refuses to complete an end-session whose `post_logout_redirect_uri` it does not recognise (drops `id_token_hint`, shows a "Would you like to logout?" prompt, leaves the SSO session alive), and an embed SDK cannot enumerate its host pages. `buildEndSessionUrl()` is the one server-side builder and takes no destination argument. Embedded visitors get home via the widget host's own bounce — `src/lib/embed/logout-return.ts`: a sealed ticket → `GET /api/embed/auth/logout?t=` sets `nw_logout_return` → MP → `/signin`, where `src/proxy.ts` spends the cookie. `legacy` (browser-built end-session URL) uses the registered URI, advertised by `/api/embed/auth/config`. `EMBED_OAUTH_PKCE` off by default. `EMBED_PUBLIC_URL` pins the host used in `redirect_uri` behind proxies.
+- **Server sessions**: `EmbedSessionRecord` keyed by `sha256(sid)` in `EmbedSessionStore` (Upstash Redis REST via `UPSTASH_REDIS_REST_URL`, else in-memory — required in production, where `getSessionStore()` throws without it unless `REDIS_ALLOW_MEMORY_FALLBACK=1`). MP access/refresh/id tokens sealed with AES-256-GCM (`EMBED_SESSION_ENC_KEY`). Sliding idle + absolute TTLs. One-time 60s handoff codes bridge the OAuth callback to the SDK (`#nextwidgets_auth` fragment, never a query string).
+- **Login routes** (`src/app/api/embed/auth/`): `login` (validates origin + same-origin `return_to`, signed state cookie `nextwidgets_oauth_state`, 302 to MP) → `callback` (state check, code exchange, userinfo, create session, handoff) → `exchange` (POST, single-use, origin-bound). `logout` deletes the session and returns the MP end-session URL; `me` reports the signed-in user for a v2 token. `login`/`callback` are top-level navigations (no CORS). Unauthenticated routes are rate-limited per IP (`checkRateLimit`).
+- **MP OAuth client**: register `https://<widget-host>/api/embed/auth/callback` as redirect URI and `${BETTER_AUTH_URL}/signin` as the **only** post-logout URI. Host-site origins are deliberately **never** registered and never sent to MP: MP refuses to complete an end-session whose `post_logout_redirect_uri` it does not recognise (drops `id_token_hint`, shows a "Would you like to logout?" prompt, leaves the SSO session alive), and an embed SDK cannot enumerate its host pages. `buildEndSessionUrl()` is the one server-side builder and takes no destination argument. Embedded visitors get home via the widget host's own bounce — `src/lib/embed/logout-return.ts`: a sealed ticket → `GET /api/embed/auth/logout?t=` sets `nextwidgets_logout_return` → MP → `/signin`, where `src/proxy.ts` spends the cookie. `legacy` (browser-built end-session URL) uses the registered URI, advertised by `/api/embed/auth/config`. `EMBED_OAUTH_PKCE` off by default. `EMBED_PUBLIC_URL` pins the host used in `redirect_uri` behind proxies.
+- **Client key naming**: every browser-visible key the SDK owns is `nextwidgets_*` —
+  `nextwidgets_sid`, `nextwidgets_locale` (localStorage), `nextwidgets_oauth_state`,
+  `nextwidgets_logout_return` (cookies), `nextwidgets_auth`, `nextwidgets_auth_error`
+  (URL fragments). Renamed from `nw_*` on 2026-09-09. **Server-side Redis keys are a
+  separate namespace and were deliberately left alone**: `nw:sess:`, `nw:handoff:`,
+  `nw:lock:`, `nw:rl:`, `nw:kv:` (`src/lib/embed/session-store.ts`). Renaming those
+  orphans every live session in Redis, including `nw:kv:ba:*` where Better Auth keeps
+  the *app* sessions — i.e. it signs everyone out of the app too, not just the widgets.
+  - **Two transitional read-fallbacks exist and should be deleted.**
+    `LEGACY_SID_KEY` (`shared/auth-session.ts`) and `LEGACY_LOCALE_KEY`
+    (`i18n/locale-session.ts`) adopt a value stored under the old key and migrate it
+    forward on read. Without them the rename signs out every already-signed-in
+    congregant on the deploy that ships it, because the `sid` lives in the *host church
+    site's* localStorage. Both are covered by tests; remove them once every host page
+    has loaded the SDK at least once after the rename.
+  - The cookie and URL-fragment names have **no** fallback, deliberately. They only
+    matter mid-flow, so the exposure is a login or logout started before the deploy and
+    finishing after it — plus up to 5 minutes of a browser running the previous SDK
+    from cache (`next-embed.js` is `max-age=300`). That fails closed and self-heals on
+    retry; dual-writing two state cookies through the OAuth callback is more risk than
+    the window is worth.
 - **Never** log token material, write `mpp-widgets_*` from the SDK outside `legacy`, or add new npm deps for this (jose + WebCrypto are available). Full plan: `WIDGET-AUTH-MIGRATION-PLAN.md`; runbook in README "Widget Authentication".
 
 ## Brand Colors
@@ -389,7 +410,7 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 
 | File | Purpose |
 |------|---------|
-| `src/proxy.ts` | Deny-by-default route gate; `isPublicPath()` (segment-aware) and the `nw_logout_return` landing |
+| `src/proxy.ts` | Deny-by-default route gate; `isPublicPath()` (segment-aware) and the `nextwidgets_logout_return` landing |
 | `src/lib/auth.ts` | Better Auth config: `secondaryStorage`, 300s `cookieCache`, `input: false` additional fields, `databaseHooks` |
 | `src/lib/auth-session.ts` | `getAuthoritativeSession()` (store read -- use on authorization paths), `getCachedSession()`, `forceAuthoritativeSessionRead()` |
 | `src/lib/auth-profile-capture.ts` | Request-scoped `userGuid`/`imageGuid` slot: `runWithMpProfileCapture`, `captureMpProfile`, `getCapturedMpProfile` |
@@ -406,16 +427,16 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `src/lib/embed/session-store.ts` | `EmbedSessionStore` interface; `MemorySessionStore`, `UpstashSessionStore`, `getSessionStore()` (singleton on `globalThis` -- the App Router evaluates this file once per bundle; must be Upstash in production, where it throws otherwise); generic `kv*` KV under `nw:kv:` |
 | `src/lib/embed/embed-session.ts` | `createEmbedSession`/`getEmbedSession`/`deleteEmbedSession`, handoff codes, `getMpUserAccessToken(claims)` with refresh lock |
 | `src/lib/embed/mp-oauth.ts` | MP OpenID endpoints, `buildAuthorizeUrl`, `exchangeAuthorizationCode`, `fetchMpUserinfo` (60s cache), `buildEndSessionUrl` (+ `getRegisteredPostLogoutRedirectUri`), PKCE |
-| `src/lib/embed/logout-return.ts` | Sealed return ticket + `nw_logout_return` cookie: gets an embedded visitor back to their church page without registering it with MP |
+| `src/lib/embed/logout-return.ts` | Sealed return ticket + `nextwidgets_logout_return` cookie: gets an embedded visitor back to their church page without registering it with MP |
 | `src/lib/embed/rate-limit.ts` | `checkRateLimit(key)` fixed 60s window on the session store |
 | `src/lib/embed/types.ts` | `WidgetClaims` (v1/v2), `EmbedAuthMode`, `EmbedSessionRecord`, session request/response types |
 | `src/app/api/embed/auth/*` | `config`, `login`, `callback`, `exchange`, `logout`, `me` routes (see Authentication) |
 | `src/app/api/embed/session/route.ts` | Mints widget JWTs from `sid`, legacy `mpUserToken`, same-origin Better Auth session, or public |
 | `packages/embed-sdk/src/index.ts` | SDK entry point -- registers widgets, token provider via `AuthSession`, `window.MPNextEmbed = { init, getAuthSession }` |
-| `packages/embed-sdk/src/shared/auth-session.ts` | `AuthSession` singleton: mode discovery, `nw_sid` storage, `#nw_auth` handoff, JWT cache, `login`/`logout`/`me`/`onChange` |
+| `packages/embed-sdk/src/shared/auth-session.ts` | `AuthSession` singleton: mode discovery, `nextwidgets_sid` storage, `#nextwidgets_auth` handoff, JWT cache, `login`/`logout`/`me`/`onChange` |
 | `packages/embed-sdk/src/i18n/locales/en/` | The English catalogue -- **source of truth for the shape of every locale** (`type Messages = typeof en`) |
 | `packages/embed-sdk/src/i18n/registry.ts` | `SUPPORTED_LOCALES` (+ the lazy `import()` per locale), BCP-47 `resolveLocale`, `endonym` |
-| `packages/embed-sdk/src/i18n/locale-session.ts` | Page-wide locale singleton: resolution ladder, catalogue loading, `onChange`, `nw_locale` |
+| `packages/embed-sdk/src/i18n/locale-session.ts` | Page-wide locale singleton: resolution ladder, catalogue loading, `onChange`, `nextwidgets_locale` |
 | `packages/embed-sdk/src/i18n/t.ts` | `{name}` interpolation + `Intl.PluralRules` selection; overrides -> locale -> English -> key |
 | `packages/embed-sdk/src/i18n/formatters.ts` | Memoised `Intl` wrappers. **No `timeZone`, by design** -- see Widget Localisation |
 | `packages/embed-sdk/src/i18n/overrides.ts` | `MPNextEmbed.setMessages()` -- church label renames (C67 part 1) |

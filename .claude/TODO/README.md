@@ -523,7 +523,7 @@ it, and `src/lib/app-logout.test.ts` fails the build if a second builder or a
 second `post_logout_redirect_uri` appears anywhere in `src/`. Visitors still
 get home: `src/lib/embed/logout-return.ts` seals the church page into a ticket,
 `GET /api/embed/auth/logout?t=` turns it into a `SameSite=Lax`
-`nw_logout_return` cookie and forwards to MP, and `src/proxy.ts` spends the
+`nextwidgets_logout_return` cookie and forwards to MP, and `src/proxy.ts` spends the
 cookie when MP lands on the registered `/signin` — validated against
 `EMBED_ALLOWED_ORIGINS` twice so it cannot become an open redirect. `legacy`
 builds its URL in the browser and so has no bounce; it uses the registered URI,

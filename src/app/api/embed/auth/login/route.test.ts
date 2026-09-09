@@ -63,7 +63,7 @@ describe('GET /api/embed/auth/login', () => {
     expect(state).toBeTruthy();
     expect(location.searchParams.get('nonce')).toBeTruthy();
 
-    const cookie = res.cookies.get('nw_oauth_state');
+    const cookie = res.cookies.get('nextwidgets_oauth_state');
     expect(cookie).toBeDefined();
     expect(cookie!.httpOnly).toBe(true);
     expect(cookie!.sameSite).toBe('lax');
@@ -89,7 +89,7 @@ describe('GET /api/embed/auth/login', () => {
     const res = await GET(login({ origin: ORIGIN, return_to: `${ORIGIN}/` }));
     const location = new URL(res.headers.get('location')!);
     expect(location.searchParams.get('redirect_uri')).toBe('https://widgets.example.church/api/embed/auth/callback');
-    expect(res.cookies.get('nw_oauth_state')!.secure).toBe(true);
+    expect(res.cookies.get('nextwidgets_oauth_state')!.secure).toBe(true);
   });
 
   it('defaults wid to user-menu and uses a fresh state per request', async () => {
@@ -98,7 +98,7 @@ describe('GET /api/embed/auth/login', () => {
     const stateA = new URL(a.headers.get('location')!).searchParams.get('state');
     const stateB = new URL(b.headers.get('location')!).searchParams.get('state');
     expect(stateA).not.toBe(stateB);
-    const payload = await verifyStateToken<{ wid: string }>(a.cookies.get('nw_oauth_state')!.value);
+    const payload = await verifyStateToken<{ wid: string }>(a.cookies.get('nextwidgets_oauth_state')!.value);
     expect(payload.wid).toBe('user-menu');
   });
 
@@ -108,7 +108,7 @@ describe('GET /api/embed/auth/login', () => {
     const location = new URL(res.headers.get('location')!);
     expect(location.searchParams.get('code_challenge')).toBeTruthy();
     expect(location.searchParams.get('code_challenge_method')).toBe('S256');
-    const payload = await verifyStateToken<{ codeVerifier?: string }>(res.cookies.get('nw_oauth_state')!.value);
+    const payload = await verifyStateToken<{ codeVerifier?: string }>(res.cookies.get('nextwidgets_oauth_state')!.value);
     expect(payload.codeVerifier).toBeTruthy();
   });
 });

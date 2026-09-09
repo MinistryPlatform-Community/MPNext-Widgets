@@ -88,9 +88,9 @@ The blast radius is small. Every other widget derives login state from server
    scopes `openid offline_access <dataplatform all>`.
 4. `GET /api/embed/auth/callback`: verify `state` cookie, exchange code
    server-side, call userinfo, create the session, mint a **single-use handoff
-   code** (60 s TTL, bound to `origin`), 302 to `return_to#nw_auth=<code>`.
+   code** (60 s TTL, bound to `origin`), 302 to `return_to#nextwidgets_auth=<code>`.
    Fragment, not query, so the code never reaches the church site's server logs.
-5. SDK boot sees `#nw_auth`, strips it from the URL, and
+5. SDK boot sees `#nextwidgets_auth`, strips it from the URL, and
    `POST /api/embed/auth/exchange { code, wid }` → `{ sid, token, expiresIn }`.
    Stores `sid`; keeps `token` in memory.
 
@@ -106,7 +106,7 @@ The blast radius is small. Every other widget derives login state from server
 
 ### 2.3 Where the `sid` lives in the browser
 
-Default: `localStorage` on the church origin, key `nw_sid`, because members
+Default: `localStorage` on the church origin, key `nextwidgets_sid`, because members
 expect to stay signed in across tabs and reloads. This is still XSS-readable, but
 what leaks is now a revocable handle to the widget API, origin-bound, with a
 finite life, rather than a self-refreshing full-scope MP token. Host pages can
@@ -310,7 +310,7 @@ Start when no deployment has issued a `mpUserToken`-based session for 30 days.
 | Session store outage takes down authenticated widgets | Public widgets never touch the store; store client has short timeouts; alert on error rate. In-memory fallback is for dev only |
 | Silent upgrade creates sessions with no refresh token | Expected: they expire naturally and the member signs in once through the new flow |
 | Church pages that still use `mpp-*` portal widgets lose login when SDK stops writing `mpp-widgets_*` | Documented gate in Phase 3 step 1; those customers stay `dual` |
-| Multi-tab logout | `storage` event on `nw_sid` removal re-renders other tabs |
+| Multi-tab logout | `storage` event on `nextwidgets_sid` removal re-renders other tabs |
 | Future multi-tenant widget host | Everything is keyed by origin already; a tenant lookup by origin slots in front of `getMpHost()` without changing this design |
 | Stolen `sid` replay | Origin binding + revocation cover most cases; DPoP is a later add-on if needed |
 

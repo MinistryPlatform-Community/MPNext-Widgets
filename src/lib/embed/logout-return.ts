@@ -20,7 +20,7 @@
  * church page                                      (host origin)
  *   └─ POST /api/embed/auth/logout   → sealed ticket
  *   └─ GET  /api/embed/auth/logout?t=<ticket>      (widget host, top level)
- *        ├─ Set-Cookie: nw_logout_return=<church page>   SameSite=Lax
+ *        ├─ Set-Cookie: nextwidgets_logout_return=<church page>   SameSite=Lax
  *        └─ 302 → MP endsession (id_token_hint + the registered URI)
  *   └─ MP ends its session, 302 → ${BETTER_AUTH_URL}/signin   (registered)
  *        └─ src/proxy.ts sees the cookie, clears it, 302 → church page
@@ -47,7 +47,7 @@ import { isOriginAllowed } from "./auth";
 import { allowedOrigins } from "./config";
 
 /** Carries the return target across MP's end-session round trip. */
-export const LOGOUT_RETURN_COOKIE = "nw_logout_return";
+export const LOGOUT_RETURN_COOKIE = "nextwidgets_logout_return";
 
 /**
  * Ticket lifetime. Long enough for a human to finish an MP logout, short

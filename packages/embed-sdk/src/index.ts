@@ -223,7 +223,7 @@ if (typeof window !== "undefined") {
       const provider = createTokenProvider(apiHost);
       window.__nextTokenProvider = provider;
       window.__nextSDKReadyResolve?.();
-      // Returned from the OAuth callback with #nw_auth=<code>: exchange it now
+      // Returned from the OAuth callback with #nextwidgets_auth=<code>: exchange it now
       // (single-use, 60s TTL) instead of waiting for the first widget fetch.
       const session = getAuthSession(apiHost);
       if (session.hasPendingHandoff()) {
