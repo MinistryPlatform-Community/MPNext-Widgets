@@ -2,6 +2,12 @@ import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { MessageTemplateService } from "@/services/messageTemplateService";
+import {
+  clean,
+  getIdByValue,
+  sqlLiteral,
+  toNumberOrNull,
+} from "@/services/_shared/mp-lookup";
 import type {
   AgeOrGradeGroup,
   PlanYourVisitConfig,
@@ -37,26 +43,9 @@ interface ContactRow {
   Email_Address: string | null;
 }
 
-function toNumberOrNull(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  return Number.isNaN(n) ? null : n;
-}
-
 function toNumber(value: number | string | null | undefined, fallback = 0): number {
   const n = toNumberOrNull(value);
   return n === null ? fallback : n;
-}
-
-function clean(value: string | null | undefined): string | null {
-  if (value == null) return null;
-  const str = String(value).trim();
-  return str === "" ? null : str;
-}
-
-/** Escape a value for safe inclusion inside an MP `LIKE '...'` filter literal. */
-function sqlLiteral(value: string): string {
-  return value.replace(/'/g, "''");
 }
 
 export class PlanYourVisitService {
@@ -596,29 +585,19 @@ export class PlanYourVisitService {
   // ── Helpers ──
 
   /** Look up the numeric id of a row by a column value (cached). */
-  private async getIdByValue(
+  private getIdByValue(
     table: string,
     columnName: string,
     value: string,
     idColumn: string
   ): Promise<number | null> {
-    const cacheKey = `${table}:${columnName}:${value}`;
-    if (this.idCache.has(cacheKey)) return this.idCache.get(cacheKey)!;
-
-    let id: number | null = null;
-    try {
-      const rows = await this.mp!.getTableRecords<Record<string, number | string | null>>({
-        table,
-        select: `${idColumn} AS Id`,
-        filter: `${columnName} = '${sqlLiteral(value)}'`,
-        top: 1,
-      });
-      id = toNumberOrNull(rows[0]?.Id ?? null);
-    } catch (err) {
-      console.warn(`PlanYourVisitService: getIdByValue ${table}.${columnName}='${value}' failed:`, err);
-    }
-    this.idCache.set(cacheKey, id);
-    return id;
+    return getIdByValue(
+      { mp: this.mp!, cache: this.idCache, label: "PlanYourVisitService" },
+      table,
+      columnName,
+      value,
+      idColumn
+    );
   }
 
   private async getConfigValue(keyName: string): Promise<string | null> {

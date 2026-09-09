@@ -3,6 +3,12 @@ import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { HouseholdService } from "@/services/householdService";
 import { MessageTemplateService } from "@/services/messageTemplateService";
 import {
+  clean,
+  getIdByValue,
+  sqlLiteral,
+  toNumberOrNull,
+} from "@/services/_shared/mp-lookup";
+import {
   FEEDBACK_DESCRIPTION_MAX,
   FEEDBACK_SUMMARY_MAX,
   VISIBILITY_PUBLIC,
@@ -159,23 +165,6 @@ export interface ContactSummary {
   lastName: string;
   displayName: string;
   email: string | null;
-}
-
-function toNumberOrNull(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  return Number.isNaN(n) ? null : n;
-}
-
-function clean(value: string | null | undefined): string | null {
-  if (value == null) return null;
-  const str = String(value).trim();
-  return str === "" ? null : str;
-}
-
-/** Escape a value for safe inclusion inside an MP `LIKE '...'` filter literal. */
-function sqlLiteral(value: string): string {
-  return value.replace(/'/g, "''");
 }
 
 /** Cap a value at a column's length, so MP never rejects the whole insert. */
@@ -685,32 +674,19 @@ export class PrayerFeedbackService {
    * the column", so a domain missing a lookup value degrades rather than
    * failing the whole submission.
    */
-  private async getIdByValue(
+  private getIdByValue(
     table: string,
     columnName: string,
     value: string,
     idColumn: string
   ): Promise<number | null> {
-    const cacheKey = `${table}:${columnName}:${value}`;
-    if (this.idCache.has(cacheKey)) return this.idCache.get(cacheKey)!;
-
-    let id: number | null = null;
-    try {
-      const rows = await this.mp!.getTableRecords<Record<string, number | string | null>>({
-        table,
-        select: `${idColumn} AS Id`,
-        filter: `${columnName} = '${sqlLiteral(value)}'`,
-        top: 1,
-      });
-      id = toNumberOrNull(rows[0]?.Id ?? null);
-    } catch (error) {
-      console.warn(
-        `PrayerFeedbackService: getIdByValue ${table}.${columnName} failed:`,
-        error instanceof Error ? error.message : error
-      );
-    }
-    this.idCache.set(cacheKey, id);
-    return id;
+    return getIdByValue(
+      { mp: this.mp!, cache: this.idCache, label: "PrayerFeedbackService" },
+      table,
+      columnName,
+      value,
+      idColumn
+    );
   }
 
   /**
