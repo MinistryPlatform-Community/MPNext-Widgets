@@ -97,6 +97,7 @@
   "errors.invalidRequest": "c4fd4efa",
   "errors.invoice_not_found": "eb975939",
   "errors.invoice_not_payable": "4e08f3a5",
+  "errors.link_expired": "ee4d71c0",
   "errors.network": "d3fc48be",
   "errors.no_file": "e3015d12",
   "errors.not_head_of_household": "c8d426ac",

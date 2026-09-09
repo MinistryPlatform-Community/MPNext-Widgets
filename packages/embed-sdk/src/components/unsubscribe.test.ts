@@ -244,6 +244,37 @@ describe("<next-unsubscribe>", () => {
       expect(postedBodies(fn)).toEqual([{ cg: CG, pubid: 4, action: "unsubscribe" }]);
     });
 
+    it("sends a sealed t as `token`, and prefers it over a cg beside it", async () => {
+      // The server decides precedence, but the widget must forward both so the
+      // route can fall back to `cg` when the token has expired.
+      const fn = mockFetch(() => jsonResponse(OK_BODY));
+      await mountSettled(`?t=sealed.jwt.value&cg=${CG}&pubid=4`);
+      expect(postedBodies(fn)).toEqual([
+        { token: "sealed.jwt.value", pubid: 4, action: "unsubscribe" },
+      ]);
+    });
+
+    it("honours token-param", async () => {
+      const fn = mockFetch(() => jsonResponse(OK_BODY));
+      await mountSettled("?ticket=sealed.jwt.value", 'token-param="ticket"');
+      expect(postedBodies(fn)).toEqual([
+        { token: "sealed.jwt.value", action: "unsubscribe" },
+      ]);
+    });
+
+    it("renders link_expired from the catalogue when the server rejects the token", async () => {
+      mockFetch(() =>
+        jsonResponse(
+          { error: "link_expired", message: "That unsubscribe link is no longer valid." },
+          422,
+        ),
+      );
+      const el = await mountSettled("?t=stale.jwt.value");
+      expect(headline(el)).toBe(
+        "That link is no longer valid. Please use the unsubscribe link in a recent email, or manage your preferences below.",
+      );
+    });
+
     it("ignores MP's dg parameter rather than treating the link as broken", async () => {
       const fn = mockFetch(() => jsonResponse(OK_BODY));
       const el = await mountSettled(

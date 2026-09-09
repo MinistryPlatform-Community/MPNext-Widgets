@@ -105,6 +105,8 @@ export const ptBRCore = {
     submitFailed: "O envio falhou. Tente novamente.",
     invalid_session: "Sua sessão expirou. Entre novamente.",
     invalid_code: "Esse link de acesso não é mais válido. Entre novamente.",
+    link_expired:
+      "Este link não é mais válido. Use o link de cancelamento de um e-mail recente ou gerencie suas preferências abaixo.",
     user_not_found: "Não encontramos sua conta.",
     contact_not_found: "Não encontramos seu registro de contato.",
     donor_not_found: "Nenhum registro de doador está vinculado à sua conta.",

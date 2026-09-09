@@ -105,6 +105,8 @@ export const esCore = {
     submitFailed: "El envío falló. Inténtelo de nuevo.",
     invalid_session: "Su sesión ha expirado. Inicie sesión de nuevo.",
     invalid_code: "Ese enlace de acceso ya no es válido. Inicie sesión de nuevo.",
+    link_expired:
+      "Ese enlace ya no es válido. Utilice el enlace para darse de baja de un correo electrónico reciente o administre sus preferencias a continuación.",
     user_not_found: "No encontramos su cuenta.",
     contact_not_found: "No encontramos su registro de contacto.",
     donor_not_found: "No hay un registro de donante vinculado a su cuenta.",

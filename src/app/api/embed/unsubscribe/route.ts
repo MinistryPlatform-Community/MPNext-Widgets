@@ -54,6 +54,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildOptionsResponse, getClientIp } from "@/lib/embed/auth";
 import { withAnonymousWrite, errorResponse } from "@/lib/embed/anonymous-write";
 import { sha256Hex } from "@/lib/embed/crypto";
+import { verifyActionToken } from "@/lib/embed/action-token";
 import {
   SubscriptionService,
   isContactGuid,
@@ -91,12 +92,53 @@ const ERRORS = {
    * cross-cutting change, not started here.
    */
   saveFailed: { error: "save_failed", message: "MinistryPlatform rejected the subscription update.", status: 500 },
+  /**
+   * A sealed `t` that is expired, tampered with, or minted for another flow —
+   * **and** no usable `cg` to fall back to.
+   *
+   * One code for all three, deliberately. `verifyActionToken` distinguishes
+   * `wrong-type`, but reporting that back would tell the bearer that the token
+   * they hold is valid for *something else*, which is a hint about what else
+   * they hold. Not reused: `invalid_code`, whose sentence is about signing in
+   * and which the SDK's auth ladder reads as a protocol signal.
+   */
+  linkExpired: { error: "link_expired", message: "That unsubscribe link is no longer valid.", status: 422 },
 } as const;
 
 type RouteError = (typeof ERRORS)[keyof typeof ERRORS];
 
 function fail(spec: RouteError, cors: HeadersInit): NextResponse {
   return errorResponse(spec.error, spec.message, spec.status, cors);
+}
+
+/** What a `typ: "unsubscribe"` action token is allowed to carry. */
+interface UnsubscribeTokenPayload {
+  contactGuid: string;
+  publicationId: number | null;
+}
+
+/**
+ * Narrow a verified token's payload, or reject it.
+ *
+ * Runs after the signature and `typ` checks, so this is not a trust boundary
+ * for provenance — it is a shape check against deploy skew, plus one real
+ * guard: the GUID inside a token we signed still goes through `isContactGuid`
+ * before it can reach an MP filter. A token whose payload we no longer
+ * recognise is reported as invalid rather than half-trusted.
+ */
+function guardUnsubscribeToken(
+  payload: Record<string, unknown>
+): UnsubscribeTokenPayload | null {
+  const { contactGuid, publicationId } = payload;
+  if (!isContactGuid(contactGuid)) return null;
+
+  if (publicationId === undefined || publicationId === null) {
+    return { contactGuid, publicationId: null };
+  }
+  if (typeof publicationId !== "number" || !Number.isInteger(publicationId)) return null;
+  if (publicationId < 0) return null;
+  // `0` is the bulk sentinel here as everywhere else on this route.
+  return { contactGuid, publicationId: publicationId > 0 ? publicationId : null };
 }
 
 /** Body as sent, or `{}`. A malformed body becomes `validation_failed` below. */
@@ -164,14 +206,48 @@ export async function POST(req: NextRequest) {
       if (!parsed.success) return fail(ERRORS.validationFailed, cors);
 
       const { action } = parsed.data;
-      const contactGuid = parsed.data.cg;
 
-      // Validated before it is interpolated into any MP filter. A legitimate
-      // visitor never reaches this branch — the widget checks the URL's shape
-      // and renders its bad-link state without fetching.
-      if (!isContactGuid(contactGuid)) return fail(ERRORS.invalidRequest, cors);
+      // ── Which capability wins ────────────────────────────────────────────
+      //
+      // A **valid `t` beats `cg`**: it is the narrower capability, it carries
+      // its own publication (so a tampered `pubid` in the URL cannot widen what
+      // it authorises), and it is revocable by rotating the secret.
+      //
+      // An **expired or tampered `t` falls back to `cg`** when `cg` is present.
+      // That fallback is the sharpest argument for two paths rather than one:
+      // `cg` is the path with no expiry, and expiry is exactly why a sealed
+      // token cannot be the only path — a recipient digging up a six-month-old
+      // email must still be able to get off the list.
+      let contactGuid: string | undefined;
+      let publicationId = resolvePublicationId(parsed.data.pubid);
+      let tokenRejected = false;
 
-      const publicationId = resolvePublicationId(parsed.data.pubid);
+      if (parsed.data.token) {
+        const verified = await verifyActionToken(
+          "unsubscribe",
+          parsed.data.token,
+          guardUnsubscribeToken
+        );
+        if (verified.ok) {
+          contactGuid = verified.data.contactGuid;
+          publicationId = verified.data.publicationId;
+        } else {
+          // All three reasons — invalid, expired, wrong-type — collapse here.
+          tokenRejected = true;
+        }
+      }
+
+      if (contactGuid === undefined) {
+        // Validated before it is interpolated into any MP filter. A legitimate
+        // visitor never reaches the failure branch — the widget checks the
+        // URL's shape and renders its bad-link state without fetching.
+        if (isContactGuid(parsed.data.cg)) {
+          contactGuid = parsed.data.cg;
+        } else {
+          return fail(tokenRejected ? ERRORS.linkExpired : ERRORS.invalidRequest, cors);
+        }
+      }
+
       const scope = unsubscribeScope(publicationId);
       const service = await SubscriptionService.getInstance();
 

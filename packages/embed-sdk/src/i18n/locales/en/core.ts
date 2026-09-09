@@ -124,6 +124,14 @@ export const core = {
     // Route-specific codes.
     invalid_session: "Your session has expired. Please sign in again.",
     invalid_code: "That sign-in link is no longer valid. Please sign in again.",
+    // `next-unsubscribe`, when a sealed `?t=` token has expired or been
+    // tampered with and there is no `?cg=` to fall back to. Deliberately NOT
+    // `invalid_code`, whose sentence is about signing in and which CLAUDE.md
+    // names a protocol signal the SDK auth ladder reads. The sentence points at
+    // the two ways out that actually exist: a newer email, or the manage link
+    // the widget renders directly below it.
+    link_expired:
+      "That link is no longer valid. Please use the unsubscribe link in a recent email, or manage your preferences below.",
     user_not_found: "We could not find your account.",
     contact_not_found: "We could not find your contact record.",
     donor_not_found: "No donor record is linked to your account.",

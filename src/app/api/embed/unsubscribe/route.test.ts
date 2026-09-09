@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import * as route from './route';
 import { createWidgetToken } from '@/lib/embed/jwt';
+import { createActionToken } from '@/lib/embed/action-token';
 import { __resetSessionStoreForTests } from '@/lib/embed/session-store';
 import type { UnsubscribeOutcome } from '@/services/subscriptionService';
 
@@ -396,6 +397,161 @@ describe('POST /api/embed/unsubscribe', () => {
       for (const res of responses) {
         expect(res.headers.get('set-cookie')).toBeNull();
       }
+    });
+  });
+  describe('the sealed token path', () => {
+    const TOKEN_CG = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+
+    async function token(
+      data: Record<string, unknown> = { contactGuid: TOKEN_CG, publicationId: 7 },
+      expirySeconds?: number
+    ): Promise<string> {
+      return createActionToken('unsubscribe', data, expirySeconds);
+    }
+
+    it('a valid t wins over a cg sent alongside it', async () => {
+      const res = await route.POST(
+        post(await publicToken(), { cg: CG, pubid: 4, token: await token() })
+      );
+      expect(res.status).toBe(200);
+      // The token is the narrower capability, so it decides both the contact
+      // and the publication — a tampered `pubid` in the URL cannot widen it.
+      expect(mockUnsubscribe).toHaveBeenCalledWith({
+        contactGuid: TOKEN_CG,
+        publicationId: 7,
+      });
+      expect(await res.json()).toMatchObject({ scope: 'publication', publicationId: 7 });
+    });
+
+    it('a token carrying no publication takes the bulk path', async () => {
+      const res = await route.POST(
+        post(await publicToken(), { pubid: 4, token: await token({ contactGuid: TOKEN_CG }) })
+      );
+      expect(res.status).toBe(200);
+      expect(mockUnsubscribe).toHaveBeenCalledWith({
+        contactGuid: TOKEN_CG,
+        publicationId: null,
+      });
+    });
+
+    it('a token carrying publicationId 0 takes the bulk path', async () => {
+      await route.POST(
+        post(await publicToken(), {
+          token: await token({ contactGuid: TOKEN_CG, publicationId: 0 }),
+        })
+      );
+      expect(mockUnsubscribe).toHaveBeenCalledWith({
+        contactGuid: TOKEN_CG,
+        publicationId: null,
+      });
+    });
+
+    it('an expired t falls back to the cg beside it', async () => {
+      // This fallback is why there are two paths at all: `cg` never expires,
+      // and a recipient digging up a six-month-old email must still get out.
+      const res = await route.POST(
+        post(await publicToken(), { cg: CG, pubid: 4, token: await token(undefined, -60) })
+      );
+      expect(res.status).toBe(200);
+      expect(mockUnsubscribe).toHaveBeenCalledWith({ contactGuid: CG, publicationId: 4 });
+    });
+
+    it('a tampered t falls back to the cg beside it', async () => {
+      const tampered = `${await token()}x`;
+      const res = await route.POST(
+        post(await publicToken(), { cg: CG, token: tampered })
+      );
+      expect(res.status).toBe(200);
+      expect(mockUnsubscribe).toHaveBeenCalledWith({ contactGuid: CG, publicationId: null });
+    });
+
+    it('link_expired (422) for an expired t with no cg', async () => {
+      const res = await route.POST(
+        post(await publicToken(), { token: await token(undefined, -60) })
+      );
+      expect(res.status).toBe(422);
+      expect(await res.json()).toEqual({
+        error: 'link_expired',
+        message: expect.any(String),
+      });
+      expect(mockUnsubscribe).not.toHaveBeenCalled();
+    });
+
+    it('link_expired (422) for a tampered t with no cg', async () => {
+      const res = await route.POST(post(await publicToken(), { token: 'not.a.jwt' }));
+      expect(res.status).toBe(422);
+      expect((await res.json()).error).toBe('link_expired');
+    });
+
+    it('link_expired (422) when the t is minted for another flow', async () => {
+      // The cross-`typ` guard. Without it, a token handed out to confirm an
+      // email address would be replayable here and every flow's tokens would
+      // become capability for every other flow.
+      const wrongTyp = await createActionToken('pyv-verify', {
+        contactGuid: TOKEN_CG,
+        publicationId: 7,
+      });
+      const res = await route.POST(post(await publicToken(), { token: wrongTyp }));
+      expect(res.status).toBe(422);
+      expect((await res.json()).error).toBe('link_expired');
+      expect(mockUnsubscribe).not.toHaveBeenCalled();
+    });
+
+    it('does not distinguish wrong-type from expired', async () => {
+      // Saying "that token belongs to another flow" tells the bearer what else
+      // they hold.
+      const wrongTyp = await createActionToken('pyv-verify', { contactGuid: TOKEN_CG });
+      const expired = await token(undefined, -60);
+
+      const a = await route.POST(post(await publicToken(), { token: wrongTyp }));
+      const b = await route.POST(post(await publicToken(), { token: expired }));
+
+      expect(a.status).toBe(b.status);
+      expect(await a.json()).toEqual(await b.json());
+    });
+
+    it('rejects a token whose payload GUID is not GUID-shaped', async () => {
+      const bad = await createActionToken('unsubscribe', { contactGuid: "' OR 1=1 --" });
+      const res = await route.POST(post(await publicToken(), { token: bad }));
+      expect(res.status).toBe(422);
+      expect((await res.json()).error).toBe('link_expired');
+      expect(mockUnsubscribe).not.toHaveBeenCalled();
+    });
+
+    it('a token payload cannot override its own typ', async () => {
+      // `createActionToken` spreads the caller's data and then writes `typ`, so
+      // a payload key called `typ` cannot smuggle a different flow through.
+      const sneaky = await createActionToken('pyv-verify', {
+        contactGuid: TOKEN_CG,
+        typ: 'unsubscribe',
+      });
+      const res = await route.POST(post(await publicToken(), { token: sneaky }));
+      expect(res.status).toBe(422);
+      expect(mockUnsubscribe).not.toHaveBeenCalled();
+    });
+
+    it('meters the token, not the cg, in the per-capability bucket', async () => {
+      const t = await token();
+      const auth = await publicToken();
+      for (let i = 0; i < 5; i++) {
+        expect((await route.POST(post(auth, { token: t }))).status).toBe(200);
+      }
+      expect((await route.POST(post(auth, { token: t }))).status).toBe(429);
+      // The same IP still has budget, and a bare `cg` hashes to a different
+      // bucket, so it is not caught by the token's exhausted one.
+      expect((await route.POST(post(auth, { cg: CG }))).status).toBe(200);
+    });
+
+    it('replays the token for the undo', async () => {
+      const t = await token();
+      const res = await route.POST(
+        post(await publicToken(), { token: t, action: 'resubscribe' })
+      );
+      expect(res.status).toBe(200);
+      expect(mockResubscribe).toHaveBeenCalledWith({
+        contactGuid: TOKEN_CG,
+        publicationId: 7,
+      });
     });
   });
 });
