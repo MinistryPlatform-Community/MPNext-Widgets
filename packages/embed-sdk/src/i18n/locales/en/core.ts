@@ -132,6 +132,21 @@ export const core = {
     // the widget renders directly below it.
     link_expired:
       "That link is no longer valid. Please use the unsubscribe link in a recent email, or manage your preferences below.",
+    // ── `next-prayer-feedback` (C69), shared with C70's opt-in ──
+    //
+    // The three `verification_*` sentences are written **neutrally**, because
+    // more than one widget renders them: a message three widgets share cannot
+    // be phrased for one of them. Widget-specific warmth belongs in the
+    // widget's own namespace (`prayerFeedback.*`), not here.
+    feedback_type_not_allowed: "That option is not available on this form.",
+    feedback_type_not_found: "That option is no longer available. Please choose another.",
+    template_not_configured: "This form is not fully configured. Please contact the church.",
+    invalid_return_url: "That request was not valid. Please try again.",
+    email_send_failed: "We could not send the confirmation email. Please try again.",
+    verification_invalid: "This link is not valid. Please submit the form again.",
+    verification_expired: "This link has expired. Please submit the form again.",
+    verification_used: "This link has already been used.",
+    feedback_save_failed: "We could not submit your request. Please try again.",
     user_not_found: "We could not find your account.",
     contact_not_found: "We could not find your contact record.",
     donor_not_found: "No donor record is linked to your account.",

@@ -107,6 +107,18 @@ export const esCore = {
     invalid_code: "Ese enlace de acceso ya no es válido. Inicie sesión de nuevo.",
     link_expired:
       "Ese enlace ya no es válido. Utilice el enlace para darse de baja de un correo electrónico reciente o administre sus preferencias a continuación.",
+    // `next-prayer-feedback` (C69), compartidos con la suscripción de C70.
+    feedback_type_not_allowed: "Esa opción no está disponible en este formulario.",
+    feedback_type_not_found: "Esa opción ya no está disponible. Elija otra.",
+    template_not_configured:
+      "Este formulario no está configurado por completo. Comuníquese con la iglesia.",
+    invalid_return_url: "Esa solicitud no fue válida. Inténtelo de nuevo.",
+    email_send_failed:
+      "No pudimos enviar el correo electrónico de confirmación. Inténtelo de nuevo.",
+    verification_invalid: "Este enlace no es válido. Envíe el formulario de nuevo.",
+    verification_expired: "Este enlace ha expirado. Envíe el formulario de nuevo.",
+    verification_used: "Este enlace ya se ha utilizado.",
+    feedback_save_failed: "No pudimos enviar su solicitud. Inténtelo de nuevo.",
     user_not_found: "No encontramos su cuenta.",
     contact_not_found: "No encontramos su registro de contacto.",
     donor_not_found: "No hay un registro de donante vinculado a su cuenta.",

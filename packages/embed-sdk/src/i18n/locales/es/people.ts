@@ -125,4 +125,35 @@ export const esPeople = {
     sent: "Enviado",
     sendFailed: "No se pudo enviar el mensaje.",
   },
+  /**
+   * `next-prayer-feedback` (C69). Seeded from the legacy
+   * `mpp-prayer-feedback-form` Spanish labels — the wording churches have
+   * already seen — with the register moved from legacy's `tú` to this
+   * catalogue's `usted`, and legacy's two machine-translated strings rewritten.
+   */
+  prayerFeedback: {
+    title: "Oración y comentarios",
+    lead: "Complete el siguiente formulario para solicitar oración, compartir un informe de alabanza o enviarnos otros comentarios y opiniones.",
+    feedbackType: "Tipo de comentario",
+    selectType: "Seleccione…",
+    summary: "Resumen",
+    summaryHint: "Un título breve para su solicitud.",
+    details: "Detalles",
+    private: "Mantener esto en privado",
+    privateHint: "Solo el personal de la iglesia verá esta solicitud.",
+    provideFeedbackAs: "Proporcione sus comentarios como",
+    blankForm: "Otra persona",
+    signInHint: "¿Tiene una cuenta? Si inicia sesión, omitimos el paso de confirmación por correo electrónico.",
+    notConfigured:
+      "Este formulario no está configurado por completo. Comuníquese con la iglesia.",
+    verificationSent:
+      "Revise su correo electrónico y siga el enlace para confirmar su solicitud.",
+    submitted: "Su solicitud ha sido enviada. ¡Gracias!",
+    verified: "Su solicitud ha sido enviada. ¡Gracias!",
+    charactersLeft: {
+      one: "queda {count} carácter",
+      many: "quedan {count} caracteres",
+      other: "quedan {count} caracteres",
+    },
+  },
 } satisfies Partial<Messages>;
