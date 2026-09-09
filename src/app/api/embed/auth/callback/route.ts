@@ -4,9 +4,9 @@
  *
  * Top-level navigation. Verifies the state cookie, exchanges the code, creates
  * a server-side embed session and hands a single-use 60s code back to the
- * embedding page via the URL fragment (`#nw_auth=<code>`), which the SDK
+ * embedding page via the URL fragment (`#nextwidgets_auth=<code>`), which the SDK
  * redeems at POST /api/embed/auth/exchange. Errors go back to the page as
- * `#nw_auth_error=<code>` when the return URL is known.
+ * `#nextwidgets_auth_error=<code>` when the return URL is known.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -51,7 +51,7 @@ function textError(message: string, publicUrl: string, status = 400): NextRespon
 
 function redirectWithFragment(
   returnTo: string,
-  key: "nw_auth" | "nw_auth_error",
+  key: "nextwidgets_auth" | "nextwidgets_auth_error",
   value: string,
   publicUrl: string,
 ): NextResponse {
@@ -147,7 +147,7 @@ export async function GET(req: NextRequest) {
     });
     const handoff = await createHandoffCode(sid, origin, wid);
 
-    return redirectWithFragment(returnTo, "nw_auth", handoff, publicUrl);
+    return redirectWithFragment(returnTo, "nextwidgets_auth", handoff, publicUrl);
   } catch (error) {
     const code: CallbackErrorCode = error instanceof CallbackError ? error.code : "server_error";
     // Log the category only; details may reference request parameters.
@@ -158,6 +158,6 @@ export async function GET(req: NextRequest) {
     if (code === "server_error") {
       console.error("Embed login callback error:", error instanceof Error ? error.message : error);
     }
-    return redirectWithFragment(returnTo, "nw_auth_error", code, publicUrl);
+    return redirectWithFragment(returnTo, "nextwidgets_auth_error", code, publicUrl);
   }
 }

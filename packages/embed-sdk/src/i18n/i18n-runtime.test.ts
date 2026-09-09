@@ -466,6 +466,24 @@ describe("LocaleSession resolution precedence", () => {
     expect(cb).not.toHaveBeenCalled();
   });
 
+  it("adopts a choice left under the pre-rename key", () => {
+    // The `nw_locale` -> `nextwidgets_locale` rename must not silently drop a
+    // visitor's language back to the page default.
+    window.localStorage.setItem("nw_locale", "pt-BR");
+    const session = new LocaleSession();
+
+    expect(session.getLocale()).toBe("pt-BR");
+    // Migrated forward, not read from the old key forever.
+    expect(window.localStorage.getItem(LOCALE_KEY)).toBe("pt-BR");
+    expect(window.localStorage.getItem("nw_locale")).toBeNull();
+  });
+
+  it("prefers the current key when both are present", () => {
+    window.localStorage.setItem("nw_locale", "pt-BR");
+    window.localStorage.setItem(LOCALE_KEY, "es");
+    expect(new LocaleSession().getLocale()).toBe("es");
+  });
+
   it("survives blocked storage", () => {
     // Private browsing, or a site with cookies/storage disabled.
     vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {

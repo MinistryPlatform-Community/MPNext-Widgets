@@ -4,7 +4,7 @@
  * Deliberately shaped like `shared/auth-session.ts`, the pattern this codebase
  * already relies on for page-wide widget state: one instance parked on
  * `window`, resolved once, cached, `onChange` so sibling widgets stay
- * consistent, the visitor's choice persisted the way `nw_sid` is, and a
+ * consistent, the visitor's choice persisted the way `nextwidgets_sid` is, and a
  * `storage` listener so switching language in one tab reaches the others.
  *
  * ## Resolution precedence
@@ -13,7 +13,7 @@
  *
  *  1. `lang` attribute on the widget element — `<next-event-finder lang="es">`
  *  2. `MPNextEmbed.setLocale("es")` / `MPNextEmbed.init({ locale })`
- *  3. The visitor's persisted choice (`nw_locale`)
+ *  3. The visitor's persisted choice (`nextwidgets_locale`)
  *  4. The nearest `[lang]` ancestor, else `<html lang>`
  *  5. `navigator.languages`
  *  6. `en`
@@ -35,7 +35,19 @@ import {
 import { createTranslator, type Translator } from "./t";
 import { getFormatters, type Formatters } from "./formatters";
 
-export const LOCALE_KEY = "nw_locale";
+export const LOCALE_KEY = "nextwidgets_locale";
+
+/**
+ * The key this used to be, read once so the rename does not discard a
+ * visitor's language choice. Deleted forward on read.
+ *
+ * Lower stakes than the `sid` rename — losing this drops the visitor back to
+ * `<html lang>` or their browser preference rather than signing them out — but
+ * a congregant who deliberately picked Spanish should not silently get English
+ * back because we renamed a key. Safe to remove on the same schedule as
+ * `LEGACY_SID_KEY` in `shared/auth-session.ts`.
+ */
+const LEGACY_LOCALE_KEY = "nw_locale";
 
 export class LocaleSession {
   /** The page-wide locale, once resolved. */
@@ -175,7 +187,21 @@ export class LocaleSession {
       () => (typeof window !== "undefined" ? window.sessionStorage : null),
     ]) {
       try {
-        const value = get()?.getItem(LOCALE_KEY);
+        const store = get();
+        let value = store?.getItem(LOCALE_KEY);
+        if (!value) {
+          // Transitional: adopt a choice stored under the pre-rename key.
+          const legacy = store?.getItem(LEGACY_LOCALE_KEY);
+          if (legacy) {
+            value = legacy;
+            try {
+              store?.setItem(LOCALE_KEY, legacy);
+              store?.removeItem(LEGACY_LOCALE_KEY);
+            } catch {
+              /* read-only store — the value below still applies for this page */
+            }
+          }
+        }
         if (value) {
           const resolved = resolveLocale(value);
           if (resolved !== DEFAULT_LOCALE || value.startsWith("en")) {
@@ -298,7 +324,7 @@ export class LocaleSession {
   // ── Change notification ──────────────────────────────────────────────────
 
   private storageListener = (e: StorageEvent) => {
-    if (e.key === LOCALE_KEY) {
+    if (e.key === LOCALE_KEY || e.key === LEGACY_LOCALE_KEY) {
       const next = this.readStored();
       if (next && next !== this.locale) {
         this.locale = next;

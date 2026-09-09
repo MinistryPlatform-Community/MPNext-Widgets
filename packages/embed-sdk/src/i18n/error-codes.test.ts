@@ -44,7 +44,7 @@ function routeFiles(dir: string, out: string[] = []): string[] {
  * `/error:\s*"…"/` also matches the inside of a string literal, and
  * `auth/callback/route.ts` contains `console.error("Embed login callback
  * error:", …)`. That route is a top-level navigation that reports failures as a
- * `#nw_auth_error=<code>` fragment rather than a JSON body, so it has no error
+ * `#nextwidgets_auth_error=<code>` fragment rather than a JSON body, so it has no error
  * bodies to find and every match in it was noise.
  */
 const ERROR_PROPERTY = /(?:^|[{,])\s*error:\s*"([^"]+)"/gm;

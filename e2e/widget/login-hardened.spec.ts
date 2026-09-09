@@ -8,9 +8,9 @@ import { test, expect, skipUnlessMode } from "./fixtures";
  *              →  GET /api/embed/auth/login   (widget host, sets state cookie)
  *              →  MP /oauth/connect/authorize  (username + password form)
  *              →  GET /api/embed/auth/callback (server session + handoff code)
- *              →  demo page #nw_auth=<code>    (SDK exchanges it for a sid)
+ *              →  demo page #nextwidgets_auth=<code>    (SDK exchanges it for a sid)
  *              →  avatar rendered (.nw-avatar-btn)
- *              →  Log out from the dropdown    → nw_sid cleared
+ *              →  Log out from the dropdown    → nextwidgets_sid cleared
  *
  * Preconditions (the spec skips itself otherwise):
  *   - PLAYWRIGHT_MP_USERNAME / PLAYWRIGHT_MP_PASSWORD: a non-admin MP user with
@@ -35,7 +35,7 @@ const PASSWORD = process.env.PLAYWRIGHT_MP_PASSWORD;
 const HAS_CREDS = Boolean(USERNAME && PASSWORD);
 
 /** localStorage key the SDK uses for the opaque session id (auth-session.ts SID_KEY). */
-const SID_KEY = "nw_sid";
+const SID_KEY = "nextwidgets_sid";
 
 /** Read the sid from either storage — the demo page uses the default (localStorage). */
 async function readSid(page: Page): Promise<string | null> {
@@ -219,7 +219,7 @@ test.describe("User Menu Widget - hardened sign-in", () => {
     await completeMpLogin(page, USERNAME!, PASSWORD!);
 
     // 3. Back on the demo page. The callback lands us on
-    //    /demo-user-menu.html#nw_auth=<code>; the SDK strips the fragment as it
+    //    /demo-user-menu.html#nextwidgets_auth=<code>; the SDK strips the fragment as it
     //    exchanges the code, so wait for the origin rather than the exact URL.
     await page.waitForURL((url) => url.origin === "http://localhost:5173", { timeout: 60_000 });
     await expect(page).toHaveURL(/\/demo-user-menu\.html/);
@@ -227,8 +227,8 @@ test.describe("User Menu Widget - hardened sign-in", () => {
     // 4. The handoff was exchanged for a sid ...
     await expect.poll(() => readSid(page), { timeout: 30_000 }).toMatch(/^[A-Za-z0-9_-]{16,}$/);
     // ... and the one-time code no longer sits in the URL.
-    expect(page.url()).not.toContain("nw_auth=");
-    expect(page.url()).not.toContain("nw_auth_error=");
+    expect(page.url()).not.toContain("nextwidgets_auth=");
+    expect(page.url()).not.toContain("nextwidgets_auth_error=");
 
     // 5. Authenticated render: avatar button replaces Sign In.
     const avatar = menu.locator(".nw-avatar-btn");

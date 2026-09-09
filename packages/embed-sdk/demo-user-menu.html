@@ -368,7 +368,7 @@
         pill.dataset.mode = "legacy";
         pill.title = `${apiHost}/api/embed/auth/config did not answer — the SDK falls back to legacy. Is pnpm dev running and this origin in EMBED_ALLOWED_ORIGINS?`;
       }
-      // Surface a failed OAuth return (#nw_auth_error=…) or handoff exchange.
+      // Surface a failed OAuth return (#nextwidgets_auth_error=…) or handoff exchange.
       const auth = window.MPNextEmbed?.getAuthSession?.();
       const showError = () => {
         const code = auth?.getAuthError?.();

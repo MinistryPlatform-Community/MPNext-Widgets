@@ -183,7 +183,7 @@ describe("<next-user-menu> auth modes", () => {
   });
 
   it('session-scope="tab" stores the sid in sessionStorage', async () => {
-    history.replaceState(null, "", "/page#nw_auth=CODE");
+    history.replaceState(null, "", "/page#nextwidgets_auth=CODE");
     const token = makeJwt({ sid: "S-TAB" });
     mockFetch({
       "/api/embed/auth/config": configOk("hardened"),

@@ -248,7 +248,7 @@ while fetching its own data, so the locale chunk lands inside a window that alre
 
 `locale-session.ts` deliberately mirrors `shared/auth-session.ts`, the pattern already
 proven in this codebase: page-wide singleton, resolve once, cache, `onChange` so sibling
-widgets stay consistent, persist the visitor's choice the way `nw_sid` is persisted.
+widgets stay consistent, persist the visitor's choice the way `nextwidgets_sid` is persisted.
 
 ```ts
 const session = getLocaleSession();
@@ -262,8 +262,8 @@ session.onChange((locale) => { … }); // returns an unsubscribe
 
 1. `lang` attribute on the widget element — `<next-event-finder lang="pt-BR">`
 2. `MPNextEmbed.setLocale("es")` / `MPNextEmbed.init({ locale })`
-3. Visitor's persisted choice — `localStorage["nw_locale"]`, `sessionStorage` under
-   `session-scope="tab"`, matching how `AuthSession` scopes `nw_sid`
+3. Visitor's persisted choice — `localStorage["nextwidgets_locale"]`, `sessionStorage` under
+   `session-scope="tab"`, matching how `AuthSession` scopes `nextwidgets_sid`
 4. Nearest `[lang]` ancestor, else `<html lang>` — **the rung that matters**: a bilingual
    WordPress/Polylang site already sets this, so those churches get translated widgets with
    no snippet edit at all

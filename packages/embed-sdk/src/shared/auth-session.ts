@@ -4,7 +4,7 @@
  * One instance per page (singleton on `window.__nextAuthSession`). Owns:
  *   - auth mode discovery (`GET /api/embed/auth/config`, once; legacy on failure)
  *   - the opaque `sid` (localStorage by default, sessionStorage when scope="tab")
- *   - the `#nw_auth=<code>` handoff fragment written by the OAuth callback
+ *   - the `#nextwidgets_auth=<code>` handoff fragment written by the OAuth callback
  *   - the in-memory widget JWT cache (never persisted)
  *   - the token ladder: handoff exchange → sid → legacy silent-upgrade → public
  *   - login() / logout() / me() helpers used by the widgets
@@ -47,7 +47,22 @@ export interface MeResponse {
 
 export type StorageScope = "local" | "tab";
 
-export const SID_KEY = "nw_sid";
+export const SID_KEY = "nextwidgets_sid";
+
+/**
+ * The key this used to be, read once so the rename does not sign anyone out.
+ *
+ * The `sid` lives in the *host church site's* localStorage. Renaming the key
+ * without this makes every already-signed-in congregant look signed out on the
+ * next deploy — the SDK finds nothing, mints a public token, and they have to
+ * sign in again. `getSid()` falls back to this and migrates the value forward
+ * on read, so the switch is invisible.
+ *
+ * Safe to delete once every host page has loaded the SDK at least once after
+ * the rename shipped (the loader is cached for 5 minutes, sessions have a
+ * sliding idle TTL, so a month is generous).
+ */
+const LEGACY_SID_KEY = "nw_sid";
 export const LEGACY_TOKEN_KEY = "mpp-widgets_AuthToken";
 export const LEGACY_EXPIRES_KEY = "mpp-widgets_ExpiresAfter";
 
@@ -141,6 +156,7 @@ export class AuthSession {
     if (
       e.key === null ||
       e.key === SID_KEY ||
+      e.key === LEGACY_SID_KEY ||
       e.key === LEGACY_TOKEN_KEY ||
       e.key === LEGACY_EXPIRES_KEY
     ) {
@@ -243,7 +259,18 @@ export class AuthSession {
       const store = this.storage();
       if (store) {
         // Storage is reachable: it is authoritative (cross-tab clears must win).
-        return store.getItem(SID_KEY) || null;
+        const current = store.getItem(SID_KEY);
+        if (current) return current;
+
+        // Transitional: adopt a session stored under the pre-rename key and
+        // move it forward, so the key change costs nobody their sign-in.
+        const legacy = store.getItem(LEGACY_SID_KEY);
+        if (legacy) {
+          store.setItem(SID_KEY, legacy);
+          store.removeItem(LEGACY_SID_KEY);
+          return legacy;
+        }
+        return null;
       }
     } catch {
       /* storage blocked — fall back to memory */
@@ -270,10 +297,12 @@ export class AuthSession {
     const prev = this.getSid();
     this.memorySid = null;
     for (const getStore of [() => window.localStorage, () => window.sessionStorage]) {
-      try {
-        getStore().removeItem(SID_KEY);
-      } catch {
-        /* storage blocked */
+      for (const key of [SID_KEY, LEGACY_SID_KEY]) {
+        try {
+          getStore().removeItem(key);
+        } catch {
+          /* storage blocked */
+        }
       }
     }
     this.meCache = null;
@@ -283,7 +312,7 @@ export class AuthSession {
   // ── Handoff fragment ───────────────────────────────────────────
 
   /**
-   * Parse `#nw_auth=<code>` / `#nw_auth_error=<code>` from the URL, strip them
+   * Parse `#nextwidgets_auth=<code>` / `#nextwidgets_auth_error=<code>` from the URL, strip them
    * (history.replaceState, other fragment params preserved) and return them.
    * Returns the parsed values on the first call only; null afterwards or when
    * nothing was present. The code is also retained internally so getToken()
@@ -295,7 +324,7 @@ export class AuthSession {
 
     if (typeof window === "undefined" || !window.location) return null;
     const rawHash = window.location.hash || "";
-    if (!rawHash.includes("nw_auth")) return null;
+    if (!rawHash.includes("nextwidgets_auth")) return null;
 
     const segments = rawHash.replace(/^#/, "").split("&");
     let code: string | undefined;
@@ -305,9 +334,9 @@ export class AuthSession {
       const eq = seg.indexOf("=");
       const key = eq === -1 ? seg : seg.slice(0, eq);
       const val = eq === -1 ? "" : seg.slice(eq + 1);
-      if (key === "nw_auth") {
+      if (key === "nextwidgets_auth") {
         code = safeDecode(val) || undefined;
-      } else if (key === "nw_auth_error") {
+      } else if (key === "nextwidgets_auth_error") {
         error = safeDecode(val) || undefined;
       } else if (seg.length) {
         kept.push(seg);
@@ -336,13 +365,13 @@ export class AuthSession {
     return result;
   }
 
-  /** Short error code from `#nw_auth_error=…` on this page load, if any. */
+  /** Short error code from `#nextwidgets_auth_error=…` on this page load, if any. */
   getAuthError(): string | null {
     return this.lastAuthError;
   }
 
   /**
-   * True when the page arrived with a `#nw_auth=<code>` that has not been
+   * True when the page arrived with a `#nextwidgets_auth=<code>` that has not been
    * exchanged yet. Parses (and strips) the fragment on first use. Callers use
    * it to trigger the exchange eagerly at boot — the code expires in 60s.
    */
@@ -514,7 +543,7 @@ export class AuthSession {
   /**
    * Top-level navigation to the widget host's login route, which starts the
    * OAuth flow with MP and returns to `returnTo` (default: current URL) with a
-   * one-time `#nw_auth=<code>` fragment.
+   * one-time `#nextwidgets_auth=<code>` fragment.
    */
   login(opts?: { wid?: string; returnTo?: string }): void {
     if (typeof window === "undefined") return;

@@ -11,7 +11,7 @@ import { allowedOrigins } from "@/lib/embed/config";
 import { isOriginAllowed } from "@/lib/embed/auth";
 
 /** Cookie carrying the signed OAuth state between /login and /callback. */
-export const STATE_COOKIE_NAME = "nw_oauth_state";
+export const STATE_COOKIE_NAME = "nextwidgets_oauth_state";
 /** Cookie is scoped to the auth routes only. */
 export const STATE_COOKIE_PATH = "/api/embed/auth";
 /** Lifetime of the state cookie / state token, in seconds. */
@@ -19,7 +19,7 @@ export const STATE_TTL_SECONDS = 600;
 /** Default widget id when the login link does not name one. */
 export const DEFAULT_WID = "user-menu";
 
-/** Payload signed into the `nw_oauth_state` cookie. */
+/** Payload signed into the `nextwidgets_oauth_state` cookie. */
 export interface OAuthStatePayload {
   state: string;
   nonce: string;

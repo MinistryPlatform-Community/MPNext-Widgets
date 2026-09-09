@@ -71,7 +71,7 @@ async function startLogin(wid = 'user-menu', returnTo = RETURN_TO) {
   url.searchParams.set('wid', wid);
   const res = await loginGET(new NextRequest(url));
   const state = new URL(res.headers.get('location')!).searchParams.get('state')!;
-  const cookie = res.cookies.get('nw_oauth_state')!.value;
+  const cookie = res.cookies.get('nextwidgets_oauth_state')!.value;
   return { state, cookie };
 }
 
@@ -79,12 +79,12 @@ function callback(params: Record<string, string>, cookie?: string): NextRequest 
   const url = new URL('http://localhost:3000/api/embed/auth/callback');
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return new NextRequest(url, {
-    headers: cookie ? { Cookie: `nw_oauth_state=${cookie}` } : {},
+    headers: cookie ? { Cookie: `nextwidgets_oauth_state=${cookie}` } : {},
   });
 }
 
 function expectCookieCleared(res: Response & { cookies: { get(name: string): { value: string; maxAge?: number } | undefined } }) {
-  const cleared = res.cookies.get('nw_oauth_state');
+  const cleared = res.cookies.get('nextwidgets_oauth_state');
   expect(cleared).toBeDefined();
   expect(cleared!.value).toBe('');
   expect(cleared!.maxAge).toBe(0);
@@ -106,7 +106,7 @@ describe('GET /api/embed/auth/callback', () => {
     vi.stubEnv('NODE_ENV', 'test');
   });
 
-  it('happy path: creates a session, redirects to return_to with #nw_auth=<code>, clears the cookie', async () => {
+  it('happy path: creates a session, redirects to return_to with #nextwidgets_auth=<code>, clears the cookie', async () => {
     const { calls } = stubMpFetch();
     const { state, cookie } = await startLogin('profile');
 
@@ -116,8 +116,8 @@ describe('GET /api/embed/auth/callback', () => {
     expectCookieCleared(res);
 
     const location = res.headers.get('location')!;
-    expect(location.startsWith(`${RETURN_TO}#nw_auth=`)).toBe(true);
-    const handoff = decodeURIComponent(location.split('#nw_auth=')[1]);
+    expect(location.startsWith(`${RETURN_TO}#nextwidgets_auth=`)).toBe(true);
+    const handoff = decodeURIComponent(location.split('#nextwidgets_auth=')[1]);
 
     // Token exchange used the registered redirect_uri and the code.
     const tokenCall = calls.find((c) => c.url === TOKEN_URL)!;
@@ -153,7 +153,7 @@ describe('GET /api/embed/auth/callback', () => {
     stubMpFetch();
     const { state, cookie } = await startLogin('user-menu', `${ORIGIN}/page#nw-tab=profile`);
     const res = await GET(callback({ code: 'c', state }, cookie));
-    expect(res.headers.get('location')).toMatch(new RegExp(`^${ORIGIN}/page#nw-tab=profile&nw_auth=.+`));
+    expect(res.headers.get('location')).toMatch(new RegExp(`^${ORIGIN}/page#nw-tab=profile&nextwidgets_auth=.+`));
   });
 
   it('does not fail login when the Image_GUID lookup throws', async () => {
@@ -162,18 +162,18 @@ describe('GET /api/embed/auth/callback', () => {
     const { state, cookie } = await startLogin();
     const res = await GET(callback({ code: 'c', state }, cookie));
     expect(res.status).toBe(302);
-    const handoff = decodeURIComponent(res.headers.get('location')!.split('#nw_auth=')[1]);
+    const handoff = decodeURIComponent(res.headers.get('location')!.split('#nextwidgets_auth=')[1]);
     const redeemed = await redeemHandoffCode(handoff, ORIGIN);
     const record = await getEmbedSession(redeemed!.sid, ORIGIN);
     expect(record?.user.imageGuid).toBeNull();
   });
 
-  it('state mismatch → redirect with #nw_auth_error=state_mismatch and no MP calls', async () => {
+  it('state mismatch → redirect with #nextwidgets_auth_error=state_mismatch and no MP calls', async () => {
     const { fetchMock } = stubMpFetch();
     const { cookie } = await startLogin();
     const res = await GET(callback({ code: 'c', state: 'forged-state' }, cookie));
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe(`${RETURN_TO}#nw_auth_error=state_mismatch`);
+    expect(res.headers.get('location')).toBe(`${RETURN_TO}#nextwidgets_auth_error=state_mismatch`);
     expect(fetchMock).not.toHaveBeenCalled();
     expectCookieCleared(res);
   });
@@ -197,7 +197,7 @@ describe('GET /api/embed/auth/callback', () => {
     stubMpFetch();
     const { state, cookie } = await startLogin();
     const res = await GET(callback({ state, error: 'access_denied' }, cookie));
-    expect(res.headers.get('location')).toBe(`${RETURN_TO}#nw_auth_error=exchange_failed`);
+    expect(res.headers.get('location')).toBe(`${RETURN_TO}#nextwidgets_auth_error=exchange_failed`);
   });
 
   it('token endpoint failure → exchange_failed', async () => {
@@ -205,14 +205,14 @@ describe('GET /api/embed/auth/callback', () => {
     const { state, cookie } = await startLogin();
     const res = await GET(callback({ code: 'bad', state }, cookie));
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe(`${RETURN_TO}#nw_auth_error=exchange_failed`);
+    expect(res.headers.get('location')).toBe(`${RETURN_TO}#nextwidgets_auth_error=exchange_failed`);
   });
 
   it('userinfo failure → userinfo_failed', async () => {
     stubMpFetch({ userinfoStatus: 401 });
     const { state, cookie } = await startLogin();
     const res = await GET(callback({ code: 'c', state }, cookie));
-    expect(res.headers.get('location')).toBe(`${RETURN_TO}#nw_auth_error=userinfo_failed`);
+    expect(res.headers.get('location')).toBe(`${RETURN_TO}#nextwidgets_auth_error=userinfo_failed`);
   });
 
   it('a state cookie cannot be replayed after use (single login per cookie)', async () => {

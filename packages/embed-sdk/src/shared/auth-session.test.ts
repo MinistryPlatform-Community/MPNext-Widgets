@@ -138,6 +138,36 @@ describe("AuthSession", () => {
   // ── sid storage ────────────────────────────────────────────────
 
   describe("sid storage", () => {
+    it("adopts a session left under the pre-rename key", () => {
+      // Without this fallback the `nw_sid` -> `nextwidgets_sid` rename signs out
+      // every already-signed-in congregant on the deploy that ships it: the SDK
+      // finds nothing under the new key and mints a public token instead.
+      localStorage.setItem("nw_sid", "old-session");
+      const s = new AuthSession(HOST);
+
+      expect(s.getSid()).toBe("old-session");
+      // Migrated forward on read, so the old key is not consulted forever.
+      expect(localStorage.getItem(SID_KEY)).toBe("old-session");
+      expect(localStorage.getItem("nw_sid")).toBeNull();
+    });
+
+    it("prefers the current key when both are present", () => {
+      localStorage.setItem("nw_sid", "old-session");
+      localStorage.setItem(SID_KEY, "current-session");
+      expect(new AuthSession(HOST).getSid()).toBe("current-session");
+    });
+
+    it("clears the pre-rename key on sign-out too", () => {
+      // Otherwise `clearSid()` leaves the old value behind and the very next
+      // `getSid()` adopts it — signing the user back in.
+      localStorage.setItem("nw_sid", "old-session");
+      const s = new AuthSession(HOST);
+      s.clearSid();
+
+      expect(localStorage.getItem("nw_sid")).toBeNull();
+      expect(s.getSid()).toBeNull();
+    });
+
     it("uses localStorage by default and sessionStorage for scope=tab", () => {
       const s = new AuthSession(HOST);
       s.setSid("sid-local");
@@ -196,8 +226,8 @@ describe("AuthSession", () => {
   // ── handoff fragment ───────────────────────────────────────────
 
   describe("consumeHandoffFromUrl()", () => {
-    it("parses and strips #nw_auth while preserving other fragment params", () => {
-      history.replaceState(null, "", "/page?x=1#nw-tab=profile&nw_auth=CODE123");
+    it("parses and strips #nextwidgets_auth while preserving other fragment params", () => {
+      history.replaceState(null, "", "/page?x=1#nw-tab=profile&nextwidgets_auth=CODE123");
       const s = new AuthSession(HOST);
 
       expect(s.consumeHandoffFromUrl()).toEqual({ code: "CODE123" });
@@ -207,16 +237,16 @@ describe("AuthSession", () => {
       expect(s.consumeHandoffFromUrl()).toBeNull();
     });
 
-    it("removes the hash entirely when nw_auth was the only param", () => {
-      history.replaceState(null, "", "/page#nw_auth=ONLY");
+    it("removes the hash entirely when nextwidgets_auth was the only param", () => {
+      history.replaceState(null, "", "/page#nextwidgets_auth=ONLY");
       const s = new AuthSession(HOST);
       expect(s.consumeHandoffFromUrl()).toEqual({ code: "ONLY" });
       expect(window.location.hash).toBe("");
       expect(window.location.pathname).toBe("/page");
     });
 
-    it("parses nw_auth_error, exposes it via getAuthError() and notifies", () => {
-      history.replaceState(null, "", "/page#nw_auth_error=state_mismatch");
+    it("parses nextwidgets_auth_error, exposes it via getAuthError() and notifies", () => {
+      history.replaceState(null, "", "/page#nextwidgets_auth_error=state_mismatch");
       const s = new AuthSession(HOST);
       const cb = vi.fn();
       s.onChange(cb);
@@ -227,7 +257,7 @@ describe("AuthSession", () => {
     });
 
     it("hasPendingHandoff() parses lazily and reports an unexchanged code", async () => {
-      history.replaceState(null, "", "/page#nw_auth=PENDING");
+      history.replaceState(null, "", "/page#nextwidgets_auth=PENDING");
       const s = new AuthSession(HOST);
       expect(s.hasPendingHandoff()).toBe(true);
       expect(window.location.hash).toBe("");
@@ -255,7 +285,7 @@ describe("AuthSession", () => {
 
   describe("getToken()", () => {
     it("exchanges a pending handoff code first, stores the sid and caches the token", async () => {
-      history.replaceState(null, "", "/page#nw_auth=HANDOFF");
+      history.replaceState(null, "", "/page#nextwidgets_auth=HANDOFF");
       const token = makeJwt(nowSec() + 300, { sid: "S1" });
       const fetchMock = mockFetch({
         "/api/embed/auth/config": configOk("hardened"),
@@ -278,7 +308,7 @@ describe("AuthSession", () => {
     });
 
     it("falls back to the ladder when the handoff code is rejected", async () => {
-      history.replaceState(null, "", "/page#nw_auth=BAD");
+      history.replaceState(null, "", "/page#nextwidgets_auth=BAD");
       const pub = makeJwt(nowSec() + 300);
       const fetchMock = mockFetch({
         "/api/embed/auth/config": configOk("hardened"),
