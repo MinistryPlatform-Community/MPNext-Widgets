@@ -30,9 +30,21 @@ match the Node 24 runtime (Vercel runs 24).
 | 3 | `03-typescript-7.md` | **blocked upstream** — attempted 2026-09-07, not merged | wait for TS 7.1 |
 | 17 | `17-better-auth-vitest5-peer.md` | **suppressed 2026-09-08** — warning gone; remove the rule when upstream widens | 5 min to retire |
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire. **Now the sole gate on a warning-free `pnpm install`** | 15 min |
-| 37 | `37-playwright-local-network-access-blocks-widget-e2e.md` | none in prod — but every widget E2E run tests a silently de-authenticated widget | 20 min |
+| 37 | `37-playwright-local-network-access-blocks-widget-e2e.md` | **done 2026-09-08** — and the Local Network Access diagnosis was a **misdiagnosis**; do not add the launch flag | — |
 | 38 | `38-mp-widget-overrides-css-never-injected.md` | either MP widgets render unbranded in prod, or the build maintains dead plumbing — read the file, it is one browser check | 30 min to triage |
 | 39 | `39-full-calendar-density-dots-first-paint.md` | none — a decoration that has never rendered on its intended view; decide whether to keep it | 1 hour |
+
+Item 37 (widget E2E) is **done (2026-09-08)** — and, like item 7, the blocker the
+file first recorded was a **misdiagnosis**. Chromium's Local Network Access
+checks do *not* block `localhost:5173 → localhost:3000`; loopback → loopback is
+not a cross-address-space request, and it was measured passing on the bundled
+Chromium 153 even with the feature force-enabled, and on real Chrome. **Do not
+add the `--disable-features=LocalNetworkAccess...` launch flag** the file
+originally proposed: it fixes nothing and would blind the harness to a real class
+of browser-policy bug. The actual defect was that the specs could not tell a
+working widget from a de-authenticated one — `AuthSession` degrades every config
+failure to `legacy` + a public token by design, and the assertions accepted that.
+See the file for what replaced them.
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three

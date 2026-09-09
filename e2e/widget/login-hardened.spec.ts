@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect, skipUnlessMode } from "./fixtures";
 
 /**
  * End-to-end widget sign-in through the hardened flow:
@@ -14,11 +15,14 @@ import { test, expect, type Page } from "@playwright/test";
  * Preconditions (the spec skips itself otherwise):
  *   - PLAYWRIGHT_MP_USERNAME / PLAYWRIGHT_MP_PASSWORD: a non-admin MP user with
  *     MFA disabled (see .env.example).
- *   - EMBED_AUTH_MODE=dual or hardened, exported in the shell that runs
- *     Playwright AND visible to the `pnpm dev` server it launches (or set
- *     EMBED_AUTH_MODE_ORIGINS=http://localhost:5173=dual and export
- *     EMBED_AUTH_MODE=dual here so the skip guard passes). In legacy mode the
- *     widget renders <mpp-user-login> instead and there is nothing to drive.
+ *   - The server must resolve dual or hardened for the demo origin, i.e. either
+ *     EMBED_AUTH_MODE=dual|hardened or
+ *     EMBED_AUTH_MODE_ORIGINS=http://localhost:5173=dual, in the environment
+ *     the Next dev server reads. The `embedConfig` fixture asks the server
+ *     which mode it resolved, so setting only the per-origin override is
+ *     enough -- nothing needs to be exported into the Playwright shell. In
+ *     legacy mode the widget renders <mpp-user-login> instead and there is
+ *     nothing to drive, so this spec skips.
  *   - http://localhost:3000/api/embed/auth/callback registered as a redirect
  *     URI on the MP OAuth client used by OIDC_CLIENT_ID.
  *
@@ -27,10 +31,8 @@ import { test, expect, type Page } from "@playwright/test";
 
 const USERNAME = process.env.PLAYWRIGHT_MP_USERNAME;
 const PASSWORD = process.env.PLAYWRIGHT_MP_PASSWORD;
-const AUTH_MODE = (process.env.EMBED_AUTH_MODE || "legacy").trim().toLowerCase();
 
 const HAS_CREDS = Boolean(USERNAME && PASSWORD);
-const NON_LEGACY = AUTH_MODE === "dual" || AUTH_MODE === "hardened";
 
 /** localStorage key the SDK uses for the opaque session id (auth-session.ts SID_KEY). */
 const SID_KEY = "nw_sid";
@@ -69,6 +71,65 @@ async function completeMpLogin(page: Page, username: string, password: string): 
       ].join(", "),
     )
     .first();
+
+  // MP answers a rejected authorize request with its own error page rather than
+  // a login form -- "Provided redirect URI is not registered for the client."
+  // is the usual one. Waiting only for the username field turns that into a
+  // blank 30s timeout that says nothing about the cause, so race the two and
+  // report whatever MP actually said.
+  const mpError = page.locator('h1:has-text("Error")').first();
+  const outcome = await Promise.race([
+    userField
+      .waitFor({ state: "visible", timeout: 30_000 })
+      .then(() => "form" as const)
+      .catch(() => "timeout" as const),
+    mpError
+      .waitFor({ state: "visible", timeout: 30_000 })
+      .then(() => "error" as const)
+      .catch(() => "timeout" as const),
+  ]);
+
+  if (outcome === "error") {
+    // MP's error page is Angular-bound: the heading renders before the message
+    // does, so a read taken the moment it appears captures the literal
+    // `{{model.errorMessage}}`. Give the binding a moment to resolve, and drop
+    // any placeholder that is still unbound rather than reporting braces.
+    // The populated "Request Id" is the marker that binding finished; waiting
+    // only for the braces to disappear races Angular to a briefly-empty render
+    // and captures nothing.
+    await page
+      .waitForFunction(
+        () => {
+          const text = document.body.innerText || "";
+          return !text.includes("{{") && /Request Id:\s*\S+/i.test(text);
+        },
+        null,
+        { timeout: 5_000 },
+      )
+      .catch(() => {
+        /* best effort; the filter below keeps the message readable regardless */
+      });
+
+    const detail = (await page.locator("body").innerText().catch(() => ""))
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !line.includes("{{"))
+      .join(" | ");
+    throw new Error(
+      [
+        `MinistryPlatform rejected the authorize request at ${page.url()}`,
+        `  MP said: ${detail}`,
+        "",
+        "This is tenant OAuth-client configuration, not a defect in this repo.",
+        "Register the widget host's callback as a redirect URI on the MP OAuth",
+        "client named by OIDC_CLIENT_ID -- for local dev that is exactly:",
+        "  http://localhost:3000/api/embed/auth/callback",
+        "(EMBED_PUBLIC_URL overrides the host half when set; see getPublicUrl in",
+        "src/app/api/embed/auth/_lib/auth-route-helpers.ts).",
+      ].join("\n"),
+    );
+  }
+
   await userField.waitFor({ state: "visible", timeout: 30_000 });
   await userField.fill(username);
 
@@ -112,15 +173,19 @@ test.describe("User Menu Widget - hardened sign-in", () => {
     !HAS_CREDS,
     "PLAYWRIGHT_MP_USERNAME / PLAYWRIGHT_MP_PASSWORD not set (MFA-disabled MP test account required)",
   );
-  test.skip(
-    !NON_LEGACY,
-    `EMBED_AUTH_MODE is "${AUTH_MODE}"; this spec needs dual or hardened`,
-  );
-
   // A full OAuth round trip against a live tenant is slow; be generous.
   test.setTimeout(120_000);
 
-  test("Sign In → MP login → returns with a sid and avatar → Log out clears the sid", async ({ page }) => {
+  test("Sign In → MP login → returns with a sid and avatar → Log out clears the sid", async ({
+    page,
+    embedConfig,
+  }) => {
+    // The mode is a server, per-origin decision, so ask the server rather than
+    // the shell. `embedConfig` has already failed the run if the config
+    // endpoint was unreachable, so reaching here in `legacy` means the server
+    // really is in legacy -- not that the SDK silently fell back to it.
+    skipUnlessMode(embedConfig, ["dual", "hardened"]);
+
     // Start signed out regardless of what an earlier run left behind.
     await page.goto("/demo-user-menu.html");
     await page.evaluate(() => {
@@ -136,15 +201,13 @@ test.describe("User Menu Widget - hardened sign-in", () => {
     const menu = page.locator("next-user-menu");
     await expect(menu).toBeAttached({ timeout: 10_000 });
 
-    // The server must agree it is not in legacy mode for this origin, otherwise
-    // the widget renders <mpp-user-login> and .nw-login-btn never appears.
-    const banner = page.locator("#auth-mode-pill");
-    await expect(banner).not.toHaveText(/checking/, { timeout: 15_000 });
-    const resolvedMode = (await banner.textContent())?.trim();
-    expect(
-      resolvedMode === "dual" || resolvedMode === "hardened",
-      `demo banner resolved "${resolvedMode}" — the dev server is not running in dual/hardened for http://localhost:5173`,
-    ).toBe(true);
+    // The page must have resolved the same mode the fixture confirmed with the
+    // server. A mismatch here is a page-side config-fetch failure (the pill
+    // falls back to "legacy (config unavailable)"), which would otherwise show
+    // up as .nw-login-btn simply never appearing.
+    await expect(page.locator("#auth-mode-pill")).toHaveText(embedConfig.mode, {
+      timeout: 15_000,
+    });
 
     // 1. Sign In button inside the widget's shadow root. Playwright locators
     //    pierce open shadow DOM, so a plain CSS selector reaches it.
