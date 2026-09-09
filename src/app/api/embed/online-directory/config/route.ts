@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     const claims = await requireWidgetAuth(req, { widget: "*" });
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required. Please sign in." },
+        { error: "auth_required", message: "Authentication required. Please sign in." },
         { status: 401, headers: getCorsHeaders(origin) }
       );
     }
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     const user = await service.getUserByGuid(claims.sub);
     if (!user || !(await service.canAccessDirectory(user.Contact_ID))) {
       return NextResponse.json(
-        { error: "You do not have access to the directory." },
+        { error: "directory_forbidden", message: "You do not have access to the directory." },
         { status: 403, headers: getCorsHeaders(origin) }
       );
     }

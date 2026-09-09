@@ -2,7 +2,13 @@
   "compilerOptions": {
     "target": "ES2019",
     "module": "ESNext",
-    "lib": ["ES2019", "DOM", "DOM.Iterable"],
+    // `ES2021.Intl` is a *type-only* addition on top of the ES2019 target: the
+    // i18n layer uses `Intl.ListFormat` (ES2021) and `Intl.RelativeTimeFormat`
+    // (ES2020), both feature-detected at runtime in `src/i18n/formatters.ts`
+    // with a graceful fallback, because these widgets run on whatever browser a
+    // congregant brings to a church website. Adding the lib does not change
+    // what Vite emits — `build.target` still pins ES2019.
+    "lib": ["ES2019", "ES2020.Intl", "ES2021.Intl", "DOM", "DOM.Iterable"],
     "noEmit": true,
     "strict": true,
     "esModuleInterop": true,

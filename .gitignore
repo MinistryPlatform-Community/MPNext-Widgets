@@ -13,6 +13,10 @@ packages/types/src/*.d.ts.map
 public/embed-sdk/next-embed.js
 public/embed-sdk/next-embed.*.js
 public/embed-sdk/next-embed.*.js.map
+# Lazy locale catalogue chunks. Separate patterns because the name uses a
+# hyphen (next-embed-locale-es.<hash>.js), which `next-embed.*.js` misses.
+public/embed-sdk/next-embed-locale-*.js
+public/embed-sdk/next-embed-locale-*.js.map
 public/embed-sdk/mp-widget-overrides.*.css
 !public/embed-sdk/mp-widget-overrides.css
 

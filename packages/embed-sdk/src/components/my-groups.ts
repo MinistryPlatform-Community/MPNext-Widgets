@@ -1,4 +1,5 @@
 import { MPNextWidget } from "../shared/base-widget";
+import { parseWallClock } from "../i18n";
 
 interface GroupAddress {
   addressLine1: string | null;
@@ -43,8 +44,13 @@ export class MyGroupsWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
-    this.render();
-    this.loadGroups();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish; the fetch hides inside the loading state
+    // this widget already paints while it queries the API.
+    void this.initLocale().then(() => {
+      this.render();
+      this.loadGroups();
+    });
   }
 
   attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
@@ -66,15 +72,18 @@ export class MyGroupsWidget extends MPNextWidget {
     try {
       const res = await this.fetch("/api/embed/my-groups");
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: { groups: Group[]; cloudUrlPrefix: string | null } = await res.json();
       this.groups = data.groups || [];
       this.cloudUrlPrefix = data.cloudUrlPrefix || null;
       this.emit("groupsLoaded", { count: this.groups.length });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "Failed to load groups";
+      // `errorText` has already produced a translated sentence; a thrown
+      // non-Error (a dropped connection) becomes the generic network message
+      // rather than leaking English.
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("groupError", { error: this.error });
     } finally {
       this.loading = false;
@@ -97,7 +106,7 @@ export class MyGroupsWidget extends MPNextWidget {
           <div class="header">
             <div class="loading-row">
               ${this.spinnerSvg()}
-              <span>Loading groups...</span>
+              <span>${this.escapeHtml(this.t("myGroups.loading"))}</span>
             </div>
           </div>
         </div>`;
@@ -108,11 +117,11 @@ export class MyGroupsWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-groups">
           <div class="header">
-            <div class="title">Unable to Load</div>
+            <div class="title">${this.escapeHtml(this.t("common.unableToLoad"))}</div>
             <p class="subtitle">${this.escapeHtml(this.error)}</p>
           </div>
           <div class="retry-section">
-            <button class="retry-btn" data-action="retry">Try Again</button>
+            <button class="retry-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
           </div>
         </div>`;
       return;
@@ -124,13 +133,13 @@ export class MyGroupsWidget extends MPNextWidget {
   private renderMain(): string {
     const body =
       this.groups.length === 0
-        ? `<div class="empty-state">You are not currently in any groups.</div>`
+        ? `<div class="empty-state">${this.escapeHtml(this.t("myGroups.empty"))}</div>`
         : `<div class="group-grid">${this.groups.map((g) => this.renderGroupCard(g)).join("")}</div>`;
 
     return `
       <div class="nw-groups">
         <div class="header">
-          <div class="title">My Groups</div>
+          <div class="title">${this.escapeHtml(this.t("myGroups.title"))}</div>
         </div>
         <div class="body">
           ${body}
@@ -145,11 +154,11 @@ export class MyGroupsWidget extends MPNextWidget {
 
     let badge = "";
     if (g.isUserLeader && g.meetsOnline) {
-      badge = `<span class="badge badge-leader">Leader &middot; Meets Online</span>`;
+      badge = `<span class="badge badge-leader">${this.escapeHtml(this.t("myGroups.leaderAndOnline"))}</span>`;
     } else if (g.isUserLeader) {
-      badge = `<span class="badge badge-leader">Leader</span>`;
+      badge = `<span class="badge badge-leader">${this.escapeHtml(this.t("myGroups.leader"))}</span>`;
     } else if (g.meetsOnline) {
-      badge = `<span class="badge badge-online">Meets Online</span>`;
+      badge = `<span class="badge badge-online">${this.escapeHtml(this.t("myGroups.meetsOnline"))}</span>`;
     }
 
     const subtitles = this.buildSubtitles(g);
@@ -164,11 +173,13 @@ export class MyGroupsWidget extends MPNextWidget {
     let groupLifeBtn = "";
     if (this.hideGroupLife === false && this.cloudUrlPrefix) {
       const segment = g.volunteerGroup ? "volunteer" : "group";
-      const label = g.volunteerGroup ? "Volunteer Connect" : "Group Connect";
+      const label = this.t(
+        g.volunteerGroup ? "myGroups.volunteerConnect" : "myGroups.groupConnect"
+      );
       const url = `https://${this.cloudUrlPrefix}.cloudapps.ministryplatform.cloud/connect/${segment}/${g.groupId}`;
       groupLifeBtn = `
         <div class="grouplife-area">
-          <a class="grouplife-btn" target="_blank" rel="noopener" href="${this.escapeHtml(url)}">${label}</a>
+          <a class="grouplife-btn" target="_blank" rel="noopener" href="${this.escapeHtml(url)}">${this.escapeHtml(label)}</a>
         </div>`;
     }
 
@@ -198,15 +209,28 @@ export class MyGroupsWidget extends MPNextWidget {
       }
     }
 
+    // The day name itself is MP-authored; only the join between day and time
+    // is ours, and it differs by language ("@" / "a las" / "às").
     if (g.meetingDay) {
-      lines.push(`${g.meetingDay}${g.meetingTime ? " @ " + this.formatTime(g.meetingTime) : ""}`);
+      lines.push(
+        g.meetingTime
+          ? this.t("myGroups.dayAtTime", {
+              day: g.meetingDay,
+              time: this.formatTime(g.meetingTime),
+            })
+          : g.meetingDay
+      );
     }
 
     if (g.startDate) {
       if (this.isPast(g.startDate)) {
-        lines.push("Already Meeting");
+        lines.push(this.t("myGroups.alreadyMeeting"));
       } else {
-        lines.push(`Starts: ${this.formatDate(g.startDate)}`);
+        lines.push(
+          this.t("myGroups.startsOn", {
+            date: this.fmt.date(g.startDate, "medium"),
+          })
+        );
       }
     }
 
@@ -214,55 +238,43 @@ export class MyGroupsWidget extends MPNextWidget {
   }
 
   /**
-   * Parse the YYYY-MM-DD portion of a date defensively, avoiding the timezone
-   * day-shift that `new Date(isoString)` introduces when the string carries a
-   * trailing Z.
+   * Is this MP date strictly before today?
+   *
+   * `parseWallClock` replaces the local `parseDateParts` and keeps its whole
+   * point: read the calendar parts and build a *local* Date, so the timezone
+   * day-shift `new Date(isoString)` introduces on a trailing-Z string never
+   * happens. The comparison is date-only, hence today's midnight.
    */
-  private parseDateParts(dateString: string): { year: number; month: number; day: number } | null {
-    if (!dateString) return null;
-    const match = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (!match) {
-      const fallback = new Date(dateString);
-      if (isNaN(fallback.getTime())) return null;
-      return {
-        year: fallback.getFullYear(),
-        month: fallback.getMonth() + 1,
-        day: fallback.getDate(),
-      };
-    }
-    return {
-      year: parseInt(match[1], 10),
-      month: parseInt(match[2], 10),
-      day: parseInt(match[3], 10),
-    };
-  }
-
-  private formatDate(dateString: string): string {
-    const parts = this.parseDateParts(dateString);
-    if (!parts) return dateString;
-    const date = new Date(parts.year, parts.month - 1, parts.day);
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  }
-
   private isPast(dateString: string): boolean {
-    const parts = this.parseDateParts(dateString);
-    if (!parts) return false;
-    const date = new Date(parts.year, parts.month - 1, parts.day);
+    const date = parseWallClock(dateString);
+    if (!date) return false;
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    return date.getTime() < today.getTime();
+    return new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+    ).getTime() < today.getTime();
   }
 
+  /**
+   * Format an MP time-of-day string ("18:30" or "1900-01-01T18:30:00").
+   * Kept local rather than routed through `parseWallClock`, which needs a date
+   * part; the hours/minutes go onto an arbitrary date so `fmt.time` can render
+   * them in the visitor's locale.
+   */
   private formatTime(timeString: string): string {
     if (!timeString) return "";
     const match = timeString.match(/(\d{1,2}):(\d{2})/);
     if (match) {
-      const h = parseInt(match[1], 10);
-      const m = parseInt(match[2], 10);
-      const date = new Date(2000, 0, 1, h, m);
-      if (!isNaN(date.getTime())) {
-        return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-      }
+      const date = new Date(
+        2000,
+        0,
+        1,
+        parseInt(match[1], 10),
+        parseInt(match[2], 10),
+      );
+      if (!isNaN(date.getTime())) return this.fmt.time(date);
     }
     return timeString.trim();
   }
@@ -274,7 +286,7 @@ export class MyGroupsWidget extends MPNextWidget {
   }
 
   private groupSvg(): string {
-    return `<svg viewBox="0 0 24 24" fill="#004C97" class="group-icon" role="img" aria-label="Group">
+    return `<svg viewBox="0 0 24 24" fill="#004C97" class="group-icon" role="img" aria-label="${this.escapeHtml(this.t("myGroups.imageLabel"))}">
       <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
     </svg>`;
   }

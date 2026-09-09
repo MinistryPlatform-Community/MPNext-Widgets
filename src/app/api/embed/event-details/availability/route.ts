@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     const eventId = Number(body.eventId);
     if (!Number.isInteger(eventId) || eventId <= 0) {
       return NextResponse.json(
-        { error: "eventId must be a positive integer" },
+        { error: "invalid_request", message: "eventId must be a positive integer" },
         { status: 400, headers: buildFallbackCorsHeaders(origin) }
       );
     }

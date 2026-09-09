@@ -1,3 +1,5 @@
+import type { Formatters, Translator } from "../i18n";
+
 // ── Types ──
 
 export interface EventCountMap {
@@ -10,13 +12,15 @@ interface MiniCalendarOptions {
   selectedDate: string | null;
   onDateClick: (dateKey: string) => void;
   onMonthChange: (newMonth: Date) => void;
+  /**
+   * Translator and formatters, passed down from `full-calendar.ts`. This module
+   * is plain functions rather than a widget class, so it has no `this.t`.
+   */
+  t: Translator;
+  fmt: Formatters;
 }
 
 // ── Helpers (module-private) ──
-
-function formatMonthYear(date: Date): string {
-  return date.toLocaleString("en-US", { month: "long", year: "numeric" });
-}
 
 function toDateKey(date: Date): string {
   const y = date.getFullYear();
@@ -79,7 +83,8 @@ export function buildEventCountMap(
  * Pure vanilla TS -- no framework dependencies.
  */
 export function renderMiniCalendar(options: MiniCalendarOptions): HTMLElement {
-  const { currentMonth, eventsByDate, selectedDate, onDateClick, onMonthChange } = options;
+  const { currentMonth, eventsByDate, selectedDate, onDateClick, onMonthChange, t, fmt } =
+    options;
 
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
@@ -96,7 +101,7 @@ export function renderMiniCalendar(options: MiniCalendarOptions): HTMLElement {
 
   const prevBtn = document.createElement("button");
   prevBtn.className = "nw-fc-mini-cal-nav";
-  prevBtn.setAttribute("aria-label", "Previous month");
+  prevBtn.setAttribute("aria-label", t("fullCalendar.previousMonth"));
   prevBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>`;
   prevBtn.addEventListener("click", () => {
     onMonthChange(new Date(year, month - 1, 1));
@@ -104,11 +109,11 @@ export function renderMiniCalendar(options: MiniCalendarOptions): HTMLElement {
 
   const title = document.createElement("span");
   title.className = "nw-fc-mini-cal-title";
-  title.textContent = formatMonthYear(new Date(year, month, 1));
+  title.textContent = fmt.date(new Date(year, month, 1), "monthYear");
 
   const nextBtn = document.createElement("button");
   nextBtn.className = "nw-fc-mini-cal-nav";
-  nextBtn.setAttribute("aria-label", "Next month");
+  nextBtn.setAttribute("aria-label", t("fullCalendar.nextMonth"));
   nextBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
   nextBtn.addEventListener("click", () => {
     onMonthChange(new Date(year, month + 1, 1));
@@ -123,8 +128,12 @@ export function renderMiniCalendar(options: MiniCalendarOptions): HTMLElement {
   const grid = document.createElement("div");
   grid.className = "nw-fc-mini-cal-grid";
 
-  const dowLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-  for (const label of dowLabels) {
+  // CLDR's *narrow* weekday names ("S M T W T F S"), not the two-letter
+  // "Su/Mo" this grid used to hardcode: two letters has no cross-locale
+  // equivalent — pt-BR collides on both "qu" (quarta/quinta) and "se"
+  // (segunda/sexta) — while narrow is the form every locale defines for
+  // exactly this one-column-per-day header.
+  for (const label of fmt.weekdayNames("narrow")) {
     const dow = document.createElement("span");
     dow.className = "nw-fc-mini-cal-dow";
     dow.textContent = label;
@@ -174,7 +183,7 @@ export function renderMiniCalendar(options: MiniCalendarOptions): HTMLElement {
   // ── Today link ──
   const todayLink = document.createElement("button");
   todayLink.className = "nw-fc-mini-cal-today-link";
-  todayLink.textContent = "Today";
+  todayLink.textContent = t("fullCalendar.today");
   todayLink.addEventListener("click", () => {
     onDateClick(todayKey);
     onMonthChange(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -186,9 +195,9 @@ export function renderMiniCalendar(options: MiniCalendarOptions): HTMLElement {
   legend.className = "nw-fc-density-legend";
 
   const legendItems: [number, string][] = [
-    [1, "1-3 events"],
-    [2, "4-6 events"],
-    [3, "7+ events"],
+    [1, t("fullCalendar.density1to3")],
+    [2, t("fullCalendar.density4to6")],
+    [3, t("fullCalendar.density7plus")],
   ];
 
   for (const [dotCount, label] of legendItems) {

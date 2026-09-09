@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const claims = await requireWidgetAuth(req, { widget: "*" });
     if (claims.sub === "public") {
       return NextResponse.json(
-        { success: false, error: "Authentication required. Please sign in." },
+        { success: false, error: "auth_required", message: "Authentication required. Please sign in." },
         { status: 401, headers: getCorsHeaders(origin) }
       );
     }
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       payload = await req.json();
     } catch {
       return NextResponse.json(
-        { success: false, error: "Invalid JSON body" },
+        { success: false, error: "invalid_body", message: "Invalid JSON body" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     const body = (payload.body ?? "").trim();
     if (!toContactId || Number.isNaN(toContactId) || !subject || !body) {
       return NextResponse.json(
-        { success: false, error: "toContactId, subject, and body are required." },
+        { success: false, error: "invalid_request", message: "toContactId, subject, and body are required." },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     const user = await service.getUserByGuid(claims.sub);
     if (!user || !(await service.canAccessDirectory(user.Contact_ID))) {
       return NextResponse.json(
-        { success: false, error: "You do not have access to the directory." },
+        { success: false, error: "directory_forbidden", message: "You do not have access to the directory." },
         { status: 403, headers: getCorsHeaders(origin) }
       );
     }

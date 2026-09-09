@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     // Validate required params
     if (!start || !end) {
       return NextResponse.json(
-        { error: "Missing required query parameters: start and end" },
+        { error: "invalid_request", message: "Missing required query parameters: start and end" },
         { status: 400, headers: buildFallbackCorsHeaders(origin) }
       );
     }
@@ -33,21 +33,21 @@ export async function GET(req: NextRequest) {
 
     if (isNaN(startDate.getTime())) {
       return NextResponse.json(
-        { error: "Invalid 'start' date" },
+        { error: "invalid_request", message: "Invalid 'start' date" },
         { status: 400, headers: buildFallbackCorsHeaders(origin) }
       );
     }
 
     if (isNaN(endDate.getTime())) {
       return NextResponse.json(
-        { error: "Invalid 'end' date" },
+        { error: "invalid_request", message: "Invalid 'end' date" },
         { status: 400, headers: buildFallbackCorsHeaders(origin) }
       );
     }
 
     if (startDate >= endDate) {
       return NextResponse.json(
-        { error: "'start' must be before 'end'" },
+        { error: "invalid_request", message: "'start' must be before 'end'" },
         { status: 400, headers: buildFallbackCorsHeaders(origin) }
       );
     }

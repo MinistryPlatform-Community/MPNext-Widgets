@@ -76,8 +76,12 @@ export class CheckoutWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
-    this.render();
-    this.init();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish.
+    void this.initLocale().then(() => {
+      this.render();
+      this.init();
+    });
   }
 
   public retryLoad() {
@@ -150,8 +154,8 @@ export class CheckoutWidget extends MPNextWidget {
         body: JSON.stringify({ token }),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: {
         invoiceId: number | null;
@@ -162,13 +166,12 @@ export class CheckoutWidget extends MPNextWidget {
       if (data.paymentReceived) {
         this.confirmation = {
           kind: "success",
-          message: "Payment received — thank you!",
+          message: this.t("checkout.paymentReceived"),
         };
       } else {
         this.confirmation = {
           kind: "pending",
-          message:
-            "Your payment is being processed. This invoice will update once the payment clears.",
+          message: this.t("checkout.paymentPending"),
         };
       }
       this.emit("paymentComplete", {
@@ -178,13 +181,15 @@ export class CheckoutWidget extends MPNextWidget {
     } catch (err) {
       this.confirmation = {
         kind: "pending",
+        // `err.message` is itself already a translated sentence from
+        // `errorText`, so it is safe to quote inside this one.
         message:
           err instanceof Error
-            ? `We could not confirm your payment: ${err.message}`
-            : "We could not confirm your payment.",
+            ? this.t("checkout.paymentUnconfirmedDetail", { detail: err.message })
+            : this.t("checkout.paymentUnconfirmed"),
       };
       this.emit("checkoutError", {
-        error: err instanceof Error ? err.message : "Payment response failed",
+        error: err instanceof Error ? err.message : this.t("errors.network"),
       });
     } finally {
       this.processing = false;
@@ -195,7 +200,7 @@ export class CheckoutWidget extends MPNextWidget {
   private async loadInvoice() {
     if (!this.guid) {
       this.loading = false;
-      this.error = "No invoice was specified.";
+      this.error = this.t("checkout.noInvoiceSpecified");
       this.render();
       this.attachListeners();
       this.emit("checkoutError", { error: this.error });
@@ -211,18 +216,18 @@ export class CheckoutWidget extends MPNextWidget {
         `/api/embed/checkout/invoice?guid=${encodeURIComponent(this.guid)}`,
       );
       if (res.status === 404) {
-        throw new Error("Invoice not found.");
+        throw new Error(this.t("errors.invoice_not_found"));
       }
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: { invoice: CheckoutInvoice } = await res.json();
       this.invoice = data.invoice;
       this.payChoice = "full";
       this.emit("invoiceLoaded", { invoiceId: this.invoice.invoiceId });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "Failed to load invoice";
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("checkoutError", { error: this.error });
     } finally {
       this.loading = false;
@@ -234,11 +239,14 @@ export class CheckoutWidget extends MPNextWidget {
   private validationOpts(): ValidateOptions {
     return {
       wrapperSelector: ".nw-co-field",
+      // Passing this widget's own translator keeps a form inside a
+      // `<div lang="es">` validating in Spanish on an otherwise English page.
+      t: this.t,
       customValidators: {
         "nw-other-amount": (value) => {
           const n = parseFloat(value);
           if (isNaN(n) || n <= 0) {
-            return "Please enter a valid payment amount.";
+            return this.t("checkout.invalidAmount");
           }
           return null;
         },
@@ -266,7 +274,7 @@ export class CheckoutWidget extends MPNextWidget {
 
     const amount = this.selectedAmount();
     if (amount <= 0) {
-      this.error = "Please enter a valid payment amount.";
+      this.error = this.t("checkout.invalidAmount");
       this.render();
       this.attachListeners();
       return;
@@ -274,7 +282,7 @@ export class CheckoutWidget extends MPNextWidget {
 
     const processorUrl = this.getAttribute("payment-processor-url");
     if (!processorUrl) {
-      this.error = "Payment processor is not configured.";
+      this.error = this.t("checkout.processorMissing");
       this.render();
       this.attachListeners();
       this.emit("checkoutError", { error: this.error });
@@ -292,8 +300,8 @@ export class CheckoutWidget extends MPNextWidget {
         )}&amount=${encodeURIComponent(String(amount))}&returnUrl=${returnUrl}`,
       );
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: { token: string } = await res.json();
       const sep = processorUrl.includes("?") ? "&" : "?";
@@ -302,7 +310,7 @@ export class CheckoutWidget extends MPNextWidget {
       )}`;
     } catch (err) {
       this.processing = false;
-      this.error = err instanceof Error ? err.message : "Failed to start payment";
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.render();
       this.attachListeners();
       this.emit("checkoutError", { error: this.error });
@@ -343,7 +351,7 @@ export class CheckoutWidget extends MPNextWidget {
       other.addEventListener("input", () => {
         this.otherAmount = other.value;
         const total = this.root.querySelector("#nw-pay-total");
-        if (total) total.textContent = this.formatCurrency(this.selectedAmount());
+        if (total) total.textContent = this.fmt.currency(this.selectedAmount());
       });
     }
   }
@@ -353,7 +361,7 @@ export class CheckoutWidget extends MPNextWidget {
       this.root.innerHTML = this.shell(`
         <div class="nw-co-state">
           ${this.spinnerSvg()}
-          <span>Processing…</span>
+          <span>${this.escapeHtml(this.t("checkout.processing"))}</span>
         </div>`);
       return;
     }
@@ -362,7 +370,7 @@ export class CheckoutWidget extends MPNextWidget {
       this.root.innerHTML = this.shell(`
         <div class="nw-co-state">
           ${this.spinnerSvg()}
-          <span>Loading invoice…</span>
+          <span>${this.escapeHtml(this.t("checkout.loading"))}</span>
         </div>`);
       return;
     }
@@ -371,14 +379,14 @@ export class CheckoutWidget extends MPNextWidget {
       this.root.innerHTML = this.shell(`
         <div class="nw-co-state nw-co-error">
           <p>${this.escapeHtml(this.error)}</p>
-          <button class="nw-co-btn" data-action="retry">Try Again</button>
+          <button class="nw-co-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
         </div>`);
       return;
     }
 
     if (!this.invoice) {
       this.root.innerHTML = this.shell(`
-        <div class="nw-co-state nw-co-empty">No invoice to display.</div>`);
+        <div class="nw-co-state nw-co-empty">${this.escapeHtml(this.t("checkout.empty"))}</div>`);
       return;
     }
 
@@ -388,7 +396,7 @@ export class CheckoutWidget extends MPNextWidget {
   private shell(body: string): string {
     return `
       <div class="nw-co">
-        <div class="nw-co-header">Invoice Details</div>
+        <div class="nw-co-header">${this.escapeHtml(this.t("checkout.header"))}</div>
         <div class="nw-co-body">
           ${this.confirmation ? this.renderConfirmation() : ""}
           ${body}
@@ -412,11 +420,11 @@ export class CheckoutWidget extends MPNextWidget {
     return `
       <div class="nw-co-meta">
         <div>
-          <span class="nw-co-meta-label">Invoice Date</span>
-          <span class="nw-co-meta-value">${this.escapeHtml(this.formatDate(inv.invoiceDate))}</span>
+          <span class="nw-co-meta-label">${this.escapeHtml(this.t("checkout.invoiceDate"))}</span>
+          <span class="nw-co-meta-value">${this.escapeHtml(this.fmt.date(inv.invoiceDate, "long"))}</span>
         </div>
         <div>
-          <span class="nw-co-meta-label">Status</span>
+          <span class="nw-co-meta-label">${this.escapeHtml(this.t("checkout.status"))}</span>
           <span class="nw-co-meta-value">${this.escapeHtml(inv.status)}</span>
         </div>
       </div>
@@ -427,21 +435,21 @@ export class CheckoutWidget extends MPNextWidget {
               ${base.map((li) => this.renderLineItem(li, false)).join("")}
               ${subs.map((li) => this.renderLineItem(li, true)).join("")}
             </div>`
-          : `<div class="nw-co-state nw-co-empty">No line items.</div>`
+          : `<div class="nw-co-state nw-co-empty">${this.escapeHtml(this.t("checkout.noLineItems"))}</div>`
       }
 
       <div class="nw-co-totals">
         <div class="nw-co-total-row">
-          <span>Total</span>
-          <span>${this.formatCurrency(inv.invoiceTotal)}</span>
+          <span>${this.escapeHtml(this.t("common.total"))}</span>
+          <span>${this.fmt.currency(inv.invoiceTotal)}</span>
         </div>
         <div class="nw-co-total-row">
-          <span>Amount Paid</span>
-          <span>${this.formatCurrency(inv.amountPaid)}</span>
+          <span>${this.escapeHtml(this.t("checkout.amountPaid"))}</span>
+          <span>${this.fmt.currency(inv.amountPaid)}</span>
         </div>
         <div class="nw-co-total-row nw-co-total-row--due">
-          <span>Balance Due</span>
-          <span>${this.formatCurrency(inv.balanceDue)}</span>
+          <span>${this.escapeHtml(this.t("checkout.balanceDue"))}</span>
+          <span>${this.fmt.currency(inv.balanceDue)}</span>
         </div>
       </div>
 
@@ -450,7 +458,8 @@ export class CheckoutWidget extends MPNextWidget {
   }
 
   private renderLineItem(li: CheckoutLineItem, isSub: boolean): string {
-    const name = li.itemName || "Item";
+    // Item names are MP-authored; only the fallback is ours to translate.
+    const name = li.itemName || this.t("checkout.item");
     const recipient = li.recipientName
       ? `<span class="nw-co-item-recipient">${this.escapeHtml(li.recipientName)}</span>`
       : "";
@@ -466,7 +475,7 @@ export class CheckoutWidget extends MPNextWidget {
           ${note}
         </div>
         <div class="nw-co-item-qty">×${li.quantity}</div>
-        <div class="nw-co-item-total">${this.formatCurrency(li.lineTotal)}</div>
+        <div class="nw-co-item-total">${this.fmt.currency(li.lineTotal)}</div>
       </div>`;
   }
 
@@ -474,27 +483,35 @@ export class CheckoutWidget extends MPNextWidget {
     const hasDeposit = inv.depositDue != null && inv.depositDue > 0;
     return `
       <form id="nw-co-pay-form" class="nw-co-pay" novalidate>
-        <div class="nw-co-pay-title">Payment Amount</div>
+        <div class="nw-co-pay-title">${this.escapeHtml(this.t("checkout.paymentAmount"))}</div>
         <label class="nw-co-choice">
           <input type="radio" name="nw-pay-choice" value="full" ${this.payChoice === "full" ? "checked" : ""}>
-          <span>Pay in full (${this.formatCurrency(inv.balanceDue)})</span>
+          <span>${this.escapeHtml(
+            this.t("checkout.payInFull", {
+              amount: this.fmt.currency(inv.balanceDue),
+            })
+          )}</span>
         </label>
         ${
           hasDeposit
             ? `<label class="nw-co-choice">
                 <input type="radio" name="nw-pay-choice" value="deposit" ${this.payChoice === "deposit" ? "checked" : ""}>
-                <span>Pay deposit (${this.formatCurrency(inv.depositDue as number)})</span>
+                <span>${this.escapeHtml(
+                  this.t("checkout.payDeposit", {
+                    amount: this.fmt.currency(inv.depositDue as number),
+                  })
+                )}</span>
               </label>`
             : ""
         }
         <label class="nw-co-choice">
           <input type="radio" name="nw-pay-choice" value="other" ${this.payChoice === "other" ? "checked" : ""}>
-          <span>Other amount</span>
+          <span>${this.escapeHtml(this.t("checkout.otherAmount"))}</span>
         </label>
         ${
           this.payChoice === "other"
             ? `<div class="nw-co-field nw-co-other">
-                <span class="nw-co-other-prefix">$</span>
+                <span class="nw-co-other-prefix">${this.escapeHtml(this.currencySymbol())}</span>
                 <input id="nw-other-amount" name="nw-other-amount" type="number" min="0" step="0.01"
                   inputmode="decimal" placeholder="0.00" required
                   value="${this.escapeAttr(this.otherAmount)}">
@@ -503,13 +520,13 @@ export class CheckoutWidget extends MPNextWidget {
         }
         ${this.error ? `<div class="nw-co-inline-error">${this.escapeHtml(this.error)}</div>` : ""}
         <div class="nw-co-pay-summary">
-          <span>You will pay</span>
-          <span id="nw-pay-total" class="nw-co-pay-amount">${this.formatCurrency(this.selectedAmount())}</span>
+          <span>${this.escapeHtml(this.t("checkout.youWillPay"))}</span>
+          <span id="nw-pay-total" class="nw-co-pay-amount">${this.fmt.currency(this.selectedAmount())}</span>
         </div>
-        <button type="submit" class="nw-co-btn nw-co-btn--pay" data-action="pay">Pay</button>
+        <button type="submit" class="nw-co-btn nw-co-btn--pay" data-action="pay">${this.escapeHtml(this.t("checkout.pay"))}</button>
         ${
           this.getAttribute("back-to-event-url")
-            ? `<a class="nw-co-changes" href="${this.escapeAttr(this.getAttribute("back-to-event-url") as string)}">Make Changes</a>`
+            ? `<a class="nw-co-changes" href="${this.escapeAttr(this.getAttribute("back-to-event-url") as string)}">${this.escapeHtml(this.t("checkout.makeChanges"))}</a>`
             : ""
         }
       </form>`;
@@ -518,7 +535,10 @@ export class CheckoutWidget extends MPNextWidget {
   private renderStatusSection(inv: CheckoutInvoice): string {
     const paid = inv.balanceDue <= 0;
     const cls = paid ? "nw-co-status--paid" : "nw-co-status--closed";
-    const label = paid ? "Paid in full" : this.escapeHtml(inv.status);
+    // A non-paid status is MP's own wording for it, so it renders as written.
+    const label = paid
+      ? this.escapeHtml(this.t("checkout.paidInFull"))
+      : this.escapeHtml(inv.status);
     return `
       <div class="nw-co-status ${cls}">
         ${label}
@@ -527,24 +547,18 @@ export class CheckoutWidget extends MPNextWidget {
 
   // ── Helpers ──
 
-  private formatDate(value: string): string {
-    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    const d = m
-      ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-      : new Date(value);
-    if (isNaN(d.getTime())) return value;
-    return d.toLocaleDateString("en-US", {
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-
-  private formatCurrency(amount: number): string {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
+  /**
+   * The locale's currency symbol, for the amount input's prefix.
+   *
+   * Derived from a formatted zero rather than hardcoded, because "$" is only
+   * right for an English page: the same USD amount prefixes as "US$" in
+   * Spanish. Stripping the digits and separators leaves the symbol whatever
+   * `Intl` chose, without a second currency table to keep in step.
+   */
+  private currencySymbol(): string {
+    // The character class covers the non-breaking space `Intl` puts between
+    // the symbol and the number in several locales.
+    return this.fmt.currency(0).replace(/[\s\d.,]/g, "");
   }
 
   private escapeHtml(text: string): string {

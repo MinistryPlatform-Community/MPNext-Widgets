@@ -4,17 +4,8 @@ import {
   bindLiveValidation,
   requiredStar,
   FORM_VALIDATION_STYLES,
+  type ValidateOptions,
 } from "../shared/form-validation";
-
-const PAY_VALIDATION_OPTS = {
-  wrapperSelector: ".nw-pay-field",
-  messages: {
-    "name-on-card": "Please enter the name on the card.",
-    "card-number": "Please enter a card number.",
-    expiry: "Please enter the expiry date.",
-    cvv: "Please enter the CVV.",
-  },
-} as const;
 
 interface PaymentRequestToken {
   invoiceId: string;
@@ -57,8 +48,29 @@ export class PayWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
-    this.render();
-    this.init();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish.
+    void this.initLocale().then(() => {
+      this.render();
+      this.init();
+    });
+  }
+
+  /**
+   * Per-field messages, built per call rather than held in a module constant:
+   * a constant is evaluated at import time, before any locale is known.
+   */
+  private validationOpts(): ValidateOptions {
+    return {
+      wrapperSelector: ".nw-pay-field",
+      t: this.t,
+      messages: {
+        "name-on-card": this.t("pay.enterName"),
+        "card-number": this.t("pay.enterCard"),
+        expiry: this.t("pay.enterExpiry"),
+        cvv: this.t("pay.enterCvv"),
+      },
+    };
   }
 
   public retryLoad() {
@@ -84,7 +96,7 @@ export class PayWidget extends MPNextWidget {
   private async unpack() {
     if (!this.token) {
       this.loading = false;
-      this.error = "No payment request was provided.";
+      this.error = this.t("pay.noRequest");
       this.render();
       this.attachListeners();
       return;
@@ -99,14 +111,14 @@ export class PayWidget extends MPNextWidget {
         `/api/embed/pay/unpack?token=${encodeURIComponent(this.token)}`,
       );
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: { request: PaymentRequestToken } = await res.json();
       this.request = data.request;
     } catch (err) {
       this.error =
-        err instanceof Error ? err.message : "Could not decode the payment request.";
+        err instanceof Error ? err.message : this.t("pay.decodeFailed");
     } finally {
       this.loading = false;
       this.render();
@@ -118,7 +130,7 @@ export class PayWidget extends MPNextWidget {
     if (!this.request || !this.token) return;
 
     const form = this.root.querySelector<HTMLFormElement>("#nw-pay-form");
-    if (!form || !validateForm(form, PAY_VALIDATION_OPTS).valid) return;
+    if (!form || !validateForm(form, this.validationOpts()).valid) return;
 
     const nameOnCard = this.value("#nw-pay-name");
     const cardNumber = this.value("#nw-pay-card");
@@ -143,8 +155,8 @@ export class PayWidget extends MPNextWidget {
         }),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data, "errors.payment_declined"));
       }
       const data: { token: string } = await res.json();
 
@@ -155,7 +167,7 @@ export class PayWidget extends MPNextWidget {
     } catch (err) {
       this.submitting = false;
       this.formError =
-        err instanceof Error ? err.message : "Payment could not be submitted.";
+        err instanceof Error ? err.message : this.t("pay.submitFailed");
       this.render();
       this.attachListeners();
     }
@@ -190,7 +202,7 @@ export class PayWidget extends MPNextWidget {
         e.preventDefault();
         this.submit();
       });
-      bindLiveValidation(form, PAY_VALIDATION_OPTS);
+      bindLiveValidation(form, this.validationOpts());
     }
   }
 
@@ -199,7 +211,7 @@ export class PayWidget extends MPNextWidget {
       this.root.innerHTML = this.shell(`
         <div class="nw-pay-state">
           ${this.spinnerSvg()}
-          <span>Loading payment request…</span>
+          <span>${this.escapeHtml(this.t("pay.loading"))}</span>
         </div>`);
       return;
     }
@@ -207,8 +219,8 @@ export class PayWidget extends MPNextWidget {
     if (this.error || !this.request) {
       this.root.innerHTML = this.shell(`
         <div class="nw-pay-state nw-pay-error">
-          <p>${this.escapeHtml(this.error || "Payment request unavailable.")}</p>
-          ${this.token ? `<button class="nw-pay-btn" data-action="retry">Try Again</button>` : ""}
+          <p>${this.escapeHtml(this.error || this.t("pay.unavailable"))}</p>
+          ${this.token ? `<button class="nw-pay-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>` : ""}
         </div>`);
       return;
     }
@@ -219,9 +231,9 @@ export class PayWidget extends MPNextWidget {
   private shell(body: string): string {
     return `
       <div class="nw-pay">
-        <div class="nw-pay-header">Secure Payment</div>
+        <div class="nw-pay-header">${this.escapeHtml(this.t("pay.header"))}</div>
         <div class="nw-pay-sandbox">
-          Sandbox payment — use test card ${TEST_CARD}
+          ${this.escapeHtml(this.t("pay.sandboxNotice", { card: TEST_CARD }))}
         </div>
         <div class="nw-pay-body">${body}</div>
       </div>`;
@@ -232,59 +244,56 @@ export class PayWidget extends MPNextWidget {
     return `
       <div class="nw-pay-summary">
         <div class="nw-pay-summary-row">
-          <span>Invoice</span>
+          <span>${this.escapeHtml(this.t("pay.invoice"))}</span>
           <span>${this.escapeHtml(req.invoiceId)}</span>
         </div>
         <div class="nw-pay-summary-row">
-          <span>Name</span>
+          <span>${this.escapeHtml(this.t("fields.name"))}</span>
           <span>${this.escapeHtml(name)}</span>
         </div>
         <div class="nw-pay-summary-row">
-          <span>Email</span>
+          <span>${this.escapeHtml(this.t("fields.email"))}</span>
           <span>${this.escapeHtml(req.email || "—")}</span>
         </div>
         <div class="nw-pay-summary-row nw-pay-summary-row--amount">
-          <span>Amount Due</span>
-          <span>${this.formatCurrency(req.amount)}</span>
+          <span>${this.escapeHtml(this.t("pay.amountDue"))}</span>
+          <span>${this.fmt.currency(req.amount)}</span>
         </div>
       </div>
 
       <form id="nw-pay-form" class="nw-pay-form" autocomplete="off" novalidate>
         <div class="nw-pay-field">
-          <label for="nw-pay-name">Name on Card${requiredStar()}</label>
-          <input id="nw-pay-name" name="name-on-card" type="text" placeholder="Jane Doe"
+          <label for="nw-pay-name">${this.escapeHtml(this.t("pay.nameOnCard"))}${requiredStar()}</label>
+          <input id="nw-pay-name" name="name-on-card" type="text" placeholder="${this.escapeAttr(this.t("pay.namePlaceholder"))}"
             required value="${this.escapeAttr(name === "—" ? "" : name)}">
         </div>
         <div class="nw-pay-field">
-          <label for="nw-pay-card">Card Number${requiredStar()}</label>
+          <label for="nw-pay-card">${this.escapeHtml(this.t("pay.cardNumber"))}${requiredStar()}</label>
           <input id="nw-pay-card" name="card-number" type="text" inputmode="numeric"
             required placeholder="${TEST_CARD}">
         </div>
         <div class="nw-pay-row">
           <div class="nw-pay-field">
-            <label for="nw-pay-expiry">Expiry${requiredStar()}</label>
-            <input id="nw-pay-expiry" name="expiry" type="text" required placeholder="MM/YY">
+            <label for="nw-pay-expiry">${this.escapeHtml(this.t("pay.expiry"))}${requiredStar()}</label>
+            <input id="nw-pay-expiry" name="expiry" type="text" required placeholder="${this.escapeAttr(this.t("pay.expiryPlaceholder"))}">
           </div>
           <div class="nw-pay-field">
-            <label for="nw-pay-cvv">CVV${requiredStar()}</label>
+            <label for="nw-pay-cvv">${this.escapeHtml(this.t("pay.cvv"))}${requiredStar()}</label>
             <input id="nw-pay-cvv" name="cvv" type="text" inputmode="numeric" required placeholder="123">
           </div>
         </div>
         ${this.formError ? `<div class="nw-pay-inline-error">${this.escapeHtml(this.formError)}</div>` : ""}
         <button type="submit" class="nw-pay-btn nw-pay-btn--pay" ${this.submitting ? "disabled" : ""}>
-          ${this.submitting ? "Processing…" : `Pay ${this.formatCurrency(req.amount)}`}
+          ${this.escapeHtml(
+            this.submitting
+              ? this.t("pay.processing")
+              : this.t("pay.payAmount", { amount: this.fmt.currency(req.amount) })
+          )}
         </button>
       </form>`;
   }
 
   // ── Helpers ──
-
-  private formatCurrency(amount: number): string {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
-  }
 
   private escapeHtml(text: string): string {
     const el = document.createElement("span");

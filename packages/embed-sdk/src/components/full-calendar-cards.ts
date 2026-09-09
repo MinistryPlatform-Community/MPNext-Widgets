@@ -1,3 +1,5 @@
+import type { Formatters, Translator } from "../i18n";
+
 // ── Interfaces ──
 
 export interface CalendarEvent {
@@ -47,36 +49,22 @@ function escapeHtml(str: string): string {
     .replace(/'/g, "&#039;");
 }
 
-function formatCardTime(startDate: string, endDate: string): string {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-
-  const opts: Intl.DateTimeFormatOptions = {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  };
-
-  const startStr = start.toLocaleTimeString("en-US", opts);
-  const endStr = end.toLocaleTimeString("en-US", opts);
-
-  return `${startStr} - ${endStr}`;
+function formatCardTime(startDate: string, endDate: string, fmt: Formatters): string {
+  return `${fmt.time(startDate)} - ${fmt.time(endDate)}`;
 }
 
-function formatCardDate(dateStr: string): { dow: string; day: string; month: string } {
-  const date = new Date(dateStr);
-
-  const dow = date
-    .toLocaleDateString("en-US", { weekday: "long" })
-    .toUpperCase();
-
-  const day = String(date.getDate());
-
-  const month = date
-    .toLocaleDateString("en-US", { month: "short" })
-    .toUpperCase();
-
-  return { dow, day, month };
+function formatCardDate(
+  dateStr: string,
+  fmt: Formatters
+): { dow: string; day: string; month: string } {
+  // The date block is set in caps by design; `toUpperCase` rather than
+  // `toLocaleUpperCase` because none of the shipped locales has a
+  // locale-specific casing rule (that is Turkish and Lithuanian).
+  return {
+    dow: fmt.date(dateStr, "weekdayLong").toUpperCase(),
+    day: String(new Date(dateStr).getDate()),
+    month: fmt.date(dateStr, "monthShort").toUpperCase(),
+  };
 }
 
 // ── Exported Functions ──
@@ -87,7 +75,9 @@ function formatCardDate(dateStr: string): { dow: string; day: string; month: str
 export function renderFilterChips(
   filters: { campuses: CalendarFilter[]; ministries: CalendarFilter[] },
   activeFilters: ActiveFilters,
-  onFilterChange: (filters: ActiveFilters) => void
+  onFilterChange: (filters: ActiveFilters) => void,
+  /** Translator from `full-calendar.ts`; this module has no `this.t`. */
+  t: Translator
 ): HTMLElement {
   const container = document.createElement("div");
   container.className = "nw-fc-filters";
@@ -99,7 +89,7 @@ export function renderFilterChips(
 
     const label = document.createElement("span");
     label.className = "nw-fc-filter-label";
-    label.textContent = "Campus";
+    label.textContent = t("fullCalendar.campus");
     section.appendChild(label);
 
     // "All" chip
@@ -110,8 +100,8 @@ export function renderFilterChips(
     }
     allChip.innerHTML =
       activeFilters.campusIds.size === 0
-        ? `<svg class="nw-fc-chip-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> All`
-        : "All";
+        ? `<svg class="nw-fc-chip-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> ${escapeHtml(t("common.all"))}`
+        : escapeHtml(t("common.all"));
     allChip.addEventListener("click", () => {
       const next: ActiveFilters = {
         campusIds: new Set<number>(),
@@ -158,7 +148,7 @@ export function renderFilterChips(
 
     const label = document.createElement("span");
     label.className = "nw-fc-filter-label";
-    label.textContent = "Ministry";
+    label.textContent = t("fields.ministry");
     section.appendChild(label);
 
     // "All" chip
@@ -169,8 +159,8 @@ export function renderFilterChips(
     }
     allChip.innerHTML =
       activeFilters.ministryNames.size === 0
-        ? `<svg class="nw-fc-chip-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> All`
-        : "All";
+        ? `<svg class="nw-fc-chip-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> ${escapeHtml(t("common.all"))}`
+        : escapeHtml(t("common.all"));
     allChip.addEventListener("click", () => {
       const next: ActiveFilters = {
         campusIds: new Set(activeFilters.campusIds),
@@ -253,12 +243,16 @@ export function filterEvents(
  * @param page         1-based page number; displays page * 12 events total.
  * @param onLearnMore  Callback when "LEARN MORE" is clicked on a card.
  * @param onShowMore   Callback when the "Show More" button is clicked.
+ * @param t            Translator, from `full-calendar.ts`.
+ * @param fmt          Locale-aware formatters, likewise.
  */
 export function renderCardsGrid(
   events: CalendarEvent[],
   page: number,
   onLearnMore: (event: CalendarEvent) => void,
-  onShowMore: () => void
+  onShowMore: () => void,
+  t: Translator,
+  fmt: Formatters
 ): HTMLElement {
   const grid = document.createElement("div");
   grid.className = "nw-fc-cards-grid";
@@ -276,7 +270,7 @@ export function renderCardsGrid(
   if (visible.length === 0) {
     const empty = document.createElement("div");
     empty.className = "nw-fc-cards-empty";
-    empty.textContent = "No events found";
+    empty.textContent = t("fullCalendar.noEventsFound");
     grid.appendChild(empty);
     return grid;
   }
@@ -303,7 +297,7 @@ export function renderCardsGrid(
     }
 
     // Date block overlay
-    const dateInfo = formatCardDate(event.Event_Start_Date);
+    const dateInfo = formatCardDate(event.Event_Start_Date, fmt);
     const dateBlock = document.createElement("div");
     dateBlock.className = "nw-fc-card-date-block";
 
@@ -338,7 +332,8 @@ export function renderCardsGrid(
     timeEl.className = "nw-fc-card-time";
     timeEl.textContent = formatCardTime(
       event.Event_Start_Date,
-      event.Event_End_Date
+      event.Event_End_Date,
+      fmt
     );
     infoRow.appendChild(timeEl);
 
@@ -361,7 +356,7 @@ export function renderCardsGrid(
     // ── Learn More bar (outside body, flush bottom) ──
     const learnMoreBtn = document.createElement("button");
     learnMoreBtn.className = "nw-fc-card-learn-more";
-    learnMoreBtn.textContent = "LEARN MORE";
+    learnMoreBtn.textContent = t("fullCalendar.learnMore");
     learnMoreBtn.addEventListener("click", () => onLearnMore(event));
     card.appendChild(learnMoreBtn);
 
@@ -372,7 +367,7 @@ export function renderCardsGrid(
   if (sorted.length > visibleCount) {
     const showMore = document.createElement("button");
     showMore.className = "nw-fc-show-more";
-    showMore.textContent = "Show More";
+    showMore.textContent = t("fullCalendar.showMore");
     showMore.addEventListener("click", () => onShowMore());
     grid.appendChild(showMore);
   }

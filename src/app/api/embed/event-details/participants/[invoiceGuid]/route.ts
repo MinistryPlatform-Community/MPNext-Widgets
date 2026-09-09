@@ -31,7 +31,7 @@ export async function GET(
     const { invoiceGuid } = await params;
     if (!invoiceGuid || invoiceGuid.trim() === "") {
       return NextResponse.json(
-        { error: "Invalid invoice GUID" },
+        { error: "invalid_request", message: "Invalid invoice GUID" },
         { status: 400, headers: buildFallbackCorsHeaders(origin) }
       );
     }

@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required" },
+        { error: "auth_required", message: "Authentication required" },
         { status: 401, headers: tenantHeaders }
       );
     }
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: z.flattenError(parsed.error).fieldErrors },
+        { error: "validation_failed", message: "Validation failed", details: z.flattenError(parsed.error).fieldErrors },
         { status: 400, headers: tenantHeaders }
       );
     }
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const mpAccessToken = await getMpUserAccessToken(claims);
     if (!mpAccessToken) {
       return NextResponse.json(
-        { error: "Session expired. Please sign in again." },
+        { error: "session_expired", message: "Session expired. Please sign in again." },
         { status: 401, headers: tenantHeaders }
       );
     }

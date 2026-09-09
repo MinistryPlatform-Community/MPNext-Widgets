@@ -77,8 +77,13 @@ export class CustomFormWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles() + CUSTOM_FORM_STYLES + FORM_VALIDATION_STYLES);
-    this.render();
-    this.init();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish; the fetch hides inside the loading state
+    // this widget already paints while it fetches the form definition.
+    void this.initLocale().then(() => {
+      this.render();
+      this.init();
+    });
   }
 
   public retryLoad() {
@@ -114,7 +119,7 @@ export class CustomFormWidget extends MPNextWidget {
 
     const ref = this.resolveFormRef();
     if (!ref.formId && !ref.formGuid) {
-      this.error = "No form specified.";
+      this.error = this.t("customForm.noFormSpecified");
       this.loading = false;
       this.render();
       this.attachListeners();
@@ -125,14 +130,20 @@ export class CustomFormWidget extends MPNextWidget {
     try {
       const params = new URLSearchParams(ref as Record<string, string>);
       const res = await this.fetch(`/api/embed/custom-form?${params.toString()}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(body, "errors.form_not_found"));
+      }
       const data: { header: CustomFormHeader; fields: CustomFormField[] } = await res.json();
       this.header = data.header;
       this.fields = data.fields || [];
       await this.detectAuth();
       this.emit("formLoaded", { formId: this.header.formId });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "Failed to load form.";
+      // `errorText` has already produced a translated sentence; a thrown
+      // non-Error (a dropped connection) becomes the generic network message
+      // rather than leaking English.
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("formError", { error: this.error });
     } finally {
       this.loading = false;
@@ -209,7 +220,9 @@ export class CustomFormWidget extends MPNextWidget {
         .json()
         .catch(() => ({ success: false }));
       if (!data.success) {
-        const msg = data.message || "Unable to submit the form.";
+        // The route's `message` is English and debug-only, so render the
+        // translated sentence instead.
+        const msg = this.errorText(data, "errors.submitFailed");
         this.error = msg;
         this.emit("formError", { error: msg });
         this.setSubmitDisabled(false);
@@ -222,7 +235,8 @@ export class CustomFormWidget extends MPNextWidget {
       this.render();
       this.attachListeners();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Submit failed.";
+      const msg =
+        err instanceof Error ? err.message : this.t("errors.submitFailed");
       this.error = msg;
       this.emit("formError", { error: msg });
       this.setSubmitDisabled(false);
@@ -301,33 +315,35 @@ export class CustomFormWidget extends MPNextWidget {
 
   render() {
     if (this.loading) {
-      this.root.innerHTML = `<div class="cf">${this.stateRow(this.spinner(), "Loading form…")}</div>`;
+      this.root.innerHTML = `<div class="cf">${this.stateRow(this.spinner(), this.t("customForm.loading"))}</div>`;
       return;
     }
     if (this.error && !this.header) {
       this.root.innerHTML = `
         <div class="cf">
           <div class="cf-state cf-error"><p>${this.escapeHtml(this.error)}</p>
-            <button class="cf-btn" data-action="retry">Try Again</button></div>
+            <button class="cf-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button></div>
         </div>`;
       return;
     }
 
     const h = this.header!;
     if (h.isExpired) {
-      this.root.innerHTML = `<div class="cf"><div class="cf-card"><p class="cf-expired">This form is no longer available.</p></div></div>`;
+      this.root.innerHTML = `<div class="cf"><div class="cf-card"><p class="cf-expired">${this.escapeHtml(this.t("customForm.expired"))}</p></div></div>`;
       return;
     }
     if (this.submitted) {
-      const msg = h.completeMessage || "Thank you! Your form has been submitted.";
+      // `completeMessage` is MP-authored copy from the church's own form
+      // definition, so it renders as written; only the fallback is translated.
+      const msg = h.completeMessage || this.t("customForm.completed");
       this.root.innerHTML = `<div class="cf"><div class="cf-card"><div class="cf-complete">${this.escapeHtml(msg)}</div></div></div>`;
       return;
     }
     if (h.forceLogin && !this.isAuthenticated) {
       this.root.innerHTML = `
         <div class="cf"><div class="cf-card cf-login">
-          <p>Please sign in to complete this form.</p>
-          <button class="cf-btn cf-btn--primary" type="button" data-action="login">Sign In</button>
+          <p>${this.escapeHtml(this.t("customForm.signInToComplete"))}</p>
+          <button class="cf-btn cf-btn--primary" type="button" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button>
         </div></div>`;
       return;
     }
@@ -352,9 +368,9 @@ export class CustomFormWidget extends MPNextWidget {
           <form id="cf-form" class="cf-form" novalidate>
             ${h.getContactInfo ? this.renderContactBlock() : ""}
             ${h.getAddressInfo ? this.renderAddressBlock() : ""}
-            ${renderCustomFormFields(this.fields, { formId: h.formId })}
+            ${renderCustomFormFields(this.fields, { formId: h.formId, t: this.t })}
             <div class="cf-actions">
-              <button class="cf-btn cf-btn--primary cf-submit" type="button">Submit</button>
+              <button class="cf-btn cf-btn--primary cf-submit" type="button">${this.escapeHtml(this.t("common.submit"))}</button>
             </div>
           </form>
         </div>
@@ -364,14 +380,14 @@ export class CustomFormWidget extends MPNextWidget {
   private renderContactBlock(): string {
     return `
       <fieldset class="cf-fieldset">
-        <legend>Your Information</legend>
+        <legend>${this.escapeHtml(this.t("customForm.yourInformation"))}</legend>
         <div class="cf-grid2">
-          <div class="cf-field"><label>First Name${requiredStar()}</label><input class="cf-input" name="FirstName" required></div>
-          <div class="cf-field"><label>Last Name${requiredStar()}</label><input class="cf-input" name="LastName" required></div>
+          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="cf-input" name="FirstName" required></div>
+          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="cf-input" name="LastName" required></div>
         </div>
         <div class="cf-grid2">
-          <div class="cf-field"><label>Email${requiredStar()}</label><input class="cf-input" type="email" name="EmailAddress" required></div>
-          <div class="cf-field"><label>Mobile Phone</label><input class="cf-input" name="MobilePhoneNumber"></div>
+          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="cf-input" type="email" name="EmailAddress" required></div>
+          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}</label><input class="cf-input" name="MobilePhoneNumber"></div>
         </div>
       </fieldset>`;
   }
@@ -379,13 +395,13 @@ export class CustomFormWidget extends MPNextWidget {
   private renderAddressBlock(): string {
     return `
       <fieldset class="cf-fieldset">
-        <legend>Address</legend>
-        <div class="cf-field"><label>Address Line 1${requiredStar()}</label><input class="cf-input" id="cf-line1" name="AddressLine1" autocomplete="off" required></div>
-        <div class="cf-field"><label>Address Line 2</label><input class="cf-input" id="cf-line2" name="AddressLine2" autocomplete="off"></div>
+        <legend>${this.escapeHtml(this.t("fields.address"))}</legend>
+        <div class="cf-field"><label>${this.escapeHtml(this.t("fields.addressLine1"))}${requiredStar()}</label><input class="cf-input" id="cf-line1" name="AddressLine1" autocomplete="off" required></div>
+        <div class="cf-field"><label>${this.escapeHtml(this.t("fields.addressLine2"))}</label><input class="cf-input" id="cf-line2" name="AddressLine2" autocomplete="off"></div>
         <div class="cf-grid3">
-          <div class="cf-field"><label>City${requiredStar()}</label><input class="cf-input" id="cf-city" name="City" autocomplete="off" required></div>
-          <div class="cf-field"><label>State / Region${requiredStar()}</label><input class="cf-input" id="cf-state" name="StateRegion" autocomplete="off" required></div>
-          <div class="cf-field"><label>Postal Code${requiredStar()}</label><input class="cf-input" id="cf-postal" name="PostalCode" autocomplete="off" required></div>
+          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.city"))}${requiredStar()}</label><input class="cf-input" id="cf-city" name="City" autocomplete="off" required></div>
+          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.stateRegion"))}${requiredStar()}</label><input class="cf-input" id="cf-state" name="StateRegion" autocomplete="off" required></div>
+          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.postalCode"))}${requiredStar()}</label><input class="cf-input" id="cf-postal" name="PostalCode" autocomplete="off" required></div>
         </div>
       </fieldset>`;
   }

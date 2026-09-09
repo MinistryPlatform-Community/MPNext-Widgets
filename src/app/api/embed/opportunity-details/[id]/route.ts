@@ -30,7 +30,7 @@ export async function GET(
     const opportunityId = parseInt(id, 10);
     if (isNaN(opportunityId) || opportunityId <= 0) {
       return NextResponse.json(
-        { error: "Invalid opportunityId: must be a positive integer" },
+        { error: "invalid_request", message: "Invalid opportunityId: must be a positive integer" },
         { status: 400, headers: buildFallbackCorsHeaders(origin) }
       );
     }

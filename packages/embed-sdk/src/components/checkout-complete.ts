@@ -18,8 +18,12 @@ export class CheckoutCompleteWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
-    this.render();
-    this.process();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish.
+    void this.initLocale().then(() => {
+      this.render();
+      this.process();
+    });
   }
 
   public retryLoad() {
@@ -43,7 +47,7 @@ export class CheckoutCompleteWidget extends MPNextWidget {
     this.token = this.resolveToken();
     if (!this.token) {
       this.status = "failed";
-      this.message = "No payment information was found.";
+      this.message = this.t("checkoutComplete.noPaymentInfo");
       this.render();
       this.attachListeners();
       return;
@@ -56,8 +60,8 @@ export class CheckoutCompleteWidget extends MPNextWidget {
         body: JSON.stringify({ token: this.token }),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: {
         invoiceId: number | null;
@@ -67,15 +71,13 @@ export class CheckoutCompleteWidget extends MPNextWidget {
 
       if (data.paymentReceived) {
         this.status = "success";
-        this.message = "Thank you! Your payment was received.";
+        this.message = this.t("checkoutComplete.received");
       } else if (data.success) {
         this.status = "pending";
-        this.message =
-          "Thank you! Your payment is being processed and will be confirmed shortly.";
+        this.message = this.t("checkoutComplete.processing");
       } else {
         this.status = "failed";
-        this.message =
-          "We were unable to confirm your payment. Please try again or contact us.";
+        this.message = this.t("checkoutComplete.failed");
       }
 
       this.emit("paymentComplete", {
@@ -87,7 +89,7 @@ export class CheckoutCompleteWidget extends MPNextWidget {
       this.message =
         err instanceof Error
           ? err.message
-          : "We were unable to confirm your payment.";
+          : this.t("checkoutComplete.unconfirmed");
       this.emit("paymentComplete", {
         invoiceId: null,
         paymentReceived: false,
@@ -111,7 +113,7 @@ export class CheckoutCompleteWidget extends MPNextWidget {
         <div class="nw-cc">
           <div class="nw-cc-card">
             ${this.spinnerSvg()}
-            <p class="nw-cc-msg">Confirming your payment…</p>
+            <p class="nw-cc-msg">${this.escapeHtml(this.t("checkoutComplete.confirming"))}</p>
           </div>
         </div>`;
       return;
@@ -131,12 +133,13 @@ export class CheckoutCompleteWidget extends MPNextWidget {
           ? "nw-cc-card--pending"
           : "nw-cc-card--failed";
 
-    const title =
+    const title = this.t(
       this.status === "success"
-        ? "Payment Complete"
+        ? "checkoutComplete.titleSuccess"
         : this.status === "pending"
-          ? "Payment Pending"
-          : "Payment Not Confirmed";
+          ? "checkoutComplete.titlePending"
+          : "checkoutComplete.titleFailed",
+    );
 
     this.root.innerHTML = `
       <div class="nw-cc">
@@ -146,7 +149,7 @@ export class CheckoutCompleteWidget extends MPNextWidget {
           <p class="nw-cc-msg">${this.escapeHtml(this.message)}</p>
           ${
             this.status === "failed" && this.token
-              ? `<button class="nw-cc-btn" data-action="retry">Try Again</button>`
+              ? `<button class="nw-cc-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>`
               : ""
           }
         </div>

@@ -1,4 +1,5 @@
 import { MPNextWidget } from "../shared/base-widget";
+import { parseWallClock } from "../i18n";
 
 interface OpportunitySearchResult {
   id: number;
@@ -90,8 +91,13 @@ export class OpportunityFinderWidget extends MPNextWidget {
   connectedCallback() {
     this.injectStyles(this.getStyles());
     this.seedFromAttributes();
-    this.render();
-    this.init();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish; the fetch hides inside the loading state
+    // this widget already paints while it queries the API.
+    void this.initLocale().then(() => {
+      this.render();
+      this.init();
+    });
   }
 
   /** Public hook so demo pages can force a reload. */
@@ -171,14 +177,17 @@ export class OpportunityFinderWidget extends MPNextWidget {
     try {
       const res = await this.fetch(`/api/embed/opportunity-finder${this.buildQuery()}`);
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: { opportunities: OpportunitySearchResult[] } = await res.json();
       this.opportunities = data.opportunities || [];
       this.emit("opportunitiesLoaded", { count: this.opportunities.length });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "Failed to load opportunities";
+      // `errorText` has already produced a translated sentence; a thrown
+      // non-Error (a dropped connection) becomes the generic network message
+      // rather than leaking English.
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("opportunityFinderError", { error: this.error });
     } finally {
       this.loading = false;
@@ -289,7 +298,7 @@ export class OpportunityFinderWidget extends MPNextWidget {
       this.showAttributeFilter && this.config.attributeTypes.length
         ? `
           <div class="nw-of-field nw-of-field--wide">
-            <label for="of-attributes">Attributes</label>
+            <label for="of-attributes">${this.escapeHtml(this.t("opportunityFinder.attributes"))}</label>
             <select id="of-attributes" class="nw-of-select" multiple size="5">
               ${this.config.attributeTypes
                 .map(
@@ -315,44 +324,44 @@ export class OpportunityFinderWidget extends MPNextWidget {
             id="of-keyword"
             type="text"
             class="nw-of-input"
-            placeholder="Search opportunities…"
+            placeholder="${this.escapeAttr(this.t("opportunityFinder.searchPlaceholder"))}"
             value="${this.escapeAttr(this.keyword)}"
-            aria-label="Search opportunities">
-          <button type="submit" class="nw-of-btn">Search</button>
+            aria-label="${this.escapeAttr(this.t("opportunityFinder.searchLabel"))}">
+          <button type="submit" class="nw-of-btn">${this.escapeHtml(this.t("common.search"))}</button>
         </div>
         <a href="#" class="nw-of-advanced-link" data-action="toggle-advanced">
-          ${this.advancedOpen ? "Hide Advanced Search" : "Advanced Search"}
+          ${this.escapeHtml(this.t(this.advancedOpen ? "opportunityFinder.hideAdvanced" : "opportunityFinder.showAdvanced"))}
         </a>
         <div class="nw-of-advanced" style="display:${this.advancedOpen ? "grid" : "none"}">
           <div class="nw-of-field">
-            <label for="of-congregation">Congregation</label>
+            <label for="of-congregation">${this.escapeHtml(this.t("fields.congregation"))}</label>
             <select id="of-congregation" class="nw-of-select">
-              ${options(this.config.congregations, this.congregationId, "All Congregations")}
+              ${options(this.config.congregations, this.congregationId, this.t("opportunityFinder.allCongregations"))}
             </select>
           </div>
           <div class="nw-of-field">
-            <label for="of-ministry">Ministry</label>
+            <label for="of-ministry">${this.escapeHtml(this.t("fields.ministry"))}</label>
             <select id="of-ministry" class="nw-of-select">
-              ${options(this.config.ministries, this.ministryId, "All Ministries")}
+              ${options(this.config.ministries, this.ministryId, this.t("opportunityFinder.allMinistries"))}
             </select>
           </div>
           <div class="nw-of-field">
-            <label for="of-gender">Gender</label>
+            <label for="of-gender">${this.escapeHtml(this.t("fields.gender"))}</label>
             <select id="of-gender" class="nw-of-select">
-              ${options(this.config.genders, this.genderId, "Any Gender")}
+              ${options(this.config.genders, this.genderId, this.t("opportunityFinder.anyGender"))}
             </select>
           </div>
           <div class="nw-of-field">
-            <label for="of-age">Minimum Age</label>
+            <label for="of-age">${this.escapeHtml(this.t("opportunityFinder.minimumAge"))}</label>
             <input id="of-age" type="number" min="0" step="1" class="nw-of-input"
-              value="${this.escapeAttr(this.minimumAge)}" placeholder="Any">
+              value="${this.escapeAttr(this.minimumAge)}" placeholder="${this.escapeAttr(this.t("opportunityFinder.anyAge"))}">
           </div>
           <div class="nw-of-field">
-            <label for="of-frequency">Frequency</label>
+            <label for="of-frequency">${this.escapeHtml(this.t("opportunityFinder.frequency"))}</label>
             <select id="of-frequency" class="nw-of-select">
-              <option value="" ${this.frequency === "" ? "selected" : ""}>All Opportunities</option>
-              <option value="1" ${this.frequency === "1" ? "selected" : ""}>Ongoing</option>
-              <option value="2" ${this.frequency === "2" ? "selected" : ""}>One Time</option>
+              <option value="" ${this.frequency === "" ? "selected" : ""}>${this.escapeHtml(this.t("opportunityFinder.allOpportunities"))}</option>
+              <option value="1" ${this.frequency === "1" ? "selected" : ""}>${this.escapeHtml(this.t("opportunityFinder.ongoing"))}</option>
+              <option value="2" ${this.frequency === "2" ? "selected" : ""}>${this.escapeHtml(this.t("opportunityFinder.oneTime"))}</option>
             </select>
           </div>
           ${attributeField}
@@ -362,17 +371,17 @@ export class OpportunityFinderWidget extends MPNextWidget {
 
   private renderResults(): string {
     if (this.loading) {
-      return `<div class="nw-of-state">${this.spinnerSvg()}<span>Loading opportunities…</span></div>`;
+      return `<div class="nw-of-state">${this.spinnerSvg()}<span>${this.escapeHtml(this.t("opportunityFinder.loading"))}</span></div>`;
     }
     if (this.error) {
       return `
         <div class="nw-of-state nw-of-error">
           <p>${this.escapeHtml(this.error)}</p>
-          <button class="nw-of-btn" data-action="retry">Try Again</button>
+          <button class="nw-of-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
         </div>`;
     }
     if (this.opportunities.length === 0) {
-      return `<div class="nw-of-state nw-of-empty">No opportunities found.</div>`;
+      return `<div class="nw-of-state nw-of-empty">${this.escapeHtml(this.t("opportunityFinder.empty"))}</div>`;
     }
     return `<div class="nw-of-grid">${this.opportunities.map((o) => this.renderCard(o)).join("")}</div>`;
   }
@@ -382,7 +391,9 @@ export class OpportunityFinderWidget extends MPNextWidget {
     const img = o.imageUrl
       ? `<img class="nw-of-card-img" src="${this.escapeAttr(o.imageUrl)}" alt="" loading="lazy">`
       : `<div class="nw-of-card-img nw-of-card-img--placeholder">${this.handsSvg()}</div>`;
-    const badge = o.featured ? `<span class="nw-of-badge">Featured</span>` : "";
+    const badge = o.featured
+      ? `<span class="nw-of-badge">${this.escapeHtml(this.t("opportunityFinder.featured"))}</span>`
+      : "";
 
     const subtitle = this.buildSubtitle(o);
     const subtitleHtml = subtitle
@@ -406,7 +417,7 @@ export class OpportunityFinderWidget extends MPNextWidget {
           ${subtitleHtml}
           ${pills}
           ${description}
-          ${hasLink ? `<span class="nw-of-card-cta">See Details &rarr;</span>` : ""}
+          ${hasLink ? `<span class="nw-of-card-cta">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
         </div>
       </div>`;
   }
@@ -418,41 +429,33 @@ export class OpportunityFinderWidget extends MPNextWidget {
     return [o.location, day, time].filter((p) => p && p.length).join(" · ");
   }
 
+  /**
+   * MP stores `meetingDay` as its own text — either the sentinel "Ongoing" or a
+   * day name. The sentinel becomes translated copy; a day name keeps MP's own
+   * wording and only the recurrence wrapper around it is translated, since
+   * "Mondays" pluralises in a way no other language copies.
+   */
   private formatMeetingDay(meetingDay: string | null): string {
     if (!meetingDay) return "";
     const lower = meetingDay.toLowerCase();
-    if (lower === "ongoing") return "Ongoing";
-    return `${meetingDay}s`;
+    if (lower === "ongoing") return this.t("opportunityFinder.ongoing");
+    return this.t("opportunityFinder.everyDay", { day: meetingDay });
   }
 
   private formatMeetingTime(o: OpportunitySearchResult): string {
     if (!o.meetingTime) return "";
     if ((o.meetingDay ?? "").toLowerCase() === "ongoing") return "";
-    const d = this.parseMpDate(o.meetingTime);
+    // `parseWallClock` replaces the local `parseMpDate`: same calendar-parts
+    // parse into a local Date, so MP's wall clock survives and `fmt.time`
+    // formats it with no time zone.
+    const d = parseWallClock(o.meetingTime);
     if (!d) return "";
     // Skip midnight (no real time component on the opportunity).
     if (d.getHours() === 0 && d.getMinutes() === 0) return "";
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    return this.fmt.time(d);
   }
 
   // ── Date / text helpers ──
-
-  /** Parse the wall-clock components of an MP datetime without a TZ day-shift. */
-  private parseMpDate(value: string): Date | null {
-    if (!value) return null;
-    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
-    if (!m) {
-      const fallback = new Date(value);
-      return isNaN(fallback.getTime()) ? null : fallback;
-    }
-    return new Date(
-      Number(m[1]),
-      Number(m[2]) - 1,
-      Number(m[3]),
-      m[4] ? Number(m[4]) : 0,
-      m[5] ? Number(m[5]) : 0
-    );
-  }
 
   private truncate(text: string, max: number): string {
     const clean = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();

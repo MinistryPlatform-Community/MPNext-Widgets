@@ -22,7 +22,7 @@ export async function GET(
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required. Please sign in." },
+        { error: "auth_required", message: "Authentication required. Please sign in." },
         { status: 401, headers: getCorsHeaders(origin) }
       );
     }
@@ -31,7 +31,7 @@ export async function GET(
     const invoiceIdNum = parseInt(invoiceId, 10);
     if (isNaN(invoiceIdNum)) {
       return NextResponse.json(
-        { error: "Invalid invoice ID" },
+        { error: "invalid_request", message: "Invalid invoice ID" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -40,7 +40,7 @@ export async function GET(
     const user = await service.getUserByGuid(claims.sub);
     if (!user) {
       return NextResponse.json(
-        { error: "User not found" },
+        { error: "user_not_found", message: "User not found" },
         { status: 404, headers: getCorsHeaders(origin) }
       );
     }
@@ -52,7 +52,7 @@ export async function GET(
     );
     if (!detail) {
       return NextResponse.json(
-        { error: "Invoice not found" },
+        { error: "invoice_not_found", message: "Invoice not found" },
         { status: 404, headers: getCorsHeaders(origin) }
       );
     }

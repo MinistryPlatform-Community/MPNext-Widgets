@@ -6,8 +6,17 @@
  * Field inputs are named `mp_customform_{Form_Field_ID}` (the server strips this
  * prefix when persisting Form_Response_Answers). Render output uses the `cf-`
  * class prefix; host widgets inject {@link CUSTOM_FORM_STYLES}.
+ *
+ * ## Localisation
+ *
+ * Only the two strings this module *authors* are translated — a dropdown's
+ * empty option and the file-upload note. Everything else on a rendered field
+ * (`fieldLabel`, the option values, an Instructions block's body) is MP-authored
+ * content from the church's own form definition, which a file-based catalogue
+ * cannot reach; it renders exactly as MP supplies it.
  */
 
+import { getLocaleSession, type Translator } from "../i18n";
 import { requiredStar } from "./form-validation";
 
 export interface CustomFormField {
@@ -53,8 +62,12 @@ function escapeAttr(text: string): string {
  */
 export function renderCustomFormFields(
   fields: CustomFormField[],
-  opts: { formId?: number | null } = {},
+  opts: { formId?: number | null; t?: Translator } = {},
 ): string {
+  // A widget passes its own `this.t`, so a form inside a `<div lang="es">`
+  // renders in Spanish on an otherwise English page; omitted, it falls back to
+  // the page-wide locale. Same contract as `form-validation.ts`.
+  const t = opts.t ?? getLocaleSession().translator();
   const sorted = [...fields].sort((a, b) => a.fieldOrder - b.fieldOrder);
   const formIdInput =
     opts.formId != null
@@ -62,12 +75,12 @@ export function renderCustomFormFields(
       : "";
   const body = sorted
     .filter((f) => !f.isHidden)
-    .map((f) => renderField(f))
+    .map((f) => renderField(f, t))
     .join("");
   return `${formIdInput}${body}`;
 }
 
-function renderField(f: CustomFormField): string {
+function renderField(f: CustomFormField, t: Translator): string {
   const name = `mp_customform_${f.formFieldId}`;
   const req = f.required ? "required" : "";
   const label = `${escapeHtml(f.fieldLabel)}${f.required ? requiredStar() : ""}`;
@@ -95,7 +108,9 @@ function renderField(f: CustomFormField): string {
       return `${wrapOpen}<label>${label}</label><input class="cf-input" type="date" name="${name}" ${req} ${dep}></div>`;
 
     case FT.Dropdown: {
-      const opts = [`<option value="">-- Select --</option>`]
+      const opts = [
+        `<option value="">${escapeHtml(t("customForm.selectOption"))}</option>`,
+      ]
         .concat(
           (f.fieldValues || []).map(
             (v) => `<option value="${escapeAttr(v)}">${escapeHtml(v)}</option>`,
@@ -119,7 +134,7 @@ function renderField(f: CustomFormField): string {
 
     case FT.FileUpload:
       // Rendered for parity; file bytes are not submitted in this version.
-      return `${wrapOpen}<label>${label}</label><input class="cf-input" type="file" name="${name}_file" ${dep}><small class="cf-note">File uploads are not submitted in this version.</small></div>`;
+      return `${wrapOpen}<label>${label}</label><input class="cf-input" type="file" name="${name}_file" ${dep}><small class="cf-note">${escapeHtml(t("customForm.fileUploadUnsupported"))}</small></div>`;
 
     case FT.TextBox:
     default:

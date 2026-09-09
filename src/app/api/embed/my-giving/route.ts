@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required. Please sign in." },
+        { error: "auth_required", message: "Authentication required. Please sign in." },
         { status: 401, headers: getCorsHeaders(origin) }
       );
     }
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
     const user = await service.getUserByGuid(claims.sub);
     if (!user) {
       return NextResponse.json(
-        { error: "User not found" },
+        { error: "user_not_found", message: "User not found" },
         { status: 404 }
       );
     }

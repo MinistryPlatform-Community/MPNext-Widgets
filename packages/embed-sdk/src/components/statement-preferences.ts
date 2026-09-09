@@ -16,8 +16,12 @@ export class StatementPreferencesWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
-    this.render();
-    this.loadPreference();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish.
+    void this.initLocale().then(() => {
+      this.render();
+      this.loadPreference();
+    });
   }
 
   public retryLoad() {
@@ -41,8 +45,8 @@ export class StatementPreferencesWidget extends MPNextWidget {
       }
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
 
       const data: StatementPreference = await res.json();
@@ -50,7 +54,7 @@ export class StatementPreferencesWidget extends MPNextWidget {
       this.paperless = data.paperless;
       this.emit("preferenceLoaded", { paperless: this.paperless });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "Failed to load preference";
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("preferenceError", { error: this.error });
     } finally {
       this.loading = false;
@@ -76,22 +80,22 @@ export class StatementPreferencesWidget extends MPNextWidget {
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data, "errors.saveFailed"));
       }
 
       const data: StatementPreference = await res.json();
       this.paperless = data.paperless;
-      this.message = { type: "success", text: "Statement method updated" };
+      this.message = { type: "success", text: this.t("statementPreferences.updated") };
       this.emit("preferenceUpdated", { paperless: this.paperless });
     } catch (err) {
       // Revert the toggle on failure.
       this.paperless = previous;
       this.message = {
         type: "error",
-        text: "Error updating the statement method, please try again.",
+        text: this.t("statementPreferences.updateFailed"),
       };
-      const errorText = err instanceof Error ? err.message : "Failed to update preference";
+      const errorText = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("preferenceError", { error: errorText });
     } finally {
       this.saving = false;
@@ -122,7 +126,7 @@ export class StatementPreferencesWidget extends MPNextWidget {
           <div class="header">
             <div class="loading-row">
               ${this.spinnerSvg()}
-              <span>Loading preferences...</span>
+              <span>${this.escapeHtml(this.t("statementPreferences.loading"))}</span>
             </div>
           </div>
         </div>`;
@@ -133,11 +137,11 @@ export class StatementPreferencesWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-statement">
           <div class="header">
-            <div class="title">Unable to Load</div>
+            <div class="title">${this.escapeHtml(this.t("common.unableToLoad"))}</div>
             <p class="subtitle">${this.escapeHtml(this.error)}</p>
           </div>
           <div class="retry-section">
-            <button class="retry-btn" data-action="retry">Try Again</button>
+            <button class="retry-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
           </div>
         </div>`;
       return;
@@ -147,10 +151,10 @@ export class StatementPreferencesWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-statement">
           <div class="header">
-            <div class="title">Contribution Statements</div>
+            <div class="title">${this.escapeHtml(this.t("statementPreferences.title"))}</div>
           </div>
           <div class="card-body">
-            <div class="empty-state">No donor record found for your account.</div>
+            <div class="empty-state">${this.escapeHtml(this.t("errors.donor_not_found"))}</div>
           </div>
         </div>`;
       return;
@@ -159,11 +163,11 @@ export class StatementPreferencesWidget extends MPNextWidget {
     this.root.innerHTML = `
       <div class="nw-statement">
         <div class="header">
-          <div class="title">Contribution Statements</div>
+          <div class="title">${this.escapeHtml(this.t("statementPreferences.title"))}</div>
         </div>
         <div class="card-body">
           <label class="toggle-row" for="paperless-toggle">
-            <span class="toggle-label">Go Paperless! Get statements online/via email.</span>
+            <span class="toggle-label">${this.escapeHtml(this.t("statementPreferences.goPaperless"))}</span>
             <span class="switch">
               <input type="checkbox" id="paperless-toggle"
                 ${this.paperless ? "checked" : ""}

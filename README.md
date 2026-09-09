@@ -36,6 +36,7 @@ Embeddable Web Component widgets for [Ministry Platform](https://www.ministrypla
   - [Host Page API](#host-page-api)
   - [Cutover Runbook](#cutover-runbook)
   - [Troubleshooting Widget Auth](#troubleshooting-widget-auth)
+- [Widget Languages](#widget-languages)
 - [Testing](#testing)
 - [Development](#development)
 - [Claude Code Commands](#claude-code-commands)
@@ -756,6 +757,131 @@ Per customer, in this order (details in [WIDGET-AUTH-MIGRATION-PLAN.md §4 Phase
 - **Signed out but MP signs you straight back in**, or logout stops on MP's "Would you like to logout? [Yes]" page: MP was handed a `post_logout_redirect_uri` it does not recognise, so it discarded the logout context (`id_token_hint` included) and never ended the SSO session. Register `${BETTER_AUTH_URL}/signin` on the OAuth client. If it is registered, something is still sending a host page URL — in `legacy` that means a `post-logout-redirect-uri` attribute pointing at an unregistered page; remove it. A completed logout is recognisable by MP redirecting through `oauth/logout?id=<sid>` rather than rendering the prompt.
 - **`EMBED_SESSION_ENC_KEY` errors at startup**: the key must decode to exactly 32 bytes of base64url. It is required in production for any non-legacy mode.
 - **`Error: UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are required in production`**: exactly what it says — the deploy has no Redis store. Set both to an Upstash Redis REST endpoint (the Vercel Upstash integration sets them for you). The in-memory store is a development fallback and is refused in production because it loses every app sign-in on a restart, a cold start, or an instance switch; `REDIS_ALLOW_MEMORY_FALLBACK=1` accepts that deliberately. (Before this became an error, the symptom was the far more confusing "sessions vanish on every deploy".)
+
+## Widget Languages
+
+The widgets ship in **English, Spanish and Brazilian Portuguese**. There is no
+MinistryPlatform configuration to do and nothing to switch on: a page that
+declares its language gets translated widgets automatically.
+
+### The zero-configuration path
+
+Set `lang` on the page, which most bilingual CMS setups (WordPress/Polylang and
+friends) already do:
+
+```html
+<html lang="es">
+```
+
+That is the whole integration. Every widget on the page renders in Spanish,
+including dates, numbers and currency. `es-MX`, `es-US`, `es-419` and any other
+`es-*` tag resolve to the Spanish catalogue; `pt`, `pt-BR` and `pt-PT` all
+resolve to Brazilian Portuguese; anything else falls back to English.
+
+### Other ways to choose
+
+Resolution runs highest-priority first, so a more specific setting always wins:
+
+| Priority | Source | Use it when |
+|---|---|---|
+| 1 | `lang` on the widget element | One widget differs from the page: `<next-event-finder lang="es">` |
+| 2 | `MPNextEmbed.setLocale("es")` | Your page decides the language in JavaScript |
+| 3 | The visitor's own choice | Set by `<next-locale-selector>`; persists in `localStorage` |
+| 4 | `lang` on the page or nearest ancestor | The zero-configuration path above |
+| 5 | The browser's language preference | No declaration anywhere |
+| 6 | English | Nothing matched |
+
+A `lang` on any ancestor works too, so a bilingual section of an otherwise
+English page renders correctly:
+
+```html
+<section lang="es">
+  <next-group-finder></next-group-finder>
+</section>
+```
+
+### Letting visitors choose
+
+For a page that cannot set `lang`, or that wants to offer the choice explicitly:
+
+```html
+<next-locale-selector></next-locale-selector>
+
+<!-- a row of buttons instead of a dropdown -->
+<next-locale-selector variant="inline"></next-locale-selector>
+
+<!-- offer only some languages, and hide the visible label -->
+<next-locale-selector locales="en,es" hide-label></next-locale-selector>
+```
+
+Options are labelled in their own language ("English", "Español", "Português
+(Brasil)"). The choice persists and applies to every widget on the page.
+
+### Renaming labels
+
+Separate from translation: use your own ministry vocabulary without forking
+anything. Keys are `<widget>.<label>`; scope `"*"` applies to every language.
+
+```html
+<script type="module" src="https://your-host.com/embed-sdk/next-embed.js"></script>
+<script>
+  MPNextEmbed.setMessages("*",  { "groupFinder.title": "Find a Small Group" });
+  MPNextEmbed.setMessages("es", { "groupFinder.title": "Encuentra un Grupo Pequeño" });
+</script>
+```
+
+Overrides beat both the translation and the English fallback. Values are always
+rendered as text, so markup in an override cannot affect the page.
+
+### What is not translated
+
+The widgets translate their own labels, buttons, headings, validation messages
+and error text. They **cannot** translate content that lives in
+MinistryPlatform, because that content only exists in whatever language your
+staff entered it:
+
+- event titles and descriptions, group and opportunity names
+- congregation, ministry, program and event-type names
+- **Custom Form field labels and help text**
+- product, fund and publication names
+- contribution statement PDFs and the notification emails MP sends
+
+So a Spanish visitor sees Spanish chrome around English content unless your
+staff also enter that content in Spanish. This is the same limit the legacy
+`mpp-*` widgets had — MP's `GetLabels` translated labels, not content.
+
+### Adding a language
+
+A developer step plus a deploy, deliberately — the catalogue is TypeScript in
+this repo, not a database table:
+
+1. Add an entry to `SUPPORTED_LOCALES` in
+   `packages/embed-sdk/src/i18n/registry.ts`.
+2. Copy `packages/embed-sdk/src/i18n/locales/en/` to the new code and translate.
+   Run `pnpm exec tsc --noEmit` from `packages/embed-sdk` — it lists every key
+   still missing, so there is no spreadsheet to reconcile.
+3. Add a `vercel.json` header entry only if the chunk filename shape changed.
+4. `pnpm i18n:sync` to record the English each translation was made from, then
+   deploy.
+
+`pnpm i18n:check` reports missing keys, dead keys, and — most usefully —
+**stale** translations, where the English has changed since the translation was
+written. That is the failure mode a file-based catalogue has: the key is
+present, the types are fine, and the sentence is quietly wrong.
+
+### Checking your layout
+
+Spanish and Portuguese run 20-30% longer than English. From the browser console
+on any page running the SDK:
+
+```js
+MPNextEmbed.enablePseudoLocale()   // [Ŝéàŕćĥ évéñtŝ ······]
+MPNextEmbed.disablePseudoLocale()
+```
+
+Everything still rendering in plain English is a string that was never
+translated; anything overflowing its container will overflow in Spanish too.
+
 
 ## Testing
 

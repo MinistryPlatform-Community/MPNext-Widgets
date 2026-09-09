@@ -16,8 +16,11 @@ ls packages/embed-sdk/demo-*.html | wc -l
 ls src/app/api/embed/ ; ls src/services/*.ts | grep -v '\.test\.'
 ```
 
-Snapshot at 2026-09-07: **25** registered `next-*` elements, 25 demo pages, 27
-`src/app/api/embed/` route directories, 27 services.
+Snapshot at 2026-09-09: **26** registered `next-*` elements, 25 demo pages, 27
+`src/app/api/embed/` route directories, 27 services. The counts diverge on purpose:
+`next-locale-selector` has no demo page, because it needs no API, no token and no
+configuration to demonstrate — `<html lang="es">` on any existing demo page exercises
+the whole localisation path.
 
 ## Structure
 
@@ -177,16 +180,134 @@ returns. Full incident and the "grep the built chunk" diagnostic:
 
 **Design**: Web Components + Shadow DOM (no framework deps), JWT+CORS auth, multi-tenant origin allowlists, MP tokens only in the encrypted server session (never in the JWT or host-page storage in `hardened`). Widget forms use the shared `packages/embed-sdk/src/shared/form-validation.ts` (no native `reportValidity` popup).
 
-**The element roster** (25 as of 2026-09-07 — this is the one place it is listed; re-measure with the command in Overview rather than trusting it):
+**The element roster** (26 as of 2026-09-09 — this is the one place it is listed; re-measure with the command in Overview rather than trusting it):
 `next-add-to-calendar`, `next-checkout`, `next-checkout-complete`, `next-custom-form`,
 `next-event-details`, `next-event-finder`, `next-full-calendar`, `next-group-details`,
 `next-group-finder`, `next-my-contribution-statement`, `next-my-giving`,
 `next-my-groups`, `next-my-household`, `next-my-invoices`, `next-my-pledges`,
-`next-online-directory`, `next-opportunity-details`, `next-opportunity-finder`,
+`next-locale-selector`, `next-online-directory`, `next-opportunity-details`,
+`next-opportunity-finder`,
 `next-pay`, `next-plan-your-visit`, `next-pledge-campaign`, `next-profile`,
 `next-statement-preferences`, `next-subscriptions`, `next-user-menu`.
 
 **MP widget styling**: `public/embed-sdk/mp-widget-overrides.css` injected into MP Shadow DOM widgets via `customcss` attribute. User-menu applies this automatically.
+
+## Widget Localisation
+
+Ships **`en`, `es`, `pt-BR`**. Closes `.claude/TODO/Comparison/C67` and `C73`. The
+catalogue is **TypeScript in this repo - deliberately not MinistryPlatform**: a new
+language is a developer step plus a deploy, and no church-authored copy is read from MP.
+Full design and the deliberate limits: `WIDGET-I18N-PLAN.md`; customer-facing docs in
+README "Widget Languages".
+
+**Widgets never import the i18n module.** `shared/base-widget.ts` exposes `this.t`,
+`this.fmt`, `this.locale` and `this.errorText`, the same way it owns the token plumbing.
+Call `await this.initLocale()` at the top of `connectedCallback` and **before the first
+`render()`** - that ordering is what stops a Spanish visitor seeing English swap to
+Spanish, and it is nearly free because every widget already paints a loading state while
+it fetches its own data.
+
+```ts
+connectedCallback() {
+  this.injectStyles(this.getStyles());
+  void this.initLocale().then(() => { this.render(); this.init(); });
+}
+```
+
+**`en` defines the shape; every other locale `satisfies Messages`.** So a missing, extra
+or misspelled key is a `tsc --noEmit` failure, and adding a language is "write the file
+and let the compiler enumerate what is left". Catalogues are grouped one file per widget
+domain (`core`, `events`, `groups`, `giving`, `people`, `account`) under
+`packages/embed-sdk/src/i18n/locales/<code>/`. Reuse `common.*` / `fields.*` /
+`errors.*` / `validation.*` before adding a namespaced key - "Try Again" alone had 17
+copies before this landed.
+
+**Message format is an ICU-*syntax* subset**, not an ICU implementation: `{name}`
+interpolation plus plural selection through `Intl.PluralRules`, called as
+`t(key, { count: n })`. ~60 lines, no dependency. Never hand-roll
+`${n !== 1 ? "s" : ""}`. **A plural must supply every CLDR category the locale can
+select**: `es` and `pt-BR` both report `many` (whole millions) as well as `one`/`other`,
+so a two-branch plural fails `catalogue-parity.test.ts` for those locales.
+
+**`en` is inlined; `es`/`pt-BR` are lazy chunks.** `registry.ts` reaches them through
+`() => import("./locales/es")`, which rolldown code-splits. Two build facts go with that,
+both load-bearing:
+- `vite.config.ts` pins `chunkFileNames` to a **`next-embed`-prefixed** pattern, because
+  `scripts/copy-sdk.js` publishes and prunes `public/embed-sdk/` by that prefix. A
+  default-named chunk is built, never published, and 404s in production - and does *not*
+  reproduce under `vite dev`, which serves the import off the filesystem.
+- `vercel.json` needs a matching `source` entry for CORS. These chunks are fetched
+  cross-origin from church sites; without it the SDK works locally and breaks everywhere.
+
+**`formatters.ts` takes no `timeZone`, and must not.** MP returns wall-clock strings; the
+widgets parse the calendar parts into a *local* `Date` and format with no zone, so the two
+cancel and the wall clock survives. Adding the domain zone here would re-introduce exactly
+the day-shift that parsing exists to avoid. This module changes the **locale only**.
+`.claude/references/ministryplatform.datetimehandling.md` governs the server boundary,
+which is a different problem.
+
+**Locale resolution** (`i18n/locale-session.ts`, shaped like `shared/auth-session.ts`),
+highest first: element `lang` -> `MPNextEmbed.setLocale()` -> visitor's stored `nw_locale`
+-> nearest `[lang]` ancestor or `<html lang>` -> `navigator.languages` -> `en`. The
+`<html lang>` rung is the one that matters in practice - a bilingual CMS already sets it,
+so those sites need no snippet change.
+
+**`lang` is watched with a `MutationObserver`, not `observedAttributes`** - no edit to 30
+static attribute lists (11 components have none), and it sidesteps
+`attributeChangedCallback`, several of which ignore the first set (C39). The base class
+reflects the resolved locale back onto the host as `lang`/`dir` for assistive tech, and
+`declaredLang()` distinguishes a page author's `lang` (an input, rung 1) from that
+reflection (an output). Without that distinction the first render pins a widget's locale
+forever. `dir` must be an attribute: `:host { all: initial }` resets `direction`.
+
+**A subclass with its own `disconnectedCallback` must call
+`super.disconnectedCallback()`** - the base class unsubscribes the locale listener and the
+observer there, and six components define one.
+
+**API errors are machine codes.** `src/app/api/embed/**` answers
+`{ error: "<snake_case_code>", message: "<English>" }`. Widgets render
+`this.errorText(payload)`; the English `message` is logged and **never** rendered, so a
+congregant never reads "Missing formId or formGuid" in any language. An unmapped code
+degrades to `errors.generic`. `invalid_session` and `invalid_code` are protocol signals the
+SDK auth ladder reads - do not rename them. Codes whose catalogue key is spelled
+differently are listed in `WIRE_CODE_KEYS` (`shared/base-widget.ts`) rather than
+duplicated across three catalogues.
+
+**MP-authored content is not translated and cannot be** by a file-based catalogue: event
+titles and descriptions, group/opportunity names, congregation and ministry names, **MP
+Custom Form field labels**, product and fund names, statement PDFs, and MP's notification
+emails. Legacy `GetLabels` did not solve this either - it translated labels, not content.
+Say so in customer migration notes.
+
+**Tooling**
+- `pnpm i18n:check` - missing / dead / **stale** keys. Staleness is the real failure mode
+  here: English moves, the translation does not, and the result is a present, well-typed,
+  confidently wrong sentence. Baselines live in `packages/embed-sdk/i18n-sources/`.
+- `pnpm i18n:sync` - re-record those baselines after a translation pass.
+- `MPNextEmbed.enablePseudoLocale()` - accents and pads every string in the browser.
+  Unextracted literals stay plain ASCII; layouts that cannot take the 20-30% expansion
+  Spanish and Portuguese cost break visibly.
+- `MPNextEmbed.setMessages(scope, map)` - church label overrides (C67 part 1), a different
+  thing from translation. Beats the catalogue and the English fallback.
+
+**Four guard tests, and they are the reason this does not decay**
+- `i18n/no-english-literals.test.ts` - per-file **ratchet**, failing both *over* budget (a
+  regression) and *under* it (lower the number in the same commit). Finish line: every
+  entry at 0, then collapse the table.
+- `i18n/catalogue-parity.test.ts` - keyset, message kind, interpolation placeholders,
+  plural-branch coverage.
+- `i18n/error-codes.test.ts` - every code the routes can emit has a message in all three
+  locales, and no route answers with English prose.
+- `i18n/widget-locale.test.ts` - the resolution ladder, the reflected-vs-declared `lang`
+  distinction, subscription cleanup, `errorText`.
+
+`scripts/i18n-scan.mjs` backs the ratchet and the CLI so the number CI enforces cannot
+drift from the one a developer sees. It scans **template literal bodies, recursively**,
+and skips `console.*` arguments - three earlier drafts were wrong in instructive ways: a
+whole-file scan reported `Promise<void>` generics as UI copy; a single-level scan missed
+every string inside a nested ternary template, under-counting `my-invoices.ts` at 13 when
+it had 27; and counting `console.warn` diagnostics treated developer messages as
+congregant-facing copy.
 
 **MPWidgets.js is a loader, not a bundle.** On its own `DOMContentLoaded` handler it
 scans the document for the widget tags it knows, fetches `/widgets/dist/<Widget>.js`
@@ -220,6 +341,7 @@ See **[Date/Time Handling Reference](.claude/references/ministryplatform.datetim
 - **React Server Components** by default; `"use client"` only when needed
 - **TypeScript strict mode**; path alias `@/*` = `src/*`
 - **Naming**: PascalCase (types/components), camelCase (functions), kebab-case (files), snake_case (MP fields). Exception: `src/services/*Service.ts` is camelCase.
+- **No hardcoded user-facing copy in a widget** - route it through `this.t(...)` and the catalogue. A per-file ratchet test fails on new literals; see Widget Localisation.
 - **No `+` between template literals** — one literal, or an array and `.join(...)`. The production minifier folds those chains and drops text (see Toolchain above); a guard test enforces it.
 
 ### Import Patterns
@@ -291,6 +413,15 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `src/app/api/embed/session/route.ts` | Mints widget JWTs from `sid`, legacy `mpUserToken`, same-origin Better Auth session, or public |
 | `packages/embed-sdk/src/index.ts` | SDK entry point -- registers widgets, token provider via `AuthSession`, `window.MPNextEmbed = { init, getAuthSession }` |
 | `packages/embed-sdk/src/shared/auth-session.ts` | `AuthSession` singleton: mode discovery, `nw_sid` storage, `#nw_auth` handoff, JWT cache, `login`/`logout`/`me`/`onChange` |
+| `packages/embed-sdk/src/i18n/locales/en/` | The English catalogue -- **source of truth for the shape of every locale** (`type Messages = typeof en`) |
+| `packages/embed-sdk/src/i18n/registry.ts` | `SUPPORTED_LOCALES` (+ the lazy `import()` per locale), BCP-47 `resolveLocale`, `endonym` |
+| `packages/embed-sdk/src/i18n/locale-session.ts` | Page-wide locale singleton: resolution ladder, catalogue loading, `onChange`, `nw_locale` |
+| `packages/embed-sdk/src/i18n/t.ts` | `{name}` interpolation + `Intl.PluralRules` selection; overrides -> locale -> English -> key |
+| `packages/embed-sdk/src/i18n/formatters.ts` | Memoised `Intl` wrappers. **No `timeZone`, by design** -- see Widget Localisation |
+| `packages/embed-sdk/src/i18n/overrides.ts` | `MPNextEmbed.setMessages()` -- church label renames (C67 part 1) |
+| `packages/embed-sdk/src/i18n/pseudo.ts` | Generated dev pseudo-locale over the override layer |
+| `packages/embed-sdk/src/components/locale-selector.ts` | `next-locale-selector` -- endonym options from `Intl.DisplayNames`, so zero translated strings |
+| `scripts/i18n-scan.mjs`, `scripts/i18n-check.mjs` | Literal scanner shared by the ratchet test and `pnpm i18n:check` / `i18n:sync` |
 | `packages/embed-sdk/src/shared/base-widget.ts` | Abstract base class (Shadow DOM, token mgmt, fetch, `requestLogin()` → cancelable `loginRequired` then `authSession.login`) |
 | `packages/embed-sdk/src/shared/cdn-loader.ts` | `loadScript(url, integrity?)` / `injectExternalCSS(root, url, integrity?)` -- SRI + `crossOrigin="anonymous"` for all four FullCalendar CDN assets |
 | `packages/embed-sdk/src/shared/form-validation.ts` | Shared widget form validation (no native `reportValidity` popup) |

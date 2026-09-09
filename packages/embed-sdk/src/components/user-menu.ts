@@ -1,5 +1,6 @@
 import { MPNextWidget } from "../shared/base-widget";
 import type { EmbedAuthMode } from "../shared/auth-session";
+import type { MessageKey } from "../i18n";
 
 interface UserMenuState {
   isDropdownOpen: boolean;
@@ -14,14 +15,18 @@ interface UserInfo {
   imageUrl: string;
 }
 
+/**
+ * Tab ids are also the `#nw-tab=` deep-link values, so they stay English
+ * identifiers; only the catalogue key beside each one is rendered.
+ */
 const TABS = [
-  { id: "profile", label: "Profile" },
-  { id: "family", label: "Family" },
-  { id: "groups", label: "Groups" },
-  { id: "giving", label: "Giving" },
-  { id: "subscriptions", label: "Subscriptions" },
-  { id: "invoices", label: "Invoices" },
-] as const;
+  { id: "profile", labelKey: "userMenu.tabs.profile" },
+  { id: "family", labelKey: "userMenu.tabs.family" },
+  { id: "groups", labelKey: "userMenu.tabs.groups" },
+  { id: "giving", labelKey: "userMenu.tabs.giving" },
+  { id: "subscriptions", labelKey: "userMenu.tabs.subscriptions" },
+  { id: "invoices", labelKey: "userMenu.tabs.invoices" },
+] as const satisfies readonly { id: string; labelKey: MessageKey }[];
 
 /**
  * Cadence and budget for the <mpp-user-login> registration watch
@@ -346,26 +351,35 @@ export class UserMenuWidget extends MPNextWidget {
     this.injectStyles(this.getStyles());
     this.applySessionScope();
     // Neutral placeholder until the auth mode is known; render() no-ops into
-    // the placeholder while authMode is null.
+    // the placeholder while authMode is null. It carries no copy, so painting
+    // it before the catalogue lands cannot show the wrong language.
     this.render();
     document.addEventListener("click", this.documentClickHandler, true);
     document.addEventListener("keydown", this.escapeHandler);
     window.addEventListener("storage", this.storageHandler);
     window.addEventListener("hashchange", this.hashChangeHandler);
-    void this.resolveAuthMode();
+    // Both fetches start here and run in parallel: every render that carries
+    // copy happens inside resolveAuthMode(), which awaits the catalogue before
+    // painting it, so localisation costs no extra latency on first paint.
+    void this.resolveAuthMode(this.initLocale());
   }
 
   /**
    * Discover the auth mode once (legacy on any failure), then do the first real
    * render. In dual/hardened, re-render whenever the session changes.
    */
-  private async resolveAuthMode(): Promise<void> {
+  private async resolveAuthMode(localeReady: Promise<void> = Promise.resolve()): Promise<void> {
     let mode: EmbedAuthMode = "legacy";
     try {
       mode = (await this.authSession.getConfig()).mode;
     } catch {
       mode = "legacy";
     }
+    if (!this.isConnected) return;
+    // The catalogue, not the config, is what the first copy-bearing render
+    // needs; awaiting it here rather than in connectedCallback keeps the config
+    // fetch on the critical path it was already on.
+    await localeReady;
     if (!this.isConnected) return;
     this.authMode = mode;
     if (mode !== "legacy") {
@@ -391,6 +405,7 @@ export class UserMenuWidget extends MPNextWidget {
   }
 
   disconnectedCallback() {
+    super.disconnectedCallback();
     document.removeEventListener("click", this.documentClickHandler, true);
     document.removeEventListener("keydown", this.escapeHandler);
     window.removeEventListener("storage", this.storageHandler);
@@ -550,7 +565,7 @@ export class UserMenuWidget extends MPNextWidget {
     return `
       <button class="nw-login-btn" type="button">
         <svg class="nw-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-        Sign In
+        ${this.escapeHtml(this.t("common.signIn"))}
       </button>
     `;
   }
@@ -1051,13 +1066,13 @@ export class UserMenuWidget extends MPNextWidget {
 
     if (photoSrc) {
       return `
-        <button class="nw-avatar-btn" aria-label="User menu" aria-haspopup="true" aria-expanded="${this.state.isDropdownOpen}">
+        <button class="nw-avatar-btn" aria-label="${this.escapeHtml(this.t("userMenu.menuLabel"))}" aria-haspopup="true" aria-expanded="${this.state.isDropdownOpen}">
           <img class="nw-avatar-img" src="${this.escapeHtml(photoSrc)}" alt="${this.escapeHtml(user.firstName)} ${this.escapeHtml(user.lastName)}" />
         </button>
       `;
     }
     return `
-      <button class="nw-avatar-btn" aria-label="User menu" aria-haspopup="true" aria-expanded="${this.state.isDropdownOpen}">
+      <button class="nw-avatar-btn" aria-label="${this.escapeHtml(this.t("userMenu.menuLabel"))}" aria-haspopup="true" aria-expanded="${this.state.isDropdownOpen}">
         <span class="nw-avatar-initials">${this.escapeHtml(initials)}</span>
       </button>
     `;
@@ -1076,15 +1091,15 @@ export class UserMenuWidget extends MPNextWidget {
         <div class="nw-dropdown-divider"></div>
         <button class="nw-dropdown-item" data-action="account">
           <svg class="nw-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          My Account
+          ${this.escapeHtml(this.t("userMenu.myAccount"))}
         </button>
         ${this.isTaxSeason() ? `<button class="nw-dropdown-item" data-action="giving">
           <svg class="nw-icon" style="stroke: #F1BE48;" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          Contribution Statement
+          ${this.escapeHtml(this.t("userMenu.contributionStatement"))}
         </button>` : ""}
         <button class="nw-dropdown-item" data-action="logout">
           <svg class="nw-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-          Log out
+          ${this.escapeHtml(this.t("common.signOut"))}
         </button>
       </div>
     `;
@@ -1245,13 +1260,13 @@ export class UserMenuWidget extends MPNextWidget {
   private renderModal(): string {
     return `
       <div class="nw-modal-backdrop"></div>
-      <div class="nw-modal-container" role="dialog" aria-modal="true" aria-label="My Account">
+      <div class="nw-modal-container" role="dialog" aria-modal="true" aria-label="${this.escapeHtml(this.t("userMenu.myAccount"))}">
         <div class="nw-modal-header">
           <div>
-            <h2 class="nw-modal-title">My Account</h2>
-            <p class="nw-modal-description">Manage your account settings and preferences.</p>
+            <h2 class="nw-modal-title">${this.escapeHtml(this.t("userMenu.myAccount"))}</h2>
+            <p class="nw-modal-description">${this.escapeHtml(this.t("userMenu.modalDescription"))}</p>
           </div>
-          <button class="nw-modal-close" aria-label="Close" data-action="close-modal">
+          <button class="nw-modal-close" aria-label="${this.escapeHtml(this.t("common.close"))}" data-action="close-modal">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -1259,7 +1274,7 @@ export class UserMenuWidget extends MPNextWidget {
           ${TABS.map(
             (tab) => `
             <button class="nw-tab${this.state.activeTab === tab.id ? " active" : ""}" data-tab="${tab.id}">
-              ${tab.label}
+              ${this.escapeHtml(this.t(tab.labelKey))}
             </button>
           `
           ).join("")}

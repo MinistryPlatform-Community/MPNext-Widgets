@@ -203,11 +203,6 @@ type SubmitAction =
   | "saveAndCheckout"
   | "saveAndAddAnother";
 
-const CURRENCY = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
-
 /**
  * `next-event-details` — single-event view + registration flow.
  *
@@ -266,8 +261,13 @@ export class EventDetailsWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles() + CUSTOM_FORM_STYLES + FORM_VALIDATION_STYLES);
-    this.render();
-    this.init();
+    // Await the catalogue before the first render so a Spanish visitor never
+    // sees English swap to Spanish. Free in practice: the fetch lands inside
+    // the loading state this widget already paints while it loads the event.
+    void this.initLocale().then(() => {
+      this.render();
+      this.init();
+    });
   }
 
   // ── Attribute helpers ───────────────────────────────────────────────────
@@ -329,10 +329,9 @@ export class EventDetailsWidget extends MPNextWidget {
 
     const eventId = this.resolveEventId();
     if (!eventId) {
-      this.error = "No event specified.";
+      this.error = this.t("eventDetails.noEventSpecified");
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.emit("eventDetailError", { error: this.error });
       return;
     }
@@ -341,11 +340,12 @@ export class EventDetailsWidget extends MPNextWidget {
       // 1. Load event
       const res = await this.fetch(`/api/embed/event-details/${encodeURIComponent(eventId)}`);
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        const body = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(body, "errors.event_not_found"));
       }
       const data: { event: EventDetail; isUserStaff: boolean } = await res.json();
       if (!data || !data.event) {
-        throw new Error("This event is not available.");
+        throw new Error(this.t("eventDetails.notAvailable"));
       }
       this.event = data.event;
       if (typeof data.isUserStaff === "boolean") {
@@ -363,7 +363,6 @@ export class EventDetailsWidget extends MPNextWidget {
 
       // 3. Visibility gating
       if (!this.isEventViewable()) {
-        this.attachListeners();
         return;
       }
 
@@ -372,17 +371,18 @@ export class EventDetailsWidget extends MPNextWidget {
       // 4 + 5. Load forms / participants
       await this.prepareRegistration();
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "No event found.";
+      // `errorText` has already turned an API machine code into a translated
+      // sentence; anything else (a dropped connection) becomes the generic
+      // network message rather than leaking English.
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.event = null;
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.emit("eventDetailError", { error: this.error });
       return;
     }
 
     this.render();
-    this.attachListeners();
   }
 
   private async loadBasicContact() {
@@ -451,11 +451,11 @@ export class EventDetailsWidget extends MPNextWidget {
     if (!this.event) return false;
     switch (this.event.visibilityLevelId) {
       case 1:
-        this.message = { type: "warning", text: "This event is private." };
+        this.message = { type: "warning", text: this.t("eventDetails.private") };
         return false;
       case 2:
         if (this.event.isUserStaff) return true;
-        this.message = { type: "warning", text: "This event is only available to staff." };
+        this.message = { type: "warning", text: this.t("eventDetails.staffOnly") };
         return false;
       default:
         return true;
@@ -469,23 +469,21 @@ export class EventDetailsWidget extends MPNextWidget {
 
     if (ev.externalRegistrationUrl) return; // external — no internal form
     if (ev.isRegistrationFull) {
-      this.message = { type: "warning", text: "Registration is full." };
+      this.message = { type: "warning", text: this.t("eventDetails.registrationFull") };
       this.render();
-      this.attachListeners();
       return;
     }
 
     // forceLogin + anonymous → show sign-in panel only.
     if (ev.forceLogin && !this.isAuthenticated) {
       this.render();
-      this.attachListeners();
       return;
     }
 
     const productId = ev.registrationProductId;
     if (ev.registrationActive && productId && productId > 0) {
       if (ev.isRegistrationOptionsFull) {
-        this.message = { type: "warning", text: "Registration is full." };
+        this.message = { type: "warning", text: this.t("eventDetails.registrationFull") };
       } else {
         await this.loadProduct(productId);
         await this.loadCustomForm();
@@ -498,7 +496,6 @@ export class EventDetailsWidget extends MPNextWidget {
     }
 
     this.render();
-    this.attachListeners();
   }
 
   private async loadProduct(productId: number) {
@@ -576,7 +573,7 @@ export class EventDetailsWidget extends MPNextWidget {
     }
     this.message = {
       type: "warning",
-      text: "Your registration session expired.",
+      text: this.t("eventDetails.registrationSessionExpired"),
     };
   }
 
@@ -588,7 +585,7 @@ export class EventDetailsWidget extends MPNextWidget {
     if (!form) return;
 
     if (!validateForm(form).valid) {
-      this.setMessage("danger", "Please verify the registration details.");
+      this.setMessage("danger", this.t("eventDetails.verifyDetails"));
       return;
     }
 
@@ -597,7 +594,7 @@ export class EventDetailsWidget extends MPNextWidget {
     if (dob && dob.value) {
       const dobDate = this.parseMpDate(dob.value);
       if (dobDate && dobDate.getTime() > Date.now()) {
-        this.setMessage("danger", "Date of birth cannot be in the future.");
+        this.setMessage("danger", this.t("eventDetails.dobInFuture"));
         return;
       }
     }
@@ -617,7 +614,6 @@ export class EventDetailsWidget extends MPNextWidget {
         if (body && body.message === "INVOICE-EXPIRED") {
           this.handleExpiredInvoice("registrationExpiredMessage", true);
           this.render();
-          this.attachListeners();
           return;
         }
       }
@@ -626,7 +622,12 @@ export class EventDetailsWidget extends MPNextWidget {
         await res.json().catch(() => ({ success: false, guid: null }));
 
       if (!data.success) {
-        const msg = data.message || "Unable to save your registration.";
+        // `data.message` is the API's English debug string: logged, never
+        // rendered, so a congregant does not read a server sentence.
+        if (data.message) {
+          console.warn(`[mpnext] registration rejected: ${data.message}`);
+        }
+        const msg = this.errorText(data, "eventDetails.saveFailed");
         this.setMessage("danger", msg);
         this.emit("registrationError", { error: msg });
         this.setSubmitDisabled(false);
@@ -646,11 +647,11 @@ export class EventDetailsWidget extends MPNextWidget {
       this.editingParticipantId = null;
       this.promos = [];
       await this.loadParticipants(false);
-      this.setMessage("success", "Saved. Add another person below.");
+      this.setMessage("success", this.t("eventDetails.savedAddAnother"));
       this.render();
-      this.attachListeners();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Registration failed.";
+      const msg =
+        err instanceof Error ? err.message : this.t("eventDetails.registrationFailed");
       this.setMessage("danger", msg);
       this.emit("registrationError", { error: msg });
       this.setSubmitDisabled(false);
@@ -726,7 +727,6 @@ export class EventDetailsWidget extends MPNextWidget {
       if (!res.ok) {
         this.promoError = true;
         this.render();
-        this.attachListeners();
         return;
       }
       const data: { promo: PromoCodeResponse } = await res.json();
@@ -758,7 +758,6 @@ export class EventDetailsWidget extends MPNextWidget {
       this.promoError = true;
     }
     this.render();
-    this.attachListeners();
   }
 
   private promoWithinDaysOut(daysOutToHide: number | null): boolean {
@@ -776,7 +775,6 @@ export class EventDetailsWidget extends MPNextWidget {
   private removePromo(code: string) {
     this.promos = this.promos.filter((p) => p.code !== code);
     this.render();
-    this.attachListeners();
   }
 
   // ── Total ─────────────────────────────────────────────────────────────
@@ -850,7 +848,7 @@ export class EventDetailsWidget extends MPNextWidget {
 
   private updateTotal() {
     const el = this.root.querySelector<HTMLElement>("#ed-total-value");
-    if (el) el.textContent = CURRENCY.format(this.calculateTotal());
+    if (el) el.textContent = this.fmt.currency(this.calculateTotal());
   }
 
   // ── Participant remove ────────────────────────────────────────────────
@@ -879,7 +877,7 @@ export class EventDetailsWidget extends MPNextWidget {
     }
 
     if (!invoiceDetailId) {
-      this.setMessage("warning", "Unable to find the invoice.");
+      this.setMessage("warning", this.t("eventDetails.invoiceNotFound"));
       return;
     }
 
@@ -901,12 +899,14 @@ export class EventDetailsWidget extends MPNextWidget {
           this.invoiceId = null;
         }
         this.render();
-        this.attachListeners();
       } else {
-        this.setMessage("warning", data.message || "Unable to delete the registration.");
+        if (data.message) {
+          console.warn(`[mpnext] registration delete rejected: ${data.message}`);
+        }
+        this.setMessage("warning", this.errorText(data, "eventDetails.deleteFailed"));
       }
     } catch {
-      this.setMessage("warning", "An error occurred while deleting the registration.");
+      this.setMessage("warning", this.t("eventDetails.deleteError"));
     }
   }
 
@@ -919,7 +919,6 @@ export class EventDetailsWidget extends MPNextWidget {
       container.style.display = "";
     } else {
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -936,7 +935,7 @@ export class EventDetailsWidget extends MPNextWidget {
     if (email) {
       email.addEventListener("click", () => {
         this.emit("emailRequested", { eventId: this.event?.eventId });
-        this.setMessage("info", "Emailing a friend is not available in this widget.");
+        this.setMessage("info", this.t("eventDetails.emailUnavailable"));
       });
     }
 
@@ -1087,9 +1086,27 @@ export class EventDetailsWidget extends MPNextWidget {
 
   // ── Render ────────────────────────────────────────────────────────────
 
+  /**
+   * Paint, then re-bind the listeners.
+   *
+   * These were two calls that every internal site made in sequence, which
+   * broke as soon as anything else re-rendered the widget: the base class does
+   * exactly that on a page-wide locale change, and a paint replaces every node
+   * the listeners were attached to, leaving the buttons dead. Owning both here
+   * leaves no ordering to get wrong, and is safe because every previous
+   * `attachListeners()` call already sat immediately after a `render()`.
+   */
   render() {
+    this.paint();
+    this.attachListeners();
+  }
+
+  private paint() {
     if (this.loading) {
-      this.root.innerHTML = `<div class="ed">${this.renderState(this.spinnerSvg(), "Loading event…")}</div>`;
+      this.root.innerHTML = `<div class="ed">${this.renderState(
+        this.spinnerSvg(),
+        this.t("eventDetails.loading")
+      )}</div>`;
       return;
     }
     if (this.error || !this.event) {
@@ -1097,7 +1114,7 @@ export class EventDetailsWidget extends MPNextWidget {
         <div class="ed">
           ${this.renderBackLink()}
           <div class="ed-state ed-error">
-            <p>${this.escapeHtml(this.error || "No event found.")}</p>
+            <p>${this.escapeHtml(this.error || this.t("errors.event_not_found"))}</p>
           </div>
         </div>`;
       return;
@@ -1114,7 +1131,9 @@ export class EventDetailsWidget extends MPNextWidget {
 
   private renderBackLink(): string {
     if (!this.returnUrl) return "";
-    return `<div class="ed-back"><a href="${this.escapeAttr(this.returnUrl)}">&larr; Back to events</a></div>`;
+    return `<div class="ed-back"><a href="${this.escapeAttr(this.returnUrl)}">&larr; ${this.escapeHtml(
+      this.t("eventDetails.backToEvents")
+    )}</a></div>`;
   }
 
   private renderMessage(): string {
@@ -1134,15 +1153,18 @@ export class EventDetailsWidget extends MPNextWidget {
             .join("")}</ul>`
         : "";
 
-    const dateRange = this.formatDateRange(ev.startDate, ev.endDate);
+    // `full` matches the pre-i18n shape ("Thursday, September 10, 2026").
+    const dateRange = this.fmt.dateRange(ev.startDate, ev.endDate, "full");
     const description = ev.description
       ? `<section class="ed-description">${this.sanitizeHtml(ev.description)}</section>`
       : "";
 
     const meeting = ev.meetingInstructions
-      ? this.specialText("Meeting Instructions", ev.meetingInstructions)
+      ? this.specialText(this.t("eventDetails.meetingInstructions"), ev.meetingInstructions)
       : "";
-    const location = ev.location ? this.specialText("Location", ev.location) : "";
+    const location = ev.location
+      ? this.specialText(this.t("fields.location"), ev.location)
+      : "";
 
     const rooms = this.renderRooms();
     const contacts = this.renderContacts();
@@ -1186,7 +1208,9 @@ export class EventDetailsWidget extends MPNextWidget {
       }
     }
     if (infos.length === 0) return "";
-    return `<div class="ed-special"><div class="ed-special-title">Room(s)</div><div class="ed-special-body">${infos
+    return `<div class="ed-special"><div class="ed-special-title">${this.escapeHtml(
+      this.t("eventDetails.rooms")
+    )}</div><div class="ed-special-body">${infos
       .map((i) => this.escapeHtml(i))
       .join("<br/>")}</div></div>`;
   }
@@ -1207,7 +1231,9 @@ export class EventDetailsWidget extends MPNextWidget {
         return `<li class="ed-contact">${badge}<span>${inner}</span></li>`;
       })
       .join("");
-    return `<div class="ed-special"><div class="ed-special-title">Contact(s)</div><ul class="ed-contacts">${items}</ul></div>`;
+    return `<div class="ed-special"><div class="ed-special-title">${this.escapeHtml(
+      this.t("eventDetails.contacts")
+    )}</div><ul class="ed-contacts">${items}</ul></div>`;
   }
 
   private renderMap(): string {
@@ -1218,11 +1244,11 @@ export class EventDetailsWidget extends MPNextWidget {
     return `
       <div class="ed-map">
         <iframe
-          title="Event location map"
+          title="${this.escapeAttr(this.t("eventDetails.mapTitle"))}"
           src="https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed"
           loading="lazy"
           referrerpolicy="no-referrer-when-downgrade"></iframe>
-        <a class="ed-link" href="${this.escapeAttr(directions)}" target="_blank" rel="noopener">Get Directions &rsaquo;</a>
+        <a class="ed-link" href="${this.escapeAttr(directions)}" target="_blank" rel="noopener">${this.escapeHtml(this.t("common.getDirections"))} &rsaquo;</a>
       </div>`;
   }
 
@@ -1233,7 +1259,9 @@ export class EventDetailsWidget extends MPNextWidget {
     if (!start) return "";
     const loc = [ev.location, ev.address].filter(Boolean).join(" - ");
     const href = this.buildIcsHref(ev.title, ev.description || "", loc, start, end);
-    return `<a class="ed-link ed-ics" href="${href}" download="event.ics">Add to Calendar &rsaquo;</a>`;
+    return `<a class="ed-link ed-ics" href="${href}" download="event.ics">${this.escapeHtml(
+      this.t("addToCalendar.trigger")
+    )} &rsaquo;</a>`;
   }
 
   /** Port of ICSCalendarBuilder.GetICSHrefValue (data: URL). */
@@ -1263,17 +1291,17 @@ export class EventDetailsWidget extends MPNextWidget {
     const parts: string[] = [];
     if (ev.externalRegistrationUrl) {
       parts.push(
-        `<a class="ed-btn ed-btn--primary" href="${this.escapeAttr(ev.externalRegistrationUrl)}" target="_blank" rel="noopener">Register</a>`,
+        `<a class="ed-btn ed-btn--primary" href="${this.escapeAttr(ev.externalRegistrationUrl)}" target="_blank" rel="noopener">${this.escapeHtml(this.t("eventDetails.register"))}</a>`,
       );
     }
     if (ev.opportunityCount > 0 && this.isValidUrl(this.opportunityFinderUrl)) {
       const url = this.buildOpportunityUrl();
       if (url) {
-        parts.push(`<a class="ed-btn ed-btn--secondary" href="${this.escapeAttr(url)}">Volunteer</a>`);
+        parts.push(`<a class="ed-btn ed-btn--secondary" href="${this.escapeAttr(url)}">${this.escapeHtml(this.t("eventDetails.volunteer"))}</a>`);
       }
     }
     if (ev.allowEmail) {
-      parts.push(`<button class="ed-btn ed-btn--ghost" type="button" data-action="email">Email a Friend</button>`);
+      parts.push(`<button class="ed-btn ed-btn--ghost" type="button" data-action="email">${this.escapeHtml(this.t("eventDetails.emailFriend"))}</button>`);
     }
     return parts.join("");
   }
@@ -1306,8 +1334,10 @@ export class EventDetailsWidget extends MPNextWidget {
     if (ev.forceLogin && !this.isAuthenticated) {
       return `
         <div class="ed-reg ed-login-panel">
-          <p>Please sign in to register for this event.</p>
-          <button class="ed-btn ed-btn--primary" type="button" data-action="login">Sign In</button>
+          <p>${this.escapeHtml(this.t("eventDetails.signInToRegister"))}</p>
+          <button class="ed-btn ed-btn--primary" type="button" data-action="login">${this.escapeHtml(
+            this.t("common.signIn")
+          )}</button>
         </div>`;
     }
 
@@ -1316,18 +1346,22 @@ export class EventDetailsWidget extends MPNextWidget {
 
     if (!regActive) {
       if (productId && productId > 0) {
-        return `<div class="ed-reg"><div class="ed-message ed-message--warning">Registration is not currently active.</div></div>`;
+        return `<div class="ed-reg"><div class="ed-message ed-message--warning">${this.escapeHtml(
+          this.t("eventDetails.registrationInactive")
+        )}</div></div>`;
       }
       return "";
     }
 
     if (ev.isRegistrationOptionsFull) {
-      return `<div class="ed-reg"><div class="ed-message ed-message--warning">Registration is full.</div></div>`;
+      return `<div class="ed-reg"><div class="ed-message ed-message--warning">${this.escapeHtml(
+        this.t("eventDetails.registrationFull")
+      )}</div></div>`;
     }
 
     return `
       <div class="ed-reg">
-        <h2 class="ed-reg-title">Register</h2>
+        <h2 class="ed-reg-title">${this.escapeHtml(this.t("eventDetails.register"))}</h2>
         ${this.renderParticipants()}
         <form id="ed-form" class="ed-form" novalidate>
           ${this.renderHiddenInputs()}
@@ -1389,19 +1423,21 @@ export class EventDetailsWidget extends MPNextWidget {
       .join("");
     return `
       <div class="ed-field">
-        <label for="ed-register-as">Register As</label>
+        <label for="ed-register-as">${this.escapeHtml(this.t("eventDetails.registerAs"))}</label>
         <select id="ed-register-as" class="ed-input">
-          <option value="">-- Select --</option>
+          <option value="">${this.escapeHtml(this.t("eventDetails.selectPrompt"))}</option>
           ${opts}
-          <option value="Blank Form">Blank Form</option>
+          <option value="Blank Form">${this.escapeHtml(this.t("eventDetails.blankForm"))}</option>
         </select>
       </div>
-      <div id="ed-already-registered" class="ed-message ed-message--info" style="display:${this.alreadyRegistered ? "" : "none"}">This person is already registered for this event.</div>`;
+      <div id="ed-already-registered" class="ed-message ed-message--info" style="display:${this.alreadyRegistered ? "" : "none"}">${this.escapeHtml(
+        this.t("eventDetails.alreadyRegistered")
+      )}</div>`;
   }
 
   private memberDisplayName(m: HouseholdMemberLite): string {
     const first = m.nickName || m.firstName;
-    return `${first} ${m.lastName}`.trim() || "My Info";
+    return `${first} ${m.lastName}`.trim() || this.t("eventDetails.myInfo");
   }
 
   private renderAttendeeFields(): string {
@@ -1409,36 +1445,36 @@ export class EventDetailsWidget extends MPNextWidget {
     if (ev.minorRegistration) {
       return `
         <fieldset class="ed-fieldset">
-          <legend>Attendee (Minor)</legend>
+          <legend>${this.escapeHtml(this.t("eventDetails.attendeeMinor"))}</legend>
           <div class="ed-grid2">
-            <div class="ed-field"><label>First Name${requiredStar()}</label><input class="ed-input" name="attendeeFirstName" required></div>
-            <div class="ed-field"><label>Last Name${requiredStar()}</label><input class="ed-input" name="attendeeLastName" required></div>
+            <div class="ed-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="ed-input" name="attendeeFirstName" required></div>
+            <div class="ed-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="ed-input" name="attendeeLastName" required></div>
           </div>
-          <div class="ed-field"><label>Date of Birth${requiredStar()}</label><input id="ed-attendee-dob" class="ed-input" type="date" name="attendeeDateOfBirth" required></div>
+          <div class="ed-field"><label>${this.escapeHtml(this.t("fields.dateOfBirth"))}${requiredStar()}</label><input id="ed-attendee-dob" class="ed-input" type="date" name="attendeeDateOfBirth" required></div>
         </fieldset>
         <fieldset class="ed-fieldset">
-          <legend>Parent / Guardian</legend>
+          <legend>${this.escapeHtml(this.t("eventDetails.parentGuardian"))}</legend>
           <div class="ed-grid2">
-            <div class="ed-field"><label>First Name${requiredStar()}</label><input class="ed-input" name="parentFirstName" required></div>
-            <div class="ed-field"><label>Last Name${requiredStar()}</label><input class="ed-input" name="parentLastName" required></div>
+            <div class="ed-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="ed-input" name="parentFirstName" required></div>
+            <div class="ed-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="ed-input" name="parentLastName" required></div>
           </div>
           <div class="ed-grid2">
-            <div class="ed-field"><label>Email${requiredStar()}</label><input class="ed-input" type="email" name="parentEmailAddress" required></div>
-            <div class="ed-field"><label>Mobile Phone</label><input class="ed-input" name="parentMobilePhoneNumber"></div>
+            <div class="ed-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="ed-input" type="email" name="parentEmailAddress" required></div>
+            <div class="ed-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}</label><input class="ed-input" name="parentMobilePhoneNumber"></div>
           </div>
         </fieldset>
         ${this.renderAddressFields()}`;
     }
     return `
       <fieldset class="ed-fieldset">
-        <legend>Attendee</legend>
+        <legend>${this.escapeHtml(this.t("eventDetails.attendee"))}</legend>
         <div class="ed-grid2">
-          <div class="ed-field"><label>First Name${requiredStar()}</label><input id="ed-first-name" class="ed-input" name="FirstName" required></div>
-          <div class="ed-field"><label>Last Name${requiredStar()}</label><input id="ed-last-name" class="ed-input" name="LastName" required></div>
+          <div class="ed-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input id="ed-first-name" class="ed-input" name="FirstName" required></div>
+          <div class="ed-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input id="ed-last-name" class="ed-input" name="LastName" required></div>
         </div>
         <div class="ed-grid2">
-          <div class="ed-field"><label>Email${requiredStar()}</label><input id="ed-email" class="ed-input" type="email" name="EmailAddress" required></div>
-          <div class="ed-field"><label>Mobile Phone</label><input id="ed-phone" class="ed-input" name="MobilePhoneNumber"></div>
+          <div class="ed-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input id="ed-email" class="ed-input" type="email" name="EmailAddress" required></div>
+          <div class="ed-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}</label><input id="ed-phone" class="ed-input" name="MobilePhoneNumber"></div>
         </div>
       </fieldset>
       ${this.renderAddressFields()}
@@ -1450,13 +1486,13 @@ export class EventDetailsWidget extends MPNextWidget {
     const star = required ? requiredStar() : "";
     return `
       <fieldset class="ed-fieldset">
-        <legend>Address</legend>
-        <div class="ed-field"><label>Address Line 1${star}</label><input class="ed-input" name="AddressLine1" ${required}></div>
-        <div class="ed-field"><label>Address Line 2</label><input class="ed-input" name="AddressLine2"></div>
+        <legend>${this.escapeHtml(this.t("fields.address"))}</legend>
+        <div class="ed-field"><label>${this.escapeHtml(this.t("fields.addressLine1"))}${star}</label><input class="ed-input" name="AddressLine1" ${required}></div>
+        <div class="ed-field"><label>${this.escapeHtml(this.t("fields.addressLine2"))}</label><input class="ed-input" name="AddressLine2"></div>
         <div class="ed-grid3">
-          <div class="ed-field"><label>City${star}</label><input class="ed-input" name="City" ${required}></div>
-          <div class="ed-field"><label>State / Region${star}</label><input class="ed-input" name="StateRegion" ${required}></div>
-          <div class="ed-field"><label>Postal Code${star}</label><input class="ed-input" name="PostalCode" ${required}></div>
+          <div class="ed-field"><label>${this.escapeHtml(this.t("fields.city"))}${star}</label><input class="ed-input" name="City" ${required}></div>
+          <div class="ed-field"><label>${this.escapeHtml(this.t("fields.stateRegion"))}${star}</label><input class="ed-input" name="StateRegion" ${required}></div>
+          <div class="ed-field"><label>${this.escapeHtml(this.t("fields.postalCode"))}${star}</label><input class="ed-input" name="PostalCode" ${required}></div>
         </div>
       </fieldset>`;
   }
@@ -1465,7 +1501,9 @@ export class EventDetailsWidget extends MPNextWidget {
     if (!this.isAuthenticated) return "";
     return `
       <label class="ed-checkbox">
-        <input type="checkbox" name="updateMyInfo" value="true"> Update my contact info with the above
+        <input type="checkbox" name="updateMyInfo" value="true"> ${this.escapeHtml(
+          this.t("eventDetails.updateMyInfo")
+        )}
       </label>`;
   }
 
@@ -1493,14 +1531,18 @@ export class EventDetailsWidget extends MPNextWidget {
             <h3 class="ed-option-title">${title}</h3>
             ${desc}
             <table class="ed-option-table">
-              <thead><tr><th>Option</th><th>Qty</th><th>Price</th></tr></thead>
+              <thead><tr><th>${this.escapeHtml(this.t("eventDetails.optionColumn"))}</th><th>${this.escapeHtml(
+                this.t("eventDetails.qtyColumn")
+              )}</th><th>${this.escapeHtml(this.t("eventDetails.priceColumn"))}</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
           </div>`;
       })
       .join("");
 
-    return `<div class="ed-product-options"><h3 class="ed-reg-subtitle">Add-ons</h3>${groupsHtml}</div>`;
+    return `<div class="ed-product-options"><h3 class="ed-reg-subtitle">${this.escapeHtml(
+      this.t("eventDetails.addOns")
+    )}</h3>${groupsHtml}</div>`;
   }
 
   private renderRadioGroup(group: ProductOptionGroup, prices: ProductOptionPrice[]): string {
@@ -1509,7 +1551,7 @@ export class EventDetailsWidget extends MPNextWidget {
     if (!group.required) {
       rows += `
         <tr>
-          <td><label><input type="radio" class="product-radio" name="product-radio_${gid}" value="" checked> Not Selected</label></td>
+          <td><label><input type="radio" class="product-radio" name="product-radio_${gid}" value="" checked> ${this.escapeHtml(this.t("eventDetails.notSelected"))}</label></td>
           <td></td><td></td>
         </tr>`;
     }
@@ -1525,7 +1567,7 @@ export class EventDetailsWidget extends MPNextWidget {
               <input type="hidden" name="product-option-invoice-detail_${gid}_${p.optionPriceId}" value="">
             </td>
             <td>${this.renderQtyCell(group, p, true)}</td>
-            <td>${CURRENCY.format(p.optionPrice)}</td>
+            <td>${this.fmt.currency(p.optionPrice)}</td>
           </tr>`;
       })
       .join("");
@@ -1546,7 +1588,7 @@ export class EventDetailsWidget extends MPNextWidget {
               <input type="hidden" name="product-option-invoice-detail_${gid}_${p.optionPriceId}" value="">
             </td>
             <td>${this.renderQtyCell(group, p, false)}</td>
-            <td>${CURRENCY.format(p.optionPrice)}</td>
+            <td>${this.fmt.currency(p.optionPrice)}</td>
           </tr>`;
       })
       .join("");
@@ -1583,19 +1625,31 @@ export class EventDetailsWidget extends MPNextWidget {
         (p) => `
         <tr>
           <td>${this.escapeHtml(p.code)}</td>
-          <td>${CURRENCY.format(p.amount)}</td>
-          <td><a href="#" data-action="remove-promo" data-promo="${this.escapeAttr(p.code)}">Remove</a></td>
+          <td>${this.fmt.currency(p.amount)}</td>
+          <td><a href="#" data-action="remove-promo" data-promo="${this.escapeAttr(
+            p.code
+          )}">${this.escapeHtml(this.t("common.remove"))}</a></td>
         </tr>`,
       )
       .join("");
     return `
       <div class="ed-promo">
-        <label for="ed-promo-input">Promo Code</label>
+        <label for="ed-promo-input">${this.escapeHtml(this.t("eventDetails.promoCode"))}</label>
         <div class="ed-promo-row">
-          <input id="ed-promo-input" class="ed-input" type="text" placeholder="Enter code">
-          <button class="ed-btn ed-btn--secondary" type="button" data-action="apply-promo">Apply</button>
+          <input id="ed-promo-input" class="ed-input" type="text" placeholder="${this.escapeAttr(
+            this.t("eventDetails.promoPlaceholder")
+          )}">
+          <button class="ed-btn ed-btn--secondary" type="button" data-action="apply-promo">${this.escapeHtml(
+            this.t("eventDetails.promoApply")
+          )}</button>
         </div>
-        ${this.promoError ? `<div class="ed-promo-error">Invalid promo code.</div>` : ""}
+        ${
+          this.promoError
+            ? `<div class="ed-promo-error">${this.escapeHtml(
+                this.t("eventDetails.promoInvalid")
+              )}</div>`
+            : ""
+        }
         ${this.promos.length ? `<table class="ed-promo-table"><tbody>${rows}</tbody></table>` : ""}
       </div>`;
   }
@@ -1606,7 +1660,9 @@ export class EventDetailsWidget extends MPNextWidget {
     // Shared renderer — same implementation the standalone next-custom-form uses.
     return `
       <div class="ed-customform">
-        <h3 class="ed-reg-subtitle">Additional Information</h3>
+        <h3 class="ed-reg-subtitle">${this.escapeHtml(
+          this.t("eventDetails.additionalInformation")
+        )}</h3>
         ${renderCustomFormFields(this.customFields, { formId: ev.customFormId })}
       </div>`;
   }
@@ -1615,20 +1671,26 @@ export class EventDetailsWidget extends MPNextWidget {
     if (this.event!.isFreeEvent) return "";
     return `
       <div class="ed-total" id="ed-total">
-        <span class="ed-total-label">Total</span>
-        <span class="ed-total-value" id="ed-total-value">${CURRENCY.format(this.calculateTotal())}</span>
+        <span class="ed-total-label">${this.escapeHtml(this.t("common.total"))}</span>
+        <span class="ed-total-value" id="ed-total-value">${this.fmt.currency(this.calculateTotal())}</span>
       </div>`;
   }
 
   private renderSubmitButtons(): string {
     const hasInvoice = !!this.invoiceId && this.participants.length > 0;
     const checkoutBtn = hasInvoice
-      ? `<button class="ed-btn ed-btn--ghost" type="button" data-action="checkout">Checkout</button>`
+      ? `<button class="ed-btn ed-btn--ghost" type="button" data-action="checkout">${this.escapeHtml(
+          this.t("eventDetails.checkout")
+        )}</button>`
       : "";
     return `
       <div class="ed-buttons">
-        <button class="ed-btn ed-btn--primary ed-submit" type="button" data-action="registerAndCheckout">Register &amp; Checkout</button>
-        <button class="ed-btn ed-btn--secondary ed-submit" type="button" data-action="registerAndAddAnother">Register &amp; Add Another</button>
+        <button class="ed-btn ed-btn--primary ed-submit" type="button" data-action="registerAndCheckout">${this.escapeHtml(
+          this.t("eventDetails.registerAndCheckout")
+        )}</button>
+        <button class="ed-btn ed-btn--secondary ed-submit" type="button" data-action="registerAndAddAnother">${this.escapeHtml(
+          this.t("eventDetails.registerAndAddAnother")
+        )}</button>
         ${checkoutBtn}
       </div>`;
   }
@@ -1639,17 +1701,24 @@ export class EventDetailsWidget extends MPNextWidget {
       .map((p, i) => {
         const name = `${p.firstName || ""} ${p.lastName || ""}`.trim();
         const contacts = [p.email, p.phone].filter(Boolean).map((c) => this.escapeHtml(c!)).join(" · ");
-        const price = this.event!.isFreeEvent ? "" : CURRENCY.format(p.lineTotal);
+        const price = this.event!.isFreeEvent ? "" : this.fmt.currency(p.lineTotal);
         const registered = p.lineTotal <= 0;
+        const minorName = `${p.minorFirstName || ""} ${p.minorLastName || ""}`.trim();
         const minor = p.isMinorRegistration
-          ? `<div class="ed-participant-minor">Minor: ${this.escapeHtml(p.minorFirstName || "")} ${this.escapeHtml(p.minorLastName || "")}</div>`
+          ? `<div class="ed-participant-minor">${this.escapeHtml(
+              this.t("eventDetails.minorLabel", { name: minorName })
+            )}</div>`
           : "";
         const actions = registered
-          ? `<span class="ed-registered">Registered</span>`
-          : `<button class="ed-btn ed-btn--ghost ed-btn--sm" type="button" data-action="remove-participant" data-participant-id="${p.eventParticipantId}">Remove</button>`;
+          ? `<span class="ed-registered">${this.escapeHtml(this.t("eventDetails.registered"))}</span>`
+          : `<button class="ed-btn ed-btn--ghost ed-btn--sm" type="button" data-action="remove-participant" data-participant-id="${
+              p.eventParticipantId
+            }">${this.escapeHtml(this.t("common.remove"))}</button>`;
         return `
           <div class="ed-participant">
-            <div class="ed-participant-head">Participant ${i + 1}</div>
+            <div class="ed-participant-head">${this.escapeHtml(
+              this.t("eventDetails.participantNumber", { number: i + 1 })
+            )}</div>
             <div class="ed-participant-body">
               <div class="ed-participant-name">${this.escapeHtml(name)}</div>
               <div class="ed-participant-contacts">${contacts}</div>
@@ -1662,7 +1731,9 @@ export class EventDetailsWidget extends MPNextWidget {
           </div>`;
       })
       .join("");
-    return `<div class="ed-participants"><h3 class="ed-reg-subtitle">Participants</h3>${rows}</div>`;
+    return `<div class="ed-participants"><h3 class="ed-reg-subtitle">${this.escapeHtml(
+      this.t("eventDetails.participants")
+    )}</h3>${rows}</div>`;
   }
 
   private renderState(icon: string, text: string): string {
@@ -1686,25 +1757,6 @@ export class EventDetailsWidget extends MPNextWidget {
       m[4] ? Number(m[4]) : 0,
       m[5] ? Number(m[5]) : 0,
     );
-  }
-
-  private formatDateRange(start: string, end: string): string {
-    const s = this.parseMpDate(start);
-    if (!s) return "";
-    const e = this.parseMpDate(end);
-    const dateFmt: Intl.DateTimeFormatOptions = { weekday: "long", month: "long", day: "numeric", year: "numeric" };
-    const timeFmt: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
-    const sDate = s.toLocaleDateString("en-US", dateFmt);
-    const sTime = s.toLocaleTimeString("en-US", timeFmt);
-    if (!e) return `${sDate}, ${sTime}`;
-    const sameDay =
-      s.getFullYear() === e.getFullYear() &&
-      s.getMonth() === e.getMonth() &&
-      s.getDate() === e.getDate();
-    const eTime = e.toLocaleTimeString("en-US", timeFmt);
-    if (sameDay) return `${sDate}, ${sTime} – ${eTime}`;
-    const eDate = e.toLocaleDateString("en-US", dateFmt);
-    return `${sDate}, ${sTime} – ${eDate}, ${eTime}`;
   }
 
   private stripHtml(text: string): string {

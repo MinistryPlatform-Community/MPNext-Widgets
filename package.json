@@ -29,7 +29,9 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "test:e2e:widget": "playwright test --project=widget"
+    "test:e2e:widget": "playwright test --project=widget",
+    "i18n:check": "tsx scripts/i18n-check.mjs",
+    "i18n:sync": "tsx scripts/i18n-check.mjs --sync"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

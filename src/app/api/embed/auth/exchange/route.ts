@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       body = ((await req.json()) ?? {}) as ExchangeRequest;
     } catch {
       return NextResponse.json(
-        { error: "Invalid or empty JSON body" },
+        { error: "invalid_body", message: "Invalid or empty JSON body" },
         { status: 400, headers: fallbackCors },
       );
     }
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     const rate = await checkRateLimit(`ip:${getClientIp(req)}`);
     if (!rate.ok) {
       return NextResponse.json(
-        { error: "Too many requests" },
+        { error: "rate_limited", message: "Too many requests" },
         { status: 429, headers: { ...corsHeaders, "Retry-After": "60" } },
       );
     }
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Error exchanging handoff code:", error instanceof Error ? error.message : error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "internal_error", message: "Internal server error" },
       { status: 500, headers: fallbackCors },
     );
   }

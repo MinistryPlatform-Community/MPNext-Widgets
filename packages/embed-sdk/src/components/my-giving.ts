@@ -13,15 +13,6 @@ interface DonationRecord {
   isOmitAmount: boolean;
 }
 
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-const MONTH_LABELS_SHORT = [
-  "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-  "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
-];
-
 // Brand-derived palette cycled across programs in the doughnut chart.
 const PROGRAM_COLORS = [
   "#004C97", // primary blue
@@ -54,8 +45,13 @@ export class MyGivingWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
-    this.render();
-    this.loadDonations();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish; the fetch hides inside the loading state
+    // this widget already paints while it queries the API.
+    void this.initLocale().then(() => {
+      this.render();
+      this.loadDonations();
+    });
   }
 
   attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
@@ -80,8 +76,8 @@ export class MyGivingWidget extends MPNextWidget {
 
       const res = await this.fetch(url);
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: { donations: DonationRecord[] } = await res.json();
       this.donations = data.donations || [];
@@ -96,7 +92,9 @@ export class MyGivingWidget extends MPNextWidget {
         total,
       });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "Failed to load giving history";
+      // `errorText` has already turned an API machine code into a translated
+      // sentence; anything else becomes the generic network message.
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("givingError", { error: this.error });
     } finally {
       this.loading = false;
@@ -162,7 +160,7 @@ export class MyGivingWidget extends MPNextWidget {
           <div class="header">
             <div class="loading-row">
               ${this.spinnerSvg()}
-              <span>Loading giving history...</span>
+              <span>${this.escapeHtml(this.t("myGiving.loading"))}</span>
             </div>
           </div>
         </div>`;
@@ -173,11 +171,11 @@ export class MyGivingWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-giving">
           <div class="header">
-            <div class="title">Unable to Load</div>
+            <div class="title">${this.escapeHtml(this.t("common.unableToLoad"))}</div>
             <p class="subtitle">${this.escapeHtml(this.error)}</p>
           </div>
           <div class="retry-section">
-            <button class="retry-btn" data-action="retry">Try Again</button>
+            <button class="retry-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
           </div>
         </div>`;
       return;
@@ -199,14 +197,14 @@ export class MyGivingWidget extends MPNextWidget {
     return `
       <div class="nw-giving">
         <div class="header">
-          <div class="title">My Giving</div>
+          <div class="title">${this.escapeHtml(this.t("myGiving.title"))}</div>
         </div>
         <div class="body">
           ${this.renderControls()}
           ${showSoftToggle ? this.renderSoftToggle() : ""}
           <div class="total-row">
-            <span class="total-label">Total Giving</span>
-            <span class="total-amount">${this.formatCurrency(totalGiving)}</span>
+            <span class="total-label">${this.escapeHtml(this.t("myGiving.totalGiving"))}</span>
+            <span class="total-amount">${this.fmt.currency(totalGiving)}</span>
           </div>
           ${this.renderCharts(filtered)}
           ${this.renderDonationsList(filtered)}
@@ -221,13 +219,15 @@ export class MyGivingWidget extends MPNextWidget {
     const prevDisabled = this.selectedYear <= currentYear - MIN_YEAR_OFFSET;
     const nextDisabled = this.selectedYear >= currentYear;
 
+    const monthNames = this.fmt.monthNames();
+    const allMonths = this.t("myGiving.allMonths", { year: this.selectedYear });
     const monthOptions = [
-      `<option value="-1" ${this.selectedMonth === -1 ? "selected" : ""}>All Months ${this.selectedYear}</option>`,
+      `<option value="-1" ${this.selectedMonth === -1 ? "selected" : ""}>${this.escapeHtml(allMonths)}</option>`,
     ];
     for (let m = 1; m <= 12; m++) {
       const futureInCurrentYear = this.selectedYear === currentYear && m > currentMonth;
       monthOptions.push(
-        `<option value="${m}" ${this.selectedMonth === m ? "selected" : ""} ${futureInCurrentYear ? "disabled" : ""}>${MONTH_NAMES[m - 1]}</option>`
+        `<option value="${m}" ${this.selectedMonth === m ? "selected" : ""} ${futureInCurrentYear ? "disabled" : ""}>${this.escapeHtml(monthNames[m - 1])}</option>`
       );
     }
 
@@ -255,7 +255,7 @@ export class MyGivingWidget extends MPNextWidget {
     return `
       <label class="soft-toggle-row">
         <input type="checkbox" id="giving-soft-toggle" ${this.includeSoftCredits ? "checked" : ""}>
-        <span>Include Soft Credit Donations</span>
+        <span>${this.escapeHtml(this.t("myGiving.includeSoftCredits"))}</span>
       </label>`;
   }
 
@@ -292,8 +292,8 @@ export class MyGivingWidget extends MPNextWidget {
     if (max <= 0) {
       return `
         <div class="chart-card">
-          <div class="chart-title">By Month</div>
-          <div class="chart-empty">No giving to chart.</div>
+          <div class="chart-title">${this.escapeHtml(this.t("myGiving.byMonth"))}</div>
+          <div class="chart-empty">${this.escapeHtml(this.t("myGiving.chartEmpty"))}</div>
         </div>`;
     }
 
@@ -304,19 +304,26 @@ export class MyGivingWidget extends MPNextWidget {
     const slot = chartW / monthsToShow;
     const barW = slot * 0.6;
 
+    // The axis labels are SVG `<text>`, which CSS `text-transform` does not
+    // reliably reach, so the upper-casing the design wants happens here — with
+    // the locale, since Turkish-style casing rules are not the browser's guess.
+    const axisLabels = this.fmt
+      .monthNames("short")
+      .map((m) => m.toLocaleUpperCase(this.locale));
+
     let bars = "";
     for (let i = 0; i < monthsToShow; i++) {
       const h = max > 0 ? (totals[i] / max) * (plotH - 8) : 0;
       const x = i * slot + (slot - barW) / 2;
       const y = plotH - h;
       bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="#009CDE"></rect>`;
-      bars += `<text x="${(i * slot + slot / 2).toFixed(1)}" y="${chartH - 4}" text-anchor="middle" class="chart-axis-label">${MONTH_LABELS_SHORT[i]}</text>`;
+      bars += `<text x="${(i * slot + slot / 2).toFixed(1)}" y="${chartH - 4}" text-anchor="middle" class="chart-axis-label">${this.escapeHtml(axisLabels[i])}</text>`;
     }
 
     return `
       <div class="chart-card">
-        <div class="chart-title">By Month</div>
-        <svg viewBox="0 0 ${chartW} ${chartH}" class="chart-svg" role="img" aria-label="Giving by month">
+        <div class="chart-title">${this.escapeHtml(this.t("myGiving.byMonth"))}</div>
+        <svg viewBox="0 0 ${chartW} ${chartH}" class="chart-svg" role="img" aria-label="${this.escapeAttr(this.t("myGiving.byMonthChartLabel"))}">
           ${bars}
         </svg>
       </div>`;
@@ -340,8 +347,8 @@ export class MyGivingWidget extends MPNextWidget {
     if (grandTotal <= 0) {
       return `
         <div class="chart-card">
-          <div class="chart-title">By Program</div>
-          <div class="chart-empty">No giving to chart.</div>
+          <div class="chart-title">${this.escapeHtml(this.t("myGiving.byProgram"))}</div>
+          <div class="chart-empty">${this.escapeHtml(this.t("myGiving.chartEmpty"))}</div>
         </div>`;
     }
 
@@ -374,15 +381,15 @@ export class MyGivingWidget extends MPNextWidget {
       legend += `
         <div class="legend-item">
           <span class="legend-swatch" style="background:${color}"></span>
-          <span class="legend-label">${this.escapeHtml(g.name)} - ${this.formatCurrency(g.total)}</span>
+          <span class="legend-label">${this.escapeHtml(g.name)} - ${this.fmt.currency(g.total)}</span>
         </div>`;
     });
 
     return `
       <div class="chart-card">
-        <div class="chart-title">By Program</div>
+        <div class="chart-title">${this.escapeHtml(this.t("myGiving.byProgram"))}</div>
         <div class="doughnut-wrap">
-          <svg viewBox="0 0 ${size} ${size}" class="doughnut-svg" role="img" aria-label="Giving by program">
+          <svg viewBox="0 0 ${size} ${size}" class="doughnut-svg" role="img" aria-label="${this.escapeAttr(this.t("myGiving.byProgramChartLabel"))}">
             ${segments}
           </svg>
           <div class="legend">${legend}</div>
@@ -394,17 +401,17 @@ export class MyGivingWidget extends MPNextWidget {
     const showSoftDisclaimer = this.includeSoftCredits && filtered.some((d) => d.isSoftCredit);
 
     const subtitle = `
-      <p class="list-subtitle">The following list of Donations is informational and should not be used for tax purposes.</p>
+      <p class="list-subtitle">${this.escapeHtml(this.t("myGiving.disclaimer"))}</p>
       ${showSoftDisclaimer
-        ? `<p class="list-subtitle">Soft credit donations are included below and reflect gifts you are credited with but did not personally contribute.</p>`
+        ? `<p class="list-subtitle">${this.escapeHtml(this.t("myGiving.softCreditDisclaimer"))}</p>`
         : ""}`;
 
     if (filtered.length === 0) {
       return `
         <div class="donations-section">
-          <div class="section-label">Donations</div>
+          <div class="section-label">${this.escapeHtml(this.t("myGiving.donations"))}</div>
           ${subtitle}
-          <div class="empty-state">No donations</div>
+          <div class="empty-state">${this.escapeHtml(this.t("myGiving.empty"))}</div>
         </div>`;
     }
 
@@ -415,27 +422,41 @@ export class MyGivingWidget extends MPNextWidget {
 
     return `
       <div class="donations-section">
-        <div class="section-label">Donations</div>
+        <div class="section-label">${this.escapeHtml(this.t("myGiving.donations"))}</div>
         ${subtitle}
         <div class="donation-list">
           ${rows}
         </div>
         ${limited
           ? `<div class="show-more-section">
-              <button class="show-more-btn" data-action="show-more">SHOW MORE DONATIONS</button>
+              <button class="show-more-btn" data-action="show-more">${this.escapeHtml(this.t("myGiving.showMore"))}</button>
             </div>`
           : ""}
       </div>`;
   }
 
   private renderDonationRow(d: DonationRecord): string {
-    const dateText = d.isPending ? "PENDING" : this.formatDonationDate(d.donationDate);
-    const amountText = d.isOmitAmount ? "" : this.formatCurrency(d.amount);
+    const dateText = d.isPending
+      ? this.t("myGiving.pending")
+      : this.fmt.date(d.donationDate, "medium");
+    const amountText = d.isOmitAmount ? "" : this.fmt.currency(d.amount);
 
     const badges: string[] = [];
-    if (d.isSpouseDonation) badges.push(`<span class="badge badge-spouse">Spouse</span>`);
-    if (d.isSoftCredit) badges.push(`<span class="badge badge-soft">SOFT CREDIT</span>`);
-    if (!d.isTaxDeductible) badges.push(`<span class="badge badge-nondeductible">NON-DEDUCTIBLE</span>`);
+    if (d.isSpouseDonation) {
+      badges.push(
+        `<span class="badge badge-spouse">${this.escapeHtml(this.t("myGiving.badgeSpouse"))}</span>`
+      );
+    }
+    if (d.isSoftCredit) {
+      badges.push(
+        `<span class="badge badge-soft">${this.escapeHtml(this.t("myGiving.badgeSoftCredit"))}</span>`
+      );
+    }
+    if (!d.isTaxDeductible) {
+      badges.push(
+        `<span class="badge badge-nondeductible">${this.escapeHtml(this.t("myGiving.badgeNonDeductible"))}</span>`
+      );
+    }
 
     return `
       <div class="donation-row">
@@ -457,6 +478,10 @@ export class MyGivingWidget extends MPNextWidget {
    * Parse the YYYY-MM-DD portion of a donation date defensively, avoiding the
    * timezone day-shift that `new Date(isoString)` introduces when the string
    * carries a trailing Z.
+   *
+   * Retained after the i18n conversion because the by-month chart buckets on
+   * the calendar month itself, which is a number rather than a formatted
+   * string; every *displayed* date goes through `this.fmt`.
    */
   private parseDateParts(dateString: string): { year: number; month: number; day: number } | null {
     if (!dateString) return null;
@@ -477,21 +502,14 @@ export class MyGivingWidget extends MPNextWidget {
     };
   }
 
-  private formatDonationDate(dateString: string): string {
-    const parts = this.parseDateParts(dateString);
-    if (!parts) return dateString;
-    const date = new Date(parts.year, parts.month - 1, parts.day);
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  }
-
-  private formatCurrency(amount: number): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
-  }
-
   private escapeHtml(text: string): string {
     const el = document.createElement("span");
     el.textContent = text;
     return el.innerHTML;
+  }
+
+  private escapeAttr(text: string): string {
+    return this.escapeHtml(text).replace(/"/g, "&quot;");
   }
 
   private spinnerSvg(): string {

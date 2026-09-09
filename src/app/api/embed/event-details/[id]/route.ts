@@ -32,7 +32,7 @@ export async function GET(
     const eventId = parseInt(id, 10);
     if (isNaN(eventId) || eventId <= 0) {
       return NextResponse.json(
-        { error: "Invalid eventId: must be a positive integer" },
+        { error: "invalid_request", message: "Invalid eventId: must be a positive integer" },
         { status: 400, headers: buildFallbackCorsHeaders(origin) }
       );
     }

@@ -24,7 +24,7 @@ export async function POST(
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required. Please sign in." },
+        { error: "auth_required", message: "Authentication required. Please sign in." },
         { status: 401, headers: getCorsHeaders(origin) }
       );
     }
@@ -34,14 +34,14 @@ export async function POST(
 
     if (!user || user.householdId == null) {
       return NextResponse.json(
-        { error: "Household not found" },
+        { error: "household_not_found", message: "Household not found" },
         { status: 404, headers: getCorsHeaders(origin) }
       );
     }
 
     if (!user.isHeadOfHousehold) {
       return NextResponse.json(
-        { error: "Only the head of household can edit." },
+        { error: "not_head_of_household", message: "Only the head of household can edit." },
         { status: 403, headers: getCorsHeaders(origin) }
       );
     }
@@ -50,7 +50,7 @@ export async function POST(
     const contactIdNum = parseInt(contactId, 10);
     if (isNaN(contactIdNum)) {
       return NextResponse.json(
-        { error: "Invalid contact ID" },
+        { error: "invalid_request", message: "Invalid contact ID" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -59,7 +59,7 @@ export async function POST(
     const inHousehold = await service.verifyMemberInHousehold(contactIdNum, user.householdId);
     if (!inHousehold) {
       return NextResponse.json(
-        { error: "Contact is not a member of this household." },
+        { error: "not_household_member", message: "Contact is not a member of this household." },
         { status: 403, headers: getCorsHeaders(origin) }
       );
     }
@@ -69,7 +69,7 @@ export async function POST(
 
     if (!file) {
       return NextResponse.json(
-        { error: "No photo file provided" },
+        { error: "no_file", message: "No photo file provided" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -78,7 +78,7 @@ export async function POST(
     const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
-        { error: "Invalid file type. Please upload a JPEG, PNG, GIF, or WebP image." },
+        { error: "invalid_file_type", message: "Invalid file type. Please upload a JPEG, PNG, GIF, or WebP image." },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -86,7 +86,7 @@ export async function POST(
     // Validate file size (10MB max)
     if (file.size > 10 * 1024 * 1024) {
       return NextResponse.json(
-        { error: "File too large. Maximum size is 10MB." },
+        { error: "file_too_large", message: "File too large. Maximum size is 10MB." },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }

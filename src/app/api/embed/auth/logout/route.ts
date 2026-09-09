@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       body = ((await req.json()) ?? {}) as LogoutRequest;
     } catch {
       return NextResponse.json(
-        { error: "Invalid or empty JSON body" },
+        { error: "invalid_body", message: "Invalid or empty JSON body" },
         { status: 400, headers: fallbackCors },
       );
     }
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Error ending embed session:", error instanceof Error ? error.message : error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "internal_error", message: "Internal server error" },
       { status: 500, headers: fallbackCors },
     );
   }

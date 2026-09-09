@@ -21,11 +21,6 @@ interface Configurations {
   ministries: FilterOption[];
 }
 
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
 /**
  * `next-event-finder` — public, filterable event search rendering result cards
  * that deep-link to an event-details page.
@@ -79,8 +74,13 @@ export class EventFinderWidget extends MPNextWidget {
   connectedCallback() {
     this.injectStyles(this.getStyles());
     this.seedFromAttributes();
-    this.render();
-    this.init();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish. Free in practice: the fetch lands inside
+    // the loading state this widget already paints while it queries the API.
+    void this.initLocale().then(() => {
+      this.render();
+      this.init();
+    });
   }
 
   /** Public hook so demo pages can force a reload. */
@@ -149,14 +149,17 @@ export class EventFinderWidget extends MPNextWidget {
     try {
       const res = await this.fetch(`/api/embed/event-finder${this.buildQuery()}`);
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: { events: EventSearchResult[] } = await res.json();
       this.events = data.events || [];
       this.emit("eventsLoaded", { count: this.events.length });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "Failed to load events";
+      // `errorText` has already turned an API machine code into a translated
+      // sentence; anything else (a thrown TypeError from a dropped connection)
+      // becomes the generic network message rather than leaking English.
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("eventFinderError", { error: this.error });
     } finally {
       this.loading = false;
@@ -260,11 +263,13 @@ export class EventFinderWidget extends MPNextWidget {
         )
         .join("");
 
-    const monthOptions = [`<option value="">All Months</option>`]
+    const monthOptions = [
+      `<option value="">${this.escapeHtml(this.t("eventFinder.allMonths"))}</option>`,
+    ]
       .concat(
-        MONTHS.map(
+        this.fmt.monthNames().map(
           (m, i) =>
-            `<option value="${i + 1}" ${this.monthId === String(i + 1) ? "selected" : ""}>${m}</option>`
+            `<option value="${i + 1}" ${this.monthId === String(i + 1) ? "selected" : ""}>${this.escapeHtml(m)}</option>`
         )
       )
       .join("");
@@ -276,37 +281,37 @@ export class EventFinderWidget extends MPNextWidget {
             id="ef-keyword"
             type="text"
             class="nw-ef-input"
-            placeholder="Search events…"
+            placeholder="${this.escapeAttr(this.t("eventFinder.searchPlaceholder"))}"
             value="${this.escapeAttr(this.keyword)}"
-            aria-label="Search events">
-          <button type="submit" class="nw-ef-btn">Search</button>
+            aria-label="${this.escapeAttr(this.t("eventFinder.searchLabel"))}">
+          <button type="submit" class="nw-ef-btn">${this.escapeHtml(this.t("common.search"))}</button>
         </div>
         <a href="#" class="nw-ef-advanced-link" data-action="toggle-advanced">
-          ${this.advancedOpen ? "Hide Advanced Search" : "Advanced Search"}
+          ${this.escapeHtml(this.t(this.advancedOpen ? "eventFinder.hideAdvanced" : "eventFinder.showAdvanced"))}
         </a>
         <div class="nw-ef-advanced" style="display:${this.advancedOpen ? "grid" : "none"}">
           <div class="nw-ef-field">
-            <label for="ef-congregation">Congregation</label>
+            <label for="ef-congregation">${this.escapeHtml(this.t("fields.congregation"))}</label>
             <select id="ef-congregation" class="nw-ef-select">
-              ${options(this.config.congregations, this.congregationId, "All Congregations")}
+              ${options(this.config.congregations, this.congregationId, this.t("eventFinder.allCongregations"))}
             </select>
           </div>
           <div class="nw-ef-field">
-            <label for="ef-ministry">Ministry</label>
+            <label for="ef-ministry">${this.escapeHtml(this.t("fields.ministry"))}</label>
             <select id="ef-ministry" class="nw-ef-select">
-              ${options(this.config.ministries, this.ministryId, "All Ministries")}
+              ${options(this.config.ministries, this.ministryId, this.t("eventFinder.allMinistries"))}
             </select>
           </div>
           <div class="nw-ef-field">
-            <label for="ef-month">Month</label>
+            <label for="ef-month">${this.escapeHtml(this.t("eventFinder.month"))}</label>
             <select id="ef-month" class="nw-ef-select">${monthOptions}</select>
           </div>
           <div class="nw-ef-field">
-            <label for="ef-signup">Sign-up Type</label>
+            <label for="ef-signup">${this.escapeHtml(this.t("eventFinder.signupType"))}</label>
             <select id="ef-signup" class="nw-ef-select">
-              <option value="" ${this.signupType === "" ? "selected" : ""}>Both</option>
-              <option value="1" ${this.signupType === "1" ? "selected" : ""}>Open Registration</option>
-              <option value="2" ${this.signupType === "2" ? "selected" : ""}>Open Volunteer Opportunities</option>
+              <option value="" ${this.signupType === "" ? "selected" : ""}>${this.escapeHtml(this.t("eventFinder.signupBoth"))}</option>
+              <option value="1" ${this.signupType === "1" ? "selected" : ""}>${this.escapeHtml(this.t("eventFinder.signupRegistration"))}</option>
+              <option value="2" ${this.signupType === "2" ? "selected" : ""}>${this.escapeHtml(this.t("eventFinder.signupVolunteer"))}</option>
             </select>
           </div>
         </div>
@@ -315,17 +320,17 @@ export class EventFinderWidget extends MPNextWidget {
 
   private renderResults(): string {
     if (this.loading) {
-      return `<div class="nw-ef-state">${this.spinnerSvg()}<span>Loading events…</span></div>`;
+      return `<div class="nw-ef-state">${this.spinnerSvg()}<span>${this.escapeHtml(this.t("eventFinder.loading"))}</span></div>`;
     }
     if (this.error) {
       return `
         <div class="nw-ef-state nw-ef-error">
           <p>${this.escapeHtml(this.error)}</p>
-          <button class="nw-ef-btn" data-action="retry">Try Again</button>
+          <button class="nw-ef-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
         </div>`;
     }
     if (this.events.length === 0) {
-      return `<div class="nw-ef-state nw-ef-empty">No events found.</div>`;
+      return `<div class="nw-ef-state nw-ef-empty">${this.escapeHtml(this.t("eventFinder.empty"))}</div>`;
     }
     return `<div class="nw-ef-grid">${this.events.map((e) => this.renderCard(e)).join("")}</div>`;
   }
@@ -335,8 +340,12 @@ export class EventFinderWidget extends MPNextWidget {
     const img = e.imageUrl
       ? `<img class="nw-ef-card-img" src="${this.escapeAttr(e.imageUrl)}" alt="" loading="lazy">`
       : `<div class="nw-ef-card-img nw-ef-card-img--placeholder">${this.calendarSvg()}</div>`;
-    const badge = e.featured ? `<span class="nw-ef-badge">Featured</span>` : "";
-    const dateRange = this.formatDateRange(e.startDate, e.endDate);
+    const badge = e.featured
+      ? `<span class="nw-ef-badge">${this.escapeHtml(this.t("eventFinder.featured"))}</span>`
+      : "";
+    // `weekdayShort` matches the pre-i18n shape ("Thu, Sep 10"); C09 tracks
+    // whether these cards should carry the year at all.
+    const dateRange = this.fmt.dateRange(e.startDate, e.endDate, "weekdayShort");
     const location = e.location
       ? `<div class="nw-ef-card-loc">${this.escapeHtml(e.location)}</div>`
       : "";
@@ -352,54 +361,13 @@ export class EventFinderWidget extends MPNextWidget {
           <div class="nw-ef-card-date">${this.escapeHtml(dateRange)}</div>
           ${location}
           ${description}
-          ${hasLink ? `<span class="nw-ef-card-cta">See Details &rarr;</span>` : ""}
+          ${hasLink ? `<span class="nw-ef-card-cta">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
         </div>
       </div>`;
   }
 
   // ── Date / text helpers ──
 
-  /** Parse the wall-clock components of an MP datetime without a TZ day-shift. */
-  private parseMpDate(value: string): Date | null {
-    if (!value) return null;
-    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
-    if (!m) {
-      const fallback = new Date(value);
-      return isNaN(fallback.getTime()) ? null : fallback;
-    }
-    return new Date(
-      Number(m[1]),
-      Number(m[2]) - 1,
-      Number(m[3]),
-      m[4] ? Number(m[4]) : 0,
-      m[5] ? Number(m[5]) : 0
-    );
-  }
-
-  private formatDateRange(start: string, end: string): string {
-    const s = this.parseMpDate(start);
-    if (!s) return "";
-    const e = this.parseMpDate(end);
-    const dateFmt: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric" };
-    const timeFmt: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
-
-    const sDate = s.toLocaleDateString("en-US", dateFmt);
-    const sTime = s.toLocaleTimeString("en-US", timeFmt);
-
-    if (!e) return `${sDate}, ${sTime}`;
-
-    const sameDay =
-      s.getFullYear() === e.getFullYear() &&
-      s.getMonth() === e.getMonth() &&
-      s.getDate() === e.getDate();
-    const eTime = e.toLocaleTimeString("en-US", timeFmt);
-
-    if (sameDay) {
-      return `${sDate}, ${sTime} – ${eTime}`;
-    }
-    const eDate = e.toLocaleDateString("en-US", dateFmt);
-    return `${sDate}, ${sTime} – ${eDate}, ${eTime}`;
-  }
 
   private truncate(text: string, max: number): string {
     const clean = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();

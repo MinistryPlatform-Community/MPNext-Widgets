@@ -25,6 +25,14 @@ export {
   type MeResponse,
 } from "./shared/auth-session";
 import { getAuthSession } from "./shared/auth-session";
+import {
+  disablePseudoLocale,
+  enablePseudoLocale,
+  getLocaleSession,
+  setOverrides,
+  type LocaleCode,
+  type OverrideScope,
+} from "./i18n";
 export { UserMenuWidget } from "./components/user-menu";
 export { AddToCalendarWidget } from "./components/add-to-calendar";
 export { FullCalendarWidget } from "./components/full-calendar";
@@ -50,6 +58,24 @@ export { CustomFormWidget } from "./components/custom-form";
 export { CheckoutWidget } from "./components/checkout";
 export { PayWidget } from "./components/pay";
 export { CheckoutCompleteWidget } from "./components/checkout-complete";
+export { LocaleSelectorWidget } from "./components/locale-selector";
+
+// Localisation. Host pages reach these through `window.MPNextEmbed`; widgets
+// reach them through `this.t` / `this.fmt` on the base class.
+export {
+  getLocaleSession,
+  LocaleSession,
+  resolveLocale,
+  isSupportedLocale,
+  endonym,
+  setOverrides,
+  enablePseudoLocale,
+  disablePseudoLocale,
+  LOCALE_CODES,
+  DEFAULT_LOCALE,
+  LOCALE_KEY,
+  type LocaleCode,
+} from "./i18n";
 
 // Auto-register components
 import "./components/user-menu";
@@ -77,6 +103,7 @@ import "./components/custom-form";
 import "./components/checkout";
 import "./components/pay";
 import "./components/checkout-complete";
+import "./components/locale-selector";
 
 // ---------------------------------------------------------------------------
 // Auto-initialization
@@ -115,7 +142,7 @@ function detectApiHost(): string {
   // 4. Read api-host from the first widget element on the page
   //    (handles Vite dev where the SDK is a local module import)
   const widget = document.querySelector(
-    "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices, next-my-contribution-statement, next-statement-preferences, next-my-giving, next-my-household, next-my-pledges, next-my-groups, next-subscriptions, next-event-finder, next-event-details, next-group-finder, next-group-details, next-opportunity-finder, next-opportunity-details, next-plan-your-visit, next-online-directory, next-pledge-campaign, next-custom-form, next-checkout, next-pay, next-checkout-complete",
+    "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices, next-my-contribution-statement, next-statement-preferences, next-my-giving, next-my-household, next-my-pledges, next-my-groups, next-subscriptions, next-event-finder, next-event-details, next-group-finder, next-group-details, next-opportunity-finder, next-opportunity-details, next-plan-your-visit, next-online-directory, next-pledge-campaign, next-custom-form, next-checkout, next-pay, next-checkout-complete, next-locale-selector",
   );
   if (widget) {
     const host = widget.getAttribute("api-host");
@@ -167,6 +194,9 @@ function detectFirstWidgetId(): string | null {
     "NEXT-CHECKOUT": "checkout",
     "NEXT-PAY": "pay",
     "NEXT-CHECKOUT-COMPLETE": "checkout-complete",
+    // Present for host detection only: this widget needs no token and calls no
+    // API, so it never actually requests one.
+    "NEXT-LOCALE-SELECTOR": "locale-selector",
   };
 
   for (const [tag, wid] of Object.entries(widgetMap)) {
@@ -216,8 +246,43 @@ if (typeof window !== "undefined") {
     }
   }
 
-  // Expose global API for manual init (advanced use) and the auth session
-  (window as any).MPNextEmbed = { init, getAuthSession };
+  // Expose global API for manual init (advanced use), the auth session and the
+  // locale layer.
+  (window as any).MPNextEmbed = {
+    init,
+    getAuthSession,
+    getLocaleSession,
+
+    /**
+     * Force the widget language, overriding `<html lang>`, the visitor's stored
+     * choice and the browser preference. Persists, and re-renders every mounted
+     * widget once the catalogue is in hand.
+     */
+     setLocale: (locale: string) => getLocaleSession().setLocale(locale),
+
+    /** The resolved language for this page. */
+    getLocale: () => getLocaleSession().getLocale(),
+
+    /**
+     * Override individual labels — a church renaming "Groups" to "Small
+     * Groups", which is a different thing from translating. Scope `"*"` applies
+     * to every language; a locale code applies to one. Overrides beat both the
+     * locale catalogue and the English fallback.
+     *
+     *   MPNextEmbed.setMessages("es", { "groupFinder.title": "Grupos Pequeños" });
+     *   MPNextEmbed.setMessages("*",  { "common.signIn": "Member Login" });
+     */
+    setMessages: (scope: string, messages: Record<string, string | null>) =>
+      setOverrides(scope as OverrideScope, messages),
+
+    /**
+     * Development aid: re-render every string accented and padded, so
+     * unextracted literals stand out as plain ASCII and layouts that cannot
+     * take the 20-30% expansion Spanish and Portuguese cost break visibly.
+     */
+    enablePseudoLocale,
+    disablePseudoLocale,
+  };
 }
 
 /**

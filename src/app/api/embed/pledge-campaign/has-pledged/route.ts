@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 
     if (claims.sub === "public") {
       return NextResponse.json(
-        { error: "Authentication required. Please sign in." },
+        { error: "auth_required", message: "Authentication required. Please sign in." },
         { status: 401, headers: getCorsHeaders(origin) }
       );
     }
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     const contactId = parseInt(searchParams.get("contactId") ?? "", 10);
     if (isNaN(campaignId) || isNaN(contactId)) {
       return NextResponse.json(
-        { error: "campaignId and contactId are required" },
+        { error: "invalid_request", message: "campaignId and contactId are required" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }

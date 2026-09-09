@@ -5,7 +5,6 @@ import {
   buildOutlookUrl,
   buildYahooCalendarUrl,
   icsFileName,
-  parseMpWallClock,
   type CalendarEventInput,
 } from "../shared/calendar-links";
 
@@ -57,6 +56,10 @@ interface Provider {
  * Apple Calendar, Outlook desktop and "everything else" all consume the same
  * `.ics` file — they are separate entries only because a visitor looking for
  * "Apple Calendar" will not recognise ".ics" as the thing that serves them.
+ *
+ * The five `label`s below are product names and read the same in every
+ * language. Only the `ics` row is prose, so it is the one label resolved
+ * through the catalogue — see `providerLabel`.
  */
 const PROVIDERS: Record<ProviderId, Provider> = {
   google: {
@@ -102,10 +105,6 @@ const PROVIDERS: Record<ProviderId, Provider> = {
 const DEFAULT_PROVIDERS: ProviderId[] = ["google", "apple", "outlook", "yahoo", "ics"];
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-function pad2(n: number): string {
-  return n.toString().padStart(2, "0");
-}
 
 /**
  * Build a human-readable location string from CalendarEventData.
@@ -165,6 +164,9 @@ export class AddToCalendarWidget extends MPNextWidget {
 
   async connectedCallback() {
     this.injectStyles(this.getStyles());
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees the loading line and the button label in English first.
+    await this.initLocale();
     this.render();
     document.addEventListener("pointerdown", this.onDocumentPointerDown, true);
     document.addEventListener("keydown", this.onDocumentKeyDown);
@@ -172,6 +174,7 @@ export class AddToCalendarWidget extends MPNextWidget {
   }
 
   disconnectedCallback() {
+    super.disconnectedCallback();
     document.removeEventListener("pointerdown", this.onDocumentPointerDown, true);
     document.removeEventListener("keydown", this.onDocumentKeyDown);
   }
@@ -195,7 +198,12 @@ export class AddToCalendarWidget extends MPNextWidget {
   private async loadEvent(): Promise<void> {
     if (!this.eventId || this.eventId <= 0) {
       this.state.loading = false;
-      this.state.error = "Missing or invalid event-id attribute.";
+      // A misconfigured embed. The visitor reads a sentence about the link;
+      // the detail a site owner needs goes to the console, not to the page.
+      console.warn(
+        "[mpnext] <next-add-to-calendar> needs a positive numeric event-id attribute.",
+      );
+      this.state.error = this.t("addToCalendar.notConfigured");
       this.render();
       this.emit("addToCalendarError", { error: this.state.error });
       return;
@@ -208,9 +216,7 @@ export class AddToCalendarWidget extends MPNextWidget {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(
-          body.error || `Failed to load event (HTTP ${res.status})`
-        );
+        throw new Error(this.errorText(body));
       }
 
       const eventData: CalendarEventData = await res.json();
@@ -220,8 +226,10 @@ export class AddToCalendarWidget extends MPNextWidget {
       this.emit("calendarEventLoaded", { eventId: eventData.Event_ID, title: eventData.Event_Title });
     } catch (err) {
       this.state.loading = false;
+      // `errorText` has already produced a translated sentence; anything else
+      // (a dropped connection) becomes the generic network message.
       this.state.error =
-        err instanceof Error ? err.message : "Failed to load event.";
+        err instanceof Error ? err.message : this.t("errors.network");
       this.render();
       this.emit("addToCalendarError", { error: this.state.error });
     }
@@ -308,7 +316,7 @@ export class AddToCalendarWidget extends MPNextWidget {
       });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Could not build calendar entry.";
+        err instanceof Error ? err.message : this.t("addToCalendar.buildFailed");
       this.state.error = message;
       this.emit("addToCalendarError", { error: message });
       this.render();
@@ -336,6 +344,13 @@ export class AddToCalendarWidget extends MPNextWidget {
   private toggle(): void {
     if (this.state.open) this.close();
     else this.open();
+  }
+
+  /** The visitor-facing name of one provider row. */
+  private providerLabel(provider: Provider): string {
+    return provider.id === "ics"
+      ? this.t("addToCalendar.otherIcs")
+      : provider.label;
   }
 
   /** Roving focus through the menu with the arrow keys, wrapping at both ends. */
@@ -386,7 +401,7 @@ export class AddToCalendarWidget extends MPNextWidget {
         <line x1="8" y1="2" x2="8" y2="6"></line>
         <line x1="3" y1="10" x2="21" y2="10"></line>
       </svg>
-      <span>Add to Calendar</span>
+      <span>${this.escapeHtml(this.t("addToCalendar.trigger"))}</span>
       <svg class="atc-chevron" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polyline points="6 9 12 15 18 9"></polyline>
       </svg>
@@ -404,7 +419,10 @@ export class AddToCalendarWidget extends MPNextWidget {
       const menu = document.createElement("div");
       menu.className = "atc-menu";
       menu.setAttribute("role", "menu");
-      menu.setAttribute("aria-label", `Add ${event.Event_Title} to calendar`);
+      menu.setAttribute(
+        "aria-label",
+        this.t("addToCalendar.menuLabel", { title: event.Event_Title })
+      );
 
       for (const id of this.providers) {
         const provider = PROVIDERS[id];
@@ -418,7 +436,7 @@ export class AddToCalendarWidget extends MPNextWidget {
           : `fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"`;
         option.innerHTML = `
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ${paint} aria-hidden="true">${provider.icon}</svg>
-          <span>${this.escapeHtml(provider.label)}</span>
+          <span>${this.escapeHtml(this.providerLabel(provider))}</span>
         `;
         option.addEventListener("click", () => this.selectProvider(id));
         option.addEventListener("keydown", (e) => {
@@ -456,7 +474,20 @@ export class AddToCalendarWidget extends MPNextWidget {
 
     const meta = document.createElement("div");
     meta.className = "atc-summary-meta";
-    meta.textContent = this.formatWhen(event);
+    // No `timeZone`, as before: `fmt.dateRange` reads the MP wall clock
+    // directly, so the displayed time stays the church's local time whatever
+    // zone the visitor is in. It also collapses the repeated date on a
+    // same-day event, which the three formatters this replaces did not.
+    //
+    // `weekdayMedium` carries the weekday *and* the year, matching what the
+    // three deleted formatters produced. Both matter on a line confirming what
+    // is about to land in the visitor's calendar: the weekday is how people
+    // actually place an event, and the year rules out next April.
+    meta.textContent = this.fmt.dateRange(
+      event.Event_Start_Date,
+      event.Event_End_Date,
+      "weekdayMedium"
+    );
     summary.appendChild(meta);
 
     const location = buildLocation(event);
@@ -476,7 +507,7 @@ export class AddToCalendarWidget extends MPNextWidget {
     return `
       <div class="nw-atc-loading" aria-live="polite" aria-busy="true">
         <div class="nw-atc-spinner"></div>
-        <span>Loading event&hellip;</span>
+        <span>${this.escapeHtml(this.t("addToCalendar.loading"))}</span>
       </div>
     `;
   }
@@ -501,43 +532,6 @@ export class AddToCalendarWidget extends MPNextWidget {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
-  }
-
-  /**
-   * Render the MP wall clock verbatim — no `Date` round-trip, so the displayed
-   * time matches the church's local time regardless of the visitor's zone.
-   */
-  private formatWhen(event: CalendarEventData): string {
-    const start = parseMpWallClock(event.Event_Start_Date);
-    const end = parseMpWallClock(event.Event_End_Date);
-    if (!start) return "";
-
-    const startLabel = `${this.formatDateLabel(start)} • ${this.formatTime(start)}`;
-    if (!end) return startLabel;
-
-    const sameDay =
-      start.year === end.year && start.month === end.month && start.day === end.day;
-    return sameDay
-      ? `${startLabel} – ${this.formatTime(end)}`
-      : `${startLabel} – ${this.formatDateLabel(end)} • ${this.formatTime(end)}`;
-  }
-
-  private formatDateLabel(wall: { year: number; month: number; day: number }): string {
-    // Constructed with local-time components and formatted without a
-    // `timeZone`, so the two cancel out and the wall-clock date is preserved.
-    const d = new Date(wall.year, wall.month - 1, wall.day);
-    return d.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-
-  private formatTime(wall: { hour: number; minute: number }): string {
-    const ampm = wall.hour >= 12 ? "PM" : "AM";
-    const h = wall.hour % 12 || 12;
-    return `${h}:${pad2(wall.minute)} ${ampm}`;
   }
 
   // ── Styles ────────────────────────────────────────────────────────────

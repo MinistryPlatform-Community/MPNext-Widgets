@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       payload = (await req.json()) as Record<string, string>;
     } catch {
       return NextResponse.json(
-        { success: false, error: "Invalid JSON body" },
+        { success: false, error: "invalid_body", message: "Invalid JSON body" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     const formId = Number(payload.mp_customformformid || payload.formId);
     if (!formId) {
       return NextResponse.json(
-        { success: false, error: "Missing form id" },
+        { success: false, error: "invalid_request", message: "Missing form id" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }

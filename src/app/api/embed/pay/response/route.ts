@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       body = (await req.json()) as Record<string, unknown>;
     } catch {
       return NextResponse.json(
-        { error: "Invalid JSON body" },
+        { error: "invalid_body", message: "Invalid JSON body" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     const tokenInput = typeof body.token === "string" ? body.token : "";
     if (!tokenInput) {
       return NextResponse.json(
-        { error: "Missing token" },
+        { error: "invalid_request", message: "Missing token" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }

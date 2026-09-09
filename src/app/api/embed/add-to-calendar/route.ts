@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
     if (!eventIdParam || isNaN(eventId) || eventId <= 0) {
       return NextResponse.json(
-        { error: "Missing required parameter: eventId" },
+        { error: "invalid_request", message: "Missing required parameter: eventId" },
         { status: 400, headers: buildFallbackCorsHeaders(origin) }
       );
     }

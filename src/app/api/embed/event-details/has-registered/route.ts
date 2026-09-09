@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 
     if (isNaN(eventId) || eventId <= 0 || isNaN(contactId) || contactId <= 0) {
       return NextResponse.json(
-        { error: "eventId and contactId must be positive integers" },
+        { error: "invalid_request", message: "eventId and contactId must be positive integers" },
         { status: 400, headers: buildFallbackCorsHeaders(origin) }
       );
     }

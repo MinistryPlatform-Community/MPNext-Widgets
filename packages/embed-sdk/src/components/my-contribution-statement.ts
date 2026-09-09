@@ -22,8 +22,12 @@ export class MyContributionStatementWidget extends MPNextWidget {
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
-    this.render();
-    this.loadStatements();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish.
+    void this.initLocale().then(() => {
+      this.render();
+      this.loadStatements();
+    });
   }
 
   public retryLoad() {
@@ -39,8 +43,8 @@ export class MyContributionStatementWidget extends MPNextWidget {
     try {
       const res = await this.fetch("/api/embed/contribution-statements");
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(data.error || `HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(this.errorText(data));
       }
       const data: { groups: ContributionStatementGroup[] } = await res.json();
       this.groups = data.groups || [];
@@ -58,7 +62,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
 
       this.emit("statementsLoaded", { count: total });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : "Failed to load statements";
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("statementError", { error: this.error });
     } finally {
       this.loading = false;
@@ -117,7 +121,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
           <div class="header">
             <div class="loading-row">
               ${this.spinnerSvg()}
-              <span>Loading statements...</span>
+              <span>${this.escapeHtml(this.t("contributionStatement.loading"))}</span>
             </div>
           </div>
         </div>`;
@@ -128,11 +132,11 @@ export class MyContributionStatementWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-statements">
           <div class="header">
-            <div class="title">Unable to Load</div>
+            <div class="title">${this.escapeHtml(this.t("common.unableToLoad"))}</div>
             <p class="subtitle">${this.escapeHtml(this.error)}</p>
           </div>
           <div class="retry-section">
-            <button class="retry-btn" data-action="retry">Try Again</button>
+            <button class="retry-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
           </div>
         </div>`;
       return;
@@ -143,10 +147,10 @@ export class MyContributionStatementWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-statements">
           <div class="header">
-            <div class="title">My Contribution Statements</div>
+            <div class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</div>
           </div>
           <div class="list-body">
-            <div class="empty-state">No statements currently available.</div>
+            <div class="empty-state">${this.escapeHtml(this.t("contributionStatement.empty"))}</div>
           </div>
         </div>`;
       return;
@@ -159,7 +163,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
     return `
       <div class="nw-statements">
         <div class="header">
-          <div class="title">My Contribution Statements</div>
+          <div class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</div>
         </div>
         <div class="list-body">
           ${this.groups
@@ -180,7 +184,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
     return `
       <div class="company-section">
         <div class="company-name">${this.escapeHtml(company)}</div>
-        <div class="year-label">Select statement year</div>
+        <div class="year-label">${this.escapeHtml(this.t("contributionStatement.selectYear"))}</div>
         <div class="year-row">
           ${years
             .map(
@@ -196,7 +200,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
         </div>
         <div class="download-section">
           <button class="download-btn" data-action="download" data-company="${this.escapeHtml(company)}">
-            Save as PDF
+            ${this.escapeHtml(this.t("contributionStatement.savePdf"))}
           </button>
         </div>
       </div>`;

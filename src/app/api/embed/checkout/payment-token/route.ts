@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     const guid = sp.get("guid")?.trim();
     if (!guid) {
       return NextResponse.json(
-        { error: "Missing guid" },
+        { error: "invalid_request", message: "Missing guid" },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
@@ -45,13 +45,13 @@ export async function GET(req: NextRequest) {
     const invoice = await service.getCheckoutInvoiceByGuid(guid, mpContactId);
     if (!invoice) {
       return NextResponse.json(
-        { error: "Invoice not found" },
+        { error: "invoice_not_found", message: "Invoice not found" },
         { status: 404, headers: getCorsHeaders(origin) }
       );
     }
     if (!invoice.canPay) {
       return NextResponse.json(
-        { error: "Invoice is not payable" },
+        { error: "invoice_not_payable", message: "Invoice is not payable" },
         { status: 409, headers: getCorsHeaders(origin) }
       );
     }
