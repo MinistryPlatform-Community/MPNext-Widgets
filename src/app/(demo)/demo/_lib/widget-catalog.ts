@@ -297,6 +297,43 @@ const extras: Record<string, WidgetExtras> = {
   pledge-email-template="528"
 ></next-pledge-campaign>`,
   },
+
+  "subscribe-to-publication": {
+    // `4` is `Weekly Newsletter` on the reference instance and is
+    // `Available_Online`; `1` is not, which is the interesting failure to
+    // demonstrate — it answers exactly like an id that does not exist.
+    attributes: { "publication-id": "4", "verification-email-template-id": "5125" },
+    controls: [
+      { name: "publicationId", label: "Publication ID", type: "number", attribute: "publication-id", placeholder: "e.g. 4" },
+      { name: "verificationTemplate", label: "Verification Template ID", type: "number", attribute: "verification-email-template-id", placeholder: "dp_Communications ID" },
+      { name: "mySubscriptionsUrl", label: "My-subscriptions URL", type: "text", attribute: "my-subscriptions-url", placeholder: "/demo/subscriptions" },
+    ],
+    implementationCode: `<!-- Both attributes are required: the publication must be
+     Available_Online, and the template's Body must render
+     [mpp_verify_email_url]. -->
+<next-subscribe-to-publication
+  publication-id="4"
+  verification-email-template-id="5125"
+></next-subscribe-to-publication>
+
+<!-- return-url is where the emailed link lands. It must be same-origin
+     with the page (https, no embedded credentials) or the request is
+     refused and no email is sent. Defaults to the current page URL with
+     the query string stripped. -->
+<next-subscribe-to-publication
+  publication-id="4"
+  verification-email-template-id="5125"
+  return-url="https://your-site.example.org/newsletter"
+  my-subscriptions-url="https://your-site.example.org/email-preferences"
+></next-subscribe-to-publication>
+
+<!-- Merge tokens available in the verification template:
+       [mpp_verify_email_url]      the confirmation link — required
+       [mpp_contact_first_name]
+       [mpp_contact_last_name]
+       [mpp_publication_title]
+     The confirmation link is single-use and lives 3 days. -->`,
+  },
 };
 
 export const widgetCatalog: WidgetConfig[] = widgetRegistry.map((meta) => {

@@ -244,6 +244,18 @@ export const widgetRegistry: WidgetMeta[] = [
     events: ["unsubscribed", "resubscribed", "unsubscribeError"],
   },
 
+  {
+    slug: "subscribe-to-publication",
+    tag: "next-subscribe-to-publication",
+    title: "Subscribe to Publication",
+    description:
+      "Anonymous newsletter sign-up for one publication, with a double opt-in: a signed-out visitor enters a name and email, confirms one emailed link, and only then is a subscription (and, if needed, a contact) created. The same element renders the form and the confirmation landing.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: ["verificationSent", "subscribed", "subscribeFailed"],
+  },
+
   // ── Payments ─────────────────────────────────────────────
   {
     slug: "checkout",

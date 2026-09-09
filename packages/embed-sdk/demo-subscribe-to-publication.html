@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPNext Subscribe to Publication Widget - Demo</title>
+  <!-- Classic (non-module) script: Vite's transformIndexHtml substitutes
+       __API_HOST__ in markup but NOT inside inline module scripts, which it
+       extracts into a separate html-proxy chunk before the HTML transform
+       runs. Non-module scripts stay in the HTML, so this global is the one
+       place the placeholder resolves. -->
+  <script>
+    window.__nextEmbedApiHost = "__API_HOST__";
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: #f9fafb;
+      color: #2D2926;
+    }
+    .page { max-width: 1024px; margin: 0 auto; padding: 32px 16px; }
+    .back-link {
+      display: inline-block;
+      margin-bottom: 16px;
+      color: #004C97;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .back-link:hover { text-decoration: underline; }
+    h1 { font-size: 24px; font-weight: 700; color: #004C97; margin-bottom: 4px; }
+    .description { color: #6b7280; margin-bottom: 8px; font-size: 16px; }
+    .tag-code { display: inline-block; font-size: 12px; color: #9ca3af; margin-bottom: 24px; }
+    .space-y > * + * { margin-top: 24px; }
+
+    /* Caution banner — a completed round-trip writes to MP */
+    .caution {
+      border: 2px solid #F1BE48;
+      background: #fffbeb;
+      border-radius: 12px;
+      padding: 16px 20px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #78350f;
+    }
+    .caution strong { color: #92400e; }
+
+    .controls-card {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 12px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .control-group { display: flex; flex-direction: column; gap: 4px; }
+    .control-group label { font-size: 12px; font-weight: 600; color: #6b7280; }
+    .control-group input {
+      padding: 6px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #111827;
+    }
+    #publication-input, #template-input { width: 130px; }
+    #manage-input { width: 200px; }
+    .control-group input:focus {
+      outline: none;
+      border-color: #004C97;
+      box-shadow: 0 0 0 1px #004C97;
+    }
+    .apply-btn {
+      padding: 6px 16px;
+      background: #004C97;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .apply-btn:hover { background: #002855; }
+    .hint { flex-basis: 100%; font-size: 12px; color: #6b7280; line-height: 1.5; }
+
+    .demo-box {
+      min-height: 200px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      padding: 24px;
+    }
+
+    .status { padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+    .status.success { background: #d1fae5; color: #065f46; border: 1px solid #10b981; }
+    .status.error { background: #fee2e2; color: #991b1b; border: 1px solid #ef4444; }
+
+    .card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .card-header h3 { font-size: 14px; font-weight: 600; color: #002855; }
+    .card-header span {
+      font-size: 12px;
+      font-weight: 400;
+      color: #6b7280;
+      margin-left: 8px;
+    }
+    .clear-btn {
+      background: none;
+      border: none;
+      font-size: 12px;
+      color: #6b7280;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .clear-btn:hover { background: #f3f4f6; }
+    .copy-btn {
+      background: #004C97;
+      color: white;
+      border: none;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .copy-btn:hover { background: #002855; }
+
+    .event-log {
+      background: #1f2937;
+      color: #10b981;
+      padding: 16px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .event-entry {
+      margin-bottom: 8px;
+      padding: 8px;
+      background: rgba(16, 185, 129, 0.1);
+      border-radius: 4px;
+    }
+
+    pre {
+      background: #1f2937;
+      color: #e5e7eb;
+      padding: 16px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 0;
+    }
+    pre code { background: transparent; color: #e5e7eb; padding: 0; }
+    code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #004C97;
+      font-size: 13px;
+    }
+
+    .setup-card {
+      border: 2px dashed #fcd34d;
+      background: #fffbeb;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .setup-card .card-header { border-bottom: 1px solid #fde68a; }
+    .setup-card .card-header span { color: #92400e; font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a href="/" class="back-link">&larr; All Widgets</a>
+    <h1>Subscribe to Publication</h1>
+    <p class="description">Anonymous newsletter sign-up with a double opt-in. No sign-in required.</p>
+    <code class="tag-code">&lt;next-subscribe-to-publication&gt;</code>
+
+    <div class="space-y">
+      <div class="caution">
+        <strong>Submitting writes nothing. Opening the emailed link does.</strong>
+        Step 1 validates, seals the submission and sends one email &mdash; it does not even
+        <em>read</em> a <code>Contacts</code> row, which is what makes the response identical for
+        an address MP knows and one it has never seen. Following the link creates a
+        <code>dp_Contact_Publications</code> row and, for an unknown address, a
+        <code>Contacts</code> + <code>Households</code> pair in a real CRM &mdash; so use a test
+        address. The link is <strong>single-use</strong>: opening it twice shows the
+        &ldquo;all set&rdquo; state rather than confirming again, because a replayable link would
+        silently re-subscribe anyone who had since unsubscribed.
+      </div>
+
+      <!-- Controls -->
+      <div class="controls-card">
+        <div class="control-group">
+          <label for="publication-input">Publication ID</label>
+          <input type="number" id="publication-input" min="1" placeholder="4">
+        </div>
+        <div class="control-group">
+          <label for="template-input">Verification template</label>
+          <input type="number" id="template-input" min="1" placeholder="5125">
+        </div>
+        <div class="control-group">
+          <label for="manage-input">My-subscriptions URL</label>
+          <input type="text" id="manage-input" placeholder="/demo-subscriptions.html">
+        </div>
+        <button class="apply-btn" id="apply-btn" type="button">Apply</button>
+        <p class="hint">
+          These three are remembered in <code>localStorage</code> and re-applied on load, so they
+          survive the email round trip &mdash; the confirmation link lands back on this page in a
+          fresh browser navigation, and without that the widget would come back on its defaults.
+          Try <code>1</code> for the publication id to see the
+          <code>publication_not_found</code> state: on the reference instance that row is
+          <em>not</em> <code>Available_Online</code>, and it is answered exactly like an id that
+          does not exist so the id space cannot be probed for internal lists.
+        </p>
+      </div>
+
+      <div class="demo-box">
+        <div id="status"></div>
+        <next-subscribe-to-publication
+          api-host="__API_HOST__"
+          publication-id="4"
+          verification-email-template-id="5125"></next-subscribe-to-publication>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Event Log</h3>
+          <button class="clear-btn" onclick="document.getElementById('event-log').innerHTML=''">Clear</button>
+        </div>
+        <div id="event-log" class="event-log">
+          <div class="event-entry">Initializing widget...</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Widget Code<span>Put this wherever &ldquo;sign up for our newsletter&rdquo; belongs</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="widget-code">&lt;!-- The minimum. Both attributes are required:
+     publication-id is a dp_Publications row that must be
+     Available_Online, and verification-email-template-id is a
+     dp_Communications id whose Body renders [mpp_verify_email_url]. --&gt;
+&lt;next-subscribe-to-publication
+  publication-id="4"
+  verification-email-template-id="5125"&gt;
+&lt;/next-subscribe-to-publication&gt;
+
+&lt;!-- The page's origin MUST be in EMBED_ALLOWED_ORIGINS, or no token is
+     minted and every visitor sees an error. This is setup failure #1. --&gt;
+
+&lt;!-- Everything else is optional. --&gt;
+&lt;next-subscribe-to-publication
+  publication-id="4"
+  verification-email-template-id="5125"
+  return-url="https://www.example.church/newsletter"
+  my-subscriptions-url="https://www.example.church/email-preferences"&gt;
+&lt;/next-subscribe-to-publication&gt;
+
+&lt;!-- return-url is where the emailed link lands, and it must be
+     same-origin with the page (https, no embedded credentials) or the
+     request is refused and no email is sent. It defaults to the current
+     page URL with the query string stripped, so most sites need it only
+     when the form and the landing page differ. --&gt;
+
+&lt;!-- Four merge tokens are available in the verification template:
+       [mpp_verify_email_url]      the confirmation link — required
+       [mpp_contact_first_name]
+       [mpp_contact_last_name]
+       [mpp_publication_title]     new; legacy could not name the list --&gt;
+
+&lt;!-- Migrating from mpp-subscribe-to-publication? Four things changed.
+     1. The query parameter is nextwidgets_verify, not mpp-verify-id.
+        Override it with verify-param-name if a template already in the
+        wild hard-codes the old one.
+     2. The mobile-phone field and the signed-in "Subscribe As" household
+        dropdown are not ported. A member managing household
+        subscriptions has next-subscriptions.
+     3. The link is single-use and lives 3 days (legacy: replayable, 24
+        hours). A second click says "you're all set", not "thanks again".
+     4. A contact's Email_Address is never overwritten. Legacy set it to
+        whatever the public form held, which let anyone take over an
+        account by naming its contact id. --&gt;
+
+&lt;!-- Listen to events --&gt;
+&lt;script&gt;
+  const widget = document.querySelector("next-subscribe-to-publication");
+  widget.addEventListener("verificationSent", (e) =&gt; {
+    console.log("Confirmation email sent to:", e.detail.email);
+  });
+  widget.addEventListener("subscribed", (e) =&gt; {
+    // { publicationId, email, alreadySubscribed }
+    console.log("Subscription confirmed:", e.detail);
+  });
+  widget.addEventListener("subscribeFailed", (e) =&gt; {
+    console.error("Error code:", e.detail.code);
+  });
+&lt;/script&gt;</code></pre>
+      </div>
+
+      <div class="setup-card">
+        <div class="card-header">
+          <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="setup-code">__UNIVERSAL_SETUP__</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import "./src/index.ts";
+    // SDK auto-initializes — no init() call needed
+
+    const statusEl = document.getElementById("status");
+    const eventLog = document.getElementById("event-log");
+    let widget = document.querySelector("next-subscribe-to-publication");
+
+    /**
+     * The demo's own settings, persisted.
+     *
+     * The confirmation link is a *fresh page navigation* minutes or days
+     * later, so anything held only in memory is gone by the time the widget
+     * needs it. Legacy's demo had the same problem and no answer to it.
+     */
+    const STORE_KEY = "demo_subscribe_to_publication";
+
+    function loadSettings() {
+      try {
+        return JSON.parse(localStorage.getItem(STORE_KEY) ?? "{}");
+      } catch {
+        return {};
+      }
+    }
+
+    function saveSettings(settings) {
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify(settings));
+      } catch {
+        /* private window — the demo still works, it just forgets */
+      }
+    }
+
+    function showStatus(message, type = "info") {
+      statusEl.className = `status ${type}`;
+      statusEl.innerHTML = message;
+    }
+
+    function logEvent(type, detail) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.className = "event-entry";
+      entry.innerHTML = `<strong>${timestamp}</strong> - <em>${type}</em>: ${JSON.stringify(detail, null, 2)}`;
+      eventLog.insertBefore(entry, eventLog.firstChild);
+    }
+
+    function bind(el) {
+      el.addEventListener("verificationSent", (e) => {
+        logEvent("verificationSent", e.detail);
+        showStatus(
+          `Confirmation email sent to ${e.detail.email}. Nothing has been written to MinistryPlatform yet — the link is what creates the subscription.`,
+          "success"
+        );
+      });
+
+      el.addEventListener("subscribed", (e) => {
+        logEvent("subscribed", e.detail);
+        showStatus(
+          e.detail.alreadySubscribed
+            ? "Link redeemed — this address was already subscribed, so nothing was written. The visitor sees the same sentence either way; only this event tells them apart."
+            : "Link redeemed — dp_Contact_Publications row created. The link is now spent; reloading with it shows the “all set” state.",
+          "success"
+        );
+      });
+
+      el.addEventListener("subscribeFailed", (e) => {
+        logEvent("subscribeFailed", e.detail);
+        showStatus(`Error code: ${e.detail.code}`, "error");
+      });
+    }
+
+    // Restore the persisted settings before the first paint, so a landing from
+    // the emailed link comes back configured the way the form was submitted.
+    const settings = loadSettings();
+    const publicationInput = document.getElementById("publication-input");
+    const templateInput = document.getElementById("template-input");
+    const manageInput = document.getElementById("manage-input");
+
+    if (settings.publicationId) {
+      publicationInput.value = settings.publicationId;
+      widget.setAttribute("publication-id", settings.publicationId);
+    }
+    if (settings.templateId) {
+      templateInput.value = settings.templateId;
+      widget.setAttribute("verification-email-template-id", settings.templateId);
+    }
+    if (settings.manageUrl) {
+      manageInput.value = settings.manageUrl;
+      widget.setAttribute("my-subscriptions-url", settings.manageUrl);
+    }
+
+    bind(widget);
+
+    // Controls: re-create the element so every attribute is read fresh at mount,
+    // the way a host page's markup is.
+    document.getElementById("apply-btn").addEventListener("click", () => {
+      const publicationId = publicationInput.value.trim();
+      const templateId = templateInput.value.trim();
+      const manageUrl = manageInput.value.trim();
+
+      saveSettings({ publicationId, templateId, manageUrl });
+
+      const next = document.createElement("next-subscribe-to-publication");
+      next.setAttribute("api-host", window.__nextEmbedApiHost);
+      next.setAttribute("publication-id", publicationId || "4");
+      next.setAttribute("verification-email-template-id", templateId || "5125");
+      if (manageUrl) next.setAttribute("my-subscriptions-url", manageUrl);
+
+      widget.replaceWith(next);
+      widget = next;
+      bind(next);
+      showStatus("Widget remounted with the attributes above, and they are remembered for the round trip.", "success");
+    });
+
+    logEvent(
+      "info",
+      "Widget mounted. A URL carrying ?nextwidgets_verify=… goes straight to the confirmation state and strips the handle from the address bar."
+    );
+  </script>
+</body>
+</html>
