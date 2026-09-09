@@ -166,10 +166,21 @@ export interface PreCheckResponse {
   /** The date actually used — echoed because it may be the server's default. */
   eventDate: string;
   /**
-   * IANA zone for rendering `eventStart`.
+   * The MP domain's IANA zone. **Informational — do not format with it.**
    *
-   * Threaded explicitly because `i18n/formatters.ts` takes no `timeZone` by
-   * design (see CLAUDE.md). Do not "fix" that asymmetry.
+   * This field is reported (and emitted on the widget's `preCheckLoaded`
+   * event) so a host page knows which church's clock `eventStart` is on. It is
+   * deliberately **not** passed to `Intl.DateTimeFormat`, and that is worth
+   * spelling out because doing so is the obvious-looking move and it is wrong:
+   *
+   * `eventStart` is a wall-clock string the proc has *already* converted to the
+   * congregation's zone, with no zone marker. The widgets parse such a string's
+   * calendar parts into a **local** `Date` and format with no `timeZone`, so
+   * the two cancel and the wall clock survives (`i18n/formatters.ts`
+   * `parseWallClock`, and CLAUDE.md's rule that `formatters.ts` takes no
+   * `timeZone`). Supplying the domain zone as well would apply an offset to an
+   * instant that never had one — `"2018-06-12T17:00:00"` read in Tokyo and
+   * formatted as `America/New_York` renders 12:00 AM for a 5:00 PM service.
    */
   timeZone: string;
   /** Echo only. The widget never sends it back; the server owns it. */

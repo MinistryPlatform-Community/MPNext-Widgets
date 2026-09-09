@@ -127,4 +127,44 @@ export const esEvents = {
     buildFailed: "No se pudo crear la entrada del calendario.",
     otherIcs: "Otro (archivo .ics)",
   },
+
+  /**
+   * `next-pre-check` (C78). Written rather than ported: MP ships no
+   * `mpp-pre-check.json` label file, so there was no MP-authored Spanish to
+   * lift. Register is `usted`, matching the rest of these catalogues.
+   *
+   * "Pre Check-In" has no settled Spanish in church usage; "Registro
+   * anticipado" says what it does — you register ahead of arriving — and reads
+   * naturally to both Latin American and peninsular speakers, where a
+   * transliterated "pre-check" would not.
+   */
+  preCheck: {
+    title: "Registro anticipado",
+    intro: "Registre a su familia antes de llegar.",
+    loading: "Cargando los eventos de su familia…",
+    emptyNoEvents: "No hay eventos con registro de entrada el {date}.",
+    signedOutPrompt: "Inicie sesión para registrar a su familia.",
+    signedOutLegacy:
+      "Inicie sesión con el enlace de inicio de sesión de esta página para registrar a su familia.",
+    selectAll: "Seleccionar todo",
+    clearAll: "Borrar todo",
+    attendedLocked: "Ya registrado",
+    memberEventsLabel: "Eventos de {name}",
+    save: "Registrar entrada",
+    qrTitle: "Su código de entrada",
+    qrHelp: "Muestre este código en el puesto de registro.",
+    qrUnavailable: "El código de entrada no está disponible en este momento.",
+    // `many` is required: Spanish selects the CLDR `many` category for exact
+    // millions, and `catalogue-parity.test.ts` enforces full branch coverage
+    // whether or not the count can realistically reach it.
+    savedCount: {
+      one: "{count} persona está registrada para el {date}.",
+      many: "{count} de personas están registradas para el {date}.",
+      other: "{count} personas están registradas para el {date}.",
+    },
+    cancelledNote: "Se ha quitado a quienes desmarcó.",
+    savedNone: "No hay nadie registrado para el {date}.",
+    staleSelection:
+      "Esta página está desactualizada. Se ha actualizado: revise sus selecciones e inténtelo de nuevo.",
+  },
 } satisfies Partial<Messages>;

@@ -223,6 +223,53 @@ const extras: Record<string, WidgetExtras> = {
     implementationCode: `<next-my-household></next-my-household>`,
   },
 
+  "pre-check": {
+    // `2018-06-12` is the one date on the reference instance where household 5
+    // (the `Check-me-in` family) resolves rows: event 2 `Sample Check-in1` is
+    // `Search_Results = 1` (Allow Guests), so every household member is listed.
+    // The 2025 Sunday/Tuesday classes are `Search_Results = 3` (Show Expected
+    // Only) and their groups do not overlap this household's, so MP correctly
+    // shows nobody — which is a real state worth being able to demonstrate, not
+    // a bug. Without a pinned date the demo shows the empty state every day of
+    // the year, which reads as a broken widget.
+    attributes: { "event-date": "2018-06-12", "allow-date-picker": "true" },
+    controls: [
+      { name: "eventDate", label: "Event date", type: "text", attribute: "event-date", placeholder: "YYYY-MM-DD" },
+      {
+        name: "showQr",
+        label: "Show check-in QR",
+        type: "select",
+        attribute: "show-qr",
+        options: [
+          { label: "Off (default)", value: "false" },
+          { label: "On", value: "true" },
+        ],
+        defaultValue: "false",
+      },
+    ],
+    implementationCode: `<!-- Defaults to today in the MP domain's time zone, resolved on the
+     server. This is what a church puts on its page. -->
+<next-pre-check></next-pre-check>
+
+<!-- Pin a day, or let the visitor move between days -->
+<next-pre-check event-date="2025-05-18"></next-pre-check>
+<next-pre-check allow-date-picker="true"></next-pre-check>
+
+<!-- Opt back into legacy's ?eventDate= host-page query parameter. Off by
+     default: silently obeying an arbitrary URL parameter is a surprise on
+     a shared CMS page. -->
+<next-pre-check read-query-string="true"></next-pre-check>
+
+<!-- The check-in QR is OFF by default. Turn it on only once you have
+     confirmed a check-in station at your campus scans the payload
+     "pre|M/d/yyyy|householdId". -->
+<next-pre-check show-qr="true"></next-pre-check>
+
+<!-- Requires api_MPPW_GetPreCheckEvents on your MP domain. Without it the
+     widget answers precheck_unavailable and renders a "contact the church"
+     sentence rather than an error. -->`,
+  },
+
   "my-groups": {
     controls: [
       {

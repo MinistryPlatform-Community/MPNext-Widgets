@@ -325,6 +325,17 @@ export const widgetRegistry: WidgetMeta[] = [
     events: ["householdLoaded", "householdUpdated", "memberSaved", "householdError"],
   },
   {
+    slug: "pre-check",
+    tag: "next-pre-check",
+    title: "Pre Check-In",
+    description:
+      "Check your household in for a day's check-in events before you arrive, so the family is already on the station's expected list. Optionally renders the check-in QR code.",
+    category: "Profile",
+    needsUserMenu: true,
+    needsMpWidgets: true,
+    events: ["preCheckLoaded", "preCheckSaved", "preCheckError", "loginRequired"],
+  },
+  {
     slug: "my-groups",
     tag: "next-my-groups",
     title: "My Groups",

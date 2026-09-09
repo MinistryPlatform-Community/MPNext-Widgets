@@ -127,4 +127,43 @@ export const ptBREvents = {
     buildFailed: "Não foi possível criar o item do calendário.",
     otherIcs: "Outro (arquivo .ics)",
   },
+
+  /**
+   * `next-pre-check` (C78). Written rather than ported: MP ships no
+   * `mpp-pre-check.json` label file, so there was no MP-authored Portuguese to
+   * lift. Register is `você`, matching the rest of these catalogues.
+   *
+   * "Check-in" is kept: it is ordinary Brazilian Portuguese and is what a
+   * church volunteer says out loud, so "pré-check-in" reads more naturally
+   * than a fully translated coinage would.
+   */
+  preCheck: {
+    title: "Pré-check-in",
+    intro: "Faça o check-in da sua família antes de chegar.",
+    loading: "Carregando os eventos da sua família…",
+    emptyNoEvents: "Não há eventos com check-in em {date}.",
+    signedOutPrompt: "Entre para fazer o check-in da sua família.",
+    signedOutLegacy:
+      "Entre usando o link de acesso desta página para fazer o check-in da sua família.",
+    selectAll: "Selecionar tudo",
+    clearAll: "Limpar tudo",
+    attendedLocked: "Check-in já feito",
+    memberEventsLabel: "Eventos de {name}",
+    save: "Fazer check-in",
+    qrTitle: "Seu código de check-in",
+    qrHelp: "Mostre este código no posto de check-in.",
+    qrUnavailable: "O código de check-in não está disponível no momento.",
+    // `many` is required: Brazilian Portuguese selects the CLDR `many`
+    // category for exact millions, and `catalogue-parity.test.ts` enforces
+    // full branch coverage whether or not the count can reach it.
+    savedCount: {
+      one: "{count} pessoa está com check-in feito para {date}.",
+      many: "{count} de pessoas estão com check-in feito para {date}.",
+      other: "{count} pessoas estão com check-in feito para {date}.",
+    },
+    cancelledNote: "Quem você desmarcou foi removido.",
+    savedNone: "Ninguém está com check-in feito para {date}.",
+    staleSelection:
+      "Esta página está desatualizada. Ela foi recarregada: confira suas escolhas e tente de novo.",
+  },
 } satisfies Partial<Messages>;

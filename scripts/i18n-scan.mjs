@@ -139,6 +139,24 @@ function topLevelTemplates(source, baseOffset) {
           i += 2;
           continue;
         }
+        // A **plain** `{` inside an interpolation counts too, and forgetting it
+        // was a real bug: an object literal in an interpolation —
+        // `${this.t("k", { date })}` — closed the interpolation on the object's
+        // own `}`, so `depth` hit 0 early and the *next* backtick was mistaken
+        // for the template's terminator. From there every span in the file was
+        // off by one, and ~40 lines of ordinary TypeScript got scanned as
+        // markup: `() => this.retryLoad());` reads as a text node between the
+        // `>` of an arrow and the `<` of a generic. `maskInterpolations` below
+        // already counted plain braces; these two must agree, and now do.
+        //
+        // Latent until `pre-check.ts` (C78), which is simply the first widget
+        // to put an object literal inside an interpolation inside a *nested*
+        // template.
+        if (depth > 0 && c === "{") {
+          depth++;
+          i++;
+          continue;
+        }
         if (depth > 0 && c === "}") {
           depth--;
           i++;
