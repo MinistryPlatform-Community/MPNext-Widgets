@@ -12,7 +12,6 @@ import {
 import {
   renderMiniCalendar,
   buildEventCountMap,
-  getDensityDotCount,
   type EventCountMap,
 } from "./full-calendar-mini-cal";
 import { renderDetailModal } from "./full-calendar-modal";
@@ -378,16 +377,14 @@ export class FullCalendarWidget extends MPNextWidget {
             : info.view.title
         );
       },
-      // Still an option in v7 (the rename in the v7 notes was `dayCellContent`,
-      // not this). `info.el` is the day cell itself — measured as the
-      // `role="gridcell"` node carrying `data-date` and, on today,
-      // `aria-current="date"` — which is what the dots append to.
-      dayCellDidMount: (info: { date: Date; el: HTMLElement }) => {
-        // Only add density dots on week view; grid view already shows events
-        if (this.currentView !== "grid") {
-          this.addDensityDots(info.date, info.el);
-        }
-      },
+      // No `dayCellDidMount`: the density dots it used to paint were removed
+      // (.claude/TODO/39). They only ever ran on `week` — a `timeGridWeek`
+      // that already draws every event as a positioned, timed block — and
+      // never on its first paint, because the hook fires during the initial
+      // render, before FullCalendar has called the `events` option that fills
+      // `eventCountsByDate`. The mini calendar keeps its own dots, on a path
+      // that runs after the data loads.
+
       // v7 renamed `eventClassNames` → `eventClass`. The class is ours, not an
       // `fc-*` one: v7's own class names are build-generated hashes (`fc-1q`,
       // `fc-DP`, …) and are not a public API, so the chip rounding and hover
@@ -396,43 +393,6 @@ export class FullCalendarWidget extends MPNextWidget {
     });
 
     this.calendarInstance.render();
-  }
-
-  // ── Density Dots on FC Month View ──
-
-  private addDensityDots(date: Date, cell: HTMLElement): void {
-    const key = this.toDateKey(date);
-    const count = this.eventCountsByDate[key] || 0;
-    const dotCount = getDensityDotCount(count);
-    if (dotCount === 0) return;
-
-    // Remove existing dots
-    const existing = cell.querySelector(".nw-fc-density-dots");
-    if (existing) existing.remove();
-
-    const dotsDiv = document.createElement("div");
-    dotsDiv.className = "nw-fc-density-dots";
-    dotsDiv.style.cssText = "display:flex;gap:2px;justify-content:center;padding:2px 0;";
-
-    for (let i = 0; i < dotCount; i++) {
-      const dot = document.createElement("span");
-      dot.className = "nw-fc-density-dot";
-      dot.style.cssText =
-        "width:5px;height:5px;border-radius:50%;background:#002855;display:inline-block;";
-      dotsDiv.appendChild(dot);
-    }
-
-    // Append straight to the element the hook handed us: the day cell itself
-    // (`role="gridcell"`, `data-date`). This used to look up
-    // `.fc-daygrid-day-frame` inside it, which cannot work on v7 — class names
-    // are build-generated hashes — and was never necessary, since
-    // `dayCellDidMount` has always passed the element the dots belong in.
-    //
-    // Note this only paints when `eventCountsByDate` is already warm: the hook
-    // fires during the initial render, before FullCalendar has called the
-    // `events` option, so the first paint of `week` scores every cell 0. That
-    // ordering predates the v7 port and is filed as .claude/TODO/39.
-    cell.appendChild(dotsDiv);
   }
 
   /**
@@ -919,15 +879,6 @@ export class FullCalendarWidget extends MPNextWidget {
       this.render();
       this.renderCardsOrCalendarView();
     }
-  }
-
-  // ── Utilities ──
-
-  private toDateKey(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
   }
 
   // ── Render ──

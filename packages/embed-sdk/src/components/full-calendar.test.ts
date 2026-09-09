@@ -446,41 +446,28 @@ describe("<next-full-calendar> view lifecycle", () => {
     expect(shadow(el).querySelector("#nw-fc-title")?.textContent).toBe("September 2026");
   });
 
-  it("appends density dots to the element the day-cell hook hands it", async () => {
-    mount('view="week"');
+  it("registers no day-cell hook — the FC density dots are gone", async () => {
+    // .claude/TODO/39: `dayCellDidMount` painted density dots, but only ever on
+    // `week` (the hook's own guard excluded `grid`), and never on that view's
+    // first paint — it fires during the initial render, before FullCalendar has
+    // called the `events` option that fills `eventCountsByDate`, so every cell
+    // scored 0. `timeGridWeek` already draws each event as a positioned, timed
+    // block, so the decoration was dropped rather than reordered. The mini
+    // calendar's own dots are a separate path and are unaffected.
+    const el = mount('view="week"');
     await settle();
-    const opts = liveInstances()[0].options as unknown as {
-      events: (
-        i: { startStr: string; endStr: string },
-        ok: (e: object[]) => void,
-        fail: (e: Error) => void
-      ) => void;
-      dayCellDidMount: (i: { date: Date; el: HTMLElement }) => void;
-    };
+    const opts = liveInstances()[0].options;
+    expect(opts.dayCellDidMount).toBeUndefined();
 
-    // The dot counts come from the fetch, which only happens when FullCalendar
-    // calls the `events` option — the fake calendar never does on its own.
-    opts.events(
-      { startStr: "2026-09-01", endStr: "2026-09-30" },
-      () => {},
-      () => {}
-    );
+    // And nothing paints them after the fetch lands, either.
+    const evOpt = opts.events as (
+      i: { startStr: string; endStr: string },
+      ok: (e: object[]) => void,
+      fail: (e: Error) => void
+    ) => void;
+    evOpt({ startStr: "2026-09-01", endStr: "2026-09-30" }, () => {}, () => {});
     await settle();
-
-    // v7 mounts this hook against the day cell's *top* content, so there is no
-    // enclosing frame to look up — and v7's class names are build-generated
-    // hashes anyway, so the old `.fc-daygrid-day-frame` query could never match.
-    // The dots must land in the element passed to the hook.
-    const cell = document.createElement("div");
-    // Keyed the same way buildEventCountMap() keys it: the date-string prefix
-    // parsed as local midnight, not the UTC instant.
-    const day = eventsPayload().events[0].Event_Start_Date.slice(0, 10);
-    opts.dayCellDidMount({ date: new Date(`${day}T00:00:00`), el: cell });
-
-    const dots = cell.querySelector(".nw-fc-density-dots");
-    expect(dots).not.toBeNull();
-    expect(dots!.parentElement).toBe(cell);
-    expect(dots!.querySelectorAll(".nw-fc-density-dot").length).toBeGreaterThan(0);
+    expect(shadow(el).querySelectorAll(".nw-fc-density-dots").length).toBe(0);
   });
 
   it("tags event chips with our own class, not an fc-* one", async () => {

@@ -1,5 +1,10 @@
 # 39. Density dots never appear on the first paint of `week`
 
+**Status: DONE (2026-09-08) — resolved by option 1, deleting the feature.**
+Jump to [Resolution](#resolution). Everything above it is the original
+diagnosis, kept because it explains *why* deletion was the right call and why
+the same bug must not be re-filed as a v7 regression.
+
 **Depends on:** nothing.
 **Risk:** none — a missing decoration, not a fault. No throw, no console output.
 **Size:** ~1 hour, most of it deciding whether the feature is wanted at all.
@@ -105,3 +110,51 @@ before appending, so running it twice on a cell is safe.
 Either the feature is gone and no code path references it, or dots appear on the
 first paint of `week` as well as after a view switch, with a test that fails in
 the pre-fix ordering. Standard verification gate passes.
+
+## Resolution
+
+**Option 1. The feature is gone.** Decided and shipped 2026-09-08.
+
+The deciding measurement is one the analysis above only implies: `dayCellDidMount`
+could *only* ever paint on `week`. `needsFullCalendar()` is `week || grid`
+(`full-calendar.ts:231`) — those are the two views that mount a FullCalendar at
+all — and the hook's own guard excluded `grid`. So the entire hook existed to
+decorate `timeGridWeek`'s all-day row, in a view that already draws every event
+as a positioned block with its start time, and it had never once rendered on a
+first mount. Reordering it would have bought a second decoration path to
+maintain in exchange for duplicating information already on screen.
+
+Removed from `packages/embed-sdk/src/components/full-calendar.ts`:
+
+- the `dayCellDidMount` option in `initCalendar()` — replaced by a comment at
+  the same spot recording why there is no hook, so the next reader of the v7
+  option list does not re-add one;
+- the `addDensityDots()` method and its `── Density Dots on FC Month View ──`
+  section header;
+- the `getDensityDotCount` import from `full-calendar-mini-cal`, now unused
+  here;
+- the private `toDateKey()` utility, whose only caller was `addDensityDots()`
+  (the empty `── Utilities ──` header went with it).
+
+Deliberately **kept**:
+
+- `buildEventCountMap` / the `eventCountsByDate` field — `renderMiniCalendar()`
+  consumes the map at two call sites;
+- `.nw-fc-density-dots` / `.nw-fc-density-dot` in `full-calendar-styles.ts` —
+  `full-calendar-mini-cal.ts` builds those same nodes. **The mini calendar's
+  dots are untouched and still correct**; they run after the data loads, which
+  is the whole reason they work and the FC-level ones never did.
+
+The test at `full-calendar.test.ts` that asserted the dots now asserts their
+absence — `registers no day-cell hook — the FC density dots are gone` — checking
+both that `options.dayCellDidMount` is `undefined` and that no
+`.nw-fc-density-dots` appears in the shadow root after the `events` option
+resolves. That second half is what would catch a re-fix landing as an
+after-the-fetch sweep.
+
+Verification gate: `tsc --noEmit` clean on all three projects, `pnpm test:run`
+1149/1149, `pnpm lint` clean, `pnpm build` clean.
+
+**Do not reintroduce a calendar-level dot decoration.** If density on `week` is
+ever actually wanted, the ask is a product decision to re-open, not a bug to
+re-fix.
