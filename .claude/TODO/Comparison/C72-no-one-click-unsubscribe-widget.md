@@ -101,3 +101,64 @@ unsubscribe links pointing at a *platform* URL rather than at this widget — in
 the compliance risk is lower than stated and this drops to a convenience gap. Worth
 confirming with someone who knows MP's `dp_Communications` send path before sizing the
 work.
+
+## RESOLVED — 2026-09-09
+
+`next-unsubscribe` exists (`packages/embed-sdk/src/components/unsubscribe.ts`,
+`src/app/api/embed/unsubscribe/route.ts`, `packages/embed-sdk/demo-unsubscribe.html`),
+with a demo page, an anonymous route, three complete catalogues and 87 tests
+across the four files. Plan and full reasoning:
+`.claude/TODO/Comparison/Plans/unsubscribe.md`. Phase 5 (linking both ways with
+`next-subscriptions`) is deferred to C55 and recorded there.
+
+**The one thing this file could not settle statically is answered, and the answer
+keeps the severity where it was filed.** *"Whether MP's own send pipeline already
+generates unsubscribe links pointing at a Platform URL"* — it does not. Of 1047
+communications on the reference domain, **0** contain `unsubscribe.aspx` and **0**
+contain `pubid=`; every stock footer is a MailChimp-inherited `mc:edit="unsubscribe"`
+**region** holding inert boilerplate with no link and no token in it. The legacy
+stack's own 1,922 lines of database scripts contain no unsubscribe URL and no
+`[Contact_GUID]` token either. So the link was always church-authored in a message
+template, and a church that authors none has no unsubscribe at all. This does **not**
+drop to a convenience gap.
+
+**Where the *Suggested fix* above was not followed, and why it could not be.** It
+proposed a sealed, expiring token as *the* identifier: *"do not accept a bare
+`contactId`/`publicationId` from the query string, or the endpoint becomes an
+enumeration tool."* The enumeration argument is right and is honoured — there is no
+integer contact path anywhere on the route. But **sealed-token-only is not merely
+awkward, it is unimplementable for a bulk send.** MP's template merge substitutes
+*field tokens*; it cannot compute an HMAC or an AES-GCM seal, there is no
+`[Sealed_Unsubscribe_Token]`, and for a publication send MP does the sending, not us.
+The only per-recipient unguessable value that can reach the link is `[Contact_GUID]`
+— which is also MP's own house convention for exactly this (`my_user_account.aspx?dg=
+[Domain_GUID]&cg=[Contact_GUID]` in MP's stock template) and what every legacy link
+already in an inbox uses.
+
+So the route accepts **both**, with a defined precedence: a valid `t` wins; an expired
+or tampered `t` falls back to `cg`. That fallback is the point — `cg` is the path with
+no expiry, and an unsubscribe link that has expired is itself a compliance regression,
+because the recipient's only remaining move is to report the message as spam. A GUID
+is ~122 bits of unguessable bearer capability, not the `contactId=1,2,3…` hazard this
+file feared; what it is not is revocable, and that is accepted deliberately rather
+than papered over. `cg` is therefore accepted at **this one route** and the route's
+header comment says so.
+
+Mitigations that go with accepting it: the widget strips `cg`/`pubid`/`t` from the
+address bar before anything awaits; the email address comes back **masked
+server-side** (`j•••@g•••.com`) and can be suppressed entirely; the per-capability
+rate limit is keyed on `sha256Hex` so the GUID never reaches Redis in cleartext; and
+the GUID is never logged.
+
+**Two things were fixed rather than ported.** Legacy's transport was `Ajax.Get`
+against `[HttpGet] [AllowAnonymous]` — a state-changing GET in an emailed URL, which
+mail scanners and URL-rewriting gateways fetch. Here the emailed link lands on a page
+that only renders and the write is a POST needing a widget JWT from an allowlisted
+origin. And legacy's four `[AllowAnonymous]` actions on `SubscriptionsApiController`
+have **no rate limit and no origin check**; this route has both, at 10/min/IP and
+5/min per hashed capability, checked before any MP read.
+
+**Still out of scope, and named in the README so a church is not surprised:** RFC 8058
+one-click needs a `List-Unsubscribe` / `List-Unsubscribe-Post` header on the outbound
+message, emitted by MP's SMTP path, which this stack does not control. The link in the
+body is the supported path.

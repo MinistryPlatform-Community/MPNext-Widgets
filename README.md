@@ -37,6 +37,7 @@ Embeddable Web Component widgets for [Ministry Platform](https://www.ministrypla
   - [Cutover Runbook](#cutover-runbook)
   - [Troubleshooting Widget Auth](#troubleshooting-widget-auth)
 - [Widget Languages](#widget-languages)
+- [Widget Unsubscribe Links](#widget-unsubscribe-links)
 - [Testing](#testing)
 - [Development](#development)
 - [Claude Code Commands](#claude-code-commands)
@@ -881,6 +882,132 @@ MPNextEmbed.disablePseudoLocale()
 
 Everything still rendering in plain English is a string that was never
 translated; anything overflowing its container will overflow in Spanish too.
+
+
+## Widget Unsubscribe Links
+
+`<next-unsubscribe>` is the landing page for the unsubscribe link in a bulk
+email. It needs no sign-in — that is the entire point — and it identifies the
+recipient from the link they arrived on.
+
+**MinistryPlatform generates no unsubscribe link of its own, and the legacy
+widget stack did not either.** Every stock template's footer is a
+MailChimp-inherited `mc:edit="unsubscribe"` region holding inert boilerplate:
+no link, no merge token. Measured on the reference domain, **0 of 1047**
+communications contain `unsubscribe.aspx` or `pubid=`, and the legacy stack's
+1,922 lines of database scripts contain no unsubscribe URL and no
+`[Contact_GUID]` token. So **a church that skips step 3 below has no
+unsubscribe at all** — not a degraded one.
+
+### 1. Host the landing page on an allowlisted origin — do this first
+
+The page's origin must be in `EMBED_ALLOWED_ORIGINS`
+(`src/lib/embed/config.ts`), or `/api/embed/session` will not mint a token and
+every visitor sees an error. **This is setup failure number one.**
+
+### 2. The page itself
+
+The standard SDK snippet (see [Embedding on an External
+Site](#embedding-on-an-external-site)) plus:
+
+```html
+<next-unsubscribe
+  my-subscriptions-url="https://www.example.church/email-preferences">
+</next-unsubscribe>
+```
+
+No sign-in and no `<next-user-menu>`. One is harmless but pointless.
+
+| Attribute | Required | Meaning |
+|---|---|---|
+| `my-subscriptions-url` | no | Absolute URL of the page carrying `<next-subscriptions>`. Renders the "Manage all my email preferences" link; omitted when unset. `http:`/`https:` only — anything else is dropped with one console warning. |
+| `cg-param` | no | Name of the query parameter carrying the contact GUID. Default `cg`. For a CMS that already owns `cg`. |
+| `pubid-param` | no | Default `pubid`. |
+| `token-param` | no | Default `t`. The sealed-token path. |
+| `show-email` | no | `"false"` drops the masked-address line entirely. Default shows it masked (`j•••@g•••.com`) — never in full. |
+| `api-host` | no | Standard across the SDK. |
+| `lang` | no | Standard across the SDK. |
+
+There is deliberately **no `publication-id` attribute**: the publication comes
+from the link, so one landing page serves every publication.
+
+Events: `unsubscribed` (`{ scope, publicationId }`), `resubscribed`,
+`unsubscribeError`.
+
+### 3. Add the footer to every bulk-email template
+
+```html
+<a href="https://www.example.church/unsubscribe?cg=[Contact_GUID]&amp;pubid=4">
+  Unsubscribe from the Weekly Newsletter
+</a>
+&nbsp;|&nbsp;
+<a href="https://www.example.church/unsubscribe?cg=[Contact_GUID]">
+  Stop all bulk email
+</a>
+```
+
+- `[Contact_GUID]` is merged per recipient. MP's own stock template
+  (*"[Nickname], your User Account for MPI!"*) uses exactly this token in
+  exactly this position: `my_user_account.aspx?dg=[Domain_GUID]&cg=[Contact_GUID]`.
+- **`pubid` is hardcoded per template**, to the `dp_Publications.Publication_ID`
+  that template is sent for. There is no `[Publication_ID]` merge token: a
+  communication's publication is a property of the *send*, not of the recipient
+  row the merge runs over. So it is **one footer per publication template**, and
+  this is the one fiddly part of the setup.
+- Omit `pubid` (or set `0`) for the "stop all bulk email" link, which writes
+  `Contacts.Bulk_Email_Opt_Out`.
+- **Escape the ampersand as `&amp;`** inside MP's HTML editor. A raw `&` in an
+  `href` there is a real and repeated failure mode.
+- **Before editing templates at scale, send one test bulk email to a selection
+  of one and check the merged link.** The `[Contact_GUID]` evidence above comes
+  from a stock *template*; no *sent* message body in the reference domain
+  contains `cg=`, because that template is triggered by user-account setup
+  rather than by a publication send. Five minutes, and it de-risks the feature
+  before any template is touched in bulk.
+
+### 4. Already-sent emails keep working
+
+The parameter names are unchanged from legacy `mpp-unsubscribe`
+(`?cg=&pubid=`), so a church that re-points its existing unsubscribe page — or
+adds a redirect from it — at the new widget keeps every link already sitting in
+a recipient's inbox alive. MP's Portal `dg=[Domain_GUID]` parameter is read and
+ignored, so an MP-shaped link can be pasted unchanged.
+
+### What the recipient sees
+
+The widget acts **on load**, with no confirm click: following the link
+completes the opt-out, which is what RFC 8058 and every mailbox provider expect,
+and a confirmation step is measurable drop-off on the one flow a sender is
+obliged to make easy. It then offers **Undo** for the life of the rendered page.
+
+Undo is offered only when there is something to undo, so someone who was
+already opted out before they clicked is never shown a button that would opt
+them back in. A link whose GUID matches no contact is answered exactly like a
+successful unsubscribe — deliberately, so the page cannot be used to test
+whether a GUID is a live contact.
+
+A *malformed or incomplete* link is a different case and says so, with a link to
+full preferences as the way out. It makes no request at all.
+
+### Notes for whoever reviews this later
+
+- The write is a **POST issued by JavaScript**, never a GET. The emailed link
+  resolves to a page that renders and changes nothing, so mail scanners,
+  URL-rewriting gateways (Proofpoint, Mimecast) and link previews cannot
+  unsubscribe anybody. The POST additionally needs a widget JWT, obtainable only
+  from an allowlisted origin.
+- The address comes back **masked, masked server-side**, so the full value never
+  reaches a response body or an HTTP cache.
+- `Contact_GUID` is accepted **at `/api/embed/unsubscribe` and nowhere else**.
+  It is ~122 bits of unguessable bearer capability, but it never expires; the
+  route is narrow enough for that trade and the pattern must not be generalised.
+  The widget strips it out of the address bar as soon as it has read it.
+- Rate limits: 10/min per IP and 5/min per hashed capability, both before any MP
+  read.
+- **RFC 8058 one-click is out of scope.** The mailbox-provider "Unsubscribe"
+  button needs a `List-Unsubscribe` / `List-Unsubscribe-Post` header on the
+  outbound message, emitted by MP's SMTP path, which this stack does not
+  control. The link in the body is the supported path.
 
 
 ## Testing

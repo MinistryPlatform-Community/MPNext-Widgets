@@ -814,14 +814,24 @@ anonymous-write convention. **Not a hard blocker:** Phase 2 can land the `cg` pa
 `requireWidgetAuth` + `checkRateLimit` inline and be refactored onto the helper. Phase 4 does
 require it.
 
-**Phase 1 — types + service.** `packages/types/src/unsubscribe.ts`, the three service methods,
+> **Landed ahead of this work (`93b00fb`), and three signatures differ from the sketches below
+> — the committed code is authoritative.** `createActionToken(typ, data, expirySeconds?)` /
+> `verifyActionToken(typ, token, guard)` returning a
+> `{ ok: true; data } | { ok: false; reason }` discriminated union with a **third** failure
+> reason this plan did not have, `wrong-type`; `withAnonymousWrite(req, { widget, limits,
+> failClosed }, handler)` where the handler returns its own `NextResponse`; and
+> `checkRateLimit(key, limit, { windowSeconds?, failClosed? })`. `pending-action.ts` also
+> exists and is **not** for this route — its `PendingActionKind` deliberately excludes
+> `unsubscribe`, because an unsubscribe link must stay replayable.
+
+**Phase 1 — types + service.** ✅ *Landed 2026-09-09 (`5d20f17`).* `packages/types/src/unsubscribe.ts`, the three service methods,
 `isContactGuid`, the masking helper, and the service tests. No route, no widget, fully tested.
 
-**Phase 2 — the route, `cg` path only.** Uniform response, server-side masking, both rate limits,
+**Phase 2 — the route, `cg` path only.** ✅ *Landed 2026-09-09 (`822aa59`), on `withAnonymousWrite` directly rather than inline — Phase 0 was ready.* Uniform response, server-side masking, both rate limits,
 `POST`-only, route tests. `link_expired` is unreachable until Phase 4 and is not yet emitted, so no
 catalogue change is needed here.
 
-**Phase 3 — the widget, the demo page, and all three catalogues.** Plus SDK registration: the
+**Phase 3 — the widget, the demo page, and all three catalogues.** ✅ *Landed 2026-09-09 (`266054b`).* Plus SDK registration: the
 `export` and `import` in `index.ts`, the `detectFirstWidgetId` map entry, the `types/widgets.ts`
 roster row, and **both** sibling-`api-host` selector lists (`index.ts:145`, `base-widget.ts:112`).
 This is the commit that must land the catalogue complete in `en`/`es`/`pt-BR` — `no-english-literals`
@@ -829,14 +839,24 @@ has an empty `BUDGET` and will not tolerate a staged conversion. Seed `es`/`pt-B
 `ApplicationLabels/mpp-unsubscribe.json` per the adopt/adapt table, then `pnpm i18n:sync` to record
 the baselines and `pnpm i18n:check` to confirm nothing is stale.
 
-**Phase 4 — the sealed `t` path.** Adds `link_expired` and its three catalogue entries, the
+**Phase 4 — the sealed `t` path.** ✅ *Landed 2026-09-09 (`5971d3e`).* Adds `link_expired` and its three catalogue entries, the
 `t`-wins / `t`-expired-falls-back-to-`cg` precedence, and the cross-`typ` rejection test.
 
 **Phase 5 — link both ways with `next-subscriptions`.** The `unsubscribed=1` entry state
 `subscriptions.md` already wants, and a "stop all bulk email" affordance there that mints a `t`.
 Coordinated with `subscriptions.md` Phase 2 (C55).
 
-**Phase 6 — docs.** README "Widget Unsubscribe Links" (the migration note above), and mark C72 done
+> **Phase 5 deferred to C55 (2026-09-09).** Not built with phases 1-4, 6. Both halves of it
+> live in `next-subscriptions` — the `unsubscribed=1` entry state and the affordance that mints
+> the `t` — so it is `subscriptions.md`'s change to make, not this one's, and doing it here
+> would put this branch's edits inside a widget C55 owns. Nothing in phases 1-4 blocks it: the
+> route already accepts a `subscriptions` widget token (`widget: ["unsubscribe",
+> "subscriptions"]`, chosen for exactly this) and `createActionToken("unsubscribe", {
+> contactGuid, publicationId })` is the whole minting side. The consequence of the deferral is
+> that the sealed `t` path currently has no production consumer and is exercised only by the
+> route tests — which is the reason to land C55's half rather than leave it indefinitely.
+
+**Phase 6 — docs.** ✅ *Landed 2026-09-09.* README "Widget Unsubscribe Links" (the migration note above), and mark C72 done
 in `ROADMAP-missing-widgets.md` **with the merge-field answer recorded** — that file currently ends
 on the open question this plan closes, and leaving it open invites the work being re-sized.
 

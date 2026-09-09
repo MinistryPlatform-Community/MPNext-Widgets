@@ -28,7 +28,7 @@ re-measures:
 
 | # | Widget | Why it ranks here |
 |---|---|---|
-| **1** | **C72 `mpp-unsubscribe`** — one-click unsubscribe | **The only item in this file with a compliance edge.** A bulk email needs a working unsubscribe that does not require authentication — CAN-SPAM baseline in the US, GDPR/PECR practice elsewhere, and what mailbox providers score senders on. On our stack the link in an already-sent email has nowhere to point: `/api/embed/subscriptions` 401s `sub === "public"` outright. A recipient who cannot unsubscribe marks the message as spam, which damages deliverability for every subsequent send from that domain. |
+| **1** | **C72 `mpp-unsubscribe`** — one-click unsubscribe — **DONE 2026-09-09, `next-unsubscribe`** | **The only item in this file with a compliance edge.** A bulk email needs a working unsubscribe that does not require authentication — CAN-SPAM baseline in the US, GDPR/PECR practice elsewhere, and what mailbox providers score senders on. On our stack the link in an already-sent email has nowhere to point: `/api/embed/subscriptions` 401s `sub === "public"` outright. A recipient who cannot unsubscribe marks the message as spam, which damages deliverability for every subsequent send from that domain. |
 | **2** | **C70 `mpp-subscribe-to-publication`** — anonymous, email-verified opt-in | "Sign up for our newsletter" on a church home page is the most common publication touchpoint and is **by definition anonymous** — the visitor has no MP login and will not create one to join a mailing list. On our stack the only way onto a publication is to sign in first, which turns a one-field form into a registration funnel. Pairs with C72: we shipped the signed-in middle of the publication lifecycle and neither end. |
 | **3** | **C78 `mpp-pre-check`** — event pre-check / check-in QR | Children's check-in is one of the highest-traffic Sunday operations a church runs, and pre-check is what keeps the queue short. **No host-page workaround exists** — a church cannot hand-author a QR code bound to MP's check-in. A church using it today must keep MPWidgets.js on that page, with the dual-login cost that implies. |
 | **4** | **C69 `mpp-prayer-feedback-form`** | Prayer intake is, for many churches, the **first thing on the website that writes to MP**. The near-miss is the danger: a church could hand-build a Custom Form for it, but that writes `Form_Responses` rather than `Feedback_Entries`, populates no Feedback Type and no Program, and **never appears in the tools staff use to work a prayer queue**. Submissions land somewhere the prayer team does not look. |
@@ -79,25 +79,67 @@ extracting it is how we end up with four hand-rolled versions.
    (acknowledgement email) and C70 (verification email), **already needed by C11 in
    `group-details.md`** and **C66 in `checkout-pay.md`**. `planYourVisitService.ts` already
    implements this inline and is the thing to extract. Four consumers — extract it once.
-2. **Sealed anonymous action tokens.** C70's verification link and C72's unsubscribe link both
-   need "identify this person without a login, safely". `src/lib/embed/crypto.ts`
-   (`seal`/`open`, AES-256-GCM) plus the sealed-ticket pattern in
-   `src/lib/embed/logout-return.ts` are the precedents. **Do not accept a bare
-   `contactId`/`publicationId` from a query string**, or the endpoint becomes a tool for
-   unsubscribing other people. Rate-limit per IP with `checkRateLimit`, and do not leak whether
-   an email is already known to MP.
-3. **An anonymous-write route convention.** C70 and C72 are both unauthenticated writes, which
-   the SDK currently has exactly one precedent for (`plan-your-visit/send-verification`).
-   Settling the shape — sealed token in, rate limit, no enumeration, no existence disclosure —
-   once makes both cheap and makes the third one safe.
+2. **Sealed anonymous action tokens — BUILT, `src/lib/embed/action-token.ts`.**
+   `createActionToken` / `verifyActionToken` over a closed `ActionTokenType` union, with
+   per-flow expiry in `ACTION_TOKEN_EXPIRY` (`unsubscribe` is 180 days — a short-lived
+   unsubscribe link is itself a compliance regression). The expected `typ` is an argument,
+   compared, never read off the token and trusted; without that comparison every flow's tokens
+   become capability for every other flow. `src/lib/embed/pending-action.ts` wraps it with a
+   store-backed one-time burn for the flows that must not be replayable — deliberately **not**
+   unsubscribe, which must stay replayable.
+   Note the design conclusion C72 reached and this file's original framing did not: a sealed
+   token cannot be the *only* identifier for a bulk unsubscribe, because MP's merge engine
+   cannot produce one. See the answered open question below.
+3. **An anonymous-write route convention — BUILT, `src/lib/embed/anonymous-write.ts`.**
+   `withAnonymousWrite(req, { widget, limits, failClosed }, handler)`: POST-only, a widget JWT
+   still required (`sub === "public"` merely *accepted*), every rate-limit bucket checked before
+   the handler, and one `rate_limited` code for every bucket so which bucket was hit is not
+   itself an oracle. First consumer is `src/app/api/embed/unsubscribe/route.ts`.
 
-## One open question that could reduce the work
+## The one open question, answered — C72's severity stands
 
-**C72's severity depends on something nobody has checked:** whether MP's own send pipeline
-already generates unsubscribe links pointing at a *Platform* URL rather than at this widget. If
-it does, the compliance risk is lower than stated and C72 drops to a convenience gap. Worth
-confirming with someone who knows MP's `dp_Communications` send path **before sizing the
-work** — it is the single cheapest question in this file and it could move the top-ranked item.
+**Question:** does MP's own send pipeline already generate unsubscribe links pointing at a
+*Platform* URL rather than at this widget? If it did, the compliance risk would be lower than
+stated and C72 would drop to a convenience gap.
+
+**Answer: no. Measured 2026-09-09, and C72 keeps the severity it was filed at.**
+
+| Check (reference domain, read-only `mp_query`) | Result |
+|---|---|
+| Communications in the domain | 1047 |
+| …containing `unsubscribe.aspx` | **0** |
+| …containing `pubid=` | **0** |
+| …containing `cg=` | **1** — stock template `Communication_ID = 66` |
+| …containing the literal `Contact_GUID` | **1** — the same template |
+
+Every stock template's footer is a MailChimp-inherited `mc:edit="unsubscribe"` **region**,
+whose content is inert boilerplate with no link and no token in it. The word "unsubscribe" in
+those bodies is a region *name*, which is why a naive `LIKE '%unsubscribe%'` matches nearly
+everything and means nothing.
+
+**And the legacy stack generated no such link either.** `S:\MP\mp-Widgets\DatabaseScripts`
+(1,922 lines of SQL across 8 scripts plus 28 `api_MPPW_*` procs) contains no unsubscribe URL,
+no `cg=`, and no `[Contact_GUID]` merge token. The only `unsubscribe` hit in the whole SQL set
+is `CASE WHEN CP.Unsubscribed = 1 THEN 0`. So neither MP's send pipeline nor the legacy widget
+stack ever assembled the link: **the church authored it in a message template.** A church that
+adds no footer of its own has no unsubscribe at all.
+
+**The merge-field answer, recorded so the work is not re-sized:** `[Contact_GUID]` is a real,
+supported merge token and `?cg=` is MP's own house convention for identifying a recipient in an
+emailed link — MP's stock template does exactly this
+(`my_user_account.aspx?dg=[Domain_GUID]&cg=[Contact_GUID]`), and legacy's widget read exactly
+that parameter. This is also **why C72's own *Suggested fix* — a sealed token in the email —
+was not implementable as the only path**: MP's template merge substitutes field tokens and
+cannot compute an HMAC or an AES-GCM seal, so for a bulk send (which MP performs, not us) the
+`Contact_GUID` is the only per-recipient unguessable value that can reach the link.
+`next-unsubscribe` therefore accepts both, with a defined precedence, and accepts `cg` at that
+one route only. Full reasoning: `unsubscribe.md`, *The identification decision*.
+
+**One thing still wants a live confirmation** before a church edits templates in bulk: the
+`[Contact_GUID]` evidence is from a *template*, and no *sent* message body in the reference
+domain contains `cg=` (template 66 is triggered by user-account setup, not a publication send).
+The cutover step is therefore *"send one test bulk email to a selection of one and check the
+merged link"*, documented in README under *Widget Unsubscribe Links*.
 
 ## Regardless of what gets built — write it down
 
