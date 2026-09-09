@@ -55,6 +55,21 @@ export default defineConfig(({ mode }) => {
     rolldownOptions: {
       output: {
         assetFileNames: "next-embed.[hash][extname]",
+        // Lazy locale catalogues (`src/i18n/registry.ts` reaches them through
+        // `() => import("./locales/es")`) are emitted as separate chunks.
+        //
+        // The `next-embed` prefix is load-bearing, not cosmetic:
+        // `scripts/copy-sdk.js` decides both what to publish into
+        // `public/embed-sdk/` and what to prune from it with
+        // `isBuildOwned(name)` → `name.startsWith("next-embed") || …`. Under
+        // rolldown's default `chunkFileNames` a locale chunk would be built,
+        // never published, and 404 at runtime on every customer site — a
+        // failure that does not reproduce in `vite dev`, where the import is
+        // served straight off the filesystem.
+        //
+        // `vercel.json` needs a matching `source` pattern for CORS; these
+        // chunks are fetched cross-origin from church sites.
+        chunkFileNames: "next-embed-locale-[name].[hash].js",
       },
     },
   },

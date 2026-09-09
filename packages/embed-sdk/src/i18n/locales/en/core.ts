@@ -1,0 +1,144 @@
+/**
+ * Shared message namespaces: copy that appears in more than one widget.
+ *
+ * `common.retry` alone had **17** independent copies of the string "Try Again"
+ * in the pre-i18n tree, `common.unableToLoad` had 8, `common.signIn` 8. Those
+ * collapse to one entry each here, which is why ~1,900 raw literals reduce to
+ * roughly 1,200 catalogue keys.
+ *
+ * Put a string here only when two or more widgets genuinely share it *and* the
+ * shared wording is intentional. Resist the urge to parameterise widget-specific
+ * copy into a generic key — "Loading {thing}…" reads fine in English and breaks
+ * in Spanish and Portuguese, where the article and the noun's gender have to
+ * agree ("Cargando eventos" vs "Cargando la información"). Each widget owns its
+ * own loading and empty-state lines in its own namespace.
+ */
+export const core = {
+  common: {
+    loading: "Loading…",
+    retry: "Try Again",
+    unableToLoad: "Unable to Load",
+    signIn: "Sign In",
+    signOut: "Sign Out",
+    save: "Save",
+    saving: "Saving…",
+    cancel: "Cancel",
+    close: "Close",
+    edit: "Edit",
+    remove: "Remove",
+    submit: "Submit",
+    submitting: "Submitting…",
+    search: "Search",
+    back: "Back",
+    next: "Next",
+    previous: "Previous",
+    total: "Total",
+    all: "All",
+    yes: "Yes",
+    no: "No",
+    optional: "optional",
+    required: "required",
+    seeDetails: "See Details",
+    getDirections: "Get Directions",
+    signInPrompt: "Please sign in to continue.",
+    dismiss: "Dismiss",
+  },
+
+  /**
+   * Shared form-field labels. These recur across `custom-form`, `profile`,
+   * `my-household`, `plan-your-visit`, `group-details` and `checkout` — eight
+   * copies of "Mobile Phone" in the pre-i18n tree, four of "Last Name".
+   */
+  fields: {
+    firstName: "First Name",
+    lastName: "Last Name",
+    middleName: "Middle Name",
+    nickname: "Nickname",
+    prefix: "Prefix",
+    suffix: "Suffix",
+    email: "Email",
+    mobilePhone: "Mobile Phone",
+    homePhone: "Home Phone",
+    workPhone: "Work Phone",
+    addressLine1: "Address Line 1",
+    addressLine2: "Address Line 2",
+    city: "City",
+    stateRegion: "State / Region",
+    postalCode: "Postal Code",
+    country: "Country",
+    address: "Address",
+    dateOfBirth: "Date of Birth",
+    gender: "Gender",
+    maritalStatus: "Marital Status",
+    congregation: "Congregation",
+    ministry: "Ministry",
+    name: "Name",
+    message: "Message",
+    notes: "Notes",
+    amount: "Amount",
+    date: "Date",
+    location: "Location",
+    contact: "Contact",
+    personalDetails: "Personal Details",
+  },
+
+  /**
+   * Client-side form validation, from `shared/form-validation.ts`. Every widget
+   * form routes through that module, so these reach all of them at once.
+   */
+  validation: {
+    required: "This field is required.",
+    email: "Enter a valid email address.",
+    url: "Enter a valid URL.",
+    pattern: "Please match the requested format.",
+    tooShort: "Please use at least {min} characters.",
+    tooLong: "Please use {max} characters or fewer.",
+    outOfRange: "Value is out of range.",
+    invalidValue: "Please enter a valid value.",
+    generic: "Please correct this field.",
+    formIncomplete: "Please complete the required fields.",
+    phone: "Enter a valid phone number.",
+  },
+
+  /**
+   * Errors keyed by the **machine code** the API returns, not by its English
+   * message. `src/app/api/embed/*` responds `{ error: "<code>", message: "…" }`
+   * where `message` is English and debug-only (logged, never rendered) — so the
+   * API stays language-agnostic and a visitor never sees a raw server string.
+   *
+   * `generic` catches any code with no entry here, which is what makes adding a
+   * new route safe: an unmapped code degrades to a sensible sentence rather than
+   * leaking "Missing formId or formGuid" to a congregant.
+   */
+  errors: {
+    generic: "Something went wrong. Please try again.",
+    network: "We could not reach the server. Check your connection and try again.",
+    authRequired: "Please sign in to continue.",
+    sessionExpired: "Your session has expired. Please sign in again.",
+    forbidden: "You do not have permission to view this.",
+    notFound: "We could not find what you were looking for.",
+    rateLimited: "Too many requests. Please wait a moment and try again.",
+    invalidRequest: "That request was not valid. Please try again.",
+    saveFailed: "We could not save your changes. Please try again.",
+    submitFailed: "Submission failed. Please try again.",
+    // Route-specific codes.
+    invalid_session: "Your session has expired. Please sign in again.",
+    invalid_code: "That sign-in link is no longer valid. Please sign in again.",
+    user_not_found: "We could not find your account.",
+    contact_not_found: "We could not find your contact record.",
+    donor_not_found: "No donor record is linked to your account.",
+    invoice_not_found: "We could not find that invoice.",
+    invoice_not_payable: "That invoice is not available for payment.",
+    event_not_found: "We could not find that event.",
+    form_not_found: "We could not find that form.",
+    group_not_found: "We could not find that group.",
+    opportunity_not_found: "We could not find that opportunity.",
+    payment_declined: "The payment was declined. Please try another method.",
+  },
+
+  localeSelector: {
+    label: "Language",
+    /** Screen-reader name for the control when rendered without a visible label. */
+    ariaLabel: "Choose a language",
+  },
+} as const;
