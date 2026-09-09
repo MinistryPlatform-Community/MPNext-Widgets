@@ -196,4 +196,51 @@ export const esGiving = {
     unsubscribed: "Canceló la suscripción a {title}",
     updateFailed: "No se pudo actualizar la suscripción. Inténtelo de nuevo.",
   },
+  /**
+   * `next-subscribe-to-publication` (C70).
+   *
+   * Seeded from legacy's Spanish labels, with two changes and one restoration:
+   *
+   * - **`usted`, not legacy's `tú`.** Legacy reads *"Completa el siguiente
+   *   formulario para suscribirte"* and *"¡Gracias por suscribirte!"*; the 27
+   *   widgets already shipped here are formal, and a visitor should not meet
+   *   two registers on one page.
+   * - **`linkExpired` is written fresh.** Legacy's `verificationFailedMessage`
+   *   still says *"intenta nuevamente"* — its English was tightened to name the
+   *   expiry (its own `previousEnglish` records the change) and the Spanish was
+   *   never updated to follow. That is the exact staleness `pnpm i18n:check`
+   *   exists to catch, so it is not inherited.
+   * - **The merge token is restored.** Legacy's Spanish `emailSentConfirmation`
+   *   names no publication at all, having dropped `[Publication_Title]`; the
+   *   parity test would fail on the missing `{title}`, and the copy is worse
+   *   without it.
+   *
+   * `notAvailable` is translated from our English rather than adopting legacy's
+   * *"La publicación solicitada no se puede encontrar."* — that sentence
+   * translates legacy's English ("cannot be found"), and ours says something
+   * more useful and more accurate: the publication may well exist and simply
+   * not be published online.
+   */
+  subscribeToPublication: {
+    title: "Suscripción por correo electrónico",
+    heading: "Suscríbase a {title}",
+    lead: "Complete el siguiente formulario y le enviaremos un enlace por correo electrónico para confirmar su suscripción.",
+    loading: "Cargando la publicación…",
+    submit: "Suscribirse",
+    checkEmailTitle: "Revise su correo electrónico",
+    checkEmail:
+      "Enviamos un enlace de confirmación a {email}. Ábralo para terminar de suscribirse a {title}.",
+    verifying: "Confirmando su suscripción…",
+    verifiedTitle: "Ya está suscrito",
+    verified: "Comenzará a recibir {title} en {email}.",
+    linkExpired:
+      "Ese enlace de confirmación ha expirado. Vuelva a suscribirse para recibir uno nuevo.",
+    linkInvalid: "Ese enlace de confirmación no es válido. Vuelva a suscribirse.",
+    linkUsed: "Todo está listo: este enlace ya se confirmó.",
+    notAvailable: "Esta publicación no está disponible para suscripción en línea.",
+    signUpAgain: "Suscribirse de nuevo",
+    privacyNote:
+      "Solo le enviaremos {title}, y puede cancelar la suscripción en cualquier mensaje.",
+    managePreferences: "Administrar todas sus preferencias de correo electrónico",
+  },
 } satisfies Partial<Messages>;

@@ -124,6 +124,29 @@ export const core = {
     // Route-specific codes.
     invalid_session: "Your session has expired. Please sign in again.",
     invalid_code: "That sign-in link is no longer valid. Please sign in again.",
+    // `next-unsubscribe`, when a sealed `?t=` token has expired or been
+    // tampered with and there is no `?cg=` to fall back to. Deliberately NOT
+    // `invalid_code`, whose sentence is about signing in and which CLAUDE.md
+    // names a protocol signal the SDK auth ladder reads. The sentence points at
+    // the two ways out that actually exist: a newer email, or the manage link
+    // the widget renders directly below it.
+    link_expired:
+      "That link is no longer valid. Please use the unsubscribe link in a recent email, or manage your preferences below.",
+    // ── `next-prayer-feedback` (C69), shared with C70's opt-in ──
+    //
+    // The three `verification_*` sentences are written **neutrally**, because
+    // more than one widget renders them: a message three widgets share cannot
+    // be phrased for one of them. Widget-specific warmth belongs in the
+    // widget's own namespace (`prayerFeedback.*`), not here.
+    feedback_type_not_allowed: "That option is not available on this form.",
+    feedback_type_not_found: "That option is no longer available. Please choose another.",
+    template_not_configured: "This form is not fully configured. Please contact the church.",
+    invalid_return_url: "That request was not valid. Please try again.",
+    email_send_failed: "We could not send the confirmation email. Please try again.",
+    verification_invalid: "This link is not valid. Please submit the form again.",
+    verification_expired: "This link has expired. Please submit the form again.",
+    verification_used: "This link has already been used.",
+    feedback_save_failed: "We could not submit your request. Please try again.",
     user_not_found: "We could not find your account.",
     contact_not_found: "We could not find your contact record.",
     donor_not_found: "No donor record is linked to your account.",
@@ -133,6 +156,28 @@ export const core = {
     form_not_found: "We could not find that form.",
     group_not_found: "We could not find that group.",
     opportunity_not_found: "We could not find that opportunity.",
+    // `next-subscribe-to-publication` (C70). Covers a publication that does
+    // not exist **and** one that is not `Available_Online`, because the route
+    // answers the same code for both — a distinguishable pair would let the
+    // id space be probed for internal publications.
+    publication_not_found: "We could not find that publication.",
+    // `next-pre-check` (C78). The check-in read runs through MP's own
+    // `api_MPPW_GetPreCheckEvents`, which ships in MP's widget database scripts
+    // but is not on every domain. The sentence points at the church rather than
+    // at the visitor, because a congregant can do nothing about an uninstalled
+    // stored procedure and should not be invited to retry.
+    precheck_unavailable:
+      "Check-in is not set up for this site yet. Please contact the church.",
+    // `next-pre-check` (C78). The submitted selection named a row the server
+    // did not issue for this household and date — a page left open while
+    // someone else in the family saved, most often, and an attack at worst.
+    // The widget reloads and re-renders behind this sentence, so the copy says
+    // what happens next rather than naming the mismatch.
+    invalid_pre_check_selection:
+      "Your check-in choices are out of date. Please review them and try again.",
+    // The requested date is outside the window the route accepts (more than a
+    // day back or more than 90 days ahead).
+    pre_check_closed: "Check-in is not open for that date.",
     payment_declined: "The payment was declined. Please try another method.",
     campaign_not_found: "We could not find that giving campaign.",
     household_not_found: "We could not find your household.",

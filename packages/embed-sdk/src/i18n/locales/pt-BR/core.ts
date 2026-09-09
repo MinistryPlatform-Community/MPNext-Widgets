@@ -105,6 +105,20 @@ export const ptBRCore = {
     submitFailed: "O envio falhou. Tente novamente.",
     invalid_session: "Sua sessão expirou. Entre novamente.",
     invalid_code: "Esse link de acesso não é mais válido. Entre novamente.",
+    link_expired:
+      "Este link não é mais válido. Use o link de cancelamento de um e-mail recente ou gerencie suas preferências abaixo.",
+    // `next-prayer-feedback` (C69), compartilhados com a inscrição do C70.
+    feedback_type_not_allowed: "Essa opção não está disponível neste formulário.",
+    feedback_type_not_found: "Essa opção não está mais disponível. Escolha outra.",
+    template_not_configured:
+      "Este formulário não está totalmente configurado. Entre em contato com a igreja.",
+    invalid_return_url: "Essa solicitação não era válida. Tente novamente.",
+    email_send_failed:
+      "Não foi possível enviar o e-mail de confirmação. Tente novamente.",
+    verification_invalid: "Este link não é válido. Envie o formulário novamente.",
+    verification_expired: "Este link expirou. Envie o formulário novamente.",
+    verification_used: "Este link já foi usado.",
+    feedback_save_failed: "Não foi possível enviar sua solicitação. Tente novamente.",
     user_not_found: "Não encontramos sua conta.",
     contact_not_found: "Não encontramos seu registro de contato.",
     donor_not_found: "Nenhum registro de doador está vinculado à sua conta.",
@@ -114,6 +128,12 @@ export const ptBRCore = {
     form_not_found: "Não encontramos esse formulário.",
     group_not_found: "Não encontramos esse grupo.",
     opportunity_not_found: "Não encontramos essa oportunidade.",
+    publication_not_found: "Não encontramos essa publicação.",
+    precheck_unavailable:
+      "O check-in ainda não está configurado neste site. Entre em contato com a igreja.",
+    invalid_pre_check_selection:
+      "Suas escolhas de check-in estão desatualizadas. Confira-as e tente de novo.",
+    pre_check_closed: "O check-in não está aberto para essa data.",
     payment_declined: "O pagamento foi recusado. Tente outro método.",
     campaign_not_found: "Não encontramos essa campanha de doações.",
     household_not_found: "Não encontramos sua família.",

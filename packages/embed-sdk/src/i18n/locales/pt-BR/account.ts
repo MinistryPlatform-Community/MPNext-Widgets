@@ -39,6 +39,35 @@ export const ptBRAccount = {
     unitPrice: "Preço unitário",
   },
 
+  /**
+   * `next-unsubscribe`.
+   *
+   * `mpp-unsubscribe.json`'s Portuguese is European and second-person-informal
+   * — "Foste excluído", "as tuas preferências", "Desfaz", "Minhas Subscrições"
+   * — so it seeds the wording but not the grammar. This is `você` with
+   * Brazilian lexis: `inscrição` / `cancelar a inscrição` rather than
+   * `subscrição`. `Desfazer` needs no change.
+   *
+   * As in Spanish, only the first sentence of each success label survives, and
+   * `undoFailed` is written fresh: legacy's Portuguese for it ("Não é possível
+   * cancelar a subscrição") is its *unsubscribe* failure label and describes
+   * the opposite action.
+   */
+  unsubscribe: {
+    working: "Só um momento: estamos atualizando suas preferências de e-mail…",
+    // Distinct verbs, as in legacy: cancelling one inscription vs. being
+    // removed from the bulk notification service.
+    donePublication: "Sua inscrição foi cancelada.",
+    doneBulk: "Você foi excluído do nosso serviço de notificações por e-mail.",
+    undoButton: "Desfazer",
+    undone: "Sua inscrição foi reativada.",
+    undoFailed: "Não foi possível desfazer o cancelamento.",
+    manageLink: "Gerenciar todas as minhas preferências de e-mail",
+    badLink:
+      "Este link de cancelamento está incompleto. Use o link de um e-mail recente que enviamos para você.",
+    title: "Preferências de e-mail",
+  },
+
   userMenu: {
     menuLabel: "Menu do usuário",
     myAccount: "Minha conta",

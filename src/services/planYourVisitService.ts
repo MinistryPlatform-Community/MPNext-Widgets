@@ -1,6 +1,13 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
+import { MessageTemplateService } from "@/services/messageTemplateService";
+import {
+  clean,
+  getIdByValue,
+  sqlLiteral,
+  toNumberOrNull,
+} from "@/services/_shared/mp-lookup";
 import type {
   AgeOrGradeGroup,
   PlanYourVisitConfig,
@@ -36,32 +43,9 @@ interface ContactRow {
   Email_Address: string | null;
 }
 
-interface MessageTemplate {
-  subject: string;
-  body: string;
-  fromContactId: number | null;
-}
-
-function toNumberOrNull(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  return Number.isNaN(n) ? null : n;
-}
-
 function toNumber(value: number | string | null | undefined, fallback = 0): number {
   const n = toNumberOrNull(value);
   return n === null ? fallback : n;
-}
-
-function clean(value: string | null | undefined): string | null {
-  if (value == null) return null;
-  const str = String(value).trim();
-  return str === "" ? null : str;
-}
-
-/** Escape a value for safe inclusion inside an MP `LIKE '...'` filter literal. */
-function sqlLiteral(value: string): string {
-  return value.replace(/'/g, "''");
 }
 
 export class PlanYourVisitService {
@@ -398,7 +382,12 @@ export class PlanYourVisitService {
   }): Promise<number> {
     const record: Record<string, unknown> = {
       Company: false,
-      Status: c.statusId,
+      // `Contact_Status_ID`, not `Status`. Legacy's shared
+      // `ContactManager.CreateContact` writes `{"Status", …}` and this service
+      // was ported from it faithfully — but MP has no `Status` column on
+      // `Contacts`, so the Active id resolved just above was being computed and
+      // then discarded. See `.claude/TODO/Comparison/C83-*`.
+      Contact_Status_ID: c.statusId,
       Household_Position_ID: c.positionId,
       Mobile_Phone: c.mobilePhone,
       Email_Address: c.email,
@@ -571,47 +560,12 @@ export class PlanYourVisitService {
 
   // ── Email template render + send ──
 
-  /** Read a dp_Communications message template (verification / church notice). */
-  private async getMessageTemplate(id: number): Promise<MessageTemplate | null> {
-    const rows = await this.mp!.getTableRecords<{
-      Subject: string | null;
-      Body: string | null;
-      From_Contact: number | string | null;
-    }>({
-      table: "dp_Communications",
-      select: "Subject, Body, From_Contact",
-      filter: `Communication_ID = ${id}`,
-      top: 1,
-    });
-    const r = rows[0];
-    if (!r) return null;
-    return {
-      subject: r.Subject ?? "",
-      body: r.Body ?? "",
-      fromContactId: toNumberOrNull(r.From_Contact),
-    };
-  }
-
-  /** Read a dp_Communication_Templates template (congregation user notice). */
-  private async getCommunicationTemplate(id: number): Promise<MessageTemplate | null> {
-    const rows = await this.mp!.getTableRecords<{
-      Subject_Text: string | null;
-      Body_HTML: string | null;
-      From_Contact: number | string | null;
-    }>({
-      table: "dp_Communication_Templates",
-      select: "Subject_Text, Body_HTML, From_Contact",
-      filter: `Communication_Template_ID = ${id}`,
-      top: 1,
-    });
-    const r = rows[0];
-    if (!r) return null;
-    return {
-      subject: r.Subject_Text ?? "",
-      body: r.Body_HTML ?? "",
-      fromContactId: toNumberOrNull(r.From_Contact),
-    };
-  }
+  // Both delegate to `messageTemplateService`, which owns the MP template
+  // read, the `[token]` substitution and the From-address resolution. The
+  // logic lived here first; it moved out when C69/C70 became the third and
+  // fourth widgets to need it. These wrappers stay so the call sites above
+  // read the same as they did, and so the two MP template tables keep the
+  // two distinct names the callers already use.
 
   private async sendMessageTemplate(
     templateId: number,
@@ -619,9 +573,8 @@ export class PlanYourVisitService {
     toName: string,
     merge: Record<string, string>
   ): Promise<void> {
-    const template = await this.getMessageTemplate(templateId);
-    if (!template) throw new Error(`Email template ${templateId} not found.`);
-    await this.renderAndSend(template, toEmail, toName, merge);
+    const templates = await MessageTemplateService.getInstance();
+    await templates.sendMessageTemplate(templateId, { email: toEmail, name: toName }, merge);
   }
 
   private async sendCommunicationTemplate(
@@ -630,75 +583,26 @@ export class PlanYourVisitService {
     toName: string,
     merge: Record<string, string>
   ): Promise<void> {
-    const template = await this.getCommunicationTemplate(templateId);
-    if (!template) throw new Error(`Communication template ${templateId} not found.`);
-    await this.renderAndSend(template, toEmail, toName, merge);
-  }
-
-  private async renderAndSend(
-    template: MessageTemplate,
-    toEmail: string,
-    toName: string,
-    merge: Record<string, string>
-  ): Promise<void> {
-    if (!toEmail) throw new Error("No recipient email address.");
-
-    const from = await this.resolveFromAddress(template.fromContactId);
-
-    let subject = template.subject;
-    let body = template.body;
-    for (const [key, value] of Object.entries(merge)) {
-      subject = replaceToken(subject, key, value);
-      body = replaceToken(body, key, value);
-    }
-
-    await this.mp!.sendMessage({
-      FromAddress: from,
-      ToAddresses: [{ DisplayName: toName, Address: toEmail }],
-      Subject: subject,
-      Body: body,
-    });
-  }
-
-  private async resolveFromAddress(
-    fromContactId: number | null
-  ): Promise<{ DisplayName: string; Address: string }> {
-    if (fromContactId != null) {
-      const contact = await this.getContactById(fromContactId);
-      if (contact?.Email_Address) {
-        const name = `${contact.First_Name ?? ""} ${contact.Last_Name ?? ""}`.trim();
-        return { DisplayName: name || contact.Email_Address, Address: contact.Email_Address };
-      }
-    }
-    throw new Error("Email template has no valid From contact.");
+    const templates = await MessageTemplateService.getInstance();
+    await templates.sendCommunicationTemplate(templateId, { email: toEmail, name: toName }, merge);
   }
 
   // ── Helpers ──
 
   /** Look up the numeric id of a row by a column value (cached). */
-  private async getIdByValue(
+  private getIdByValue(
     table: string,
     columnName: string,
     value: string,
     idColumn: string
   ): Promise<number | null> {
-    const cacheKey = `${table}:${columnName}:${value}`;
-    if (this.idCache.has(cacheKey)) return this.idCache.get(cacheKey)!;
-
-    let id: number | null = null;
-    try {
-      const rows = await this.mp!.getTableRecords<Record<string, number | string | null>>({
-        table,
-        select: `${idColumn} AS Id`,
-        filter: `${columnName} = '${sqlLiteral(value)}'`,
-        top: 1,
-      });
-      id = toNumberOrNull(rows[0]?.Id ?? null);
-    } catch (err) {
-      console.warn(`PlanYourVisitService: getIdByValue ${table}.${columnName}='${value}' failed:`, err);
-    }
-    this.idCache.set(cacheKey, id);
-    return id;
+    return getIdByValue(
+      { mp: this.mp!, cache: this.idCache, label: "PlanYourVisitService" },
+      table,
+      columnName,
+      value,
+      idColumn
+    );
   }
 
   private async getConfigValue(keyName: string): Promise<string | null> {
@@ -717,11 +621,4 @@ export class PlanYourVisitService {
     const tz = DomainTimezoneService.getInstance();
     return tz.toMpSqlDatetime(new Date().toISOString());
   }
-}
-
-/** Replace `[key]` tokens (case-insensitive) the way MP merge fields render. */
-function replaceToken(text: string, key: string, value: string): string {
-  if (!text) return text;
-  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return text.replace(new RegExp(`\\[${escaped}\\]`, "gi"), value);
 }

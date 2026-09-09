@@ -49,13 +49,49 @@ function routeFiles(dir: string, out: string[] = []): string[] {
  */
 const ERROR_PROPERTY = /(?:^|[{,])\s*error:\s*"([^"]+)"/gm;
 
-/** `{ code: [files that emit it] }` across every embed route. */
+/**
+ * Matches `errorResponse("code", "message", …)` — the helper call form.
+ *
+ * **This pattern exists because the object-property one silently stopped
+ * covering new routes.** `withAnonymousWrite`
+ * (`src/lib/embed/anonymous-write.ts`) ships an `errorResponse(code, message,
+ * status, cors)` helper, and a route that answers exclusively through it writes
+ * no `error:` property anywhere — so `ERROR_PROPERTY` matched nothing and the
+ * route quietly lost the guarantee that its codes have sentences in all three
+ * locales. Found by C72, the helper's first consumer, which had to keep a
+ * redundant object-literal table in the route just to stay visible here.
+ *
+ * The message is captured too, so the "carries a debug message" assertion works
+ * on this form as well.
+ */
+const ERROR_CALL = /errorResponse\(\s*"([^"]+)"\s*,\s*"([^"]*)"/g;
+
+/**
+ * Files scanned in addition to the routes.
+ *
+ * The helper's *own* codes — `method_not_allowed`, `auth_required`,
+ * `rate_limited`, `internal_error` — live in `src/lib/embed/`, which is not a
+ * route directory, so nothing scanned them. That is exactly how
+ * `method_not_allowed` reached `main` with no catalogue entry: a code a widget
+ * can genuinely receive, degrading to "Something went wrong".
+ */
+const EXTRA_SOURCES = [resolve(repoRoot, "src/lib/embed/anonymous-write.ts")];
+
+/** Every file that can emit a wire code: the routes plus the shared helpers. */
+function codeSources(): string[] {
+  return [...routeFiles(routesDir), ...EXTRA_SOURCES];
+}
+
+/** `{ code: [files that emit it] }` across every embed route and shared helper. */
 function emittedCodes(): Map<string, string[]> {
   const codes = new Map<string, string[]>();
-  for (const file of routeFiles(routesDir)) {
+  for (const file of codeSources()) {
     const source = readFileSync(file, "utf-8");
     const relative = file.slice(repoRoot.length + 1).replace(/\\/g, "/");
-    for (const match of source.matchAll(ERROR_PROPERTY)) {
+    for (const match of [
+      ...source.matchAll(ERROR_PROPERTY),
+      ...source.matchAll(ERROR_CALL),
+    ]) {
       const code = match[1] as string;
       const seen = codes.get(code) ?? [];
       if (!seen.includes(relative)) seen.push(relative);
@@ -130,7 +166,7 @@ describe("API error codes", () => {
     // string comes from the catalogue, so a code without one is a route that
     // logs nothing useful when it fires.
     const withoutMessage: string[] = [];
-    for (const file of routeFiles(routesDir)) {
+    for (const file of codeSources()) {
       const source = readFileSync(file, "utf-8");
       const relative = file.slice(repoRoot.length + 1).replace(/\\/g, "/");
       // Same object-property anchoring as ERROR_PROPERTY, plus the rest of the
@@ -148,8 +184,29 @@ describe("API error codes", () => {
           withoutMessage.push(`${relative}: ${code}`);
         }
       }
+      // The helper call form carries its message as the second argument, so an
+      // empty string there is the equivalent omission.
+      for (const match of source.matchAll(ERROR_CALL)) {
+        if (!(match[2] as string).trim()) {
+          withoutMessage.push(`${relative}: ${match[1]}`);
+        }
+      }
     }
     expect(withoutMessage).toEqual([]);
+  });
+
+  it("scans the shared helpers, not only the route files", () => {
+    // Guard against the guard, second edition. `withAnonymousWrite` emits codes
+    // from `src/lib/embed/`, and when that file was unscanned a route could
+    // answer with a code no catalogue had. `method_not_allowed` is the specific
+    // code that slipped through, so it is the one asserted.
+    for (const file of EXTRA_SOURCES) {
+      expect(statSync(file).isFile()).toBe(true);
+    }
+    expect(codes.has("method_not_allowed")).toBe(true);
+    expect(codes.get("method_not_allowed")).toContain(
+      "src/lib/embed/anonymous-write.ts",
+    );
   });
 
   it("maps every WIRE_CODE_KEYS entry to a real catalogue key", () => {

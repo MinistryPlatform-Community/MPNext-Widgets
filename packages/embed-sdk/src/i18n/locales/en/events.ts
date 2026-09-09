@@ -150,4 +150,74 @@ export const events = {
      */
     otherIcs: "Other (.ics file)",
   },
+
+  /**
+   * `next-pre-check` (C78) — a household checks itself in before Sunday.
+   *
+   * **This namespace had no legacy seed.** MP ships 38 label files under
+   * `DatabaseScripts/ApplicationLabels/` and there is no `mpp-pre-check.json`
+   * among them, exactly consistent with the legacy widget's
+   * `excludeFromConfigurator:!0` — its own `new I18N("mpp-pre-check")` resolved
+   * against nothing, which is why every string in that widget is a raw English
+   * literal in the source. So unlike its three siblings there was no
+   * MP-authored translation to lift: the `es` and `pt-BR` copy below is
+   * written, not ported.
+   *
+   * Kept deliberately short. The submit control, the retry, the sign-in label
+   * and the date field all come from `common.*` / `fields.*`, so `preCheck`
+   * carries only copy that is genuinely specific to pre-check.
+   *
+   * **No `rowLabel` key, on purpose.** A row is composed structurally — the
+   * time, the event title, the group name and the role, each in its own
+   * element — rather than interpolated into one sentence, because punctuation
+   * and ordering differ across the three locales. The event title and group
+   * name are MP-authored and are not translatable by a file-based catalogue
+   * either way.
+   */
+  preCheck: {
+    title: "Pre Check-In",
+    intro: "Check your family in before you arrive.",
+    loading: "Loading your family's events…",
+    /**
+     * Not an error state. A Tuesday has no Sunday classes, and MP's own
+     * check-in visibility rule legitimately hides a household whose groups do
+     * not match the event's.
+     */
+    emptyNoEvents: "There are no check-in events on {date}.",
+    /** `dual` / `hardened`: a real Sign In button sits under this. */
+    signedOutPrompt: "Sign in to check your family in.",
+    /**
+     * `legacy`: the SDK cannot start a sign-in, so the copy names the page's
+     * own control and **no button is drawn**. Legacy always drew a button
+     * whether or not it could work; a button that silently does nothing is
+     * worse than none.
+     */
+    signedOutLegacy:
+      "Please sign in using the sign-in link on this page to check your family in.",
+    selectAll: "Select all",
+    clearAll: "Clear all",
+    /** Shown on a row a check-in station has already scanned or confirmed. */
+    attendedLocked: "Already checked in",
+    /** Accessible name for one member's group of checkboxes. */
+    memberEventsLabel: "Events for {name}",
+    save: "Check In",
+    qrTitle: "Your check-in code",
+    qrHelp: "Show this code at the check-in station.",
+    qrUnavailable: "The check-in code is not available right now.",
+    savedCount: {
+      one: "{count} person is checked in for {date}.",
+      other: "{count} people are checked in for {date}.",
+    },
+    /** Follows `savedCount` when the save also cancelled something. */
+    cancelledNote: "Anyone you unchecked has been removed.",
+    /** Nothing ticked and nothing to cancel — the save was a no-op. */
+    savedNone: "Nobody is checked in for {date}.",
+    /**
+     * The submitted selection did not match what the server holds — a page
+     * left open while someone else in the household saved, most often. The
+     * copy says what to do rather than naming the mismatch.
+     */
+    staleSelection:
+      "This page is out of date. It has been refreshed — please check your choices and try again.",
+  },
 } as const;

@@ -1,6 +1,7 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
+import { clean } from "@/services/_shared/mp-lookup";
 import type {
   GroupCard,
   GroupConfigurations,
@@ -104,12 +105,6 @@ function toNumberOrNull(value: number | string | null | undefined): number | nul
 function toNumber(value: number | string | null | undefined, fallback = 0): number {
   const n = toNumberOrNull(value);
   return n === null ? fallback : n;
-}
-
-function clean(value: string | null | undefined): string | null {
-  if (value == null) return null;
-  const str = String(value).trim();
-  return str === "" ? null : str;
 }
 
 export class GroupsService {

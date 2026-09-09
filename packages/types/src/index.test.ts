@@ -31,6 +31,13 @@ describe('@mpnext/types barrel re-exports', () => {
     'SubscriptionListResponseSchema',
     'SubscriptionUpdateSchema',
     'SubscriptionUpdateResponseSchema',
+    // subscribe-to-publication
+    'OnlinePublicationSchema',
+    'SubscribePublicationResponseSchema',
+    'SubscribeVerificationRequestSchema',
+    'SubscribeVerificationResponseSchema',
+    'SubscribeVerifyRequestSchema',
+    'SubscribeVerifyResponseSchema',
   ] as const;
 
   for (const name of expectedSchemas) {

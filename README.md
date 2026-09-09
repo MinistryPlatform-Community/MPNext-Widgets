@@ -37,6 +37,10 @@ Embeddable Web Component widgets for [Ministry Platform](https://www.ministrypla
   - [Cutover Runbook](#cutover-runbook)
   - [Troubleshooting Widget Auth](#troubleshooting-widget-auth)
 - [Widget Languages](#widget-languages)
+- [Widget Unsubscribe Links](#widget-unsubscribe-links)
+- [Prayer & Feedback Intake](#prayer--feedback-intake)
+- [Newsletter Sign-Up](#newsletter-sign-up)
+- [Event Pre Check-In](#event-pre-check-in)
 - [Testing](#testing)
 - [Development](#development)
 - [Claude Code Commands](#claude-code-commands)
@@ -507,17 +511,80 @@ MPNext-Widgets/
 
 ## Widgets
 
-Five framework-agnostic Web Components, each registered as a custom element by the embed SDK and rendered in Shadow DOM.
+**30 framework-agnostic Web Components**, each registered as a custom element by the embed
+SDK and rendered in Shadow DOM. They share a base class
+(`packages/embed-sdk/src/shared/base-widget.ts`) that handles token fetching, automatic 401
+refresh, localisation and the Shadow DOM lifecycle.
+
+Every widget has a demo page at `packages/embed-sdk/demo-<name>.html` except
+`next-locale-selector`, which needs no API, no token and no configuration to demonstrate —
+setting `<html lang="es">` on any other demo page exercises the whole localisation path.
+
+To re-measure this roster rather than trusting the count:
+
+```bash
+grep -rho 'customElements\.define(\s*"next-[a-z-]*' packages/embed-sdk/src | sort -u
+```
+
+### Events
 
 | Element | Purpose | Service | API route |
 |---|---|---|---|
-| `<next-user-menu>` | User profile dropdown with sign-in/out | `userService` | `/api/embed/session`, `/api/embed/auth/*` |
-| `<next-add-to-calendar>` | Subscribe to event reminders via email/SMS | `addToCalendarService` | `/api/embed/add-to-calendar` |
-| `<next-full-calendar>` | Public events calendar (cards, list, mini-cal, modal) | `fullCalendarService` | `/api/embed/full-calendar` |
-| `<next-profile>` | View and edit signed-in user profile | `profileService` | `/api/embed/profile` |
-| `<next-my-invoices>` | List and view user invoices | `invoiceService` | `/api/embed/invoices` |
+| `<next-event-finder>` | Search and filter public events | `eventFinderService` | `/api/embed/event-finder` |
+| `<next-event-details>` | One event, with registration | `eventDetailsService` | `/api/embed/event-details` |
+| `<next-full-calendar>` | Events calendar (cards, list, mini-cal, modal) | `fullCalendarService` | `/api/embed/full-calendar` |
+| `<next-add-to-calendar>` | Add an event to Google / Outlook / Yahoo / `.ics` | `addToCalendarService` | `/api/embed/add-to-calendar` |
+| `<next-pre-check>` | Household pre-check for a service date, with check-in QR | `preCheckService` | `/api/embed/pre-check` |
 
-All five widgets share a base class (`packages/embed-sdk/src/shared/base-widget.ts`) that handles token fetching, automatic 401 refresh, and Shadow DOM lifecycle.
+### Groups and serving
+
+| Element | Purpose | Service | API route |
+|---|---|---|---|
+| `<next-group-finder>` | Search and filter groups | `groupsService` | `/api/embed/group-finder` |
+| `<next-group-details>` | One group, with inquiry and sign-up | `groupsService` | `/api/embed/group-details` |
+| `<next-my-groups>` | The signed-in user's groups | `myGroupsService` | `/api/embed/my-groups` |
+| `<next-opportunity-finder>` | Search serving opportunities | `opportunityFinderService` | `/api/embed/opportunity-finder` |
+| `<next-opportunity-details>` | One opportunity, with response | `opportunityDetailsService` | `/api/embed/opportunity-details` |
+
+### Giving and payments
+
+| Element | Purpose | Service | API route |
+|---|---|---|---|
+| `<next-my-giving>` | Giving history and by-month chart | `myGivingService` | `/api/embed/my-giving` |
+| `<next-my-pledges>` | Pledges, with cancel | `myPledgesService` | `/api/embed/my-pledges` |
+| `<next-pledge-campaign>` | Make a pledge to a campaign | `pledgeCampaignService` | `/api/embed/pledge-campaign` |
+| `<next-my-contribution-statement>` | Contribution statements | `contributionStatementService` | `/api/embed/contribution-statements` |
+| `<next-statement-preferences>` | Paperless statement opt-in | `statementPreferencesService` | `/api/embed/statement-preferences` |
+| `<next-my-invoices>` | List and view invoices | `invoiceService` | `/api/embed/invoices` |
+| `<next-checkout>` | Cart checkout | `checkoutService` | `/api/embed/checkout` |
+| `<next-checkout-complete>` | Post-payment confirmation | `checkoutService` | `/api/embed/checkout` |
+| `<next-pay>` | Payment capture | `paymentService` | `/api/embed/pay`, `/api/embed/payment` |
+
+### People and account
+
+| Element | Purpose | Service | API route |
+|---|---|---|---|
+| `<next-user-menu>` | Profile dropdown with sign-in/out | `userService` | `/api/embed/session`, `/api/embed/auth/*` |
+| `<next-profile>` | View and edit the signed-in profile | `profileService` | `/api/embed/profile` |
+| `<next-my-household>` | Household members | `householdService` | `/api/embed/household` |
+| `<next-online-directory>` | Church member directory | `onlineDirectoryService` | `/api/embed/online-directory` |
+| `<next-plan-your-visit>` | Anonymous first-visit registration, email-verified | `planYourVisitService` | `/api/embed/plan-your-visit` |
+| `<next-prayer-feedback>` | Prayer and feedback intake → `Feedback_Entries` | `prayerFeedbackService` | `/api/embed/prayer-feedback` |
+| `<next-custom-form>` | Renders an MP Custom Form | `customFormService` | `/api/embed/custom-form` |
+
+### Publications
+
+| Element | Purpose | Service | API route |
+|---|---|---|---|
+| `<next-subscribe-to-publication>` | Anonymous newsletter opt-in, double opt-in by email | `subscriptionService` | `/api/embed/subscribe-to-publication` |
+| `<next-subscriptions>` | Signed-in subscription management | `subscriptionService` | `/api/embed/subscriptions` |
+| `<next-unsubscribe>` | One-click unsubscribe from an emailed link | `subscriptionService` | `/api/embed/unsubscribe` |
+
+### Cross-cutting
+
+| Element | Purpose | Service | API route |
+|---|---|---|---|
+| `<next-locale-selector>` | Language picker (`en`, `es`, `pt-BR`) | — | — |
 
 ## Ministry Platform Integration
 
@@ -881,6 +948,534 @@ MPNextEmbed.disablePseudoLocale()
 
 Everything still rendering in plain English is a string that was never
 translated; anything overflowing its container will overflow in Spanish too.
+
+
+## Widget Unsubscribe Links
+
+`<next-unsubscribe>` is the landing page for the unsubscribe link in a bulk
+email. It needs no sign-in — that is the entire point — and it identifies the
+recipient from the link they arrived on.
+
+**MinistryPlatform generates no unsubscribe link of its own, and the legacy
+widget stack did not either.** Every stock template's footer is a
+MailChimp-inherited `mc:edit="unsubscribe"` region holding inert boilerplate:
+no link, no merge token. Measured on the reference domain, **0 of 1047**
+communications contain `unsubscribe.aspx` or `pubid=`, and the legacy stack's
+1,922 lines of database scripts contain no unsubscribe URL and no
+`[Contact_GUID]` token. So **a church that skips step 3 below has no
+unsubscribe at all** — not a degraded one.
+
+### 1. Host the landing page on an allowlisted origin — do this first
+
+The page's origin must be in `EMBED_ALLOWED_ORIGINS`
+(`src/lib/embed/config.ts`), or `/api/embed/session` will not mint a token and
+every visitor sees an error. **This is setup failure number one.**
+
+### 2. The page itself
+
+The standard SDK snippet (see [Embedding on an External
+Site](#embedding-on-an-external-site)) plus:
+
+```html
+<next-unsubscribe
+  my-subscriptions-url="https://www.example.church/email-preferences">
+</next-unsubscribe>
+```
+
+No sign-in and no `<next-user-menu>`. One is harmless but pointless.
+
+| Attribute | Required | Meaning |
+|---|---|---|
+| `my-subscriptions-url` | no | Absolute URL of the page carrying `<next-subscriptions>`. Renders the "Manage all my email preferences" link; omitted when unset. `http:`/`https:` only — anything else is dropped with one console warning. |
+| `cg-param` | no | Name of the query parameter carrying the contact GUID. Default `cg`. For a CMS that already owns `cg`. |
+| `pubid-param` | no | Default `pubid`. |
+| `token-param` | no | Default `t`. The sealed-token path. |
+| `show-email` | no | `"false"` drops the masked-address line entirely. Default shows it masked (`j•••@g•••.com`) — never in full. |
+| `api-host` | no | Standard across the SDK. |
+| `lang` | no | Standard across the SDK. |
+
+There is deliberately **no `publication-id` attribute**: the publication comes
+from the link, so one landing page serves every publication.
+
+Events: `unsubscribed` (`{ scope, publicationId }`), `resubscribed`,
+`unsubscribeError`.
+
+### 3. Add the footer to every bulk-email template
+
+```html
+<a href="https://www.example.church/unsubscribe?cg=[Contact_GUID]&amp;pubid=4">
+  Unsubscribe from the Weekly Newsletter
+</a>
+&nbsp;|&nbsp;
+<a href="https://www.example.church/unsubscribe?cg=[Contact_GUID]">
+  Stop all bulk email
+</a>
+```
+
+- `[Contact_GUID]` is merged per recipient. MP's own stock template
+  (*"[Nickname], your User Account for MPI!"*) uses exactly this token in
+  exactly this position: `my_user_account.aspx?dg=[Domain_GUID]&cg=[Contact_GUID]`.
+- **`pubid` is hardcoded per template**, to the `dp_Publications.Publication_ID`
+  that template is sent for. There is no `[Publication_ID]` merge token: a
+  communication's publication is a property of the *send*, not of the recipient
+  row the merge runs over. So it is **one footer per publication template**, and
+  this is the one fiddly part of the setup.
+- Omit `pubid` (or set `0`) for the "stop all bulk email" link, which writes
+  `Contacts.Bulk_Email_Opt_Out`.
+- **Escape the ampersand as `&amp;`** inside MP's HTML editor. A raw `&` in an
+  `href` there is a real and repeated failure mode.
+- **Before editing templates at scale, send one test bulk email to a selection
+  of one and check the merged link.** The `[Contact_GUID]` evidence above comes
+  from a stock *template*; no *sent* message body in the reference domain
+  contains `cg=`, because that template is triggered by user-account setup
+  rather than by a publication send. Five minutes, and it de-risks the feature
+  before any template is touched in bulk.
+
+### 4. Already-sent emails keep working
+
+The parameter names are unchanged from legacy `mpp-unsubscribe`
+(`?cg=&pubid=`), so a church that re-points its existing unsubscribe page — or
+adds a redirect from it — at the new widget keeps every link already sitting in
+a recipient's inbox alive. MP's Portal `dg=[Domain_GUID]` parameter is read and
+ignored, so an MP-shaped link can be pasted unchanged.
+
+### What the recipient sees
+
+The widget acts **on load**, with no confirm click: following the link
+completes the opt-out, which is what RFC 8058 and every mailbox provider expect,
+and a confirmation step is measurable drop-off on the one flow a sender is
+obliged to make easy. It then offers **Undo** for the life of the rendered page.
+
+Undo is offered only when there is something to undo, so someone who was
+already opted out before they clicked is never shown a button that would opt
+them back in. A link whose GUID matches no contact is answered exactly like a
+successful unsubscribe — deliberately, so the page cannot be used to test
+whether a GUID is a live contact.
+
+A *malformed or incomplete* link is a different case and says so, with a link to
+full preferences as the way out. It makes no request at all.
+
+### Notes for whoever reviews this later
+
+- The write is a **POST issued by JavaScript**, never a GET. The emailed link
+  resolves to a page that renders and changes nothing, so mail scanners,
+  URL-rewriting gateways (Proofpoint, Mimecast) and link previews cannot
+  unsubscribe anybody. The POST additionally needs a widget JWT, obtainable only
+  from an allowlisted origin.
+- The address comes back **masked, masked server-side**, so the full value never
+  reaches a response body or an HTTP cache.
+- `Contact_GUID` is accepted **at `/api/embed/unsubscribe` and nowhere else**.
+  It is ~122 bits of unguessable bearer capability, but it never expires; the
+  route is narrow enough for that trade and the pattern must not be generalised.
+  The widget strips it out of the address bar as soon as it has read it.
+- Rate limits: 10/min per IP and 5/min per hashed capability, both before any MP
+  read.
+- **RFC 8058 one-click is out of scope.** The mailbox-provider "Unsubscribe"
+  button needs a `List-Unsubscribe` / `List-Unsubscribe-Post` header on the
+  outbound message, emitted by MP's SMTP path, which this stack does not
+  control. The link in the body is the supported path.
+
+
+## Prayer & Feedback Intake
+
+`<next-prayer-feedback>` writes MinistryPlatform's **Feedback Entries** — prayer
+requests, praise reports and general comments. It is the counterpart of the
+legacy `mpp-prayer-feedback-form`, and for many churches it is the first thing
+on the website that writes to MP.
+
+**A hand-built Custom Form is not a substitute.** It writes `Form_Responses`,
+populates no Feedback Type and no Program, and never appears in the tools staff
+use to work a prayer queue — so the submissions land somewhere the prayer team
+does not look. That is a different record in a different table, not a
+configuration difference.
+
+### Setup
+
+The page's origin must be in `EMBED_ALLOWED_ORIGINS` (`src/lib/embed/config.ts`),
+or `/api/embed/session` mints no token and every visitor sees an error. **This is
+setup failure number one.**
+
+```html
+<next-prayer-feedback verification-email-template-id="5125"></next-prayer-feedback>
+```
+
+`verification-email-template-id` is a `dp_Communications` id whose **Body must
+render `[mpp_verify_email_url]`**. It is required for signed-out submissions,
+which is nearly all of them: with it absent the widget renders a configuration
+notice instead of a submit button, so a misconfigured page fails visibly at load
+rather than after a visitor has typed 2000 characters.
+
+| Attribute | Required | Meaning |
+|---|---|---|
+| `verification-email-template-id` | for signed-out visitors | `dp_Communications` id. Must render `[mpp_verify_email_url]`. Also merges `[mpp_contact_first_name]` and `[mpp_contact_last_name]` — legacy's exact three tokens, so an existing template drops straight in. |
+| `acknowledgement-email-template-id` | no | Sent once the entry is written, on **both** paths. Merges `[mpp_contact_first_name]`, `[mpp_contact_last_name]`, `[mpp_feedback_type]`, `[mpp_feedback_summary]`, `[mpp_date_submitted]`. |
+| `feedback-type-ids` | no | Comma-separated `Feedback_Type_ID` allowlist for the dropdown. See the migration note below — the default changed. |
+| `program-id` | no | `Feedback_Entries.Program_ID`. A positive integer; omitted from the write when absent. |
+| `return-url` | no | Where the emailed link lands. Defaults to the current page with its query string stripped, so the common case needs no attribute. Must be **same-origin** with the page. |
+| `verify-param-name` | no | Defaults to `mpp-verify-id`, legacy's spelling, so an existing MP template and an old bookmark keep working. |
+| `default-private` | no | `"true"` pre-ticks Private. |
+| `hide-private-option` | no | `"true"` hides the checkbox and forces the value from `default-private` — for a page whose whole framing is confidential pastoral care. |
+
+### What a submission actually does
+
+**Signed out** — nothing is written to MP. The submission is sealed server-side,
+a one-time link is emailed, and the `Feedback_Entries` row (plus, for an address
+MP has never seen, a `Households` + `Contacts` pair) is created only when that
+link is opened. That double opt-in is what makes creating a contact safe:
+without it an unauthenticated POST could mint rows in the CRM as fast as a script
+can manage, and MP has no good bulk undo.
+
+**Signed in** — the entry is written immediately, with no verification email. The
+member may file for themselves or for a household member ("Provide Feedback As");
+household membership is re-checked server-side on every write, so the picker is a
+convenience rather than the boundary. Choosing "Someone else" takes the emailed
+round-trip, because a signed-in member's verified identity says nothing about a
+third party whose details they have just typed.
+
+Either way the entry is written with `Approved = false` and, unless Private is
+ticked, `Visibility_Level_ID = 4` (Public). Private submissions get
+`Visibility_Level_ID = 2` (Staff Only).
+
+### Migrating from `mpp-prayer-feedback-form` — four things changed
+
+1. **A Custom Form is still not equivalent** (see above). If a church built one
+   as a workaround, its historical submissions stay in `Form_Responses`; only new
+   submissions reach the prayer queue.
+2. **Omitting `feedback-type-ids` no longer offers every type.** Legacy offered
+   all five, including `User Removal Request` — a GDPR erasure workflow wearing a
+   prayer-form costume, which no church should be offering website visitors by
+   accident. The default is now every `Feedback_Types` row *except* the removal
+   type, excluded by both its stock id and a `/removal/i` name match so the guard
+   survives a domain that renumbered the lookup. **List it explicitly
+   (`feedback-type-ids="1,2,5"`) to get it back** — an explicit configuration is
+   honoured, with one warning in the server log. It is a safety default, not a
+   control: a determined caller can post the id directly, because MP's own
+   foreign key accepts it.
+3. **Signed-in submitters get no verification email** — only the acknowledgement,
+   if one is configured. Fewer emails is the intended behaviour, not a broken
+   template.
+4. **A prayer-wall page must filter on `Approved = 1 AND Visibility_Level_ID = 4`,
+   never on visibility alone.** Nothing publishes automatically, because
+   `Approved` is always `false` at intake and there is deliberately no attribute
+   to change that — an `auto-approve` flag would be a one-attribute path to
+   unmoderated text on a church's website. A wall that filters on visibility
+   only would expose unreviewed submissions.
+
+Two smaller legacy behaviours also changed, both fixes:
+
+- **The full 2000-character description survives.** Legacy's textarea allowed
+  2000 and both its token and its insert cut at 1000, so a congregant's last
+  thousand characters vanished silently.
+- **A member's `Email_Address` is never overwritten.** Legacy rewrote it
+  unconditionally with whatever the form held, so a typo in a public prayer form
+  silently broke that member's giving statements and every other email MP sent
+  them. The submitted address is now written **only** when the contact has none
+  on file — which is the case legacy's own UI was built for.
+
+### Notes for whoever reviews this later
+
+- **The signed-out path performs zero MP writes.** That is the property the
+  match-or-create design rests on, and it is asserted directly in
+  `src/app/api/embed/prayer-feedback/submit/route.test.ts`.
+- **No email-existence oracle.** `POST /submit` answers
+  `{ status: "verification_sent" }` with the same body and status whether or not
+  the address matches a contact — a deliberate divergence from
+  `plan-your-visit`, which answers `contactExists: true`.
+- **No entry against another person.** A contact id is never accepted from an
+  unauthenticated caller. Legacy's `SendVerificationEmail` was `[AllowAnonymous]`
+  and took `ContactId` off the form, so posting a stranger's id made the server
+  harvest their real name and address and mail them a link that would file a
+  prayer request against them.
+- **The redemption is a POST**, so the handle never lands in an access log, a
+  `Referer`, or a mail scanner's fetch of the emailed URL. The link resolves to a
+  page that only renders; the widget on it issues the write. The handle is also
+  single-use by construction (an atomic read-and-burn in the session store),
+  which replaces legacy's duplicate guard — that guard interpolated user text
+  into SQL and never matched for any entry over 1000 characters.
+- Rate limits: **5/min per IP** and **3/hour per submitted address** (hashed),
+  both checked before any MP call and any send.
+- **Merge values are HTML-escaped.** A prayer summary is congregant-authored free
+  text going into a template body that lands in a staff mailbox; legacy
+  substituted it raw.
+- The acknowledgement deliberately **does not merge the description**. A prayer
+  request echoed back into an unencrypted mailbox is a disclosure the submitter
+  did not ask for, and the summary identifies which request it confirms.
+
+
+## Newsletter Sign-Up
+
+`<next-subscribe-to-publication>` is the anonymous way onto one publication:
+a signed-out visitor types a name and an email address, receives a confirmation
+link, and clicking it subscribes them. It is the counterpart of legacy's
+`mpp-subscribe-to-publication`, and it fills the gap `next-subscriptions` cannot
+— that one is a signed-in management surface whose route refuses anonymous
+callers outright, so before this the only route onto a mailing list was to
+already have an MP account.
+
+**Nothing is written until the link is opened.** Submitting the form validates
+the input, seals it in the session store and sends one email. It does not read a
+`Contacts` row, let alone write one. Opening the link creates the
+`dp_Contact_Publications` row and, for an address MinistryPlatform has never
+seen, a `Contacts` + `Households` pair.
+
+### Setup
+
+1. **Pick the publication.** It must be `Available_Online` in
+   `dp_Publications`. A publication that is not flagged behaves exactly like one
+   that does not exist — deliberately, so the id space cannot be probed for
+   internal lists.
+2. **Author the verification email** as a `dp_Communications` record. Its Body
+   must render `[mpp_verify_email_url]`, or the visitor has no way to confirm.
+   Three more tokens are available: `[mpp_contact_first_name]`,
+   `[mpp_contact_last_name]` and `[mpp_publication_title]`. The template needs a
+   From contact with an email address.
+3. **Host the page on an allowlisted origin.** Its origin must be in
+   `EMBED_ALLOWED_ORIGINS`, exactly as for every other widget — and here it is
+   load-bearing twice over, because the confirmation link must be same-origin
+   with the page that requested it.
+
+```html
+<next-subscribe-to-publication
+  publication-id="4"
+  verification-email-template-id="5125"
+></next-subscribe-to-publication>
+```
+
+| Attribute | Required | Meaning |
+|---|---|---|
+| `publication-id` | **yes** | `dp_Publications.Publication_ID`. Must be `Available_Online`. |
+| `verification-email-template-id` | **yes** | `dp_Communications.Communication_ID`. Its Body must render `[mpp_verify_email_url]`. |
+| `return-url` | no | Where the confirmation link lands. Defaults to the current page URL with the query string stripped. Must be `https:` (localhost excepted), same-origin with the page, and carry no embedded credentials — otherwise the request is refused and **no email is sent**. |
+| `verify-param-name` | no | The query parameter carrying the handle. Defaults to `nextwidgets_verify`. |
+| `my-subscriptions-url` | no | Where "Manage all your email preferences" points. Rendered on the confirmed and already-confirmed states; omitted when unset. Use the same URL as `<next-unsubscribe>`'s. |
+| `api-host` | no | Standard across the SDK. |
+
+Events: `verificationSent { email }`, `subscribed { publicationId, email,
+alreadySubscribed }`, `subscribeFailed { code }`.
+
+### What a sign-up actually does
+
+| Step | MinistryPlatform |
+|---|---|
+| The page loads | reads one `dp_Publications` row |
+| The visitor submits | **nothing** — the submission is sealed in the session store and one email is sent |
+| The visitor opens the link | resolves the address to a contact, or creates `Contacts` + `Households`; creates or un-flags the `dp_Contact_Publications` row |
+| The visitor opens the link again | **nothing** — the handle is single-use |
+
+A created contact carries `Email_Verified = true` (the double opt-in is exactly
+the evidence that column records), `Contact_Status_ID` = Active,
+`Household_Position_ID` = Head of Household, and a household whose
+`Household_Source` is **Website** and whose congregation is the publication's, so
+staff can tell a widget-created record from a hand-typed one. No participant row
+and no milestone: a newsletter subscriber is not a participant.
+
+### Migrating from `mpp-subscribe-to-publication` — five things changed
+
+1. **The query parameter is `nextwidgets_verify`, not `mpp-verify-id`.** Every
+   browser-visible key this SDK owns carries the `nextwidgets_` prefix. If a
+   template already in the wild hard-codes the old spelling, set
+   `verify-param-name="mpp-verify-id"` on the element rather than editing every
+   link already in an inbox.
+2. **The confirmation link is single-use, and lives three days** instead of
+   being replayable for twenty-four hours. A second click says "you're all set"
+   rather than confirming again. That is not politeness: a replayable link
+   silently *re-subscribes* anyone who has unsubscribed in the meantime, and a
+   mail-client prefetcher or a security scanner is enough to trigger it.
+3. **A contact's `Email_Address` is never overwritten.** Legacy set it to
+   whatever the public form held, for whatever contact id the caller named —
+   which let anyone move a stranger's account to an address they controlled.
+4. **The mobile-phone field is not ported.** A newsletter opt-in needs a
+   mailbox; writing `Mobile_Phone` from an anonymous form interacts with texting
+   consent in ways a subscription form should not decide. Ask if you want it
+   back — it is a small change.
+5. **The signed-in "Subscribe As" household dropdown is not ported.** A member
+   managing a household member's subscriptions has `<next-subscriptions>`, and
+   dropping it is what lets the confirmation handle name only an email address
+   rather than a contact row.
+
+Also improved: the publication is matched **by address alone**, where legacy
+required first name, last name and address to agree — so "Bob Smith" signing up
+when MinistryPlatform holds "Robert Smith" at the same address no longer creates
+a duplicate contact.
+
+### Notes for whoever reviews this later
+
+- **The first hop reads no `Contacts` row at all.** Not "looks the address up
+  and hides the answer" — it does not perform the query, so there is no branch
+  to leak and no timing difference to measure. A known address, an unknown one
+  and an already-subscribed one produce byte-identical responses, asserted on
+  the serialised body in
+  `src/app/api/embed/subscribe-to-publication/send-verification/route.test.ts`.
+- **The handle names an address, never a contact.** That is the structural half
+  of the takeover fix above: a token naming a contact row would be a
+  contact-scoped write credential sitting in an inbox.
+- **The handle also carries the origin it was minted on**, checked on
+  redemption, so a link minted on one allowlisted church site cannot be redeemed
+  from another. A mismatch answers exactly what a forged handle answers.
+- **The redemption is a POST.** A state-changing GET is fetched by mailbox link
+  scanners and URL-rewriting gateways — which here would subscribe someone who
+  never clicked. The emailed link resolves to a page that only renders; the
+  widget on it issues the write.
+- Rate limits: **5/min per IP** and **3/hour per submitted address** (hashed),
+  both checked before any MinistryPlatform call and any send, and both
+  fail-closed — failing open on an endpoint that emails a submitted address
+  turns a store outage into an open relay.
+- **`return-url` is validated against the request origin.** The church's own
+  domain sends the mail, so an unvalidated link inherits its credibility;
+  legacy interpolated the attribute straight into the email with no check of any
+  kind.
+- **Merge values are HTML-escaped**, unconditionally, by
+  `messageTemplateService`.
+- Not implemented yet: the `recaptcha-site-key` opt-in bot check. The server
+  accepts and verifies a `recaptchaToken` when one is posted, but the element
+  does not render a challenge.
+
+
+## Event Pre Check-In
+
+`<next-pre-check>` lets a family check itself in for a day's check-in events
+before it arrives, so the household is already on the check-in station's
+*expected* list on Sunday morning. It replaces legacy's `mpp-pre-check`.
+
+**This widget requires a signed-in MP user.** It reads and writes a household's
+attendance, so unlike the newsletter and prayer widgets it will not work for an
+anonymous visitor — a signed-out page renders a sign-in prompt instead.
+
+### Before it will work: what your MP domain needs
+
+Four things. The first is the only one that is not usually already true.
+
+1. **The stored procedure `api_MPPW_GetPreCheckEvents` must be installed and
+   granted to your API client.** It ships in MinistryPlatform's own widget
+   database scripts, in the same registration and grant block as eight
+   procedures this SDK already uses (`api_MPPW_GetMyPledges`,
+   `api_MPPW_GetEvents`, `api_MPPW_SearchGroups`, …) — so if any of the event,
+   giving or group widgets work for you, this one almost certainly will too.
+   If it is missing, the widget renders *"Check-in is not set up for this site
+   yet. Please contact the church."* and writes nothing. Ask your MP
+   administrator to run the widget database scripts.
+2. **Your events must have Allow Check-in ticked.** The widget only ever lists
+   events on the chosen date with that flag set. An event without it is
+   invisible here, which is the intended behaviour, not a fault.
+3. **Understand the Search Results setting on each event**, because it decides
+   who is listed and it is the single most common reason a family sees an empty
+   page on a day that definitely has services:
+
+   | Event's *Search Results* | Who the widget lists |
+   |---|---|
+   | Allow Guests (Show Everyone) | every member of the household |
+   | Allow Expected Only (Show Everyone) | every member of the household |
+   | **Allow Expected Only (Show Expected Only)** | **only members who already belong to one of the event's groups, or who already have a registration for it** |
+
+   The third is MP's default on many check-in events. With it, a household whose
+   children are not in that event's groups sees nobody — correctly. If parents
+   report "the page is blank", check the event's groups before anything else.
+4. **The API client's user needs write access to `Event_Participants`** (and to
+   `Participants`, for the case below). The widget writes as your API client,
+   attributing each change to the signed-in parent for the audit trail.
+
+### Adding it to a page
+
+```html
+<!-- Defaults to today in your MP domain's time zone, resolved on the server -->
+<next-pre-check></next-pre-check>
+```
+
+That is the whole production form. The date is resolved server-side in the
+church's own time zone, so a visitor in another zone still gets the church's
+idea of today.
+
+| Attribute | Default | What it does |
+|---|---|---|
+| `event-date` | today, in the MP domain's zone | Pin a specific day. Must be `YYYY-MM-DD`. |
+| `allow-date-picker` | `false` | Show a date field so a visitor can move between days without a new URL. |
+| `read-query-string` | `false` | Opt back into legacy's `?eventDate=` host-page query parameter. Off by default because silently obeying an arbitrary URL parameter is a surprise on a shared CMS page. |
+| `show-qr` | `false` | Render the check-in QR code. **See the warning below before turning this on.** |
+| `api-host` | auto | Standard across the SDK. |
+
+### The QR code is off by default, deliberately
+
+Legacy always drew a QR code encoding `pre|M/d/yyyy|householdId`. This widget
+can produce a byte-identical one, but ships with it **off**, and you should
+leave it off until you have tested it.
+
+The reason: that payload predates MP's newer `Allow QR Check-in` /
+`QR Redirect URL` event fields, which are a different (URL-redirect) mechanism.
+Whether a *current* check-in station still scans the older barcode can only be
+answered at a physical station, not from any source code. **Print one, scan it
+at your own check-in station, and turn `show-qr="true"` on only if it works.**
+
+Nothing is lost by leaving it off. The pre-check submission is what actually
+shortens the queue — it writes the registration rows that put the family on the
+station's expected list — and it works with or without a code on screen.
+
+### What a submission actually does
+
+Ticking a box and pressing *Check In* writes an `Event_Participants` row at
+status **02 Registered** for that person and event, creating one or updating the
+existing one. Unticking a box sets the existing row to **05 Cancelled**.
+
+- **No row is ever deleted.** A cancellation is a status change, so the history
+  of who had planned to come survives.
+- **A person a station has already scanned in cannot be changed.** Rows at
+  *03 Attended* or *04 Confirmed* render checked and greyed out, and the server
+  refuses to write them in either direction. This is a deliberate fix to a
+  legacy defect: `mpp-pre-check` would overwrite an attendance record with
+  *Cancelled* if a parent opened the page after check-in and unticked the box.
+- **A household member with no Participant record gets one**, created with the
+  participant type from your `PORTAL` / `DefaultParticipantTypeID` configuration
+  setting and noted `Created by Web Widget` — the same thing legacy did.
+- Nothing else is written. `Time In`, `Room`, `Check-in Station` and RSVP status
+  are the station's to set; a pre-check must not look like an attendance.
+
+**Check for your own Processes and Webhooks on `Event_Participants` before you
+launch this.** One household submitting on a Saturday night can write a dozen
+rows in a second. Nothing MP ships reacts to these rows, but a church-authored
+automation would fire once per row.
+
+### Migrating from `mpp-pre-check` — five things changed
+
+1. **Signed-out visitors get a way in.** Legacy printed *"You need to log in"*
+   with no login control at all. This renders a sign-in prompt — with a working
+   Sign In button in `dual`/`hardened` auth mode, and instructions pointing at
+   your page's own sign-in link in `legacy` mode, where the SDK cannot start a
+   sign-in itself.
+2. **The date no longer depends on the visitor's time zone.** Legacy read
+   `?eventDate=` and ran it through the browser's clock, so a visitor west of
+   UTC opening the page on a Saturday evening asked the server for Sunday. The
+   date is now resolved on the server in the church's zone.
+3. **Times display in the visitor's language.** Legacy hardcoded US English
+   formatting, so a Spanish-speaking parent read `9:00 AM` where `9:00` is
+   correct.
+4. **A submission can only ever touch the signed-in user's own household.**
+   Legacy's server accepted six record ids from the browser and wrote them
+   without checking any of them. Nothing sent by the browser is now used as an
+   id.
+5. **The `?eventDate=` URL parameter is off unless you ask for it.** Set
+   `read-query-string="true"` if you are porting a page that already links with
+   it.
+
+### What this widget cannot translate
+
+Event titles, group names and role titles come from MinistryPlatform and are
+shown exactly as your staff entered them. Only the widget's own labels are
+available in Spanish and Portuguese.
+
+### Notes for whoever reviews this later
+
+- `MPHelper.getProcedures()` searches by **exact name**, not substring — the
+  availability probe passes the full `api_MPPW_GetPreCheckEvents`. A friendlier
+  partial term returns an empty list on every domain, installed or not, and
+  would make the widget permanently report itself unavailable.
+- On the reference sample domain the only date where household 5 (the
+  `Check-me-in` family) resolves rows is `2018-06-12` — event 2 is the one
+  check-in event whose *Search Results* is `Allow Guests`. The 2025 Sunday and
+  Tuesday class series are `Show Expected Only` and their groups do not overlap
+  that household's, so they correctly list nobody. `demo-pre-check.html` pins
+  that date for exactly this reason.
+- The QR encoder is `src/lib/qr/encode.ts`, written here rather than taken as a
+  dependency. Its tests decode their own output, so a change that breaks
+  scannability fails the suite rather than shipping a picture nobody can read.
 
 
 ## Testing

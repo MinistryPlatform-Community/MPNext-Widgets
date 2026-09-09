@@ -190,6 +190,24 @@ export const widgetRegistry: WidgetMeta[] = [
   },
 
   {
+    slug: "prayer-feedback",
+    tag: "next-prayer-feedback",
+    title: "Prayer & Feedback",
+    description:
+      "Prayer requests, praise reports and general feedback, written to MP's Feedback Entries. Works with no sign-in: a signed-out visitor confirms one emailed link before anything is created, while a signed-in member can file for themselves or a household member immediately.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: [
+      "feedbackSubmitted",
+      "verificationSent",
+      "feedbackVerified",
+      "feedbackError",
+      "loginRequired",
+    ],
+  },
+
+  {
     slug: "online-directory",
     tag: "next-online-directory",
     title: "Online Directory",
@@ -212,6 +230,30 @@ export const widgetRegistry: WidgetMeta[] = [
     needsUserMenu: false,
     needsMpWidgets: false,
     events: ["formLoaded", "formSubmitted", "formError", "loginRequired"],
+  },
+
+  {
+    slug: "unsubscribe",
+    tag: "next-unsubscribe",
+    title: "Unsubscribe",
+    description:
+      "Landing page for the unsubscribe link in a bulk email. Identifies the recipient from the link (?cg= / &pubid=, or a sealed token), opts them out on load with no sign-in, and offers Undo plus a link to full email preferences.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: ["unsubscribed", "resubscribed", "unsubscribeError"],
+  },
+
+  {
+    slug: "subscribe-to-publication",
+    tag: "next-subscribe-to-publication",
+    title: "Subscribe to Publication",
+    description:
+      "Anonymous newsletter sign-up for one publication, with a double opt-in: a signed-out visitor enters a name and email, confirms one emailed link, and only then is a subscription (and, if needed, a contact) created. The same element renders the form and the confirmation landing.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: ["verificationSent", "subscribed", "subscribeFailed"],
   },
 
   // ── Payments ─────────────────────────────────────────────
@@ -281,6 +323,17 @@ export const widgetRegistry: WidgetMeta[] = [
     needsUserMenu: true,
     needsMpWidgets: true,
     events: ["householdLoaded", "householdUpdated", "memberSaved", "householdError"],
+  },
+  {
+    slug: "pre-check",
+    tag: "next-pre-check",
+    title: "Pre Check-In",
+    description:
+      "Check your household in for a day's check-in events before you arrive, so the family is already on the station's expected list. Optionally renders the check-in QR code.",
+    category: "Profile",
+    needsUserMenu: true,
+    needsMpWidgets: true,
+    events: ["preCheckLoaded", "preCheckSaved", "preCheckError", "loginRequired"],
   },
   {
     slug: "my-groups",

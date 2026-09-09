@@ -124,4 +124,38 @@ export const ptBRPeople = {
     sent: "Enviado",
     sendFailed: "Não foi possível enviar a mensagem.",
   },
+  /**
+   * `next-prayer-feedback` (C69). Seeded from the legacy
+   * `mpp-prayer-feedback-form` Portuguese labels, with two changes: European
+   * forms moved to Brazilian ones (`submetido` → `enviado`, `partilhar` →
+   * `compartilhar`, `link` kept), and legacy's `tu` register moved to this
+   * catalogue's `você`. Legacy's word-salad
+   * "E-mail de verificação de envio de erro" is rewritten, not copied.
+   */
+  prayerFeedback: {
+    title: "Oração e comentários",
+    lead: "Preencha o formulário abaixo para pedir oração, compartilhar um testemunho de louvor ou nos enviar outros comentários.",
+    feedbackType: "Tipo de comentário",
+    selectType: "Selecione…",
+    summary: "Resumo",
+    summaryHint: "Um título curto para a sua solicitação.",
+    details: "Detalhes",
+    private: "Manter isto em sigilo",
+    privateHint: "Somente a equipe da igreja verá esta solicitação.",
+    provideFeedbackAs: "Enviar comentários como",
+    blankForm: "Outra pessoa",
+    signInHint:
+      "Já tem uma conta? Se você entrar, pulamos a etapa de confirmação por e-mail.",
+    notConfigured:
+      "Este formulário não está totalmente configurado. Entre em contato com a igreja.",
+    verificationSent:
+      "Verifique seu e-mail e siga o link para confirmar a sua solicitação.",
+    submitted: "Sua solicitação foi enviada. Obrigado!",
+    verified: "Sua solicitação foi enviada. Obrigado!",
+    charactersLeft: {
+      one: "resta {count} caractere",
+      many: "restam {count} caracteres",
+      other: "restam {count} caracteres",
+    },
+  },
 } satisfies Partial<Messages>;

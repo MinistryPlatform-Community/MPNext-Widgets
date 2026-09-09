@@ -31,6 +31,20 @@ export const WIRE_CODE_KEYS: Record<string, MessageKey> = {
   invalid_request: "errors.invalidRequest",
   invalid_body: "errors.invalidRequest",
   internal_error: "errors.generic",
+  // The anonymous-write routes (`unsubscribe`, and C70's opt-in) answer
+  // `save_failed` when MP accepted the read and refused the write. It maps onto
+  // the sentence `errors.saveFailed` already carries rather than introducing an
+  // `errors.save_failed` spelling of the same words in three catalogues — which
+  // is exactly what this table is for.
+  save_failed: "errors.saveFailed",
+  // `withAnonymousWrite` refuses anything but POST. A visitor can do nothing
+  // about it — it means the widget built a bad request — so it deliberately
+  // degrades to the generic sentence rather than surfacing an HTTP concept.
+  // Mapped explicitly rather than left to `errorText`'s unmapped-code fallback,
+  // so `error-codes.test.ts` can see that the choice was made on purpose. It
+  // reached `main` with no entry at all because the guard scanned only route
+  // files, and this code is emitted from `src/lib/embed/`.
+  method_not_allowed: "errors.generic",
 };
 
 /**
@@ -111,7 +125,7 @@ export abstract class MPNextWidget extends HTMLElement {
     // is a local module import — no "next-embed" script tag — and a widget
     // without an explicit api-host would otherwise fetch the wrong origin).
     const sibling = document.querySelector(
-      "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices, next-my-contribution-statement, next-statement-preferences, next-my-giving, next-my-household, next-my-pledges, next-my-groups, next-subscriptions, next-event-finder, next-event-details, next-group-finder, next-group-details, next-plan-your-visit, next-custom-form, next-checkout, next-pay, next-checkout-complete",
+      "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices, next-my-contribution-statement, next-statement-preferences, next-my-giving, next-my-household, next-my-pledges, next-my-groups, next-subscriptions, next-unsubscribe, next-subscribe-to-publication, next-event-finder, next-event-details, next-group-finder, next-group-details, next-plan-your-visit, next-prayer-feedback, next-pre-check, next-custom-form, next-checkout, next-pay, next-checkout-complete",
     );
     if (sibling && sibling !== this) {
       const host = sibling.getAttribute("api-host");

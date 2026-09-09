@@ -138,4 +138,44 @@ export const people = {
     sent: "Sent",
     sendFailed: "Unable to send the message.",
   },
+  /**
+   * `next-prayer-feedback` (C69) — prayer requests, praise reports and general
+   * feedback, writing `Feedback_Entries`.
+   *
+   * Grouped here rather than in a new `care.ts` because the copy has the same
+   * profile as this file's other three widgets: mostly field labels, most of
+   * them already in `fields.*` / `validation.*`, over a contact-keyed record. A
+   * seventh domain file would need creating in three locales plus an `index.ts`
+   * edit in each, for one namespace with no sibling coming.
+   *
+   * MP-authored content is absent by design: `Feedback_Types` option names and
+   * household members' display names are rendered as the church typed them.
+   */
+  prayerFeedback: {
+    title: "Prayer & Feedback",
+    lead: "Complete the form below to request prayer, share a praise report, or send us other comments and feedback.",
+    feedbackType: "Feedback Type",
+    /** Placeholder option, so an unmade choice is not a silent default. */
+    selectType: "Select…",
+    summary: "Summary",
+    summaryHint: "A short title for your request.",
+    details: "Details",
+    private: "Keep this private",
+    privateHint: "Only church staff will see this request.",
+    /** Legacy's own label for the household-member picker. */
+    provideFeedbackAs: "Provide Feedback As",
+    /** The picker's escape hatch: file for someone outside the household. */
+    blankForm: "Someone else",
+    signInHint: "Signed in? We'll skip the email confirmation step.",
+    notConfigured: "This form is not fully configured. Please contact the church.",
+    verificationSent: "Check your email and follow the link to confirm your request.",
+    /**
+     * `submitted` and `verified` share their English wording but stay two keys:
+     * they are two distinct moments a church may want to word differently, and
+     * `MPNextEmbed.setMessages` is per-key.
+     */
+    submitted: "Your request has been submitted. Thank you!",
+    verified: "Your request has been submitted. Thank you!",
+    charactersLeft: { one: "{count} character left", other: "{count} characters left" },
+  },
 } as const;

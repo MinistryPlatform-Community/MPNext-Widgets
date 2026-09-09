@@ -223,6 +223,53 @@ const extras: Record<string, WidgetExtras> = {
     implementationCode: `<next-my-household></next-my-household>`,
   },
 
+  "pre-check": {
+    // `2018-06-12` is the one date on the reference instance where household 5
+    // (the `Check-me-in` family) resolves rows: event 2 `Sample Check-in1` is
+    // `Search_Results = 1` (Allow Guests), so every household member is listed.
+    // The 2025 Sunday/Tuesday classes are `Search_Results = 3` (Show Expected
+    // Only) and their groups do not overlap this household's, so MP correctly
+    // shows nobody — which is a real state worth being able to demonstrate, not
+    // a bug. Without a pinned date the demo shows the empty state every day of
+    // the year, which reads as a broken widget.
+    attributes: { "event-date": "2018-06-12", "allow-date-picker": "true" },
+    controls: [
+      { name: "eventDate", label: "Event date", type: "text", attribute: "event-date", placeholder: "YYYY-MM-DD" },
+      {
+        name: "showQr",
+        label: "Show check-in QR",
+        type: "select",
+        attribute: "show-qr",
+        options: [
+          { label: "Off (default)", value: "false" },
+          { label: "On", value: "true" },
+        ],
+        defaultValue: "false",
+      },
+    ],
+    implementationCode: `<!-- Defaults to today in the MP domain's time zone, resolved on the
+     server. This is what a church puts on its page. -->
+<next-pre-check></next-pre-check>
+
+<!-- Pin a day, or let the visitor move between days -->
+<next-pre-check event-date="2025-05-18"></next-pre-check>
+<next-pre-check allow-date-picker="true"></next-pre-check>
+
+<!-- Opt back into legacy's ?eventDate= host-page query parameter. Off by
+     default: silently obeying an arbitrary URL parameter is a surprise on
+     a shared CMS page. -->
+<next-pre-check read-query-string="true"></next-pre-check>
+
+<!-- The check-in QR is OFF by default. Turn it on only once you have
+     confirmed a check-in station at your campus scans the payload
+     "pre|M/d/yyyy|householdId". -->
+<next-pre-check show-qr="true"></next-pre-check>
+
+<!-- Requires api_MPPW_GetPreCheckEvents on your MP domain. Without it the
+     widget answers precheck_unavailable and renders a "contact the church"
+     sentence rather than an error. -->`,
+  },
+
   "my-groups": {
     controls: [
       {
@@ -296,6 +343,43 @@ const extras: Record<string, WidgetExtras> = {
   suggested-amounts="30,50,100"
   pledge-email-template="528"
 ></next-pledge-campaign>`,
+  },
+
+  "subscribe-to-publication": {
+    // `4` is `Weekly Newsletter` on the reference instance and is
+    // `Available_Online`; `1` is not, which is the interesting failure to
+    // demonstrate — it answers exactly like an id that does not exist.
+    attributes: { "publication-id": "4", "verification-email-template-id": "5125" },
+    controls: [
+      { name: "publicationId", label: "Publication ID", type: "number", attribute: "publication-id", placeholder: "e.g. 4" },
+      { name: "verificationTemplate", label: "Verification Template ID", type: "number", attribute: "verification-email-template-id", placeholder: "dp_Communications ID" },
+      { name: "mySubscriptionsUrl", label: "My-subscriptions URL", type: "text", attribute: "my-subscriptions-url", placeholder: "/demo/subscriptions" },
+    ],
+    implementationCode: `<!-- Both attributes are required: the publication must be
+     Available_Online, and the template's Body must render
+     [mpp_verify_email_url]. -->
+<next-subscribe-to-publication
+  publication-id="4"
+  verification-email-template-id="5125"
+></next-subscribe-to-publication>
+
+<!-- return-url is where the emailed link lands. It must be same-origin
+     with the page (https, no embedded credentials) or the request is
+     refused and no email is sent. Defaults to the current page URL with
+     the query string stripped. -->
+<next-subscribe-to-publication
+  publication-id="4"
+  verification-email-template-id="5125"
+  return-url="https://your-site.example.org/newsletter"
+  my-subscriptions-url="https://your-site.example.org/email-preferences"
+></next-subscribe-to-publication>
+
+<!-- Merge tokens available in the verification template:
+       [mpp_verify_email_url]      the confirmation link — required
+       [mpp_contact_first_name]
+       [mpp_contact_last_name]
+       [mpp_publication_title]
+     The confirmation link is single-use and lives 3 days. -->`,
   },
 };
 

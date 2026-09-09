@@ -45,6 +45,7 @@ export { MyHouseholdWidget } from "./components/my-household";
 export { MyPledgesWidget } from "./components/my-pledges";
 export { MyGroupsWidget } from "./components/my-groups";
 export { SubscriptionsWidget } from "./components/subscriptions";
+export { UnsubscribeWidget } from "./components/unsubscribe";
 export { EventFinderWidget } from "./components/event-finder";
 export { EventDetailsWidget } from "./components/event-details";
 export { GroupFinderWidget } from "./components/group-finder";
@@ -52,6 +53,9 @@ export { GroupDetailsWidget } from "./components/group-details";
 export { OpportunityFinderWidget } from "./components/opportunity-finder";
 export { OpportunityDetailsWidget } from "./components/opportunity-details";
 export { PlanYourVisitWidget } from "./components/plan-your-visit";
+export { PrayerFeedbackWidget } from "./components/prayer-feedback";
+export { PreCheckWidget } from "./components/pre-check";
+export { SubscribeToPublicationWidget } from "./components/subscribe-to-publication";
 export { OnlineDirectoryWidget } from "./components/online-directory";
 export { PledgeCampaignWidget } from "./components/pledge-campaign";
 export { CustomFormWidget } from "./components/custom-form";
@@ -90,6 +94,7 @@ import "./components/my-household";
 import "./components/my-pledges";
 import "./components/my-groups";
 import "./components/subscriptions";
+import "./components/unsubscribe";
 import "./components/event-finder";
 import "./components/event-details";
 import "./components/group-finder";
@@ -97,6 +102,9 @@ import "./components/group-details";
 import "./components/opportunity-finder";
 import "./components/opportunity-details";
 import "./components/plan-your-visit";
+import "./components/prayer-feedback";
+import "./components/pre-check";
+import "./components/subscribe-to-publication";
 import "./components/online-directory";
 import "./components/pledge-campaign";
 import "./components/custom-form";
@@ -142,7 +150,7 @@ function detectApiHost(): string {
   // 4. Read api-host from the first widget element on the page
   //    (handles Vite dev where the SDK is a local module import)
   const widget = document.querySelector(
-    "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices, next-my-contribution-statement, next-statement-preferences, next-my-giving, next-my-household, next-my-pledges, next-my-groups, next-subscriptions, next-event-finder, next-event-details, next-group-finder, next-group-details, next-opportunity-finder, next-opportunity-details, next-plan-your-visit, next-online-directory, next-pledge-campaign, next-custom-form, next-checkout, next-pay, next-checkout-complete, next-locale-selector",
+    "next-user-menu, next-add-to-calendar, next-full-calendar, next-profile, next-my-invoices, next-my-contribution-statement, next-statement-preferences, next-my-giving, next-my-household, next-my-pledges, next-my-groups, next-subscriptions, next-unsubscribe, next-subscribe-to-publication, next-event-finder, next-event-details, next-group-finder, next-group-details, next-opportunity-finder, next-opportunity-details, next-plan-your-visit, next-prayer-feedback, next-pre-check, next-online-directory, next-pledge-campaign, next-custom-form, next-checkout, next-pay, next-checkout-complete, next-locale-selector",
   );
   if (widget) {
     const host = widget.getAttribute("api-host");
@@ -181,6 +189,8 @@ function detectFirstWidgetId(): string | null {
     "NEXT-MY-PLEDGES": "my-pledges",
     "NEXT-MY-GROUPS": "my-groups",
     "NEXT-SUBSCRIPTIONS": "subscriptions",
+    "NEXT-UNSUBSCRIBE": "unsubscribe",
+    "NEXT-SUBSCRIBE-TO-PUBLICATION": "subscribe-to-publication",
     "NEXT-EVENT-FINDER": "event-finder",
     "NEXT-EVENT-DETAILS": "event-details",
     "NEXT-GROUP-FINDER": "group-finder",
@@ -188,6 +198,8 @@ function detectFirstWidgetId(): string | null {
     "NEXT-OPPORTUNITY-FINDER": "opportunity-finder",
     "NEXT-OPPORTUNITY-DETAILS": "opportunity-details",
     "NEXT-PLAN-YOUR-VISIT": "plan-your-visit",
+    "NEXT-PRAYER-FEEDBACK": "prayer-feedback",
+    "NEXT-PRE-CHECK": "pre-check",
     "NEXT-ONLINE-DIRECTORY": "online-directory",
     "NEXT-PLEDGE-CAMPAIGN": "pledge-campaign",
     "NEXT-CUSTOM-FORM": "custom-form",

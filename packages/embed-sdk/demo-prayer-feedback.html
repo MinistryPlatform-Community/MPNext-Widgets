@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPNext Prayer &amp; Feedback Widget - Demo</title>
+  <!-- Classic (non-module) script: Vite's transformIndexHtml substitutes
+       __API_HOST__ in markup but NOT inside inline module scripts, which it
+       extracts into a separate html-proxy chunk before the HTML transform
+       runs. Non-module scripts stay in the HTML, so this global is the one
+       place the placeholder resolves. -->
+  <script>
+    window.__nextEmbedApiHost = "__API_HOST__";
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: #f9fafb;
+      color: #2D2926;
+    }
+    .page { max-width: 1024px; margin: 0 auto; padding: 32px 16px; }
+    .back-link {
+      display: inline-block;
+      margin-bottom: 16px;
+      color: #004C97;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .back-link:hover { text-decoration: underline; }
+    h1 { font-size: 24px; font-weight: 700; color: #004C97; margin-bottom: 4px; }
+    .description { color: #6b7280; margin-bottom: 8px; font-size: 16px; }
+    .tag-code { display: inline-block; font-size: 12px; color: #9ca3af; margin-bottom: 24px; }
+    .space-y > * + * { margin-top: 24px; }
+
+    /* Caution banner — a completed round-trip writes to MP */
+    .caution {
+      border: 2px solid #F1BE48;
+      background: #fffbeb;
+      border-radius: 12px;
+      padding: 16px 20px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #78350f;
+    }
+    .caution strong { color: #92400e; }
+
+    .controls-card {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 12px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .control-group { display: flex; flex-direction: column; gap: 4px; }
+    .control-group label { font-size: 12px; font-weight: 600; color: #6b7280; }
+    .control-group input, .control-group select {
+      padding: 6px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #111827;
+    }
+    #types-input { width: 140px; }
+    #program-input, #template-input, #ack-input { width: 120px; }
+    .control-group input:focus, .control-group select:focus {
+      outline: none;
+      border-color: #004C97;
+      box-shadow: 0 0 0 1px #004C97;
+    }
+    .apply-btn {
+      padding: 6px 16px;
+      background: #004C97;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .apply-btn:hover { background: #002855; }
+    .hint { flex-basis: 100%; font-size: 12px; color: #6b7280; line-height: 1.5; }
+
+    .demo-box {
+      min-height: 200px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      padding: 24px;
+    }
+
+    .status { padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+    .status.success { background: #d1fae5; color: #065f46; border: 1px solid #10b981; }
+    .status.error { background: #fee2e2; color: #991b1b; border: 1px solid #ef4444; }
+
+    .card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .card-header h3 { font-size: 14px; font-weight: 600; color: #002855; }
+    .card-header span {
+      font-size: 12px;
+      font-weight: 400;
+      color: #6b7280;
+      margin-left: 8px;
+    }
+    .clear-btn {
+      background: none;
+      border: none;
+      font-size: 12px;
+      color: #6b7280;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .clear-btn:hover { background: #f3f4f6; }
+    .copy-btn {
+      background: #004C97;
+      color: white;
+      border: none;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .copy-btn:hover { background: #002855; }
+
+    .event-log {
+      background: #1f2937;
+      color: #10b981;
+      padding: 16px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .event-entry {
+      margin-bottom: 8px;
+      padding: 8px;
+      background: rgba(16, 185, 129, 0.1);
+      border-radius: 4px;
+    }
+
+    pre {
+      background: #1f2937;
+      color: #e5e7eb;
+      padding: 16px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 0;
+    }
+    pre code { background: transparent; color: #e5e7eb; padding: 0; }
+    code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #004C97;
+      font-size: 13px;
+    }
+
+    .setup-card {
+      border: 2px dashed #fcd34d;
+      background: #fffbeb;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .setup-card .card-header { border-bottom: 1px solid #fde68a; }
+    .setup-card .card-header span { color: #92400e; font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a href="/" class="back-link">&larr; All Widgets</a>
+    <h1>Prayer &amp; Feedback</h1>
+    <p class="description">Prayer requests, praise reports and general feedback, written to MP's Feedback Entries. No sign-in required.</p>
+    <code class="tag-code">&lt;next-prayer-feedback&gt;</code>
+
+    <div class="space-y">
+      <div class="caution">
+        <strong>A signed-out submission writes nothing until the emailed link is opened.</strong>
+        That double opt-in is the whole design: without it an unauthenticated POST could mint
+        <code>Households</code> and <code>Contacts</code> rows in a real CRM as fast as a script
+        can manage. Once you follow the link, this widget <em>does</em> create a
+        <code>Feedback_Entries</code> row (and, for an address MP has never seen, a household and
+        contact) &mdash; so use a test address. A <strong>signed-in</strong> submission skips the
+        round-trip and writes immediately; sign in through
+        <a href="/demo-user-menu.html">the user menu demo</a> first to see that path and the
+        &ldquo;Provide Feedback As&rdquo; household picker.
+      </div>
+
+      <!-- Controls -->
+      <div class="controls-card">
+        <div class="control-group">
+          <label for="types-input">Feedback type IDs</label>
+          <input type="text" id="types-input" placeholder="blank = default">
+        </div>
+        <div class="control-group">
+          <label for="program-input">Program ID</label>
+          <input type="number" id="program-input" min="1" placeholder="none">
+        </div>
+        <div class="control-group">
+          <label for="template-input">Verification template</label>
+          <input type="number" id="template-input" min="1" placeholder="5125">
+        </div>
+        <div class="control-group">
+          <label for="ack-input">Acknowledgement template</label>
+          <input type="number" id="ack-input" min="1" placeholder="none">
+        </div>
+        <div class="control-group">
+          <label for="private-select">Private option</label>
+          <select id="private-select">
+            <option value="default">Shown, unticked</option>
+            <option value="prechecked">Shown, pre-ticked</option>
+            <option value="hidden">Hidden, forced private</option>
+          </select>
+        </div>
+        <button class="apply-btn" id="apply-btn" type="button">Apply</button>
+        <p class="hint">
+          Leave <strong>Feedback type IDs</strong> blank to see the safe default: every
+          <code>Feedback_Types</code> row <em>except</em> the user-removal type, which legacy
+          offered by default and which is a data-erasure workflow rather than a prayer request.
+          Type <code>1,2,5</code> to get it back &mdash; an explicit list is honoured, with a
+          warning in the console. Clearing the verification template shows the
+          &ldquo;not configured&rdquo; state a misconfigured page gets at load, instead of after
+          a visitor has typed 2000 characters.
+        </p>
+      </div>
+
+      <div class="demo-box">
+        <div id="status"></div>
+        <next-prayer-feedback
+          api-host="__API_HOST__"
+          verification-email-template-id="5125"></next-prayer-feedback>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Event Log</h3>
+          <button class="clear-btn" onclick="document.getElementById('event-log').innerHTML=''">Clear</button>
+        </div>
+        <div id="event-log" class="event-log">
+          <div class="event-entry">Initializing widget...</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Widget Code<span>Put this on your prayer / contact page</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="widget-code">&lt;!-- The minimum. `verification-email-template-id` is a dp_Communications
+     id whose Body must render [mpp_verify_email_url]; without it a
+     signed-out visitor has no way to confirm, so the widget renders a
+     configuration notice instead of a submit button. --&gt;
+&lt;next-prayer-feedback
+  verification-email-template-id="5125"&gt;
+&lt;/next-prayer-feedback&gt;
+
+&lt;!-- The page's origin MUST be in EMBED_ALLOWED_ORIGINS, or no token is
+     minted and every visitor sees an error. This is setup failure #1. --&gt;
+
+&lt;!-- Everything else is optional. --&gt;
+&lt;next-prayer-feedback
+  feedback-type-ids="1,2,3"
+  program-id="12"
+  verification-email-template-id="5125"
+  acknowledgement-email-template-id="5126"
+  return-url="https://www.example.church/prayer"
+  default-private="true"&gt;
+&lt;/next-prayer-feedback&gt;
+
+&lt;!-- A page framed entirely as confidential pastoral care: hide the
+     checkbox and force every request to Staff Only visibility. --&gt;
+&lt;next-prayer-feedback
+  verification-email-template-id="5125"
+  default-private="true"
+  hide-private-option="true"&gt;
+&lt;/next-prayer-feedback&gt;
+
+&lt;!-- Migrating from mpp-prayer-feedback-form? Three things changed.
+     1. Omitting the type list no longer offers "User Removal Request";
+        list it explicitly if a church really wants it on a public form.
+     2. Signed-in submitters get no verification email, only the
+        acknowledgement. Fewer emails is intended, not a broken template.
+     3. A prayer-wall page must filter on
+        Approved = 1 AND Visibility_Level_ID = 4 — never visibility alone.
+        Approved is always false at intake, with no attribute to change it. --&gt;
+
+&lt;!-- Listen to events --&gt;
+&lt;script&gt;
+  const widget = document.querySelector("next-prayer-feedback");
+  widget.addEventListener("feedbackSubmitted", (e) =&gt; {
+    console.log("Filed:", e.detail); // { feedbackEntryId }
+  });
+  widget.addEventListener("verificationSent", (e) =&gt; {
+    console.log("Confirmation email sent to:", e.detail.email);
+  });
+  widget.addEventListener("feedbackVerified", (e) =&gt; {
+    console.log("Link redeemed:", e.detail); // { feedbackEntryId }
+  });
+  widget.addEventListener("feedbackError", (e) =&gt; {
+    console.error("Error:", e.detail);
+  });
+&lt;/script&gt;</code></pre>
+      </div>
+
+      <div class="setup-card">
+        <div class="card-header">
+          <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="setup-code">__UNIVERSAL_SETUP__</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import "./src/index.ts";
+    // SDK auto-initializes — no init() call needed
+
+    const statusEl = document.getElementById("status");
+    const eventLog = document.getElementById("event-log");
+    let widget = document.querySelector("next-prayer-feedback");
+
+    function showStatus(message, type = "info") {
+      statusEl.className = `status ${type}`;
+      statusEl.innerHTML = message;
+    }
+
+    function logEvent(type, detail) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.className = "event-entry";
+      entry.innerHTML = `<strong>${timestamp}</strong> - <em>${type}</em>: ${JSON.stringify(detail, null, 2)}`;
+      eventLog.insertBefore(entry, eventLog.firstChild);
+    }
+
+    function bind(el) {
+      el.addEventListener("feedbackSubmitted", (e) => {
+        logEvent("feedbackSubmitted", e.detail);
+        showStatus(`Filed immediately as Feedback_Entry ${e.detail.feedbackEntryId} — no email round-trip, because you are signed in.`, "success");
+      });
+
+      el.addEventListener("verificationSent", (e) => {
+        logEvent("verificationSent", e.detail);
+        showStatus("Confirmation email sent. Nothing has been written to MinistryPlatform yet — the link is what creates the entry.", "success");
+      });
+
+      el.addEventListener("feedbackVerified", (e) => {
+        logEvent("feedbackVerified", e.detail);
+        showStatus(`Link redeemed — Feedback_Entry ${e.detail.feedbackEntryId} created. The link is now spent; reloading this page shows the "already used" state.`, "success");
+      });
+
+      el.addEventListener("feedbackError", (e) => {
+        logEvent("feedbackError", e.detail);
+        showStatus(`Error: ${e.detail.error}`, "error");
+      });
+
+      el.addEventListener("loginRequired", (e) => logEvent("loginRequired", e.detail));
+    }
+
+    bind(widget);
+
+    // Controls: re-create the element so every attribute is read fresh at mount,
+    // the way a host page's markup is.
+    document.getElementById("apply-btn").addEventListener("click", () => {
+      const types = document.getElementById("types-input").value.trim();
+      const program = document.getElementById("program-input").value.trim();
+      const template = document.getElementById("template-input").value.trim();
+      const ack = document.getElementById("ack-input").value.trim();
+      const priv = document.getElementById("private-select").value;
+
+      const next = document.createElement("next-prayer-feedback");
+      next.setAttribute("api-host", window.__nextEmbedApiHost);
+      if (types) next.setAttribute("feedback-type-ids", types);
+      if (program) next.setAttribute("program-id", program);
+      if (template) next.setAttribute("verification-email-template-id", template);
+      if (ack) next.setAttribute("acknowledgement-email-template-id", ack);
+      if (priv !== "default") next.setAttribute("default-private", "true");
+      if (priv === "hidden") next.setAttribute("hide-private-option", "true");
+
+      widget.replaceWith(next);
+      widget = next;
+      bind(next);
+      showStatus("Widget remounted with the attributes above.", "success");
+    });
+
+    logEvent("info", "Widget mounted. Signed out, it collects a name and address and emails a one-time link; signed in, it writes immediately and shows the household picker.");
+  </script>
+</body>
+</html>
