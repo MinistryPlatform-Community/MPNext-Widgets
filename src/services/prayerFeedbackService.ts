@@ -3,6 +3,7 @@ import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { HouseholdService } from "@/services/householdService";
 import { MessageTemplateService } from "@/services/messageTemplateService";
 import {
+  cap,
   clean,
   getIdByValue,
   sqlLiteral,
@@ -165,11 +166,6 @@ export interface ContactSummary {
   lastName: string;
   displayName: string;
   email: string | null;
-}
-
-/** Cap a value at a column's length, so MP never rejects the whole insert. */
-function cap(value: string, max: number): string {
-  return value.length > max ? value.slice(0, max) : value;
 }
 
 export class PrayerFeedbackService {

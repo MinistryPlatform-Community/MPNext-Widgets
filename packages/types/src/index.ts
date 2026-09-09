@@ -17,6 +17,7 @@ export * from "./prayer-feedback";
 export * from "./pledge-campaign";
 export * from "./profile";
 export * from "./statement-preferences";
+export * from "./subscribe-to-publication";
 export * from "./subscription";
 export * from "./unsubscribe";
 export * from "./widgets";

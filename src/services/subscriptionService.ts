@@ -1,4 +1,11 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
+import {
+  cap,
+  clean,
+  getIdByValue,
+  sqlLiteral,
+  toNumberOrNull,
+} from "@/services/_shared/mp-lookup";
 import type { SubscriptionItem } from "@mpnext/types";
 
 interface PublicationRow {
@@ -13,6 +20,35 @@ interface ContactPublicationRow {
   Publication_ID: number;
   Unsubscribed: boolean;
 }
+
+/**
+ * One publication offered for anonymous opt-in (C70).
+ *
+ * `Congregation_ID` is on the service's shape but **not** on the wire shape
+ * (`OnlinePublication` in `@mpnext/types`): a created household's congregation
+ * is seeded from it, and the widget has no use for it.
+ */
+export interface PublicationSummary {
+  Publication_ID: number;
+  Title: string;
+  Description: string | null;
+  Congregation_ID: number | null;
+}
+
+/**
+ * `Contact_Statuses.Contact_Status_ID` for Deceased.
+ *
+ * The one lookup id in this file that is a literal rather than resolved by
+ * name, matching the convention `mp_query` itself documents (`AND
+ * Contact_Status_ID <> 3` to exclude the deceased). It is only ever used to
+ * *exclude* a row, so a domain that renumbered it would widen a match rather
+ * than write a null into a required column — the failure mode that makes
+ * name-resolution mandatory for the two ids `createSubscriberContact` writes.
+ */
+const DECEASED_CONTACT_STATUS_ID = 3;
+
+/** `Households.Household_Name` when the form gave no surname to use. */
+const SUBSCRIBER_HOUSEHOLD_NAME = "Subscriber";
 
 /** One `dp_Contact_Publications` row reached through the contact's GUID. */
 interface ContactPublicationByGuidRow {
@@ -116,6 +152,8 @@ const NO_MATCH: UnsubscribeOutcome = {
 export class SubscriptionService {
   private static instance: SubscriptionService;
   private mp: MPHelper | null = null;
+  /** Lookup-table ids resolved by name, cached per instance. */
+  private idCache = new Map<string, number | null>();
 
   private constructor() {
     this.initialize();
@@ -463,5 +501,354 @@ export class SubscriptionService {
       wasAlreadyOptedOut,
       changed: needsWrite ? 1 : 0,
     };
+  }
+
+  // ── Anonymous, email-verified opt-in (C70) ──────────────────────────────
+  //
+  // The mirror image of the three methods above: those identify a person by a
+  // capability pasted out of an emailed link, these by an **email address the
+  // caller has proved they can read** — the route only reaches them after
+  // `consumePendingAction` has burned a one-time handle sent to that address.
+  //
+  // Neither path accepts a contact id from a caller, and **neither writes
+  // `Contacts.Email_Address`**. Legacy's subscribe flow did both: an
+  // `[AllowAnonymous]` endpoint took `ContactId` off the form, sealed it into
+  // its token, and on redemption set that contact's address to whatever the
+  // form held (`SubscriptionsService.cs:144-150`) — an account-takeover
+  // primitive on an email-identified IdP. "Restore parity with legacy" is the
+  // obvious way to reintroduce it, so there is a regression test naming it.
+
+  /**
+   * One publication a host page may offer for anonymous opt-in.
+   *
+   * `Available_Online = 1` **strictly** — no `OR Available_Online IS NULL`, and
+   * that deliberately disagrees with `getSubscriptions` above. Do not tidy the
+   * two into agreement: they are different trust surfaces. `getSubscriptions`
+   * backs a signed-in management view of publications the member may already be
+   * on, where an unflagged row showing up is at worst untidy. This is an
+   * **anonymous write** that puts a stranger onto a mailing list, and treating
+   * an unset flag as "yes, publish this" is the wrong default on that side of
+   * the line. Legacy's own signed-in proc agrees
+   * (`api_MPPW_SearchSubscriptions.sql:38`); its `GetPublication` is the
+   * outlier, and it is a bare primary-key fetch that checks nothing at all.
+   *
+   * The failure mode is benign here in a way it is not there, too: this widget
+   * takes one explicit `publication-id` from host markup, so a NULL flag
+   * surfaces as a `publication_not_found` the church can see and fix rather
+   * than as a silent exposure.
+   *
+   * Returns `null` for a missing id **and** for one that is not
+   * `Available_Online`. A caller must not be able to tell those apart, or the
+   * id space becomes probeable for internal publications.
+   */
+  public async getOnlinePublication(
+    publicationId: number
+  ): Promise<PublicationSummary | null> {
+    if (!Number.isInteger(publicationId) || publicationId <= 0) return null;
+
+    const rows = await this.mp!.getTableRecords<{
+      Publication_ID: number | string;
+      Title: string | null;
+      Description: string | null;
+      Congregation_ID: number | string | null;
+    }>({
+      table: "dp_Publications",
+      filter: `Publication_ID = ${publicationId} AND Available_Online = 1`,
+      select: "Publication_ID,Title,Description,Congregation_ID",
+      top: 1,
+    });
+
+    const row = rows[0];
+    const id = toNumberOrNull(row?.Publication_ID ?? null);
+    if (!row || id == null) return null;
+
+    return {
+      Publication_ID: id,
+      Title: clean(row.Title) ?? "",
+      Description: clean(row.Description),
+      Congregation_ID: toNumberOrNull(row.Congregation_ID),
+    };
+  }
+
+  /**
+   * The `Contacts.Contact_ID` owning `email`, or `null`.
+   *
+   * **Email alone**, deliberately, where legacy's `FindContact` required first
+   * name, last name *and* address to agree (`ContactManager.cs:540-562`). A
+   * subscription is keyed to a mailbox, not to a spelling: under legacy's rule
+   * "Bob Smith" signing up when MP holds "Robert Smith" at the same address
+   * created a duplicate contact, and churches have years of those.
+   *
+   * Deterministic — lowest `Contact_ID` wins when a domain holds duplicates —
+   * so re-running the flow for one address always lands on the same row.
+   * Companies are excluded (a company record is not a person to subscribe) and
+   * so is MP's Deceased status.
+   *
+   * **Never called on the send-verification hop.** That is the anti-enumeration
+   * invariant, and a route test asserts it: an address is only ever looked up
+   * after its owner has opened a link sent to it.
+   */
+  public async findContactIdByEmail(email: string): Promise<number | null> {
+    const address = clean(email);
+    if (address == null) return null;
+
+    const rows = await this.mp!.getTableRecords<{ Contact_ID: number | string }>({
+      table: "Contacts",
+      filter: `Email_Address = '${sqlLiteral(address)}' AND Company = 0 AND Contact_Status_ID <> ${DECEASED_CONTACT_STATUS_ID}`,
+      select: "Contact_ID",
+      orderBy: "Contact_ID",
+      top: 1,
+    });
+
+    return rows[0] ? toNumberOrNull(rows[0].Contact_ID) : null;
+  }
+
+  /**
+   * Resolve-or-create the contact owning `email`, then subscribe it.
+   *
+   * Called **only** from the verify hop, i.e. only for an address whose owner
+   * has opened a one-time link. That round-trip is the whole reason creating a
+   * `Contacts` row here is safe: without it an unauthenticated POST would mint
+   * rows in a church's CRM as fast as a script could manage, and MP has no good
+   * bulk undo.
+   *
+   * Idempotent in the subscribe direction (see `upsertContactPublication`), and
+   * the returned booleans are for the server's log line and a host page's
+   * analytics — **never for a branch in the visitor-facing copy**, which says
+   * the same thing either way.
+   */
+  public async subscribeEmailToPublication(args: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    publicationId: number;
+  }): Promise<{
+    contactId: number;
+    contactCreated: boolean;
+    alreadySubscribed: boolean;
+  }> {
+    const email = (clean(args.email) ?? "").toLowerCase();
+    if (email === "") throw new Error("subscribeEmailToPublication: email is required");
+
+    const existing = await this.findContactIdByEmail(email);
+    const contactId =
+      existing ??
+      (await this.createSubscriberContact({
+        email,
+        firstName: clean(args.firstName) ?? "",
+        lastName: clean(args.lastName) ?? "",
+        publicationId: args.publicationId,
+      }));
+
+    const alreadySubscribed = await this.upsertContactPublication(
+      contactId,
+      args.publicationId
+    );
+
+    return { contactId, contactCreated: existing == null, alreadySubscribed };
+  }
+
+  /**
+   * Mint a minimal `Contacts` row plus the `Households` row it heads.
+   *
+   * The column set is checked against the live schema rather than ported from
+   * legacy's `ContactManager.CreateContact`, which writes a `Status` column
+   * that **does not exist on `Contacts`** (filed as C83). The real column is
+   * `Contact_Status_ID`.
+   *
+   * Three deliberate improvements on legacy:
+   *
+   * - **`Email_Verified: true`.** A double opt-in is precisely the evidence
+   *   that column exists to record, and legacy leaves it at its default.
+   * - **`Household_Source_ID`** resolved from `'Website'` by name, so staff can
+   *   tell a widget-created contact from a hand-typed one. Omitted when the
+   *   domain has no such row rather than demanding a new lookup value.
+   * - **`Congregation_ID`** seeded from the publication's own, when it has one.
+   *   Legacy passes both null (`SubscriptionsManager.cs:315-318`).
+   *
+   * Not written, and each for a reason: `Mobile_Phone` (not collected — a
+   * newsletter opt-in has no business deciding texting consent), `Gender_ID`,
+   * `Date_of_Birth`, and the schema-required-but-MP-defaulted set
+   * (`Contact_GUID`, `_Contact_Setup_Date`, `Texting_Opt_In_Type_ID`,
+   * `Email_Unlisted`, `Do_Not_Text`, `Mobile_Phone_Unlisted`,
+   * `Mobile_Phone_Verified`, `Remove_From_Directory`).
+   *
+   * Contact, then household, then the association: a failure part-way leaves a
+   * findable contact rather than an orphan household, so a retry resolves the
+   * same address to the same row and links it, where the other order would
+   * accumulate one household per attempt. MP has no combined create.
+   */
+  private async createSubscriberContact(c: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    publicationId: number;
+  }): Promise<number> {
+    const [activeStatusId, headPositionId] = await Promise.all([
+      this.getIdByValue("Contact_Statuses", "Contact_Status", "Active", "Contact_Status_ID"),
+      this.getIdByValue(
+        "Household_Positions",
+        "Household_Position",
+        "Head of Household",
+        "Household_Position_ID"
+      ),
+    ]);
+
+    // `Contact_Status_ID` is required on `Contacts`, so a null would be an MP
+    // rejection of the whole insert carrying MP's own error text. Failing here
+    // instead is what lets the route answer a clean `save_failed`.
+    if (activeStatusId == null || headPositionId == null) {
+      throw new Error(
+        "subscribeEmailToPublication: the Contact_Statuses / Household_Positions lookup did not resolve"
+      );
+    }
+
+    const created = await this.mp!.createTableRecords<{ Contact_ID: number }>("Contacts", [
+      {
+        Company: false,
+        Display_Name: cap(`${c.lastName}, ${c.firstName}`, 125),
+        First_Name: cap(c.firstName, 50),
+        Last_Name: cap(c.lastName, 50),
+        Nickname: cap(c.firstName, 50),
+        Email_Address: cap(c.email, 254),
+        Contact_Status_ID: activeStatusId,
+        Household_Position_ID: headPositionId,
+        Bulk_Email_Opt_Out: false,
+        Email_Verified: true,
+      } as unknown as { Contact_ID: number },
+    ]);
+
+    const contactId = toNumberOrNull(created[0]?.Contact_ID ?? null);
+    if (contactId == null) throw new Error("Failed to create subscriber contact.");
+
+    const householdId = await this.createSubscriberHousehold(c.lastName, c.publicationId);
+    await this.mp!.updateTableRecords("Contacts", [
+      { Contact_ID: contactId, Household_ID: householdId },
+    ]);
+
+    return contactId;
+  }
+
+  /** The household a created subscriber heads. One per created contact. */
+  private async createSubscriberHousehold(
+    lastName: string,
+    publicationId: number
+  ): Promise<number> {
+    const sourceId = await this.getIdByValue(
+      "Household_Sources",
+      "Household_Source",
+      "Website",
+      "Household_Source_ID"
+    );
+
+    const record: Record<string, unknown> = {
+      // `Household_Name` is NOT NULL, and a surname is the one thing this form
+      // reliably has. A word beats an empty string for staff working the list.
+      Household_Name: cap(lastName || SUBSCRIBER_HOUSEHOLD_NAME, 75),
+      Bulk_Mail_Opt_Out: false,
+    };
+
+    // Both optional columns are **omitted** rather than nulled: a domain with
+    // no 'Website' source, or a publication with no congregation, should get no
+    // value at all instead of a null overwriting whatever MP would default.
+    if (sourceId != null) record.Household_Source_ID = sourceId;
+
+    const congregationId = await this.getPublicationCongregationId(publicationId);
+    if (congregationId != null) record.Congregation_ID = congregationId;
+
+    const created = await this.mp!.createTableRecords<{ Household_ID: number }>(
+      "Households",
+      [record as unknown as { Household_ID: number }]
+    );
+    const householdId = toNumberOrNull(created[0]?.Household_ID ?? null);
+    if (householdId == null) throw new Error("Failed to create subscriber household.");
+    return householdId;
+  }
+
+  /**
+   * The publication's congregation, for seeding a created household.
+   *
+   * A second read of a row the route has already loaded, and deliberately so:
+   * it happens only on the rare create path, and threading a congregation id
+   * through `subscribeEmailToPublication`'s signature would let a caller supply
+   * one — a small version of exactly the "caller names the record" pattern this
+   * widget exists to avoid.
+   *
+   * `dp_Publications` relates to congregations through a plain `Congregation_ID`
+   * column, not a join table (`api_MPPW_SearchSubscriptions.sql:26-35`).
+   */
+  private async getPublicationCongregationId(
+    publicationId: number
+  ): Promise<number | null> {
+    const publication = await this.getOnlinePublication(publicationId);
+    return publication?.Congregation_ID ?? null;
+  }
+
+  /**
+   * Set this contact's `dp_Contact_Publications` row for `publicationId` to
+   * subscribed, and report whether it already was.
+   *
+   * Three cases, one of which writes nothing:
+   *
+   * - no row → create `{ Contact_ID, Publication_ID, Unsubscribed: false }`
+   * - every row `Unsubscribed: true` → update them to `false`
+   * - any row already `Unsubscribed: false` → **no write**, `true` returned
+   *
+   * Every matching row, not just the first: duplicates of the
+   * `(Contact_ID, Publication_ID)` pair occur in the field, and C72 found that
+   * legacy's opt-out touched only one of them.
+   *
+   * `_Synced_List_Name` and `_Unsubscribe_Sync_Pending` are never written —
+   * underscore-prefixed columns are MP-managed, and the MailChimp sync owns
+   * those two.
+   */
+  private async upsertContactPublication(
+    contactId: number,
+    publicationId: number
+  ): Promise<boolean> {
+    const rows = await this.mp!.getTableRecords<ContactPublicationRow>({
+      table: "dp_Contact_Publications",
+      filter: `Contact_ID = ${contactId} AND Publication_ID = ${publicationId}`,
+      select: "Contact_Publication_ID,Publication_ID,Unsubscribed",
+    });
+
+    if (rows.length === 0) {
+      await this.mp!.createTableRecords("dp_Contact_Publications", [
+        { Contact_ID: contactId, Publication_ID: publicationId, Unsubscribed: false },
+      ]);
+      return false;
+    }
+
+    const stale = rows.filter((row) => row.Unsubscribed === true);
+    if (stale.length === rows.length) {
+      await this.mp!.updateTableRecords(
+        "dp_Contact_Publications",
+        stale.map((row) => ({
+          Contact_Publication_ID: row.Contact_Publication_ID,
+          Unsubscribed: false,
+        }))
+      );
+      return false;
+    }
+
+    // Already subscribed on at least one row. Nothing to write, and the visitor
+    // is told the same thing either way.
+    return true;
+  }
+
+  /** Lookup-table id by value, cached on this instance. */
+  private getIdByValue(
+    table: string,
+    columnName: string,
+    value: string,
+    idColumn: string
+  ): Promise<number | null> {
+    return getIdByValue(
+      { mp: this.mp!, cache: this.idCache, label: "SubscriptionService" },
+      table,
+      columnName,
+      value,
+      idColumn
+    );
   }
 }

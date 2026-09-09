@@ -1,5 +1,5 @@
 /**
- * The four helpers every MP-writing service had its own copy of.
+ * The helpers every MP-writing service had its own copy of.
  *
  * `sqlLiteral`, `clean` and `toNumberOrNull` were **byte-identical** in
  * `planYourVisitService.ts` and `prayerFeedbackService.ts` (and `clean` in
@@ -16,10 +16,16 @@
  * singleton, so a test that resets a service resets its lookups too); this
  * module owns only the query and the caching *rule*.
  *
- * Deliberately not here: a service's genuinely local helpers.
- * `prayerFeedbackService`'s `cap` and `planYourVisitService`'s `toNumber` each
- * exist in one place, and moving a one-caller function into a shared module
- * makes it harder to find, not easier.
+ * `cap` joined them for the same reason one commit later: it was
+ * `prayerFeedbackService`'s local helper while it had one caller, and became a
+ * duplicate the moment a second MP-writing service needed to truncate a value
+ * to a column length.
+ *
+ * Deliberately not here: a helper with genuinely one caller.
+ * `planYourVisitService`'s `toNumber` is used in one file, and moving a
+ * one-caller function into a shared module makes it harder to find, not easier.
+ * `toNumberOrNull` has nine other copies across the services; collapsing those
+ * is its own change rather than a side effect of this one.
  *
  * This module performs **reads only**. It is imported by services that write,
  * but nothing here creates, updates or deletes.
@@ -70,6 +76,18 @@ export function toNumberOrNull(
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isNaN(n) ? null : n;
+}
+
+/**
+ * Truncate a value to a column's length.
+ *
+ * MP rejects the **whole insert** when one field is over-length, so a name that
+ * is one character too long would lose the entire submission rather than one
+ * character. Every caller also bounds the value in its Zod schema; this is the
+ * belt to that braces, for a service called directly.
+ */
+export function cap(value: string, max: number): string {
+  return value.length > max ? value.slice(0, max) : value;
 }
 
 /** What `getIdByValue` needs from the service that calls it. */

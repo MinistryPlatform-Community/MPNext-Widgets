@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { MPHelper } from "@/lib/providers/ministry-platform";
 import {
+  cap,
   clean,
   getIdByValue,
   sqlLiteral,
@@ -8,7 +9,7 @@ import {
 } from "@/services/_shared/mp-lookup";
 
 /**
- * The four helpers three services had their own copies of.
+ * The helpers three services had their own copies of.
  *
  * `sqlLiteral` gets the most attention here because it is the one where a
  * divergence between copies would have been a SQL-injection bug rather than a
@@ -198,5 +199,19 @@ describe("getIdByValue", () => {
         "Household_Source_ID"
       )
     ).toBe(36);
+  });
+});
+
+describe("cap", () => {
+  it("truncates to the column length", () => {
+    // MP rejects the whole insert when one field is over-length, so one extra
+    // character would otherwise lose an entire submission.
+    expect(cap("a".repeat(60), 50)).toHaveLength(50);
+  });
+
+  it("leaves a value at or under the limit alone", () => {
+    expect(cap("Lovelace", 50)).toBe("Lovelace");
+    expect(cap("a".repeat(50), 50)).toHaveLength(50);
+    expect(cap("", 50)).toBe("");
   });
 });
