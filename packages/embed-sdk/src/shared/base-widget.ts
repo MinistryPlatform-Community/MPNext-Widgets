@@ -31,6 +31,12 @@ export const WIRE_CODE_KEYS: Record<string, MessageKey> = {
   invalid_request: "errors.invalidRequest",
   invalid_body: "errors.invalidRequest",
   internal_error: "errors.generic",
+  // The anonymous-write routes (`unsubscribe`, and C70's opt-in) answer
+  // `save_failed` when MP accepted the read and refused the write. It maps onto
+  // the sentence `errors.saveFailed` already carries rather than introducing an
+  // `errors.save_failed` spelling of the same words in three catalogues — which
+  // is exactly what this table is for.
+  save_failed: "errors.saveFailed",
 };
 
 /**

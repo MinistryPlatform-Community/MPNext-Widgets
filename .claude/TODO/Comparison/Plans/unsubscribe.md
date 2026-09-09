@@ -347,8 +347,15 @@ privilege: `next-subscriptions` needs it for the Phase-5 link-out, nothing else 
 | `validation_failed` | 400 | Zod rejects the body (bad `action`, non-numeric `pubid`) | `errors.validation_failed` (existing) |
 | `link_expired` | 422 | `t` is expired, tampered, or minted for another `typ`, **and** no usable `cg` | **`errors.link_expired` — new, all three locales** |
 | `rate_limited` | 429 | Either limit tripped | `errors.rateLimited` (existing, via `WIRE_CODE_KEYS`) |
-| `save_failed` | 502 | MP accepted the read but the write failed | `errors.saveFailed` — existing sentence, **new `WIRE_CODE_KEYS` entry** `save_failed → errors.saveFailed` |
+| `save_failed` | 500 | MP accepted the read but the write failed | `errors.saveFailed` — existing sentence, **new `WIRE_CODE_KEYS` entry** `save_failed → errors.saveFailed` |
 | `internal_error` | 500 | Anything else | `errors.generic` (existing, via `WIRE_CODE_KEYS`) |
+
+**Ruling, 2026-09-09 (coordinator, overriding the 502 this table originally carried):**
+`save_failed` answers **500**, not 502. Not because 502 is wrong on the merits — MP
+genuinely is an upstream — but because the machine code already carries the meaning and the
+widget branches on the code, never on the status. A second, partially-overlapping signal
+used by 3 routes out of 30 is drift; if the repo wants an upstream-failure convention it
+belongs across all 30 embed routes as its own `CROSS-` item.
 
 So the copy cost is **one** new sentence in three locales, plus one `WIRE_CODE_KEYS` line. Reusing
 `errors.saveFailed` through the map, rather than inventing `errors.save_failed`, is exactly what
