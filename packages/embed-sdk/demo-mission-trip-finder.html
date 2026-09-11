@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPNext Mission Trip Finder Widget - Demo</title>
+  <!-- MP Widgets base script (provides mpp-user-login used by next-user-menu) -->
+  <script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: ui-sans-serif, system-ui, sans-serif; background: #f9fafb; color: #2D2926; }
+    .page { max-width: 1024px; margin: 0 auto; padding: 32px 16px; }
+    .back-link { display: inline-block; margin-bottom: 16px; color: #004C97; text-decoration: none; font-size: 14px; }
+    .back-link:hover { text-decoration: underline; }
+    h1 { font-size: 24px; font-weight: 700; color: #004C97; margin-bottom: 4px; }
+    .description { color: #6b7280; margin-bottom: 8px; font-size: 16px; }
+    .tag-code { display: inline-block; font-size: 12px; color: #9ca3af; margin-bottom: 24px; }
+    .space-y > * + * { margin-top: 24px; }
+    .demo-box { min-height: 200px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); padding: 24px; }
+    .card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); overflow: hidden; }
+    .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; }
+    .card-header h3 { font-size: 14px; font-weight: 600; color: #002855; }
+    .card-header span { font-size: 12px; font-weight: 400; color: #6b7280; margin-left: 8px; }
+    .clear-btn { background: none; border: none; font-size: 12px; color: #6b7280; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+    .clear-btn:hover { background: #f3f4f6; }
+    .copy-btn { background: #004C97; color: white; border: none; font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 4px; cursor: pointer; }
+    .copy-btn:hover { background: #002855; }
+    .event-log { background: #1f2937; color: #10b981; padding: 16px; font-family: 'Courier New', monospace; font-size: 14px; max-height: 300px; overflow-y: auto; }
+    .event-entry { margin-bottom: 8px; padding: 8px; background: rgba(16,185,129,0.1); border-radius: 4px; }
+    pre { background: #1f2937; color: #e5e7eb; padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.5; margin: 0; }
+    pre code { background: transparent; color: #e5e7eb; padding: 0; }
+    code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; color: #004C97; font-size: 13px; }
+    .setup-card { border: 2px dashed #fcd34d; background: #fffbeb; border-radius: 12px; overflow: hidden; }
+    .setup-card .card-header { border-bottom: 1px solid #fde68a; }
+    .setup-card .card-header span { color: #92400e; font-weight: 500; }
+    .notice { border: 2px solid #F1BE48; background: #fffbeb; border-radius: 12px; padding: 16px 20px; }
+    .notice h3 { font-size: 15px; color: #92400e; margin-bottom: 8px; }
+    .notice p { font-size: 14px; color: #78350f; line-height: 1.6; margin-bottom: 8px; }
+    .notice ul { margin: 8px 0 8px 20px; font-size: 14px; color: #78350f; line-height: 1.6; }
+    .notice p:last-child, .notice ul:last-child { margin-bottom: 0; }
+    .auth-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; background: #002855; border-radius: 8px; }
+    .auth-header span { color: white; font-weight: 600; font-size: 16px; }
+    .auth-header .hint { color: #9fb3c8; font-weight: 400; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a href="/" class="back-link">&larr; All Widgets</a>
+    <h1>Mission Trip Finder</h1>
+    <p class="description">Public, filterable mission-trip search. Each card is a real link to the trip's details page, which is <code>next-pledge-campaign</code>.</p>
+    <code class="tag-code">&lt;next-mission-trip-finder&gt;</code>
+
+    <div class="space-y">
+      <!-- Reference-domain reality check. Read this before filing a bug. -->
+      <div class="notice">
+        <h3>Expect an empty result list on the reference domain — that is correct behaviour</h3>
+        <p>
+          The reference domain has exactly three <code>Pledge_Campaign_Type_ID = 2</code>
+          campaigns and <strong>none of them can be returned by this finder</strong>, so the
+          widget below is expected to render its empty state. It is not broken, and no
+          campaign id has been pinned here in the hope that one appears.
+        </p>
+        <ul>
+          <li><strong>1 &ndash; "Sample Mission Trip"</strong>: its event (1) ended 2018-12-31.</li>
+          <li><strong>3 &ndash; "MyChurch Test Mission Trip"</strong>: its event (10) ended 2018-12-30.</li>
+          <li><strong>4 &ndash; "Tanzania Mission Trip 2024"</strong>: its event (18) ended 2024-04-27,
+            <code>Allow_Online_Pledge</code> is false, and <code>Program_ID</code> is null &mdash;
+            excluded three times over, since the search inner-joins Programs.</li>
+        </ul>
+        <p>
+          To see cards here, a church needs a type-2 <code>Pledge_Campaigns</code> row with a
+          <code>Program_ID</code>, <code>Allow_Online_Pledge = 1</code>, and a linked Event whose
+          <code>Event_End_Date</code> is in the future. <code>Maximum_Registrants</code> is
+          optional: leave it null or 0 for an uncapped trip, or set it to see the seats-left line
+          and the red <em>"Trip is full"</em> badge.
+        </p>
+      </div>
+
+      <!-- Optional sign-in. The finder is anonymous-readable by design — a trip
+           finder on a church home page has to work signed out. -->
+      <div class="auth-header">
+        <span>Sign in <span class="hint">(optional — the finder is public and reads nothing contact-scoped)</span></span>
+        <next-user-menu mp-base-url="__MP_BASE_URL__" api-host="__API_HOST__"></next-user-menu>
+      </div>
+
+      <!-- Demo container. `target` points at the pledge-campaign demo page, which
+           IS the mission-trip details page: `api_MPPW_GetPledgeCampaign` declares
+           @IsMissionTrip and never reads it, so no separate details widget exists.
+           Both sides default `id-parameter-name` to `id`, so neither sets it. -->
+      <div class="demo-box">
+        <next-mission-trip-finder
+          campaign-type-id="2"
+          target="/demo-pledge-campaign.html"
+          api-host="__API_HOST__"></next-mission-trip-finder>
+      </div>
+
+      <!-- Event log -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Event Log</h3>
+          <button class="clear-btn" onclick="document.getElementById('event-log').innerHTML=''">Clear</button>
+        </div>
+        <div id="event-log" class="event-log">
+          <div class="event-entry">Initializing widget...</div>
+        </div>
+      </div>
+
+      <!-- Widget code -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Widget Code<span>Add this to any page where you want this widget</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="widget-code">&lt;!-- Use the widget --&gt;
+&lt;!-- Attributes: --&gt;
+&lt;!--   campaign-type-id="2"  REQUIRED. Pledge_Campaign_Type_ID; 2 = "Mission Project/Trip". --&gt;
+&lt;!--   target="/url"         REQUIRED. The page hosting &lt;next-pledge-campaign&gt;. --&gt;
+&lt;!--   id-parameter-name     Query parameter the card writes; default "id". Must match --&gt;
+&lt;!--                         the same attribute on next-pledge-campaign, which also --&gt;
+&lt;!--                         defaults to "id" — so neither normally needs setting. --&gt;
+&lt;!--   congregation-id       Filters on the PROGRAM's congregation (legacy behaviour). --&gt;
+&lt;!--   ministry-id, program-id, keyword --&gt;
+&lt;!--   show-full-trips       Default "true". "false" hides trips with no seats left. --&gt;
+&lt;!--   max-results           Default 100. --&gt;
+&lt;next-mission-trip-finder campaign-type-id="2" target="/missions/trip"&gt;&lt;/next-mission-trip-finder&gt;
+
+&lt;!-- Only trips with seats left, for one campus's programs --&gt;
+&lt;next-mission-trip-finder campaign-type-id="2" target="/missions/trip"
+  congregation-id="1" show-full-trips="false"&gt;&lt;/next-mission-trip-finder&gt;
+
+&lt;!-- Listen to events --&gt;
+&lt;script&gt;
+  const widget = document.querySelector("next-mission-trip-finder");
+  widget.addEventListener("missionTripsLoaded", (e) =&gt; console.log("Loaded:", e.detail.count));
+  widget.addEventListener("missionTripSelected", (e) =&gt; console.log("Selected:", e.detail.campaignId));
+  widget.addEventListener("missionTripFinderError", (e) =&gt; console.error("Error:", e.detail));
+&lt;/script&gt;</code></pre>
+      </div>
+
+      <!-- Universal setup -->
+      <div class="setup-card">
+        <div class="card-header">
+          <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="setup-code">__UNIVERSAL_SETUP__</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import "./src/index.ts";
+
+    const eventLog = document.getElementById("event-log");
+    function logEvent(type, detail) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.className = "event-entry";
+      entry.innerHTML = `<strong>${timestamp}</strong> - <em>${type}</em>: ${JSON.stringify(detail)}`;
+      eventLog.insertBefore(entry, eventLog.firstChild);
+    }
+
+    const widget = document.querySelector("next-mission-trip-finder");
+    widget.addEventListener("missionTripsLoaded", (e) => logEvent("missionTripsLoaded", e.detail));
+    widget.addEventListener("missionTripSelected", (e) => logEvent("missionTripSelected", e.detail));
+    widget.addEventListener("missionTripFinderError", (e) => logEvent("missionTripFinderError", e.detail));
+    logEvent("info", "Widget initialized");
+    logEvent("info", "Reference domain has no type-2 campaign with a future event date — the empty state is expected");
+  </script>
+</body>
+</html>

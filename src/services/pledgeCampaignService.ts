@@ -44,6 +44,9 @@ interface RawCampaignRow {
   CustomFormId?: number | string | null;
   CustomFormGuid?: string | null;
   ForceLogin?: boolean | number | null;
+  Maximum_Registrants?: number | string | null;
+  Registration_Start?: string | null;
+  Registration_End?: string | null;
 }
 
 interface ContactRow {
@@ -166,6 +169,38 @@ export class PledgeCampaignService {
       customFormId: row.CustomFormId == null ? null : num(row.CustomFormId),
       customFormGuid:
         row.CustomFormGuid == null ? null : String(row.CustomFormGuid),
+      // ── Capacity and the registration window (C76 phase 1) ──
+      //
+      // The procedure has always returned these; the service simply dropped
+      // them, so a full campaign accepted applications indefinitely. A mission
+      // trip is the case that made it visible — a bus has a fixed number of
+      // seats — but it is a real defect for a capital campaign too.
+      //
+      // `null` and `0` both mean *uncapped*, so `maximumRegistrants` keeps the
+      // distinction between "no cap set" and "a cap of zero" rather than
+      // collapsing to `num()`'s 0.
+      maximumRegistrants:
+        row.Maximum_Registrants == null || row.Maximum_Registrants === ""
+          ? null
+          : num(row.Maximum_Registrants),
+      // The same `PledgeCount` column `numberOfPledges` maps, under the name the
+      // capacity check reads. Deliberately duplicated rather than renamed: the
+      // widget's progress copy and its seat count are different questions that
+      // happen to share an answer, and `numberOfPledges` is already on the wire.
+      currentRegistrants: num(row.PledgeCount),
+      // Wall-clock strings, passed through verbatim exactly like `startDate` /
+      // `endDate` above — never re-serialised through `Date`.
+      //
+      // Caveat worth knowing: `api_MPPW_GetPledgeCampaign` selects
+      // `Registration_Start` / `Registration_End` **twice**, once from
+      // `Pledge_Campaigns` and once from the linked `Events` row, under the same
+      // aliases. Whichever MP serialises last is what arrives here. For a
+      // mission trip the two windows are normally the same, and correcting it
+      // would mean shipping a changed procedure to every church.
+      registrationStart:
+        row.Registration_Start == null ? null : String(row.Registration_Start),
+      registrationEnd:
+        row.Registration_End == null ? null : String(row.Registration_End),
     };
   }
 

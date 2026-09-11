@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPNext My Mission Trips Widget - Demo</title>
+  <!-- MP Widgets base script (provides mpp-user-login used by next-user-menu) -->
+  <script id="MPWidgets" src="__MP_BASE_URL__/widgets/dist/MPWidgets.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: ui-sans-serif, system-ui, sans-serif; background: #f9fafb; color: #2D2926; }
+    .page { max-width: 1024px; margin: 0 auto; padding: 32px 16px; }
+    .back-link { display: inline-block; margin-bottom: 16px; color: #004C97; text-decoration: none; font-size: 14px; }
+    .back-link:hover { text-decoration: underline; }
+    h1 { font-size: 24px; font-weight: 700; color: #004C97; margin-bottom: 4px; }
+    .description { color: #6b7280; margin-bottom: 8px; font-size: 16px; }
+    .tag-code { display: inline-block; font-size: 12px; color: #9ca3af; margin-bottom: 24px; }
+    .space-y > * + * { margin-top: 24px; }
+    .demo-box { min-height: 200px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); padding: 24px; }
+    .card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); overflow: hidden; }
+    .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; }
+    .card-header h3 { font-size: 14px; font-weight: 600; color: #002855; }
+    .card-header span { font-size: 12px; font-weight: 400; color: #6b7280; margin-left: 8px; }
+    .clear-btn { background: none; border: none; font-size: 12px; color: #6b7280; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+    .clear-btn:hover { background: #f3f4f6; }
+    .copy-btn { background: #004C97; color: white; border: none; font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 4px; cursor: pointer; }
+    .copy-btn:hover { background: #002855; }
+    .event-log { background: #1f2937; color: #10b981; padding: 16px; font-family: 'Courier New', monospace; font-size: 14px; max-height: 300px; overflow-y: auto; }
+    .event-entry { margin-bottom: 8px; padding: 8px; background: rgba(16,185,129,0.1); border-radius: 4px; }
+    pre { background: #1f2937; color: #e5e7eb; padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.5; margin: 0; }
+    pre code { background: transparent; color: #e5e7eb; padding: 0; }
+    code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; color: #004C97; font-size: 13px; }
+    .setup-card { border: 2px dashed #fcd34d; background: #fffbeb; border-radius: 12px; overflow: hidden; }
+    .setup-card .card-header { border-bottom: 1px solid #fde68a; }
+    .setup-card .card-header span { color: #92400e; font-weight: 500; }
+    .notice { border: 2px solid #F1BE48; background: #fffbeb; border-radius: 12px; padding: 16px 20px; }
+    .notice h3 { font-size: 15px; color: #92400e; margin-bottom: 8px; }
+    .notice h4 { font-size: 14px; color: #92400e; margin: 12px 0 4px; }
+    .notice p { font-size: 14px; color: #78350f; line-height: 1.6; margin-bottom: 8px; }
+    .notice ul { margin: 8px 0 8px 20px; font-size: 14px; color: #78350f; line-height: 1.6; }
+    .notice p:last-child, .notice ul:last-child { margin-bottom: 0; }
+    .security { border: 2px solid #004C97; background: #eff6ff; border-radius: 12px; padding: 16px 20px; }
+    .security h3 { font-size: 15px; color: #002855; margin-bottom: 8px; }
+    .security p { font-size: 14px; color: #1e3a5f; line-height: 1.6; margin-bottom: 8px; }
+    .security p:last-child { margin-bottom: 0; }
+    .auth-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; background: #002855; border-radius: 8px; }
+    .auth-header span { color: white; font-weight: 600; font-size: 16px; }
+    .auth-header .hint { color: #9fb3c8; font-weight: 400; font-size: 13px; }
+    .controls { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 14px; color: #374151; }
+    .controls label { display: flex; gap: 6px; align-items: center; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <a href="/" class="back-link">&larr; All Widgets</a>
+    <h1>My Mission Trips</h1>
+    <p class="description">A participant's own mission trips with a fundraising progress bar, plus an optional donor list and — for a trip leader only — the team roster.</p>
+    <code class="tag-code">&lt;next-my-mission-trips&gt;</code>
+
+    <div class="space-y">
+      <!-- The one behaviour change a migrating church will notice. -->
+      <div class="security">
+        <h3>The team roster is trip-leaders-only, and the server enforces it</h3>
+        <p>
+          Legacy's <code>api_MPPW_GetMyMissionTripTeamProgress</code> has no
+          <code>Trip_Leader</code> predicate at all: both of its gates (the
+          <code>showteamprogress</code> attribute and a client-side
+          <code>tripLeader === true</code> array filter) ran in the browser, so any signed-in
+          participant could read every teammate's email address, mobile number and fundraising
+          position. On a youth trip that is a roster of minors' phone numbers.
+        </p>
+        <p>
+          Here, <code>show-donors</code> and <code>show-team-progress</code> decide only whether
+          the widget <em>asks</em>. The server answers <code>403 not_trip_leader</code> to anyone
+          whose visible pledges do not lead the trip, and the widget then hides the panel
+          <strong>silently</strong> — a participant who is not the leader is in an ordinary
+          state, not an error state. "Visible" is the household rule: a head of household
+          managing a teenager's trip borrows the child's leadership, because they were already
+          entitled to see that child's trips.
+        </p>
+      </div>
+
+      <!-- Reference-domain reality check. Read this before filing a bug. -->
+      <div class="notice">
+        <h3>What this demo can and cannot show on the reference domain</h3>
+
+        <h4>Your trips — works, for household 1</h4>
+        <p>
+          <code>api_MPPW_GetMyMissionTrips</code> windows on
+          <code>PC.End_Date &gt;= @DomainTime - 180</code>. Campaign 3 ("MyChurch Test Mission
+          Trip", <code>End_Date</code> 2027-12-31) is inside that window and carries pledge 2
+          (MPTrainer, <code>User_Account</code> 3) and pledge 39 (ACST: MPAdmin,
+          <code>User_Account</code> 1) — both household 1. <strong>Sign in as either and you get a
+          real trip card.</strong> Campaign 4 (<code>End_Date</code> 2024-05-01) is outside the
+          window and appears for nobody.
+        </p>
+
+        <h4>Donors and team progress — cannot be demonstrated live here</h4>
+        <p>
+          Campaign 4 is the only campaign on this domain with a genuine
+          <code>Trip_Leader = true</code> (Chris Kehayias, <code>User_Account</code> 98,
+          household 85) and more than one participant (Chris, Caleb Hyatt and Sarah Kehayias in
+          household 85, plus Mac Willingham). It is the ideal fixture for both the leader gate
+          and the household rule — and it has aged out of the 180-day window, so its card never
+          renders and neither panel can appear.
+        </p>
+        <p>
+          A reviewer who wants to see the roster panel live has to push campaign 4's
+          <code>End_Date</code> forward in MP, then sign in as Chris Kehayias with
+          <code>show-team-progress="true"</code>. The shared reference domain is deliberately
+          <strong>not</strong> being edited for this demo. The leader gate and the
+          head-of-household-with-a-child-leader case are both covered in full by the
+          fixture-driven unit tests in
+          <code>packages/embed-sdk/src/components/my-mission-trips.test.ts</code> and by the
+          service tests.
+        </p>
+      </div>
+
+      <!-- Sign-in is required: every panel here is contact-scoped. -->
+      <div class="auth-header">
+        <span>Sign in <span class="hint">(required — try MPTrainer or MPAdmin for a real trip card)</span></span>
+        <next-user-menu mp-base-url="__MP_BASE_URL__" api-host="__API_HOST__"></next-user-menu>
+      </div>
+
+      <div class="demo-box">
+        <div class="controls">
+          <label><input type="checkbox" id="toggle-donors"> <code>show-donors="true"</code></label>
+          <label><input type="checkbox" id="toggle-team"> <code>show-team-progress="true"</code></label>
+          <span style="color:#6b7280">Unchecked means the widget makes no request to that route at all.</span>
+        </div>
+        <hr style="margin:16px 0; border:none; border-top:1px solid #e5e7eb">
+        <next-my-mission-trips
+          campaign-type-id="2"
+          api-host="__API_HOST__"></next-my-mission-trips>
+      </div>
+
+      <!-- Event log -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Event Log</h3>
+          <button class="clear-btn" onclick="document.getElementById('event-log').innerHTML=''">Clear</button>
+        </div>
+        <div id="event-log" class="event-log">
+          <div class="event-entry">Initializing widget...</div>
+        </div>
+      </div>
+
+      <!-- Widget code -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Widget Code<span>Add this to any page where you want this widget</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="widget-code">&lt;!-- Use the widget --&gt;
+&lt;!-- Attributes: --&gt;
+&lt;!--   campaign-type-id="2"      REQUIRED. Pledge_Campaign_Type_ID; 2 = "Mission Project/Trip". --&gt;
+&lt;!--   show-donors="true"        Default false. Shows who gave, with contact details the --&gt;
+&lt;!--                             church's own unlisted flags have not suppressed. --&gt;
+&lt;!--   show-team-progress="true" Default false. Shows the roster — but only to a trip --&gt;
+&lt;!--                             leader; the server decides, this attribute only decides --&gt;
+&lt;!--                             whether to ask. --&gt;
+&lt;next-my-mission-trips campaign-type-id="2"&gt;&lt;/next-my-mission-trips&gt;
+
+&lt;!-- With both optional panels --&gt;
+&lt;next-my-mission-trips campaign-type-id="2" show-donors="true" show-team-progress="true"&gt;&lt;/next-my-mission-trips&gt;
+
+&lt;!-- Listen to events --&gt;
+&lt;script&gt;
+  const widget = document.querySelector("next-my-mission-trips");
+  widget.addEventListener("myMissionTripsLoaded", (e) =&gt; console.log("Loaded:", e.detail.count));
+  widget.addEventListener("myMissionTripsError", (e) =&gt; console.error("Error:", e.detail));
+&lt;/script&gt;</code></pre>
+      </div>
+
+      <!-- Universal setup -->
+      <div class="setup-card">
+        <div class="card-header">
+          <h3>Universal Setup<span>Add ONCE to your site (e.g. header or layout template) — all widgets share this</span></h3>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('setup-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
+        </div>
+        <pre><code id="setup-code">__UNIVERSAL_SETUP__</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import "./src/index.ts";
+
+    const eventLog = document.getElementById("event-log");
+    function logEvent(type, detail) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.className = "event-entry";
+      entry.innerHTML = `<strong>${timestamp}</strong> - <em>${type}</em>: ${JSON.stringify(detail)}`;
+      eventLog.insertBefore(entry, eventLog.firstChild);
+    }
+
+    const widget = document.querySelector("next-my-mission-trips");
+    widget.addEventListener("myMissionTripsLoaded", (e) => logEvent("myMissionTripsLoaded", e.detail));
+    widget.addEventListener("myMissionTripsError", (e) => logEvent("myMissionTripsError", e.detail));
+    logEvent("info", "Widget initialized");
+
+    // Toggle the two display hints at runtime, so it is visible in the network
+    // panel that an unchecked box means zero requests to that route.
+    document.getElementById("toggle-donors").addEventListener("change", (e) => {
+      if (e.target.checked) widget.setAttribute("show-donors", "true");
+      else widget.removeAttribute("show-donors");
+      logEvent("attribute", { "show-donors": e.target.checked });
+    });
+    document.getElementById("toggle-team").addEventListener("change", (e) => {
+      if (e.target.checked) widget.setAttribute("show-team-progress", "true");
+      else widget.removeAttribute("show-team-progress");
+      logEvent("attribute", { "show-team-progress": e.target.checked });
+    });
+
+    // next-user-menu writes the MP token to localStorage on sign-in/out; reload
+    // the trips when it changes.
+    let lastAuthToken = localStorage.getItem("mpp-widgets_AuthToken");
+    setInterval(() => {
+      const token = localStorage.getItem("mpp-widgets_AuthToken");
+      if (token === lastAuthToken) return;
+      lastAuthToken = token;
+      logEvent("auth", token ? "Signed in — reloading trips" : "Signed out — reloading trips");
+      if (widget.retryLoad) widget.retryLoad();
+    }, 1000);
+  </script>
+</body>
+</html>

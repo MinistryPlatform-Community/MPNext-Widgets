@@ -93,6 +93,8 @@ import "./components/my-giving";
 import "./components/my-household";
 import "./components/my-pledges";
 import "./components/my-groups";
+import "./components/my-mission-trips";
+import "./components/contact-attributes";
 import "./components/subscriptions";
 import "./components/unsubscribe";
 import "./components/event-finder";
@@ -101,6 +103,7 @@ import "./components/group-finder";
 import "./components/group-details";
 import "./components/opportunity-finder";
 import "./components/opportunity-details";
+import "./components/mission-trip-finder";
 import "./components/plan-your-visit";
 import "./components/prayer-feedback";
 import "./components/pre-check";
@@ -206,6 +209,14 @@ function detectFirstWidgetId(): string | null {
     "NEXT-CHECKOUT": "checkout",
     "NEXT-PAY": "pay",
     "NEXT-CHECKOUT-COMPLETE": "checkout-complete",
+    // Appended rather than filed next to their thematic neighbours: this map is
+    // a first-match-wins priority list, so inserting mid-list would change the
+    // `wid` a page with several widgets already mints. `next-contact-attributes`
+    // slotted before `NEXT-SUBSCRIPTIONS` would hand a page carrying both a
+    // `wid` the subscriptions PUT does not accept.
+    "NEXT-MISSION-TRIP-FINDER": "mission-trip-finder",
+    "NEXT-MY-MISSION-TRIPS": "my-mission-trips",
+    "NEXT-CONTACT-ATTRIBUTES": "contact-attributes",
     // Present for host detection only: this widget needs no token and calls no
     // API, so it never actually requests one.
     "NEXT-LOCALE-SELECTOR": "locale-selector",

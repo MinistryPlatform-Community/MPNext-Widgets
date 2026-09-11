@@ -28,6 +28,31 @@ export const PledgeCampaignSchema = z.object({
   eventId: z.number().nullable(),
   customFormId: z.number().nullable(),
   customFormGuid: z.string().nullable(),
+
+  // ── Registration window and capacity (C76 phase 1) ──
+  //
+  // `api_MPPW_GetPledgeCampaign` has always returned these four; the service
+  // simply did not map them, so a campaign with a seat cap accepted pledges
+  // indefinitely. Mission trips need them (a trip has a bus), but the gap was
+  // never trip-specific — a capital campaign with `Maximum_Registrants` set had
+  // the same defect.
+  //
+  // Wall-clock strings from MP, passed through verbatim like `startDate` /
+  // `endDate` above: never re-serialised through `Date`, or the day shifts.
+
+  /** Seat cap. `null` or `0` both mean uncapped. */
+  maximumRegistrants: z.number().nullable(),
+  /**
+   * Pledges already placed against the campaign — the procedure's `PledgeCount`,
+   * counting statuses 1, 2 and 4. Distinct from `numberOfPledges` only in name;
+   * both map the same column, and this one is the spelling the capacity check
+   * reads so the intent is legible at the call site.
+   */
+  currentRegistrants: z.number(),
+  /** Applications open. `null` means "no opening date", i.e. already open. */
+  registrationStart: z.string().nullable(),
+  /** Applications close. `null` means "no closing date", i.e. never closes. */
+  registrationEnd: z.string().nullable(),
 });
 export type PledgeCampaign = z.infer<typeof PledgeCampaignSchema>;
 

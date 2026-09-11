@@ -168,6 +168,29 @@ export const core = {
     // stored procedure and should not be invited to retry.
     precheck_unavailable:
       "Check-in is not set up for this site yet. Please contact the church.",
+    // ── `next-contact-attributes` (C52) ──
+    //
+    // The write rejects any attribute outside a member-visible
+    // `Attribute_Types.Available_Online` type. In practice a congregant only
+    // reaches this by holding a page open while staff take a type offline, so
+    // the sentence points at a reload rather than at the church — retrying the
+    // same stale set would fail identically.
+    invalid_attribute:
+      "Some of those options are no longer available. Please reload the page and try again.",
+    // ── Mission trips (C76) ──
+    //
+    // `not_trip_leader` is a protocol signal more than a message: the widget
+    // hides the team panel on it rather than rendering an error, because a
+    // participant who is not the leader is in a perfectly ordinary state. The
+    // sentence exists for the case where something renders it anyway.
+    not_trip_leader: "Only the trip leader can see the team's progress.",
+    not_a_participant: "You are not signed up for that trip.",
+    // Same shape as `precheck_unavailable`, and for the same reason: the three
+    // mission-trip stored procedures ship in MP's widget database scripts and
+    // are not on every domain. A congregant can do nothing about it, so the
+    // sentence points at the church and does not invite a retry.
+    mission_trips_unavailable:
+      "Mission trips are not set up for this site yet. Please contact the church.",
     // `next-pre-check` (C78). The submitted selection named a row the server
     // did not issue for this household and date — a page left open while
     // someone else in the family saved, most often, and an attack at worst.

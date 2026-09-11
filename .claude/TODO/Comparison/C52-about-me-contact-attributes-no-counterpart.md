@@ -113,3 +113,85 @@ the same instance during a migration.
 
 Marking this **functional** rather than breaking: nothing in the new catalogue
 is broken by it, but a documented legacy capability has no replacement.
+
+## Resolution — BUILT, 2026-09-11
+
+`next-contact-attributes` ships on `feature/tier2-about-me-mission-trips`. Plan:
+`Plans/contact-attributes.md`. The catalogue went 30 → 33 elements (this plus the two
+mission-trip widgets from C76).
+
+- `packages/embed-sdk/src/components/contact-attributes.ts` — view / edit modes, the
+  `next-subscriptions` shape this finding predicted
+- `src/services/contactAttributeService.ts`, `src/app/api/embed/contact-attributes/route.ts`
+  (`GET` + `PUT`), `packages/types/src/contact-attributes.ts`
+- `packages/embed-sdk/demo-contact-attributes.html`, complete `en` / `es` / `pt-BR` copy
+- 42 tests across the service and the component
+
+### Both open questions are answered — and one of them was mis-framed
+
+This finding closed with two things "to settle with MP". The legacy server at
+`S:\MP\mp-Widgets` settled both, and the live schema confirmed them.
+
+1. **Member visibility is `Attribute_Types.Available_Online = 1`.** The guess in
+   *Suggested fix* was right about the flag name.
+2. **Writes end-date; they do not delete** — and re-selecting a removed attribute
+   **reactivates the existing row** (`Start_Date` = now, `End_Date` = null) rather than
+   inserting a second one. `AttributeManager.UpdateContactAttributes`.
+
+**The correction: there is no `Attribute_Categories` table in MinistryPlatform.** The
+grouping entity is `Attribute_Types`. This finding says "categories" throughout, and the
+`Where to fix` section proposes filtering "`Attribute_Categories` … to the online-available
+ones" — a table that does not exist.
+
+The error is traceable and worth recording, because the evidence was sound and the
+inference was not. This finding read the ids out of the legacy DOM — `category_2_attribute_3`
+— because the API user could not read the table. That checkbox name interpolates
+`category.attributeTypeId`: the legacy author's own local variable is named `category` while
+it holds an attribute **type**. So the ids (2 and 3) were correct and the table name was
+invented from a variable name. The live schema shows types 2 (Occupation, 7 attributes) and
+3 (Spiritual Gifts, 11) with `Available_Online = true`, and 1, 4 and 5 false — exactly the
+"2 of 5" this finding observed, which independently confirms the flag is the gate.
+
+`Attributes` carries **no** online flag of its own, so visibility is type-level only: a
+church cannot hide one attribute inside a visible type.
+
+### The legacy defect this finding did not look for
+
+`UpdateContactAttributes` reads the contact's existing rows through the `Available_Online`
+filter but **never validates the incoming ids against it**. A signed-in congregant could
+POST any attribute id — including `Attribute_ID = 1`, *"Allergies & Special Needs"*, in a
+type the church deliberately kept offline, or any `Group Tags` value used for segmentation
+and check-in. The reads then hide the row again, so the user can neither see nor undo what
+they wrote and staff have no idea where it came from.
+
+Not privilege escalation — the row is on the caller's own contact — but an unaudited write
+into a staff-owned field, reachable with `curl` and a valid token. The new service rejects
+any id outside the visible universe **before any MP call**, and four tests hold that line,
+including one asserting zero MP reads on rejection so the guard cannot become an enumeration
+oracle for offline types.
+
+Two other legacy behaviours were deliberately not ported: the client-computed add/remove
+delta (two tabs silently clobbered each other) is replaced by a full-set `PUT` the server
+diffs, and `Online_Sort_Order` — which legacy ignored entirely — is now honoured.
+
+### One hazard found in live data, not in either source tree
+
+`Contact_Attributes` has no uniqueness constraint on `(Contact_ID, Attribute_ID)`, and the
+reference domain already violates the assumption: contacts 5 and 13 each hold **two** active
+rows for attribute 1. Legacy's own writes kept one row per pair; conversions and imports do
+not. Keying existing rows by attribute id alone end-dates one row and leaves the other
+active, so a member's deselection appears to do nothing. The service groups as
+`Map<attributeId, row[]>`, end-dates every active row on removal, and reactivates exactly
+one — the lowest `Contact_Attribute_ID` — so an imported duplicate never becomes one this
+widget authored.
+
+The same read also has a live canary for the "never touch offline types" rule: every
+`Contact_Attributes` row on the reference domain sits in an offline type, and contact 3 is
+MPTrainer (`User_Account` 3), a signable account holding an active Allergies row. A wrong
+scoping filter would end-date real data on a shared domain on that user's first save.
+
+### Severity as filed stands
+
+`functional` was right: nothing was broken, a documented legacy capability had no
+replacement. It has one now, and the BRIEF's `next-profile` ↔ About Me pairing should be
+struck — this finding was correct that they do not overlap at all.

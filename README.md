@@ -41,6 +41,8 @@ Embeddable Web Component widgets for [Ministry Platform](https://www.ministrypla
 - [Prayer & Feedback Intake](#prayer--feedback-intake)
 - [Newsletter Sign-Up](#newsletter-sign-up)
 - [Event Pre Check-In](#event-pre-check-in)
+- [About Me — Skills & Spiritual Gifts](#about-me--skills--spiritual-gifts)
+- [Mission Trips](#mission-trips)
 - [Testing](#testing)
 - [Development](#development)
 - [Claude Code Commands](#claude-code-commands)
@@ -559,6 +561,8 @@ grep -rho 'customElements\.define(\s*"next-[a-z-]*' packages/embed-sdk/src | sor
 | `<next-checkout>` | Cart checkout | `checkoutService` | `/api/embed/checkout` |
 | `<next-checkout-complete>` | Post-payment confirmation | `checkoutService` | `/api/embed/checkout` |
 | `<next-pay>` | Payment capture | `paymentService` | `/api/embed/pay`, `/api/embed/payment` |
+| `<next-mission-trip-finder>` | Search mission trips (Pledge Campaigns, not Opportunities) | `missionTripService` | `/api/embed/mission-trips` |
+| `<next-my-mission-trips>` | My trips, fundraising, donors, and the team roster for leaders | `missionTripService` | `/api/embed/mission-trips/{mine,donors,team}` |
 
 ### People and account
 
@@ -570,6 +574,7 @@ grep -rho 'customElements\.define(\s*"next-[a-z-]*' packages/embed-sdk/src | sor
 | `<next-online-directory>` | Church member directory | `onlineDirectoryService` | `/api/embed/online-directory` |
 | `<next-plan-your-visit>` | Anonymous first-visit registration, email-verified | `planYourVisitService` | `/api/embed/plan-your-visit` |
 | `<next-prayer-feedback>` | Prayer and feedback intake → `Feedback_Entries` | `prayerFeedbackService` | `/api/embed/prayer-feedback` |
+| `<next-contact-attributes>` | Self-service skills, talents and spiritual gifts | `contactAttributeService` | `/api/embed/contact-attributes` |
 | `<next-custom-form>` | Renders an MP Custom Form | `customFormService` | `/api/embed/custom-form` |
 
 ### Publications
@@ -1477,6 +1482,280 @@ available in Spanish and Portuguese.
   dependency. Its tests decode their own output, so a change that breaks
   scannability fails the suite rather than shipping a picture nobody can read.
 
+
+## About Me — Skills & Spiritual Gifts
+
+`<next-contact-attributes>` is the member-facing way to maintain a contact's
+attributes: occupations, skills, spiritual gifts — whatever your church has chosen
+to expose. It replaces the legacy `mpp-about-me` widget.
+
+It is how a church finds the electrician in the congregation when the fellowship
+hall lighting fails, and how it staffs teams from declared spiritual gifts. Without
+it there is no self-service route at all: staff key every change into the Platform
+by hand.
+
+### Adding it to a page
+
+```html
+<script type="module" src="https://your-widget-host/embed-sdk/next-embed.js"></script>
+
+<next-user-menu api-host="https://your-widget-host"></next-user-menu>
+<next-contact-attributes api-host="https://your-widget-host"></next-contact-attributes>
+```
+
+There is nothing else to configure. The widget has no attributes of its own beyond
+the SDK-wide `api-host` and `lang` — what it shows is decided entirely in MP.
+
+**This widget requires a signed-in MP user.** A signed-out page renders a sign-in
+prompt rather than an error.
+
+### Choosing what members can edit
+
+The widget shows every attribute whose **Attribute Type** has **Available Online**
+ticked, and nothing else. That single checkbox, in *Administration → Attribute
+Types*, is the whole configuration surface.
+
+Two consequences worth knowing before you tick it:
+
+- **Visibility is per type, not per attribute.** MP has no "available online" flag
+  on an individual attribute, so you cannot show *Occupation* while hiding one
+  occupation within it. If you need that, move the attribute to a different type.
+- **Think before enabling a type that holds sensitive values.** On a stock domain
+  *Personal Characteristics* contains *"Allergies & Special Needs"*. Tick Available
+  Online for that type and this widget becomes a place where members self-declare
+  medical information, with everything that implies for how you store and handle
+  it. That is a decision for your church to make deliberately — the widget simply
+  honours the flag.
+
+Types are ordered by **Online Sort Order** (types with none sort last), and
+attributes alphabetically within each type. The legacy widget ignored Online Sort
+Order entirely; this one honours it.
+
+### What a save actually does
+
+Deselecting an attribute **end-dates** it — it never deletes the row. The member's
+history is preserved, and re-selecting the same attribute later reactivates the
+original row rather than adding a second one. This matches how MP itself treats
+`Contact_Attributes`, and it is what the legacy widget did.
+
+Attributes in types you have *not* made available online are never read, never
+written and never end-dated. You can turn Available Online off for a type at any
+time without a member's next save wiping the rows in it.
+
+### Migrating from `mpp-about-me` — three things changed
+
+1. **The save is now validated server-side.** The legacy widget accepted whatever
+   attribute ids the browser sent, so a member could write themselves an attribute
+   from a type you had deliberately kept offline — including *Allergies & Special
+   Needs* — and then neither see nor undo it. This widget rejects any attribute
+   outside the online types before it writes anything.
+2. **Two browser tabs no longer clobber each other.** The legacy widget computed a
+   change list in the browser against a stale snapshot, so saving in a second tab
+   silently reinstated what the first had removed. The widget now sends the
+   complete set it wants and the server works out the difference.
+3. **Order follows Online Sort Order.** If you had set one and wondered why it did
+   nothing, it works now.
+
+### What this widget cannot translate
+
+Attribute type names and attribute names come from MinistryPlatform and are shown
+exactly as your staff entered them — a Spanish page still reads "Spiritual Gifts"
+if that is what the type is called. Only the widget's own labels are available in
+Spanish and Portuguese. Rename them for everyone with `MPNextEmbed.setMessages()`
+(see [Widget Languages](#widget-languages)).
+
+### Notes for whoever reviews this later
+
+- The grouping entity is **`Attribute_Types`**. There is no `Attribute_Categories`
+  table in MinistryPlatform; the legacy widget's `category_2_attribute_3` checkbox
+  names interpolate an `Attribute_Type_ID` into a variable its author happened to
+  call `category`, and that misled an earlier audit.
+- `Contact_Attributes` has **no uniqueness constraint** on
+  `(Contact_ID, Attribute_ID)`, and the reference domain already holds duplicates
+  (contacts 5 and 13 each have two active rows for attribute 1). Removal therefore
+  end-dates *every* active row for an attribute; keying by attribute id alone would
+  end-date one and leave the other live, so the member's untick would appear to do
+  nothing.
+- On the reference domain no contact holds any *online* attribute, so every
+  signed-in user correctly lands in the empty-state edit mode with 18 checkboxes
+  (7 Occupation + 11 Spiritual Gifts). Every existing `Contact_Attributes` row
+  there sits in an offline type — which makes contact 3 (MPTrainer, a signable
+  account holding an Allergies row) a live canary for the "never touch offline
+  types" rule.
+
+## Mission Trips
+
+Two widgets, plus one you already have:
+
+| Widget | What it does |
+|---|---|
+| `<next-mission-trip-finder>` | Public, filterable list of trips, linking to a details page |
+| `<next-pledge-campaign>` | **The details and application page** — see below |
+| `<next-my-mission-trips>` | A participant's trips, fundraising, donors, and the team roster |
+
+Together they replace the legacy `mpp-mission-trip-finder`, `mpp-mission-trip` and
+`mpp-my-mission-trips`. A church running trips no longer has to keep MPWidgets.js —
+and a second login model — on those pages.
+
+Mission trips are **Pledge Campaigns** with a campaign type of *Mission
+Project/Trip* (type id `2` on a stock domain). Participants are pledges against
+that campaign, and fundraising is the donations distributed to each pledge.
+
+### There is no `<next-mission-trip>` element, on purpose
+
+Legacy had a separate Mission Trip Details widget, but it did nothing its Pledge
+Campaign widget did not: the two called the same stored procedure with a flag that
+procedure ignores, and shared the same application form, household picker,
+already-applied check and confirmation email. `<next-pledge-campaign>` is the
+mission-trip details page. Point the finder at it.
+
+### Adding it to a page
+
+Finder page:
+
+```html
+<next-mission-trip-finder
+  api-host="https://your-widget-host"
+  campaign-type-id="2"
+  target="/mission-trips/details">
+</next-mission-trip-finder>
+```
+
+Details page:
+
+```html
+<next-pledge-campaign
+  api-host="https://your-widget-host"
+  pledge-email-template="609">
+</next-pledge-campaign>
+```
+
+The finder links each card to `<target>?id=<campaign id>` and the details widget
+reads it. Both use an `id-parameter-name` attribute that defaults to `id`, so if
+your CMS needs a different query parameter name, set the same value on both.
+
+My-trips page:
+
+```html
+<next-user-menu api-host="https://your-widget-host"></next-user-menu>
+<next-my-mission-trips
+  api-host="https://your-widget-host"
+  campaign-type-id="2"
+  show-donors="true"
+  show-team-progress="true">
+</next-my-mission-trips>
+```
+
+### Finder attributes
+
+| Attribute | Required | Default | Notes |
+|---|---|---|---|
+| `campaign-type-id` | yes | — | Pledge Campaign Type. `2` is *Mission Project/Trip* on a stock domain |
+| `target` | yes | — | The details page URL |
+| `id-parameter-name` | no | `id` | Must match the same attribute on `<next-pledge-campaign>` |
+| `congregation-id` | no | — | Filters on the campaign **program's** congregation |
+| `ministry-id` / `program-id` | no | — | |
+| `keyword` | no | — | Matches campaign name, description, program or ministry |
+| `show-full-trips` | no | `true` | `false` hides trips that have reached their registrant cap |
+| `max-results` | no | `100` | |
+
+### My-trips attributes
+
+| Attribute | Required | Default | Notes |
+|---|---|---|---|
+| `campaign-type-id` | yes | — | |
+| `show-donors` | no | `false` | Show who gave to this participant |
+| `show-team-progress` | no | `false` | Show the team roster — **trip leaders only**, enforced on the server |
+
+Both display flags default to off, so an unset attribute never exposes donor
+details by accident.
+
+### Who can see what
+
+This is the part that changed most from legacy, and it is worth reading before you
+turn the panels on.
+
+- **Your own trips**, always. If you are the **head of your household**, you also
+  see your household members' trips — the case where a parent manages a teenager's
+  fundraising. Everyone else sees only their own.
+- **The donor list** for a trip you (or a household member you can see) are signed
+  up for. Anonymous donations show as anonymous with no contact details. A donor's
+  address, phone or email is shown only when the corresponding **Unlisted** box on
+  their contact record is clear.
+- **The team roster** only if you are the **trip leader** — meaning the Trip Leader
+  box is ticked on your pledge, or on the pledge of a household member you can see.
+  Teammates' email and phone respect their Unlisted flags too. A leader is not
+  staff.
+
+Trip Leader is set by staff in the Platform. No widget writes it.
+
+### Before it will work: what your MP domain needs
+
+1. **Four stored procedures**, all shipped in MinistryPlatform's own widget
+   database scripts: `api_MPPW_SearchMissionTrips`, `api_MPPW_GetMyMissionTrips`,
+   `api_MPPW_GetMyMissionTripDonors` and `api_MPPW_GetMyMissionTripTeamProgress`.
+   MP registers these across **two different script versions**, so a domain on an
+   older revision can genuinely have "my trips" and "donors" while the finder and
+   the roster are missing. Each panel checks for its own procedure and degrades on
+   its own: a missing one shows *"Mission trips are not set up for this site yet"*
+   and writes nothing, while the others keep working. Ask your MP administrator to
+   run the widget database scripts.
+2. **A trip must be a Pledge Campaign** with the mission-trip campaign type, a
+   **Program**, **Allow Online Pledge** ticked, and a linked **Event** whose end
+   date is in the future. A campaign missing any of those will not appear in the
+   finder — that is the legacy behaviour and it is intentional.
+3. **The details page needs its registration window on the campaign.** See the
+   caveat below.
+
+### Registration windows and full trips
+
+`<next-pledge-campaign>` now blocks the application form when the campaign is full,
+before registration opens, or after it closes — it previously only checked whether
+online pledging was allowed, so a trip with ten seats accepted applications
+indefinitely.
+
+One caveat inherited from MP's stored procedure: it returns the registration start
+and end **twice**, once from the Pledge Campaign and once from the linked Event,
+under the same names. Which one arrives is not something this SDK can control. They
+are normally the same on a mission trip; if you set a registration window on the
+campaign and find it is not enforced, set the same window on the event as well.
+
+### Migrating from the legacy mission-trip widgets — four things changed
+
+1. **The team roster is now trip-leaders-only, enforced on the server.** Legacy's
+   endpoint had no leader check at all: any participant who called it received
+   every teammate's email, mobile number and fundraising position. The
+   `showteamprogress` attribute and the leader check both ran in the browser. If
+   your participants were used to seeing each other's totals, that stops.
+2. **The roster now respects Unlisted flags.** Legacy's donor list honoured them
+   and its roster did not — two different answers about the same person's privacy
+   in one widget.
+3. **`show-full-trips="false"` now works.** The legacy filter was inverted: asking
+   to hide full trips returned uncapped trips *plus exactly the full ones*, and hid
+   every trip that had space.
+4. **There is no separate details widget.** Use `<next-pledge-campaign>`.
+
+### What this widget cannot translate
+
+Campaign names and descriptions, program, ministry and congregation names, and
+donor names all come from MinistryPlatform and appear exactly as entered. Only the
+widgets' own labels are available in Spanish and Portuguese.
+
+### Notes for whoever reviews this later
+
+- The reference domain cannot demonstrate the finder: all three mission-trip
+  campaigns have events that ended (2018, 2018 and 2024), and the 2024 one is also
+  missing a Program and has Allow Online Pledge off. `demo-mission-trip-finder.html`
+  says so on the page rather than looking broken.
+- Nor can it demonstrate the roster. Campaign 4 (*Tanzania Mission Trip 2024*) is
+  the only campaign with a real Trip Leader and several household members — the
+  ideal fixture for both the leader gate and the household rule — and its end date
+  puts it outside the 180-day window `api_MPPW_GetMyMissionTrips` applies. Pushing
+  that campaign's end date forward is all it would take. Household 1
+  (MPTrainer / MPAdmin) does have a live trip via campaign 3.
+- Both authorization rules are covered by fixture-driven unit tests, including the
+  head-of-household-whose-child-is-the-leader case, which a naive "check the
+  caller's own pledge" implementation gets wrong.
 
 ## Testing
 

@@ -178,4 +178,44 @@ export const people = {
     verified: "Your request has been submitted. Thank you!",
     charactersLeft: { one: "{count} character left", other: "{count} characters left" },
   },
+
+  /**
+   * `next-contact-attributes` (C52) — the congregant's own `Contact_Attributes`,
+   * grouped by `Attribute_Types`. Legacy called this widget "About Me" and the
+   * title keeps that name, because it is what churches have on their menus.
+   *
+   * Seven keys, because almost everything else this widget says is already
+   * shared: `common.edit`, `common.cancel`, `common.submit`, `common.saving`,
+   * `common.retry`, `common.unableToLoad`, `common.signIn`, and `errors.saveFailed`
+   * — whose sentence is word-for-word the one a widget-local `saveFailed` would
+   * have duplicated in three locales.
+   *
+   * MP-authored content is absent by design and **cannot** be translated by a
+   * file-based catalogue: `Attribute_Types.Attribute_Type` and
+   * `Attributes.Attribute_Name` are rendered exactly as staff typed them, so a
+   * Spanish page shows "Spiritual Gifts". Legacy's `GetLabels` did not solve
+   * this either — it translated labels, not content.
+   *
+   * Nothing here names a *type*: a church that turns `Available_Online` on for
+   * "Personal Characteristics" gets a medical-information form, and copy that
+   * promised "skills and talents" in the body would then be actively wrong.
+   * Only `signedOut` says it, because that sentence is legacy's own and appears
+   * before any type is known.
+   */
+  contactAttributes: {
+    title: "About Me",
+    loading: "Loading your attributes…",
+    intro:
+      "Let us know which attributes apply to you. Review your current selections and update as needed.",
+    /** Legacy's signed-out line, kept word for word. */
+    signedOut: "Please sign in to view your skills and talents.",
+    /**
+     * No `Attribute_Types` row has `Available_Online = 1` — the default on a
+     * fresh MP domain, and a 200 rather than an error.
+     */
+    notConfigured: "Your church has not made any attributes available online yet.",
+    emptyIntro:
+      "You have not selected any attributes yet. Tick the ones that apply to you.",
+    saved: "Your changes have been saved.",
+  },
 } as const;

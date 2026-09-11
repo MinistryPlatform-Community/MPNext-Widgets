@@ -156,4 +156,29 @@ export const esPeople = {
       other: "quedan {count} caracteres",
     },
   },
+
+  /**
+   * `next-contact-attributes` (C52).
+   *
+   * Authored here, not imported: MP's own `mpp-about-me.json` has nine labels
+   * and **every one** of them has `spanish: null`. Unlike the prayer-feedback
+   * form there is nothing churches have already seen, so the register follows
+   * this catalogue's `usted` throughout.
+   *
+   * "Atributos" is deliberate over "características": it is the word the
+   * Platform itself uses for `Attributes`, so a staff member helping a
+   * congregant on the phone is looking at the same noun.
+   */
+  contactAttributes: {
+    title: "Acerca de mí",
+    loading: "Cargando sus atributos…",
+    intro:
+      "Indíquenos qué atributos le corresponden. Revise sus selecciones actuales y actualícelas cuando lo necesite.",
+    signedOut: "Inicie sesión para ver sus dones y talentos.",
+    notConfigured:
+      "Su iglesia todavía no ha habilitado ningún atributo en línea.",
+    emptyIntro:
+      "Todavía no ha seleccionado ningún atributo. Marque los que le correspondan.",
+    saved: "Sus cambios se han guardado.",
+  },
 } satisfies Partial<Messages>;

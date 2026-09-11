@@ -1,0 +1,471 @@
+import { MPNextWidget } from "../shared/base-widget";
+import { parseWallClock } from "../i18n";
+
+/**
+ * One card from `GET /api/embed/mission-trips`.
+ *
+ * Mirrors `MissionTripCard` in `@mpnext/types`; this package does not import
+ * that workspace package, matching the convention every other widget follows.
+ * Every date is an MP wall-clock string, passed through verbatim.
+ */
+interface MissionTripCard {
+  pledgeCampaignId: number;
+  campaignName: string;
+  description: string | null;
+  imageUrl: string | null;
+  congregationName: string | null;
+  programName: string | null;
+  ministryName: string | null;
+  eventId: number | null;
+  eventStartDate: string | null;
+  eventEndDate: string | null;
+  registrationStart: string | null;
+  registrationEnd: string | null;
+  /** `null` or `0` both mean uncapped. */
+  maximumRegistrants: number | null;
+  currentRegistrants: number;
+  isFull: boolean;
+}
+
+/**
+ * `next-mission-trip-finder` (C76) — the public mission-trip search.
+ *
+ * Replaces the legacy `mpp-mission-trip-finder`. Structurally this is
+ * `next-opportunity-finder`: filters, cards, link out. Three things are
+ * deliberately different.
+ *
+ * **Cards are real links.** `next-opportunity-finder` renders a `div` with
+ * `role="link"` and a click handler, which is `C05` / `C10` / `C22` — the same
+ * accessibility defect filed three times. An `<a href>` is focusable, opens in
+ * a new tab on middle-click, and is announced as a link with no `tabindex`
+ * bookkeeping. The link is also the honest representation: a card *is* a URL to
+ * the details page.
+ *
+ * **Dates carry the year** (`C09`). A trip is planned a year out; "Jun 4 – Jun
+ * 11" on a finder listing next year's trips alongside this year's is ambiguous
+ * exactly when it matters.
+ *
+ * **A full trip says so.** Legacy had only the `showfulltrips` filter — and it
+ * was inverted (`>=` where it meant `<`), so asking to hide full trips returned
+ * the full ones. The filter is corrected server-side; the badge is new, because
+ * a listed trip with no seats has to say so on the card rather than only in
+ * whether it appears at all.
+ *
+ * The details page is `next-pledge-campaign`: `api_MPPW_GetPledgeCampaign`
+ * declares `@IsMissionTrip` and never reads it, so `mpp-mission-trip` and
+ * `mpp-pledge-campaign` were already the same widget. `id-parameter-name`
+ * is the seam — the finder writes `?<name>=<campaignId>` and the campaign
+ * widget reads it with its attribute of the same name. Both default to `id`.
+ */
+export class MissionTripFinderWidget extends MPNextWidget {
+  private trips: MissionTripCard[] = [];
+  private loading = true;
+  private error: string | null = null;
+
+  /** Search box state, seeded from the `keyword` attribute. */
+  private keyword = "";
+
+  static get observedAttributes() {
+    return [
+      "api-host",
+      "campaign-type-id",
+      "target",
+      "id-parameter-name",
+      "congregation-id",
+      "ministry-id",
+      "program-id",
+      "keyword",
+      "show-full-trips",
+      "max-results",
+    ];
+  }
+
+  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
+    if (oldValue === newValue) return;
+    // Only re-query once the first load has happened; the initial attribute
+    // sets arrive before `connectedCallback` and would double-fetch.
+    if (this.trips.length || !this.loading) {
+      this.seedFromAttributes();
+      void this.search();
+    }
+  }
+
+  connectedCallback() {
+    this.injectStyles(this.getStyles());
+    this.seedFromAttributes();
+    // Await the catalogue before the first paint so a Spanish visitor never
+    // sees English swap to Spanish; the fetch hides inside the loading state
+    // this widget already paints while it queries the API.
+    void this.initLocale().then(() => {
+      this.render();
+      void this.search();
+    });
+  }
+
+  /** Public hook so demo pages can force a reload. */
+  public retryLoad() {
+    this.error = null;
+    void this.search();
+  }
+
+  // ── Attributes ──────────────────────────────────────────────────────────
+
+  private seedFromAttributes() {
+    this.keyword = this.getAttribute("keyword") || "";
+  }
+
+  private get campaignTypeId(): string {
+    return (this.getAttribute("campaign-type-id") || "").trim();
+  }
+
+  private get target(): string {
+    return (this.getAttribute("target") || "").trim();
+  }
+
+  private get idParam(): string {
+    return this.getAttribute("id-parameter-name") || "id";
+  }
+
+  /**
+   * Defaults to `true`, matching legacy's documented meaning. The server
+   * applies the filter; sending it explicitly keeps the default in one place.
+   */
+  private get showFullTrips(): boolean {
+    return this.getAttribute("show-full-trips") !== "false";
+  }
+
+  private get maxResults(): string {
+    const raw = (this.getAttribute("max-results") || "").trim();
+    if (!raw) return "100";
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? String(n) : "100";
+  }
+
+  // ── Load ────────────────────────────────────────────────────────────────
+
+  private buildQuery(): string {
+    const params = new URLSearchParams();
+    if (this.campaignTypeId) params.set("campaignTypeId", this.campaignTypeId);
+    if (this.keyword) params.set("keyword", this.keyword);
+
+    for (const [attr, param] of [
+      ["congregation-id", "congregationId"],
+      ["ministry-id", "ministryId"],
+      ["program-id", "programId"],
+    ] as const) {
+      const value = (this.getAttribute(attr) || "").trim();
+      if (value) params.set(param, value);
+    }
+
+    params.set("showFullTrips", this.showFullTrips ? "true" : "false");
+    params.set("maxResults", this.maxResults);
+    return `?${params.toString()}`;
+  }
+
+  private async search() {
+    this.loading = true;
+    this.error = null;
+    this.render();
+
+    try {
+      const res = await this.fetch(`/api/embed/mission-trips${this.buildQuery()}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        // `errorText` renders the machine code's catalogue sentence; the
+        // server's English `message` is never shown to a visitor.
+        throw new Error(this.errorText(body));
+      }
+      const data: { trips?: MissionTripCard[] } = await res.json();
+      this.trips = data.trips || [];
+      this.emit("missionTripsLoaded", { count: this.trips.length });
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.trips = [];
+      this.emit("missionTripFinderError", { error: this.error });
+    } finally {
+      this.loading = false;
+      this.render();
+      this.attachListeners();
+    }
+  }
+
+  // ── Links ───────────────────────────────────────────────────────────────
+
+  /**
+   * `<target>?<id-parameter-name>=<pledgeCampaignId>`, or `null` when the page
+   * author set no target — in which case the card renders as an article rather
+   * than as a link to nowhere.
+   */
+  private buildDetailUrl(campaignId: number): string | null {
+    const target = this.target;
+    if (!target) return null;
+    try {
+      const url = new URL(target, window.location.href);
+      url.searchParams.set(this.idParam, String(campaignId));
+      return url.toString();
+    } catch {
+      const sep = target.includes("?") ? "&" : "?";
+      return `${target}${sep}${this.idParam}=${campaignId}`;
+    }
+  }
+
+  // ── Listeners ───────────────────────────────────────────────────────────
+
+  private attachListeners() {
+    const form = this.root.querySelector<HTMLFormElement>("#mtf-form");
+    form?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = this.root.querySelector<HTMLInputElement>("#mtf-keyword");
+      if (input) this.keyword = input.value.trim();
+      void this.search();
+    });
+
+    this.root
+      .querySelector('[data-action="retry"]')
+      ?.addEventListener("click", () => this.retryLoad());
+
+    // Announce the selection without touching navigation: the anchor's own
+    // default does that, on click and on Enter alike.
+    this.root.querySelectorAll<HTMLElement>("[data-campaign-id]").forEach((el) => {
+      el.addEventListener("click", () => {
+        this.emit("missionTripSelected", {
+          campaignId: Number(el.getAttribute("data-campaign-id")),
+        });
+      });
+    });
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────────
+
+  render() {
+    this.root.innerHTML = `
+      <section class="mtf">
+        <h2 class="mtf-title">${this.escapeHtml(this.t("missionTripFinder.title"))}</h2>
+        ${this.renderSearchForm()}
+        <div class="mtf-results">${this.renderResults()}</div>
+      </section>`;
+  }
+
+  private renderSearchForm(): string {
+    return `
+      <form id="mtf-form" class="mtf-form">
+        <input
+          id="mtf-keyword"
+          type="search"
+          class="mtf-input"
+          value="${this.escapeAttr(this.keyword)}"
+          placeholder="${this.escapeAttr(this.t("missionTripFinder.searchPlaceholder"))}"
+          aria-label="${this.escapeAttr(this.t("missionTripFinder.searchLabel"))}">
+        <button type="submit" class="mtf-btn">${this.escapeHtml(this.t("common.search"))}</button>
+      </form>`;
+  }
+
+  private renderResults(): string {
+    if (this.loading) {
+      return `<div class="mtf-state">${this.spinnerSvg()}<span>${this.escapeHtml(this.t("missionTripFinder.loading"))}</span></div>`;
+    }
+    if (this.error) {
+      return `
+        <div class="mtf-state mtf-error">
+          <p>${this.escapeHtml(this.error)}</p>
+          <button class="mtf-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
+        </div>`;
+    }
+    if (this.trips.length === 0) {
+      return `<div class="mtf-state mtf-empty">${this.escapeHtml(this.t("missionTripFinder.empty"))}</div>`;
+    }
+    const count = this.t("missionTripFinder.resultsCount", { count: this.trips.length });
+    return `
+      <p class="mtf-count" role="status">${this.escapeHtml(count)}</p>
+      <div class="mtf-grid">${this.trips.map((t) => this.renderCard(t)).join("")}</div>`;
+  }
+
+  private renderCard(trip: MissionTripCard): string {
+    const href = this.buildDetailUrl(trip.pledgeCampaignId);
+
+    const img = trip.imageUrl
+      ? `<img class="mtf-card-img" src="${this.escapeAttr(trip.imageUrl)}" alt="" loading="lazy">`
+      : `<div class="mtf-card-img mtf-card-img--placeholder">${this.globeSvg()}</div>`;
+
+    const badge = trip.isFull
+      ? `<span class="mtf-badge mtf-badge--full">${this.escapeHtml(this.t("missionTripFinder.full"))}</span>`
+      : "";
+
+    // Congregation / program / ministry are MP-authored names and are never
+    // translated — the documented limit of a file-based catalogue.
+    const subtitle = [trip.congregationName, trip.programName, trip.ministryName]
+      .filter((p): p is string => !!p && p.trim().length > 0)
+      .join(" · ");
+    const subtitleHtml = subtitle
+      ? `<p class="mtf-card-sub">${this.escapeHtml(subtitle)}</p>`
+      : "";
+
+    const dates = this.tripDates(trip);
+    const datesHtml = dates
+      ? `<p class="mtf-card-dates">${this.escapeHtml(dates)}</p>`
+      : "";
+
+    const registration = this.registrationLine(trip);
+    const registrationHtml = registration
+      ? `<p class="mtf-card-reg">${this.escapeHtml(registration)}</p>`
+      : "";
+
+    const spots = this.spotsLine(trip);
+    const spotsHtml = spots ? `<p class="mtf-card-spots">${this.escapeHtml(spots)}</p>` : "";
+
+    const description = trip.description
+      ? `<p class="mtf-card-desc">${this.escapeHtml(this.truncate(trip.description, 160))}</p>`
+      : "";
+
+    const body = `
+      <div class="mtf-card-imgwrap">${img}${badge}</div>
+      <div class="mtf-card-body">
+        <h3 class="mtf-card-title">${this.escapeHtml(trip.campaignName)}</h3>
+        ${subtitleHtml}
+        ${datesHtml}
+        ${registrationHtml}
+        ${spotsHtml}
+        ${description}
+        ${href ? `<span class="mtf-card-cta">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
+      </div>`;
+
+    // A real anchor, not a `role="link"` div — keyboard-activatable for free.
+    return href
+      ? `<a class="mtf-card" href="${this.escapeAttr(href)}" data-campaign-id="${trip.pledgeCampaignId}">${body}</a>`
+      : `<article class="mtf-card" data-campaign-id="${trip.pledgeCampaignId}">${body}</article>`;
+  }
+
+  // ── Card text ───────────────────────────────────────────────────────────
+
+  /**
+   * The trip's own dates, always with the year (`C09`).
+   *
+   * `dateRangeCompact` writes the shared parts once ("Jun 4 – 11, 2027") and
+   * falls back to two full dates where `Intl.formatRange` is unavailable.
+   */
+  private tripDates(trip: MissionTripCard): string {
+    if (!trip.eventStartDate) return "";
+    const range = trip.eventEndDate
+      ? this.fmt.dateRangeCompact(trip.eventStartDate, trip.eventEndDate, "medium")
+      : this.fmt.date(trip.eventStartDate, "medium");
+    if (!range) return "";
+    return this.t("missionTripFinder.tripDates", { dates: range });
+  }
+
+  /**
+   * One line about the registration window, in the order a visitor cares
+   * about: not open yet, closed, closing on a date, or simply open.
+   */
+  private registrationLine(trip: MissionTripCard): string {
+    const today = this.startOfToday();
+    const start = parseWallClock(trip.registrationStart);
+    const end = parseWallClock(trip.registrationEnd);
+
+    if (start && this.startOfDay(start).getTime() > today) {
+      return this.t("missionTripFinder.registrationOpens", {
+        date: this.fmt.date(start, "medium"),
+      });
+    }
+    if (end && this.startOfDay(end).getTime() < today) {
+      return this.t("missionTripFinder.registrationClosed");
+    }
+    if (end) {
+      return this.t("missionTripFinder.registrationCloses", {
+        date: this.fmt.date(end, "medium"),
+      });
+    }
+    return this.t("missionTripFinder.openForRegistration");
+  }
+
+  /** Seats remaining, for a capped trip that still has some. */
+  private spotsLine(trip: MissionTripCard): string {
+    const max = trip.maximumRegistrants ?? 0;
+    if (max <= 0 || trip.isFull) return "";
+    const left = max - (trip.currentRegistrants ?? 0);
+    if (left <= 0) return "";
+    return this.t("missionTripFinder.spotsLeft", { count: left });
+  }
+
+  private startOfDay(d: Date): Date {
+    const copy = new Date(d);
+    copy.setHours(0, 0, 0, 0);
+    return copy;
+  }
+
+  private startOfToday(): number {
+    return this.startOfDay(new Date()).getTime();
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────────────────
+
+  private truncate(text: string, max: number): string {
+    const clean = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    return clean.length > max ? `${clean.slice(0, max).trimEnd()}…` : clean;
+  }
+
+  private escapeHtml(text: string): string {
+    const el = document.createElement("span");
+    el.textContent = text;
+    return el.innerHTML;
+  }
+
+  private escapeAttr(text: string): string {
+    return this.escapeHtml(text).replace(/"/g, "&quot;");
+  }
+
+  private spinnerSvg(): string {
+    return `<svg class="mtf-spinner" viewBox="0 0 24 24" fill="none" width="20" height="20">
+      <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+    </svg>`;
+  }
+
+  private globeSvg(): string {
+    return `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`;
+  }
+
+  private getStyles(): string {
+    return `
+      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      .mtf { max-width: 1024px; margin: 0 auto; }
+      .mtf-title { font-size: 22px; font-weight: 700; color: #002855; margin: 0 0 16px; }
+
+      .mtf-form { display: flex; gap: 8px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+      .mtf-input { flex: 1; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; outline: none; }
+      .mtf-input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
+      .mtf-btn { padding: 10px 20px; background: #004C97; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+      .mtf-btn:hover { background: #002855; }
+
+      .mtf-count { font-size: 13px; color: #6b7280; margin: 0 0 12px; }
+      .mtf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+
+      .mtf-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: border-color 0.15s, box-shadow 0.15s; text-decoration: none; color: inherit; }
+      a.mtf-card:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+      a.mtf-card:focus-visible { outline: 2px solid #004C97; outline-offset: 2px; }
+      .mtf-card-imgwrap { position: relative; }
+      .mtf-card-img { width: 100%; height: 160px; object-fit: cover; display: block; }
+      .mtf-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #9ca3af; height: 160px; }
+      .mtf-badge { position: absolute; top: 10px; left: 10px; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.03em; }
+      .mtf-badge--full { background: #FF6D6A; color: white; }
+
+      .mtf-card-body { padding: 16px; display: flex; flex-direction: column; flex: 1; }
+      .mtf-card-title { font-size: 16px; font-weight: 700; color: #002855; margin: 0 0 6px; }
+      .mtf-card-sub { font-size: 13px; color: #004C97; font-weight: 600; margin: 0 0 8px; }
+      .mtf-card-dates { font-size: 13px; color: #2D2926; margin: 0 0 4px; font-weight: 600; }
+      .mtf-card-reg { font-size: 12px; color: #6b7280; margin: 0 0 4px; }
+      .mtf-card-spots { font-size: 12px; color: #5a7a1a; font-weight: 600; margin: 0 0 8px; }
+      .mtf-card-desc { font-size: 13px; color: #474747; line-height: 1.5; flex: 1; margin: 0; }
+      .mtf-card-cta { margin-top: 12px; font-size: 13px; font-weight: 600; color: #004C97; }
+
+      .mtf-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; font-size: 15px; flex-direction: column; text-align: center; }
+      .mtf-spinner { animation: mtf-spin 1s linear infinite; color: #004C97; }
+      @keyframes mtf-spin { to { transform: rotate(360deg); } }
+      .mtf-error p { color: #b91c1c; margin: 0; }
+
+      @media (max-width: 1024px) { .mtf-grid { grid-template-columns: repeat(2, 1fr); } }
+      @media (max-width: 640px) { .mtf-grid { grid-template-columns: 1fr; } }
+    `;
+  }
+}
+
+customElements.define("next-mission-trip-finder", MissionTripFinderWidget);

@@ -35,17 +35,26 @@ this file exists so the decisions get made deliberately rather than discovered a
 
 ## The shape of the gap
 
-The legacy catalogue is 36 tags; ours is **30 elements** — it was 25 when this was written, and
-the four Tier 1 items below account for the difference (plus `next-locale-selector`, which
-landed with the i18n work). **Six** of the original eleven still have no `next-*` counterpart:
-five are closed — the four Tier 1 items and C73.
+**Updated 2026-09-11, after Tier 2.** The legacy catalogue is 36 tags; ours is **33
+elements** — it was 25 when this file was written. Of the original eleven items, **eight are
+now resolved**: the four Tier 1 widgets, C73 (`next-locale-selector`, with the i18n work),
+C52 and C76 in Tier 2, and C71 as a recorded won't-port.
+
+**Three remain, and none of them is a straightforward build:** the platform-infrastructure
+pair blocked on an auth decision (C74 `mpp-smart-link` / C75 `mpp-smart-frame`, Tier 3) and
+C77 `mpp-user-label`, which belongs to `CROSS-5`.
+
+So what is left is no longer a backlog of widgets — it is **one open design question** about
+whether interpolating a signed-in user's identity into a third-party URL or a framed origin
+is compatible with the hardened auth model, plus one small item waiting on the label
+pipeline. Tier 3's own section already frames that question and notes it is entirely
+plausible both were omitted on purpose.
 
 The original eleven were not a uniform set: three were compliance- or flow-critical, one is a
-whole product domain, three are platform infrastructure, and four are conveniences. **The four
-that are gone are the compliance- and flow-critical ones plus prayer intake** — which is the
-outcome this ranking was for. What remains is one product domain (mission trips, C76), the
-platform-infrastructure pair blocked on an auth decision (C74/C75), the two items owned by
-`CROSS-5` (C77 — C73 is done), a contact-attributes surface (C52) and a feed reader (C71).
+whole product domain, three are platform infrastructure, and four are conveniences. The
+compliance- and flow-critical ones went first, which is the outcome this ranking was for; the
+product domain went in Tier 2. What is left is the platform infrastructure, which is the part
+that was always a policy decision rather than an engineering one.
 
 **And two BRIEF pair-table entries are wrong in ways that matter** — correct them before anyone
 re-measures:
@@ -74,13 +83,29 @@ extend `subscriptionService`. C78 went last because it shares nothing with the o
 | **3** | **C78 `mpp-pre-check`** — event pre-check / check-in QR — **DONE 2026-09-09, `next-pre-check`** | Children's check-in is one of the highest-traffic Sunday operations a church runs, and pre-check is what keeps the queue short. **No host-page workaround exists** — a church cannot hand-author a QR code bound to MP's check-in. A church using it today must keep MPWidgets.js on that page, with the dual-login cost that implies. **Risk framing corrected 2026-09-09:** this entry ranked C78 third partly on an unknown QR blocker and an assumed-missing server. Both were wrong — the legacy server and its stored procedure are in `S:\MP\mp-Widgets` in full, and the QR payload is a 16-byte plain string. The **severity** ranking stands; the **risk** ranking did not. It was the least risky of the four, not the most. |
 | **4** | **C69 `mpp-prayer-feedback-form`** — prayer / praise / feedback intake — **DONE 2026-09-09, `next-prayer-feedback`** | Prayer intake is, for many churches, the **first thing on the website that writes to MP**. The near-miss is the danger: a church could hand-build a Custom Form for it, but that writes `Form_Responses` rather than `Feedback_Entries`, populates no Feedback Type and no Program, and **never appears in the tools staff use to work a prayer queue**. Submissions land somewhere the prayer team does not look. |
 
-### Tier 2 — decide, then build or document
+### Tier 2 — decided *and built*, 2026-09-11
+
+**All three are resolved.** Two are **built** on `feature/tier2-about-me-mission-trips`, each
+with a plan beside this file and a resolution section on its `C`-numbered finding; one is a
+recorded won't-port. The catalogue went **30 → 33** elements. Sizing was done against the
+legacy server at `S:\MP\mp-Widgets`, per the correction at the top of this file — and it
+moved both estimates, one of them by a whole widget.
+
+**Two things this tier's build proved that are worth carrying into Tier 3:**
+
+1. **Read the legacy *stored procedures*, not just the controllers.** Both of the real
+   findings here — a dead `@IsMissionTrip` parameter that collapsed three widgets into two,
+   and a roster endpoint with no `Trip_Leader` predicate at all — were in SQL, not in C#. The
+   C# looked correct in both cases.
+2. **Check the live data before writing the demo page.** The reference domain cannot
+   demonstrate either the mission-trip finder or the team roster, for reasons that took four
+   queries to establish and would otherwise have surfaced as "the widget is broken".
 
 | # | Widget | The decision |
 |---|---|---|
-| **5** | **C52 `mpp-about-me`** — self-service contact attributes | Self-declared attributes are how a church finds the electrician in the congregation and staffs teams from spiritual gifts. Without it there is **no member-facing way to maintain `Contact_Attributes` at all**, and the catalogue has no answer for a first-class MP concept. Build it as `next-contact-attributes`, its own element — **not a tab on `next-profile`**: the legacy surface is a separate page, a church may want it on a different site page, and its data model (rows with start/end dates) is nothing like the flat field set `next-profile` posts. **Two questions must be answered with MP first** (the API user could not read either): which `Attribute_Categories` are member-visible (legacy shows only 2 of 5, so it honours a flag — probably `Available_Online`), and whether writes should end-date a removed attribute or hard-delete the row. |
-| **6** | **C76 mission trips** — three tags, one domain | The largest single gap: finder → application (with confirmation email) → per-participant fundraising, donor list and leader view of team progress. **The real cost is not the three widgets, it is that a church running trips cannot cut over at all** and must run both stacks and both login models on the same site indefinitely. Almost certainly a deliberate scope decision — **the useful output of this item is a recorded decision, not code.** If picked up: the data model is Pledge Campaigns, so `pledgeCampaignService.ts` / `myPledgesService.ts` are the starting point, and `showdonors` / `showteamprogress` both expose one person's fundraising data to another and need an **authorisation rule decided up front**, not an attribute that hides a section client-side. |
-| **7** | **C71 `mpp-rss-reader`** — publication feed | A publishing surface: render a prayer list, weekly announcements or a devotional feed onto a page. Small and self-contained — one attribute, one GET, a list render — and it is **MP's own sample home page**, so the first widget an evaluating church sees. **Settle one thing first:** the legacy widget takes a publication *name*, which suggests it resolves to a feed MP exposes rather than reading rows. Inspect `RssReader.js`'s endpoint before designing the service; if MP publishes an actual RSS/Atom document the route is a fetch-and-normalise, not a table query, and that shapes the whole item. |
+| **5** ✅ | **C52 `mpp-about-me`** → **`next-contact-attributes`, BUILT** | **BUILD as `next-contact-attributes`** — plan: `contact-attributes.md`. **Both open questions are answered from the legacy server, and one of them was mis-framed.** Visibility is `Attribute_Types.Available_Online = 1` — the grouping entity is `Attribute_Types`, and **`Attribute_Categories` does not exist in MP**; the `category_2_attribute_3` checkbox name that C52 read out of the DOM interpolates `attributeTypeId` into a variable the legacy author named `category`. Writes **end-date** on removal and **reactivate the existing row** on re-selection (`AttributeManager.UpdateContactAttributes`). Still its own element, not a tab on `next-profile` — the legacy surface is a separate page, a church may want it on a different site page, and its row-with-start/end-dates model is nothing like the flat field set `next-profile` posts. One legacy defect is not portable: the write validates nothing against `Available_Online`, so a signed-in congregant can `curl` themselves any attribute in any hidden type — *"Allergies & Special Needs"* and `Group Tags` included. Small item: no stored procedure, no email, no anonymous flow. |
+| **6** ✅ | **C76 mission trips** → **`next-mission-trip-finder` + `next-my-mission-trips`, BUILT** | **BUILD** — plan: `mission-trips.md`. **It is smaller than this file assumed, and one part of it is worse.** `api_MPPW_GetPledgeCampaign` declares `@IsMissionTrip bit` and **never references it in the body**, so `mpp-mission-trip` and `mpp-pledge-campaign` fetch identical data; both also share the household "apply as" picker, the custom form, the has-pledged check and the confirmation email. `next-pledge-campaign` is already a functional superset, so **the details widget is not built** — it gains four fields the procedure already returns (`Maximum_Registrants`, `PledgeCount`, `Registration_Start/End`) so a full or closed trip blocks the form. That leaves `next-mission-trip-finder` and `next-my-mission-trips`. The worse part: this file asked for an authorisation rule on `showdonors` / `showteamprogress` and it was right to — `api_MPPW_GetMyMissionTripTeamProgress` has **no `Trip_Leader` predicate at all** and hands every teammate's email, mobile and fundraising position to any participant who calls it; both gates are client-side. Decided: server-enforced trip-leader gate, honouring the `*_Unlisted` flags that the donors procedure already respects and the roster procedure ignores. Household head-of-household scope and donor-list detail stay at legacy parity. |
+| **7** | **C71 `mpp-rss-reader`** — publication feed | **WON'T PORT — decided 2026-09-11.** Not being carried into the new catalogue. The open question in C71's own *Suggested fix* (does MP publish an actual RSS/Atom feed, or does the widget read rows?) is therefore moot and should not be investigated — the resolution section appended to `C71-no-rss-reader-widget.md` says so too, so nobody disassembles `RssReader.js` to answer a question that no longer has a consumer. This needs a line in the customer migration notes like any other unported widget: *"The RSS reader has no replacement — a church using it keeps MPWidgets.js on that page, or renders the feed from its own CMS."* Note that it is on **MP's own sample home page**, so it is the one won't-port a church is likely to meet before it meets anything else; the migration note should be prominent rather than a footnote. |
 
 ### Tier 3 — needs an auth-design decision before it is a build question
 
@@ -217,10 +242,19 @@ merged link"*, documented in README under *Widget Unsubscribe Links*.
 Every widget left unported needs a line in the customer migration notes, because a church needs
 to know **before** cutover, not after:
 
-- *"Churches running mission trips must keep MPWidgets.js on those three pages."*
-- *"Event pre-check has no replacement."*
-- *"Prayer request intake has no replacement — a Custom Form is not equivalent and writes to a
-  different table."*
+- ~~*"Churches running mission trips must keep MPWidgets.js on those three pages."*~~ —
+  **deleted by the Tier 2 decision of 2026-09-11.** This was the largest remaining
+  dual-stack obligation in the catalogue; building C76 removes it. Replace it with setup
+  instructions plus one behavioural warning: **the team roster is now trip-leaders-only and
+  enforced on the server**, so participants who were used to seeing each other's fundraising
+  totals will stop. That is the intended fix for a legacy leak, not a regression, but it
+  should not arrive as a surprise.
+- *"The RSS reader has no replacement"* — **added by the same decision.** A church using it
+  keeps MPWidgets.js on that page or renders the feed from its own CMS. It is on MP's own
+  sample home page, so this is the won't-port a church is most likely to meet first.
+- ~~*"Event pre-check has no replacement."*~~ — deleted 2026-09-09, `next-pre-check` shipped.
+- ~~*"Prayer request intake has no replacement — a Custom Form is not equivalent and writes
+  to a different table."*~~ — deleted 2026-09-09, `next-prayer-feedback` shipped.
 
 Running both stacks on one site means running both login models side by side (legacy
 `mpp-user-login` writing `mpp-widgets_AuthToken` against the new `sid`/JWT ladder). **That

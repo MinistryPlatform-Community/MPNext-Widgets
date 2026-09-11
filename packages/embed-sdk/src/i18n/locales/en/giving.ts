@@ -110,6 +110,24 @@ export const giving = {
     blankForm: "Blank Form",
     submit: "Create Pledge",
     submitAnother: "Create Another Pledge",
+
+    // ── Registration window and capacity (C76 phase 1) ──
+    //
+    // Four states that `closed` above used to swallow. They are written
+    // separately because they differ in what the visitor should do next: a
+    // full campaign is over for them, a window that has not opened yet is
+    // worth coming back for, and a closed one is not. `api_MPPW_GetPledgeCampaign`
+    // has always returned the fields; the widget simply never read them, so a
+    // trip with a full bus accepted applications forever.
+    //
+    // Deliberately campaign-neutral wording rather than trip wording: this is
+    // `next-pledge-campaign`, which serves capital campaigns too, and the
+    // capacity defect was never trip-specific.
+    full: "This campaign is full. All available spots have been taken.",
+    registrationNotOpen: "Registration is not open yet.",
+    registrationOpensOn: "Registration opens on {date}.",
+    registrationClosed: "Registration for this campaign has closed.",
+    registrationClosedOn: "Registration for this campaign closed on {date}.",
   },
 
   contributionStatement: {
@@ -281,5 +299,94 @@ export const giving = {
     signUpAgain: "Sign Up Again",
     privacyNote: "We'll only email you {title}, and you can unsubscribe from any message.",
     managePreferences: "Manage all your email preferences",
+  },
+
+  /**
+   * `next-mission-trip-finder` (C76) — the public trip search.
+   *
+   * Here rather than in `events.ts` because a mission trip is a
+   * `Pledge_Campaign` with a fundraising goal, and the details page a card
+   * links to is `next-pledge-campaign`, forty lines above.
+   *
+   * Seeded from MP's own `mpp-mission-trip-finder.json`, which ships vetted
+   * Spanish and Portuguese for 12 labels. Six of those were **not** adopted:
+   * `congregationLabel` ("Campus") is a church-configurable term and belongs
+   * behind `MPNextEmbed.setMessages()`, `seeDetailsButtonText` is
+   * `common.seeDetails`, `ministryLabel` is `fields.ministry`, and the
+   * advanced-search pair has no analogue here — this finder's filters are
+   * attributes a church sets, not dropdowns a visitor opens, because the
+   * search route exposes no config endpoint to populate them from.
+   */
+  missionTripFinder: {
+    title: "Mission Trips",
+    loading: "Loading mission trips…",
+    /** MP's `noMissionTripsFoundMessage`, without its leading literal "0". */
+    empty: "No mission trips found. Please try again with different search criteria.",
+    searchPlaceholder: "Search mission trips…",
+    searchLabel: "Search mission trips",
+    /**
+     * The capacity badge. Full trips are still listed unless the church sets
+     * `show-full-trips="false"`, so the badge is the honest signal — legacy
+     * had only the (inverted) filter and no badge at all.
+     */
+    full: "Trip is full",
+    openForRegistration: "Open for registration",
+    registrationOpens: "Registration opens {date}",
+    registrationCloses: "Registration closes {date}",
+    registrationClosed: "Registration closed",
+    /** `{dates}` is already a formatted range and always carries the year (C09). */
+    tripDates: "Trip dates: {dates}",
+    spotsLeft: {
+      one: "{count} spot left",
+      other: "{count} spots left",
+    },
+    resultsCount: {
+      one: "{count} mission trip",
+      other: "{count} mission trips",
+    },
+  },
+
+  /**
+   * `next-my-mission-trips` (C76) — the participant's own trips, their donor
+   * list and, for a trip leader, the team roster.
+   *
+   * Reused rather than re-added: `myPledges.progress` for the fundraising bar
+   * and `myPledges.status.*` for the four MP pledge statuses (MP's own
+   * `mpp-my-mission-trips.json` carries a second copy of all four; adopting it
+   * would have put the same words under two keys in three catalogues),
+   * `fields.name` / `address` / `mobilePhone` / `email` / `amount` / `notes` /
+   * `date` for the two grids' column headers, and `common.signIn`.
+   */
+  myMissionTrips: {
+    title: "My Mission Trips",
+    loading: "Loading mission trips…",
+    empty: "No mission trips found.",
+    /**
+     * Its own sentence rather than `common.signInPrompt`, because legacy had
+     * one and it says what the visitor gets for signing in.
+     */
+    signInPrompt: "Please sign in to view your mission trips.",
+    /** Legacy's section for a household member's trip (`isMine` false). */
+    familyTitle: "Family Mission Trips",
+    leader: "Trip leader",
+    tripDates: "Trip dates: {dates}",
+    supportProgress: "My Support Progress",
+    donorsTitle: "My Donors",
+    /** Legacy's copy, which is warmer than an empty-state sentence needs to be and right to be. */
+    donorsEmpty:
+      "Once people start donating, their contact information displays here so you can thank them for their support!",
+    /**
+     * Rendered in place of the server's donor name when `anonymous` is set.
+     * The route already collapses the name, but it collapses it to English —
+     * this is the translated one, and the reason the flag is on the wire at
+     * all rather than only the label.
+     */
+    anonymousDonor: "Anonymous Donor",
+    teamTitle: "Team Progress",
+    teamEmpty: "No team members yet.",
+    pledgeStatus: "Pledge Status",
+    supportGoal: "Support Goal",
+    amountRaised: "Amount Raised",
+    progress: "Progress",
   },
 } as const;

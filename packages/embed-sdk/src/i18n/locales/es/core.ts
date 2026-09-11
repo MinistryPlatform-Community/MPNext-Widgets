@@ -131,6 +131,12 @@ export const esCore = {
     publication_not_found: "No encontramos esa publicación.",
     precheck_unavailable:
       "El registro de entrada aún no está configurado en este sitio. Comuníquese con la iglesia.",
+    invalid_attribute:
+      "Algunas de esas opciones ya no están disponibles. Vuelva a cargar la página e inténtelo de nuevo.",
+    not_trip_leader: "Solo el líder del viaje puede ver el progreso del equipo.",
+    not_a_participant: "Usted no está inscrito en ese viaje.",
+    mission_trips_unavailable:
+      "Los viajes misioneros aún no están configurados en este sitio. Comuníquese con la iglesia.",
     invalid_pre_check_selection:
       "Sus selecciones de registro están desactualizadas. Revíselas e inténtelo de nuevo.",
     pre_check_closed: "El registro de entrada no está abierto para esa fecha.",
