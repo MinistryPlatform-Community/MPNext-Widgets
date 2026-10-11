@@ -95,6 +95,37 @@ describe('getCheckoutInvoiceByGuid (C80 / C42)', () => {
   });
 });
 
+describe('getInvoices filters (C60)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (InvoiceService as any).instance = undefined;
+    mockGetTableRecords.mockResolvedValue([]);
+  });
+
+  async function filterFor(filters: Parameters<InvoiceService['getInvoices']>[2]) {
+    const service = await InvoiceService.getInstance();
+    await service.getInvoices(100, undefined, filters);
+    const call = mockGetTableRecords.mock.calls.filter(([a]) => a.table === 'Invoices').at(-1);
+    return (call?.[0] as { filter: string }).filter;
+  }
+
+  it('narrows by congregation, month and legacy status vocabulary in MP', async () => {
+    expect(await filterFor({ congregationId: 4, monthId: 10, invoiceStatus: 1 })).toBe(
+      'Purchaser_Contact_ID = 100 AND Congregation_ID = 4 AND MONTH(Invoice_Date) = 10 AND Invoice_Status_ID IN (1,2)'
+    );
+    expect(await filterFor({ invoiceStatus: 2 })).toBe(
+      'Purchaser_Contact_ID = 100 AND Invoice_Status_ID = 3'
+    );
+  });
+
+  it('ignores out-of-range values and "all"', async () => {
+    expect(await filterFor({ congregationId: 0, monthId: 13, invoiceStatus: 0 })).toBe(
+      'Purchaser_Contact_ID = 100'
+    );
+  });
+});
+
 describe('resolveInvoiceOwner', () => {
   it('is undefined for a public token', async () => {
     const svc = { getUserByGuid: vi.fn() };

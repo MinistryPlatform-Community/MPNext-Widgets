@@ -40,6 +40,16 @@ interface ProductRecord {
   Description: string | null;
 }
 
+/** Server-side narrowing for the `next-my-invoices` list (C60). */
+export interface InvoiceListFilters {
+  /** `Invoices.Congregation_ID`. */
+  congregationId?: number;
+  /** Calendar month of `Invoice_Date`, 1–12. */
+  monthId?: number;
+  /** Legacy vocabulary: 1 balance due, 2 paid in full, 0/absent all. */
+  invoiceStatus?: number;
+}
+
 // ── api_MPPW_GetInvoice proc result shapes (header = result[0][0], details = result[1]) ──
 
 interface CheckoutInvoiceHeaderRow {
@@ -186,16 +196,36 @@ export class InvoiceService {
 
   // ── Invoice List ──
 
+  /**
+   * The contact's invoices, newest first, optionally narrowed in MP by the
+   * `next-my-invoices` filter attributes (C60). Every filter value is an
+   * integer by the time it reaches here (the route parses them), and is
+   * re-checked below before it is interpolated into `$filter`.
+   */
   public async getInvoices(
     contactId: number,
-    mpAccessToken?: string
+    mpAccessToken?: string,
+    filters: InvoiceListFilters = {}
   ): Promise<InvoiceListItem[]> {
+    const clauses = [`Purchaser_Contact_ID = ${contactId}`];
+    const { congregationId, monthId, invoiceStatus } = filters;
+    if (Number.isInteger(congregationId) && (congregationId as number) > 0) {
+      clauses.push(`Congregation_ID = ${congregationId}`);
+    }
+    if (Number.isInteger(monthId) && (monthId as number) >= 1 && (monthId as number) <= 12) {
+      clauses.push(`MONTH(Invoice_Date) = ${monthId}`);
+    }
+    // Legacy `invoiceStatusId` is its own vocabulary, not an MP status id:
+    // 1 = balance due (None Paid / Some Paid), 2 = paid in full, 0 = all.
+    if (invoiceStatus === 1) clauses.push("Invoice_Status_ID IN (1,2)");
+    if (invoiceStatus === 2) clauses.push("Invoice_Status_ID = 3");
+
     const [records, statusMap] = await Promise.all([
       this.mp!.getTableRecords<InvoiceRecord>({
         table: "Invoices",
         select:
           "Invoice_ID,Invoice_Date,Invoice_Total,Invoice_Status_ID,Notes,Currency,Invoice_GUID",
-        filter: `Purchaser_Contact_ID = ${contactId}`,
+        filter: clauses.join(" AND "),
         orderBy: "Invoice_Date DESC",
       }),
       this.getStatusMap(),
