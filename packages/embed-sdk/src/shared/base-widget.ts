@@ -539,6 +539,51 @@ export abstract class MPNextWidget extends HTMLElement {
     }
   }
 
+  // ── Reconfiguration (C39 / CROSS-4 §1, §4) ───────────────────────────────
+
+  /**
+   * True once the widget has painted. **Set it yourself** at the end of the
+   * first render in `connectedCallback` (the base class cannot see when that
+   * is). `reconfigure()` is a no-op until then, because the first load reads
+   * every attribute anyway.
+   */
+  protected painted = false;
+
+  /**
+   * **The rule:** an observed attribute change calls `reconfigure()`. Never
+   * guard on `oldValue !== null` — an attribute absent at upgrade arrives with
+   * `oldValue === null`, which is exactly the "create, insert, then configure"
+   * shape of every CMS and framework host (C39). Never guard on "entity
+   * already loaded" either — a widget whose first load failed must still
+   * respond (`pledge-campaign`'s variant of the bug).
+   *
+   * This default is all most widgets need: list the attributes in
+   * `observedAttributes` and implement `reload()`. Override only to filter
+   * attributes that need no reload, and call `this.reconfigure()` for the rest.
+   */
+  attributeChangedCallback(
+    _name: string,
+    oldValue: string | null,
+    newValue: string | null,
+  ): void {
+    if (oldValue !== newValue) this.reconfigure();
+  }
+
+  /** A no-op before the first paint (or once disconnected); `reload()` after. */
+  protected reconfigure(): void {
+    if (!this.painted || !this.isConnected) return;
+    this.reload();
+  }
+
+  /**
+   * Re-read configuration and re-load. Called by `reconfigure()` after the
+   * first paint. Reset any state derived from the old attributes here, paint
+   * the loading state, and start the load. The default does nothing.
+   */
+  protected reload(): void {
+    /* subclasses that observe attributes override this */
+  }
+
   // ── Signed-out state (C81 / CROSS-1) ─────────────────────────────────────
 
   /**

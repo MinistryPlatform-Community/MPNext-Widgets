@@ -623,6 +623,52 @@ describe("MPNextWidget", () => {
     });
   });
 
+  describe("reconfigure() convention (C39)", () => {
+    class ReconfigWidget extends MPNextWidget {
+      static get observedAttributes() {
+        return ["campaign-id"];
+      }
+      public reloads = 0;
+      render(): void {}
+      connectedCallback(): void {
+        this.render();
+        this.painted = true;
+      }
+      protected override reload(): void {
+        this.reloads += 1;
+      }
+    }
+    const RTAG = "test-reconfig-widget";
+    if (!customElements.get(RTAG)) customElements.define(RTAG, ReconfigWidget);
+
+    it("reloads on the first set of an attribute absent at upgrade (oldValue === null)", () => {
+      const el = document.createElement(RTAG) as ReconfigWidget;
+      document.body.appendChild(el);
+      el.setAttribute("campaign-id", "4");
+      expect(el.reloads).toBe(1);
+    });
+
+    it("reloads on a change and on removal, not on a same-value set", () => {
+      document.body.innerHTML = `<${RTAG} campaign-id="4"></${RTAG}>`;
+      const el = document.body.firstElementChild as ReconfigWidget;
+      el.setAttribute("campaign-id", "4");
+      expect(el.reloads).toBe(0);
+      el.setAttribute("campaign-id", "5");
+      el.removeAttribute("campaign-id");
+      expect(el.reloads).toBe(2);
+    });
+
+    it("is a no-op before the first paint and once disconnected", () => {
+      const el = document.createElement(RTAG) as ReconfigWidget;
+      el.setAttribute("campaign-id", "1"); // not connected, not painted
+      expect(el.reloads).toBe(0);
+      document.body.appendChild(el);
+      el.remove();
+      el.setAttribute("campaign-id", "2");
+      expect(el.reloads).toBe(0);
+    });
+  });
+
   describe("connectedCallback", () => {
     it("is invoked when the element is attached to the document", () => {
       const widget = makeWidget();

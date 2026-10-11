@@ -95,8 +95,6 @@ export class PreCheckWidget extends MPNextWidget {
   private errorPayload: unknown = null;
   /** The date currently being shown — the attribute, the query string, or the server's. */
   private activeDate: string | null = null;
-  /** True once `render()` has run, so `reconfigure()` knows to reload. */
-  private painted = false;
   /** Set on disconnect, so an in-flight request never paints a detached root. */
   private detached = false;
   /** A save is in flight: the submit control is disabled and reads `Saving…`. */
@@ -136,13 +134,13 @@ export class PreCheckWidget extends MPNextWidget {
     this.detached = true;
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue !== newValue) this.reconfigure();
-  }
-
-  /** A no-op before the first paint; a full reload after it. */
-  private reconfigure(): void {
-    if (!this.painted || this.detached) return;
+  /**
+   * An observed attribute changed after the first paint (the base class's
+   * `attributeChangedCallback` → `reconfigure()` → here; a no-op before the
+   * first paint and once disconnected). A full reload: the date and the QR
+   * panel both derive from attributes.
+   */
+  protected override reload(): void {
     this.data = null;
     this.errorPayload = null;
     this.activeDate = null;
