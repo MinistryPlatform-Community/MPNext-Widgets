@@ -138,3 +138,27 @@ widget posted `UseEmailTemplate` from the attribute, and the respond route ignor
   - the template goes to the record address with the merge data;
   - a send failure still returns the response id;
   - no id means no send.
+
+### Addendum — 2026-10-11 (final fix-ups): live check of the `ImageGuid` select
+
+Commit `67217a3` changed the detail `$select` to return the file GUIDs and build the image
+URLs in JS. The opportunity's own image is selected as a bare `dp_FileUniqueID AS ImageGuid`,
+unqualified, beside a `Contact_Person_Table.dp_FileUniqueID` join. This was checked
+**read-only** against the live domain (`mpi.ministryplatform.com`, through the
+MinistryPlatform MCP `mp_query`, which uses the same domain as `.env.local`):
+
+- The **full** `detailSelect()` field list, with the service's filter, ran without error on
+  Opportunity 3. It returned `ImageGuid: null` and
+  `ContactImageGuid: 9dfb9696-…`, so the bare name did not pick up the joined contact's
+  file.
+- Positive control: `Contacts` 98, with `dp_FileUniqueID` unqualified beside a
+  `Household_ID_Table` join, returned its own GUID (`9dfb9696-…`), and the household
+  returned `null`.
+- Limitation: none of the domain's four opportunities has an image attached, so no
+  opportunity could show a non-null `ImageGuid`. The control above covers the resolution
+  rule.
+- Side finding: `Opportunities.dp_FileUniqueID` is rejected in a **`$filter`** ("Invalid
+  column name"). It is a `$select`-only pseudo-column, so it can never be used to filter
+  on "has an image".
+
+No code change was needed. The comment at `detailSelect()` records the same result.
