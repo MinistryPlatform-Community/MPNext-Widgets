@@ -196,6 +196,10 @@ export const ptBRGiving = {
     linkExpiredTitle: "Este link de pagamento expirou",
     linkExpired: "Nada foi cobrado. Volte à sua fatura e inicie o pagamento novamente.",
     returnToInvoice: "Voltar à fatura",
+    invalidCard: "Digite um número de cartão válido.",
+    invalidExpiry: "Digite a data de validade como MM/AA.",
+    expiredCard: "Este cartão está vencido.",
+    invalidCvv: "Digite o código de segurança de 3 ou 4 dígitos.",
   },
 
   subscriptions: {

@@ -226,6 +226,10 @@ export const giving = {
     linkExpiredTitle: "This payment link has expired",
     linkExpired: "Nothing has been charged. Return to your invoice and start the payment again.",
     returnToInvoice: "Return to invoice",
+    invalidCard: "Please enter a valid card number.",
+    invalidExpiry: "Please enter the expiry date as MM/YY.",
+    expiredCard: "This card has expired.",
+    invalidCvv: "Please enter the 3- or 4-digit security code.",
   },
 
   subscriptions: {

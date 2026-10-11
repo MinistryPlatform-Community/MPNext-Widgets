@@ -199,6 +199,10 @@ export const esGiving = {
     linkExpiredTitle: "Este enlace de pago venció",
     linkExpired: "No se realizó ningún cargo. Vuelva a su factura e inicie el pago de nuevo.",
     returnToInvoice: "Volver a la factura",
+    invalidCard: "Ingrese un número de tarjeta válido.",
+    invalidExpiry: "Ingrese la fecha de vencimiento como MM/AA.",
+    expiredCard: "Esta tarjeta está vencida.",
+    invalidCvv: "Ingrese el código de seguridad de 3 o 4 dígitos.",
   },
 
   subscriptions: {
