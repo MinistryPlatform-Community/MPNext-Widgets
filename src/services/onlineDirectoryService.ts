@@ -1,5 +1,6 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
+import { encodeQueryValue } from "@/lib/providers/ministry-platform/utils/http-client";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import type { CommunicationInfo } from "@/lib/providers/ministry-platform";
 import type { DirectoryConfig, DirectoryMember, DirectoryFilterOption } from "@mpnext/types";
@@ -23,6 +24,26 @@ const MINIMUM_SEARCH_LENGTH = 3;
 const SEARCH_INPUT_TIMEOUT = 1000;
 const HOUSEHOLD_PREFIX = "hh ";
 const MAX_RESULTS = 100;
+
+/**
+ * Upper bound on the keyword's *encoded* length. The keyword is repeated up to six
+ * times in the `$filter` (keyword mode), and the whole query string must stay under
+ * IIS's 2048-char `maxQueryString` or MP answers with an HTML 404 (C50). A 3-char
+ * search measures ~1,870 encoded chars, leaving room for ~28 encoded keyword chars.
+ * Truncating only widens a `LIKE '%…%'` match, so a too-long search still returns
+ * the people it would have, plus perhaps a few more.
+ * `onlineDirectoryService.test.ts` pins the end-to-end length.
+ */
+const MAX_ENCODED_KEYWORD = 28;
+
+/** Drops trailing characters (by code point) until the encoded keyword fits. */
+export function fitKeyword(keyword: string): string {
+  const chars = Array.from(keyword);
+  while (chars.length && encodeQueryValue(chars.join("").replace(/'/g, "''")).length > MAX_ENCODED_KEYWORD) {
+    chars.pop();
+  }
+  return chars.join("").trim();
+}
 
 const MONTHS_SHORT = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -57,7 +78,6 @@ interface ContactRow {
   HouseholdId: number | string | null;
   CongregationId: number | string | null;
   HouseholdPosition: string | null;
-  HouseholdPositionId: number | string | null;
   HomePhone: string | null;
   HomePhoneUnlisted: boolean | number | null;
   HomeAddressUnlisted: boolean | number | null;
@@ -67,7 +87,7 @@ interface ContactRow {
   State: string | null;
   PostalCode: string | null;
   HouseholdName: string | null;
-  ContactImageUrl: string | null;
+  ImageGuid: string | null;
 }
 
 interface FromContactRow {
@@ -192,7 +212,7 @@ export class OnlineDirectoryService {
   // ── Search ──
 
   public async search(filters: DirectorySearchFilters): Promise<DirectoryMember[]> {
-    const keyword = (filters.keyword ?? "").trim();
+    const keyword = fitKeyword((filters.keyword ?? "").trim());
     const searchType = this.determineSearchType(keyword);
 
     let householdId: number | null = null;
@@ -240,20 +260,22 @@ export class OnlineDirectoryService {
       "Contacts.Date_of_Birth AS DateofBirth",
       "Contacts.Email_Address AS EmailAddress",
       "Contacts.Email_Unlisted AS EmailUnlisted",
-      "Household_ID_Table.Household_ID AS HouseholdId",
-      "Household_ID_Table_Congregation_ID_Table.Congregation_ID AS CongregationId",
+      "Contacts.Household_ID AS HouseholdId",
+      "Household_ID_Table.Congregation_ID AS CongregationId",
       "Household_Position_ID_Table.Household_Position AS HouseholdPosition",
-      "Household_Position_ID_Table.Household_Position_ID AS HouseholdPositionId",
       "Household_ID_Table.Home_Phone AS HomePhone",
       "Household_ID_Table.Home_Phone_Unlisted AS HomePhoneUnlisted",
       "Household_ID_Table.Home_Address_Unlisted AS HomeAddressUnlisted",
-      "Household_ID_Table_Address_ID_Table.Address_ID AS AddressId",
+      "Household_ID_Table.Address_ID AS AddressId",
       "Household_ID_Table_Address_ID_Table.Address_Line_1 AS AddressLine1",
       "Household_ID_Table_Address_ID_Table.City AS City",
       "Household_ID_Table_Address_ID_Table.[State/Region] AS State",
       "Household_ID_Table_Address_ID_Table.Postal_Code AS PostalCode",
       "Household_ID_Table.Household_Name AS HouseholdName",
-      `'${this.imageBaseUrl}' + CONVERT(varchar(40), dp_FileUniqueID) AS ContactImageUrl`,
+      // The file GUID, not a URL: the absolute image URL is built in mapMember().
+      // Inlining it here as a SQL string expression pushed the query string past
+      // IIS's 2048-char maxQueryString, which MP answers with an HTML 404 (C50).
+      "dp_fileUniqueId AS ImageGuid",
     ].join(", ");
   }
 
@@ -265,7 +287,7 @@ export class OnlineDirectoryService {
   ): string {
     // Directory eligibility (Contact_Status != Deceased, not removed, shown).
     let filter =
-      "Contact_Status_ID_Table.Contact_Status_ID != 3" +
+      "Contacts.Contact_Status_ID <> 3" +
       " AND Contacts.Remove_From_Directory = 0" +
       " AND Participant_Record_Table_Participant_Type_ID_Table.Show_In_Directory = 1" +
       " AND (Participant_Record_Table_Member_Status_ID_Table.Show_In_Directory = 1 OR Participant_Record_Table.Member_Status_ID IS NULL)";
@@ -297,10 +319,10 @@ export class OnlineDirectoryService {
     }
 
     if (congregationId && congregationId > 0) {
-      filter += ` AND Household_ID_Table_Congregation_ID_Table.Congregation_ID = ${congregationId}`;
+      filter += ` AND Household_ID_Table.Congregation_ID = ${congregationId}`;
     }
     if (householdId && householdId > 0) {
-      filter += ` AND Household_ID_Table.Household_ID = ${householdId}`;
+      filter += ` AND Contacts.Household_ID = ${householdId}`;
     }
 
     return filter;
@@ -309,7 +331,7 @@ export class OnlineDirectoryService {
   private buildOrderBy(searchType: SearchType): string {
     if (searchType === "householdId") {
       // Heads of household first, then by first name.
-      return "(CASE Household_Position_ID_Table.Household_Position_ID WHEN 1 THEN 1 ELSE 99 END), NicknameOrFirstName";
+      return "(CASE Contacts.Household_Position_ID WHEN 1 THEN 1 ELSE 99 END), NicknameOrFirstName";
     }
     return "DisplayName asc, DateofBirth desc, City asc, State asc";
   }
@@ -349,7 +371,7 @@ export class OnlineDirectoryService {
       householdId: toNumberOrNull(r.HouseholdId),
       householdName: r.HouseholdName ?? null,
       congregationId: toNumberOrNull(r.CongregationId),
-      contactImageUrl: r.ContactImageUrl || null,
+      contactImageUrl: this.imageUrl(r.ImageGuid),
       mobilePhone: !mobileUnlisted && r.MobilePhone ? r.MobilePhone : null,
       homePhone: !homeUnlisted && r.HomePhone ? r.HomePhone : null,
       canEmail: !emailUnlisted && !!r.EmailAddress,
@@ -357,6 +379,11 @@ export class OnlineDirectoryService {
       dateOfBirthMonthDay: monthDay,
       address,
     };
+  }
+
+  private imageUrl(guid: string | null): string | null {
+    const id = (guid ?? "").trim();
+    return id ? `${this.imageBaseUrl}${id}` : null;
   }
 
   /** Wall-clock parse of an MP date → { "Mon D", "MM-DD" } (no year). */
