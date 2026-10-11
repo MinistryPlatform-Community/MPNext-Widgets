@@ -18,6 +18,12 @@ import {
 } from "@/lib/embed/auth";
 import { OpportunityDetailsService } from "@/services/opportunityDetailsService";
 import { EventDetailsService } from "@/services/eventDetailsService";
+import { canActAsContact } from "@/services/_shared/household-contact";
+
+function positiveInt(value: unknown): number | null {
+  const n = Number(String(value ?? "").trim());
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
 
 export async function POST(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
@@ -52,6 +58,16 @@ export async function POST(req: NextRequest) {
     const rawContactId = Number(payload.ContactId);
     const contactId = rawContactId && rawContactId > 0 ? rawContactId : null;
 
+    // C21: the service back-fills the response row from this contact's record,
+    // so the id must be one the caller may act as (themselves or their
+    // household). Never trust the picker's value on its own.
+    if (contactId != null && !(await canActAsContact(claims.sub, contactId))) {
+      return NextResponse.json(
+        { success: false, error: "not_household_member", message: "ContactId is not the caller or their household" },
+        { status: 403, headers: getCorsHeaders(origin) }
+      );
+    }
+
     let userId: number | null = null;
     if (claims.sub !== "public") {
       const details = await EventDetailsService.getInstance();
@@ -69,6 +85,8 @@ export async function POST(req: NextRequest) {
       phone: (payload.MobilePhoneNumber ?? "").trim(),
       message: (payload.Message ?? "").trim(),
       userId,
+      // The widget's `response-email-template` (a dp_Communications id).
+      responseTemplateId: positiveInt(payload.UseEmailTemplate),
     });
 
     // Persist any custom-form answers (best-effort; does not block the response).

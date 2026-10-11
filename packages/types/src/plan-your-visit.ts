@@ -20,7 +20,13 @@ export const PlanYourVisitConfigSchema = z.object({
   congregations: z.array(PyvOptionSchema),
   genders: z.array(PyvOptionSchema),
   countries: z.array(PyvCountrySchema),
+  /** MP `PhoneMask` — a display hint (placeholder), never a validation pattern (C24). */
   phoneMask: z.string().nullable(),
+  /**
+   * MP `COMMON/GoogleMapsAPIKey`, for address autocomplete (C23). A browser
+   * key by design; the widget's `google-maps-api-key` attribute overrides it.
+   */
+  googleMapsApiKey: z.string().nullable(),
 });
 export type PlanYourVisitConfig = z.infer<typeof PlanYourVisitConfigSchema>;
 

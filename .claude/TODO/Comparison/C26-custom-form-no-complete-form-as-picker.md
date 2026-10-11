@@ -89,3 +89,56 @@ pass `ContactId` through to the submit route so `Form_Responses.Contact_ID` is s
 Legacy's write-back behaviour (`SaveContactInfo` / `SaveAddressInfo` / `updateMyInfo`)
 is a separate and larger question — confirm whether the new submit route updates the
 contact record at all before deciding to port it.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W4, branch `ws/w4-serving-forms`), following `Plans/custom-form.md`
+including its "better than legacy" notes.
+
+- **Picker:** signed in, `next-custom-form` loads `GET /api/embed/household` (the endpoint
+  `next-opportunity-details`' "Respond As" uses) and renders a labelled `ContactId`
+  select, *"Who is this form for?"*:
+  - the signed-in user first and selected by default;
+  - then the household;
+  - then *"Someone else (blank form)"*.
+
+  Anonymous visitors get no picker (legacy's empty select helped nobody). A household
+  load failure degrades to "just me".
+- **Prefill:** choosing a member fills First/Last/Email/Mobile from their record. A value
+  the record has is shown **read-only**, because the server stores the record's value
+  anyway. An empty one, such as a child with no email, stays editable. "Someone else"
+  clears and unlocks the block. The address block still prefills from the signed-in
+  household's address (members share it).
+- **Server, never trusting the client** (`custom-form/submit/route.ts`):
+  - `ContactId: <id>` is honoured only when `canActAsContact(claims.sub, id)` holds (self
+    or household; the shared helper from C21), and otherwise answers
+    `403 not_household_member` with nothing saved. `Form_Responses.Contact_ID` is that
+    member, and First/Last/Email/Phone come from `getContactBasics`, with typed values
+    only where the record is empty.
+  - `ContactId: ""` files against nobody, with the typed details.
+  - **No `ContactId` key** (anonymous, or an embed whose page cached the pre-picker SDK)
+    keeps the previous behaviour: the signed-in caller's own contact, or null when
+    anonymous.
+- **Confirmation says who:** the completion screen adds *"Submitted for Sarah
+  Kehayias."*, and `formSubmitted` carries `contactId`. Silent attribution is how this
+  item went unnoticed.
+- In passing: `opportunity-details`' embedded custom form (`saveCustomForm`) back-fills its
+  `Form_Responses` name/email/phone from the picked member the same way. After a failed
+  submit, the re-render now re-applies the prefill.
+- **Write-back decided: not ported.** Legacy's `SaveContactInfo` / `SaveAddressInfo` /
+  `updateMyInfo` would let a form submission rewrite a member's contact record. The new
+  route never updates `Contacts` or `Addresses` (verified: it only creates
+  `Form_Responses` and `Form_Response_Answers`). `next-profile` and `next-my-household`
+  are the surfaces for editing a record. Revisit only as an explicit opt-in checkbox if a
+  church asks.
+- Not built: "submit and start another for a different member". It is noted in the plan
+  as the real next step, but it is a new feature, not part of this item.
+- New catalogue keys (`customForm.completeAs`, `someoneElse`, `myInfo`, `submittedFor`)
+  in en / es / pt-BR; `pnpm i18n:sync` re-run.
+- Tests:
+  - `custom-form.test.ts` ("Who is this form for? (C26)") covers: no picker when
+    anonymous; roster order and label; prefill, read-only and editable fields; the posted
+    `ContactId`; the confirmation line; "Someone else".
+  - `src/app/api/embed/custom-form/submit/route.test.ts` covers: a member is filed with
+    the record's details; a stranger gets 403 with no save; "Someone else" is filed as
+    null; no key means the caller; a public token means null.

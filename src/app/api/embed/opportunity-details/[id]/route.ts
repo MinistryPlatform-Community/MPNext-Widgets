@@ -1,6 +1,6 @@
 /**
  * Single opportunity detail endpoint for the next-opportunity-details widget.
- * GET /api/embed/opportunity-details/:id
+ * GET /api/embed/opportunity-details/:id?showFullAddress=true
  *
  * Public-allowed: returns the opportunity for anonymous viewers.
  */
@@ -35,8 +35,12 @@ export async function GET(
       );
     }
 
+    // C65: legacy `showfulladdress`, off by default. Off, the service withholds
+    // the street address entirely, so it never reaches the browser.
+    const showFullAddress = req.nextUrl.searchParams.get("showFullAddress") === "true";
+
     const service = await OpportunityDetailsService.getInstance();
-    const opportunity = await service.getOpportunityById(opportunityId);
+    const opportunity = await service.getOpportunityById(opportunityId, { showFullAddress });
 
     return NextResponse.json(
       { opportunity },

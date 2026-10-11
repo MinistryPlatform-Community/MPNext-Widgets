@@ -122,8 +122,8 @@ export const ptBRGroups = {
     attributes: "Atributos",
     loading: "Carregando as oportunidades…",
     empty: "Nenhuma oportunidade encontrada.",
-    featured: "Destaque",
-    everyDay: "toda semana, {day}",
+    everyWeekday: "Toda semana, {day}",
+    dateAtTime: "{date}, {time}",
   },
 
   opportunityDetails: {
@@ -131,7 +131,6 @@ export const ptBRGroups = {
     backToOpportunities: "Voltar às oportunidades",
     noOpportunitySpecified: "Nenhuma oportunidade especificada.",
     ongoing: "Contínua",
-    everyDay: "toda semana, {day}",
     volunteersNeeded: "Voluntários necessários",
     mapTitle: "Mapa da localização da oportunidade",
     respondTitle: "Responder",
@@ -150,6 +149,7 @@ export const ptBRGroups = {
     responseFailed: "Não foi possível salvar sua resposta.",
     responseReceived: "Obrigado! Recebemos sua resposta.",
     responseReceivedNamed: "Obrigado, {name}! Recebemos sua resposta.",
+    everyWeekday: "Toda semana, {day}",
   },
 
   planYourVisit: {
@@ -193,5 +193,9 @@ export const ptBRGroups = {
     selectOption: "-- Selecione --",
     fileUploadUnsupported:
       "Nesta versão, os arquivos anexados não são enviados.",
+    completeAs: "Para quem é este formulário?",
+    someoneElse: "Outra pessoa (formulário em branco)",
+    myInfo: "Eu",
+    submittedFor: "Enviado para {name}.",
   },
 } satisfies Partial<Messages>;

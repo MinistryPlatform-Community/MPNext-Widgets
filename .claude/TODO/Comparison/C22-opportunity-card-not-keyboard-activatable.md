@@ -70,3 +70,18 @@ naming, middle-click and "copy link address" in one change, and drops the need f
 bind `keydown` for `Enter` and `" "` (and `preventDefault()` on Space so the page does
 not scroll). Worth checking `next-event-finder` and `next-group-finder` for the same
 card pattern — this file says it was built on the `next-event-finder` model.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W4, branch `ws/w4-serving-forms`) with W0's `cardLink()` / `bindCardSelect()`.
+
+- `renderCard` builds its markup through `cardLink({ href: buildDetailUrl(id), … })`. With
+  `target-url` set, the whole card is a real `<a href>`, so Enter, middle-click,
+  Ctrl/Cmd-click, "copy link address" and the screen-reader link name all come from the
+  browser. Without it, the card is a `role="article"` div that has no `tabindex` and no
+  "See Details" call to action.
+- The click listener now only emits `opportunitySelected`. The anchor navigates, and the
+  widget no longer assigns `window.location.href`.
+- The `role="link"` CSS selectors became `a.nw-of-card`. `CARD_LINK_STYLES` provides the
+  focus ring.
+- Test: `packages/embed-sdk/src/components/opportunity-finder.test.ts` ("cards (C22)").

@@ -96,3 +96,28 @@ actually types a phone number.
 **Companion defect:** `C82-plan-your-visit-syncchildren-discards-child-fields.md` — filed at
 consolidation from this item's "Where to fix" note. Once this item unblocks submission, C82
 is the next thing a visitor hits. Fix both together.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W4, branch `ws/w4-serving-forms`).
+
+- `phonePattern()` is deleted, and so is every `pattern` on a phone control. Both phones
+  (`headMobilePhone`, `spousePhone`) are now W0 `field({ type: "tel" })` controls, so they
+  get a real `<label for>`, `autocomplete="tel"` and `inputmode="tel"` as well.
+- Validation is a **digit count**, not a format: `isPlausiblePhone()` (exported from
+  `plan-your-visit.ts`) accepts 7–15 digits once `-`, spaces, parentheses, dots, slashes
+  and a leading `+` are ignored, and rejects anything else (`abc`, `xxx-xxx-xxxx`, `123`).
+  It runs through `validateForm`'s `customValidators`, so an empty *optional* spouse phone
+  passes and a filled one is checked. The message is the existing `validation.phone`.
+- **Decided:** MP's `PhoneMask` is kept, for display only: it is the placeholder
+  (`xxx-xxx-xxxx`), which is what it was authored to be. `PhoneValidationMask` was *not*
+  adopted. Translating MP's `9`/`0` notation would reintroduce a country-specific format
+  (`999-000-0000` rejects `(321) 555-0100` and every non-US number), which is the class of
+  bug this item is. The service and `PlanYourVisitConfigSchema` carry a comment saying so.
+- `validateForm` / `bindLiveValidation` now receive `this.t`, so the messages follow the
+  widget's locale.
+- Test: `packages/embed-sdk/src/components/plan-your-visit.test.ts`. `321-555-0100`,
+  `3215550100` and `(321) 555-0100` each reach `POST /plan-your-visit/register` with the
+  number intact; `abc` paints `validation.phone` and never reaches the network; the
+  rendered phone has no `pattern` and has a label. Under the old code, all three
+  real-number cases fail.

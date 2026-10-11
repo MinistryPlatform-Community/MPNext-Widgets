@@ -79,3 +79,32 @@ First_Name: args.firstName || c?.First_Name || null,
 pattern to copy. Alternatively keep the fields visible and pre-filled the way legacy
 does — but the server-side backfill is the safer fix, since it also covers the
 `ContactId`-supplied-by-a-caller case.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W4, branch `ws/w4-serving-forms`), server-side, following the same rule as
+W3's C12.
+
+- `OpportunityDetailsService.respond()` reads the chosen contact when `args.contactId` is
+  set (`getContactBasics`: `First_Name`, falling back to `Nickname`, then `Last_Name`,
+  `Email_Address` and `Mobile_Phone`). It fills `Responses.First_Name / Last_Name / Email
+  / Phone` from that read.
+- **Decided:** for a picked member, **the contact's record wins over typed values.** A
+  typed value is used only where the record has none. The client only knows the member's
+  display name, so trusting a client-supplied email for a contact picked from a list would
+  let a caller write any address onto the row. An anonymous (blank-form) response still
+  writes exactly what was typed.
+- **Hardened in the same change:** `POST /opportunity-details/respond` used to accept any
+  `ContactId` from any caller, including a public token. That ID is now honoured only when
+  `canActAsContact(claims.sub, contactId)` holds: the caller themselves, or a member of
+  the caller's household. Otherwise the route answers
+  `403 { error: "not_household_member" }`, which is already in all three catalogues.
+- New shared, read-only helper `src/services/_shared/household-contact.ts`
+  (`canActAsContact`, `getContactBasics`). C26 (custom-form "Complete Form As") reuses it.
+- In passing: the service's private `sqlEscape` now delegates to `sqlLiteral` from
+  `_shared/mp-lookup.ts`, per CLAUDE.md.
+- Tests: `src/services/opportunityDetailsService.test.ts` and
+  `src/services/_shared/household-contact.test.ts`.
+- Not verified with a live MP write. The fix is a read plus column values on an
+  already-verified insert, and `Responses` columns were checked against
+  `ResponsesSchema.ts`.

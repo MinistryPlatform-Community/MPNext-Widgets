@@ -87,3 +87,54 @@ the full address and declines to paint it still ships it to the browser, where i
 network-tab click away. Check what `mpp-opportunity-details` does here before deciding;
 if legacy filters server-side, match that, and if it only hides client-side, this is a
 chance to do better than parity.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W4, branch `ws/w4-serving-forms`), and better than a straight copy of `group-details`.
+
+- `next-opportunity-details` observes `show-full-address`. Only the literal `"true"` opts
+  in, and the widget then requests `GET /api/embed/opportunity-details/:id?showFullAddress=true`.
+- **The address is withheld server-side.** `OpportunityDetailsService.getOpportunityById(id,
+  { showFullAddress })` returns only `"City, State"` by default. Street lines and postal
+  code never leave the server, so the network tab carries no street address either. With
+  the flag, the full line is returned as before. The map embed uses whichever line it
+  got, so by default it centres on the city.
+- **Default flips to hidden**, matching legacy's privacy default. Migration note for W9:
+  an existing embed that showed the full address now shows city and state until
+  `show-full-address="true"` is added. The demo page's code sample documents the
+  attribute.
+- Legacy's own behaviour (server- vs client-side) could not be observed from its bundle
+  alone. Withholding server-side is at least as strict, so it is the choice taken.
+- `group-details` was **not** touched: it is W3's. It forwards `@ShowFullAddress` to
+  `api_MPPW_GetGroupDetails`, so its withholding is whatever that proc does.
+- In passing: the address read's bare `catch` now logs.
+- W4's bonus item (`response-email-template`) is recorded in the next section.
+- Test: `src/services/opportunityDetailsService.test.ts`. With the flag absent, the
+  serialised opportunity contains no street, unit or postal code. With it, the full line
+  is returned.
+
+## Resolution — 2026-10-11 (W4 bonus: `response-email-template`)
+
+**Wired** (W4, branch `ws/w4-serving-forms`). This is the same class of bug as C11: the
+widget posted `UseEmailTemplate` from the attribute, and the respond route ignored it.
+
+- The widget reads `response-email-template` **at submit time** (C39) and posts it as
+  `UseEmailTemplate`. The render-time hidden input is gone.
+- `POST /opportunity-details/respond` passes it, when it is a positive integer, as
+  `responseTemplateId`. After the `Responses` row is saved,
+  `OpportunityDetailsService.respond()` sends that **`dp_Communications`** template
+  through the shared `MessageTemplateService.sendMessageTemplate`.
+- The recipient is the email **stored on the response row**. For a picked household
+  member that is their own record's address (C21), never one a client typed for them.
+  For an anonymous response it is the address they typed, the same exposure as
+  plan-your-visit and prayer-feedback confirmations.
+- Merge tokens are supplied in both conventions: `First_Name`, `Last_Name`,
+  `Opportunity_Title` and `Comments`, plus `mpp_contact_first_name`,
+  `mpp_contact_last_name`, `mpp_opportunity_title` and `mpp_response_comments`.
+  Legacy's exact token set was not observable.
+- **Best-effort:** a failed or misconfigured template is logged with `console.error`. The
+  volunteer still gets the success state, because the response is already saved.
+- Tests (`src/services/opportunityDetailsService.test.ts`):
+  - the template goes to the record address with the merge data;
+  - a send failure still returns the response id;
+  - no id means no send.

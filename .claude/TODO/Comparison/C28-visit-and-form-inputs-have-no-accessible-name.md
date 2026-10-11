@@ -86,3 +86,49 @@ fields: wrap the input in the `<label>` element, which associates implicitly wit
 at all. A shared `field()` helper in `shared/form-validation.ts` — which already owns
 the required-star and error-message markup — would fix all three widgets at once and
 stop the next form from regressing.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W4, branch `ws/w4-serving-forms`) on all three forms, using W0's `field()` / `fieldId()`.
+
+- **`next-plan-your-visit`:** every control on both steps is now a `field()` control:
+  - the initial form;
+  - congregation, when-to-expect-you, head-of-household name and email, and both phones;
+  - spouse;
+  - every child control. The age/grade `<select>` is hand-built only because its options
+    are re-sorted in place, and it uses the same `fieldId` label/id pair.
+  - the address block.
+
+  The read-only email gained `name="headEmail"` so it can have an id; the payload ignores
+  it. Name and address controls carry `autocomplete` tokens (`given-name`,
+  `address-line1`, `postal-code`, `country`, …). A regression fixed in passing: the
+  country default marked every name matching `/united states/` as selected, so "United
+  States Minor Outlying Islands" could win. It now picks `US` once.
+- **`next-custom-form`:** the contact and address blocks are `field()` controls (address
+  keeps `autocomplete="off"` because Google Places draws its own list over line 1). Google
+  Places now finds the inputs by `name`, not by the removed fixed ids.
+- **`shared/custom-form.ts`** (the recorded W4 exception to the shared-is-read-only rule):
+  - every MP field control has an accessible name:
+    - text, textarea, date, dropdown and file get `<label for=id>` with the `fieldId` scheme;
+    - a checkbox stays wrapped in its label;
+    - a radio group is `role="radiogroup"` with `aria-labelledby` (plus `aria-required`),
+      and each radio stays wrapped in its option label.
+  - every control carries `data-mpx-label`, so the required message names the field.
+  - `renderCustomFormFields` takes an optional `idPrefix`. `custom-form` and
+    `opportunity-details` pass `this.instanceId`. `event-details` (W2) passes nothing and
+    gets the `cf` default, which is valid but could collide if two forms on one page share
+    a field id. W2 may want to pass `idPrefix: this.instanceId`.
+  - **Decided:** not a literal `field()` call. `field()` owns its wrapper, but the
+    depends-on wiring needs `data-field-id` / `data-depends-on*` / `style` on that wrapper,
+    and the nine field types are at storage parity. So the wrapper, names, types,
+    `maxlength` and depends-on attributes are unchanged, and only ids, `for` and ARIA are
+    added.
+- **`next-opportunity-details`** (at parity, fixed in the same pass): the blank-form
+  name/email/phone block is `field()`. "Respond As" and Message were already labelled.
+- `validateForm` / `bindLiveValidation` receive `this.t` in all three widgets.
+- Tests:
+  - `plan-your-visit.test.ts` ("accessible names (C28)") checks zero unnamed controls on
+    both steps, children and address included.
+  - `custom-form.test.ts` checks zero unnamed controls across contact, address and all
+    nine field types, plus a **parity guard**: names, types, `maxlength`, `required`,
+    FormData keys and values, and depends-on wrapper state for every `Form_Field_Type`.

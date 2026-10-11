@@ -123,8 +123,8 @@ export const esGroups = {
     attributes: "Atributos",
     loading: "Cargando las oportunidades…",
     empty: "No se encontraron oportunidades.",
-    featured: "Destacada",
-    everyDay: "los {day}",
+    everyWeekday: "Cada {day}",
+    dateAtTime: "{date}, {time}",
   },
 
   opportunityDetails: {
@@ -132,7 +132,6 @@ export const esGroups = {
     backToOpportunities: "Volver a las oportunidades",
     noOpportunitySpecified: "No se especificó ninguna oportunidad.",
     ongoing: "Continua",
-    everyDay: "los {day}",
     volunteersNeeded: "Voluntarios necesarios",
     mapTitle: "Mapa de la ubicación de la oportunidad",
     respondTitle: "Responder",
@@ -151,6 +150,7 @@ export const esGroups = {
     responseFailed: "No se pudo guardar su respuesta.",
     responseReceived: "¡Gracias! Hemos recibido su respuesta.",
     responseReceivedNamed: "¡Gracias, {name}! Hemos recibido su respuesta.",
+    everyWeekday: "Cada {day}",
   },
 
   planYourVisit: {
@@ -194,5 +194,9 @@ export const esGroups = {
     selectOption: "-- Seleccione --",
     fileUploadUnsupported:
       "En esta versión no se envían los archivos adjuntos.",
+    completeAs: "¿Para quién es este formulario?",
+    someoneElse: "Otra persona (formulario en blanco)",
+    myInfo: "Yo",
+    submittedFor: "Enviado para {name}.",
   },
 } satisfies Partial<Messages>;

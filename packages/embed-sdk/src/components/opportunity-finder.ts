@@ -1,5 +1,6 @@
 import { MPNextWidget } from "../shared/base-widget";
 import { parseWallClock } from "../i18n";
+import { cardLink, bindCardSelect, CARD_LINK_STYLES } from "../shared/card-link";
 
 interface OpportunitySearchResult {
   id: number;
@@ -9,9 +10,13 @@ interface OpportunitySearchResult {
   location: string | null;
   meetingDay: string | null;
   meetingTime: string | null;
-  featured: boolean;
+  /** MP-authored commitment text ("1 hour"); rendered as written. */
+  ribbonText: string | null;
   attributes: string[];
 }
+
+/** `DATENAME(dw, …)` output on an English-language MP SQL server; index 0 = Sunday. */
+const ENGLISH_WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
 interface FilterOption {
   id: number;
@@ -80,24 +85,28 @@ export class OpportunityFinderWidget extends MPNextWidget {
     ];
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    if (this.opportunities.length || !this.loading) {
-      this.seedFromAttributes();
-      this.search();
-    }
-  }
-
   connectedCallback() {
-    this.injectStyles(this.getStyles());
+    this.injectStyles(this.getStyles() + CARD_LINK_STYLES);
     this.seedFromAttributes();
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish; the fetch hides inside the loading state
     // this widget already paints while it queries the API.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  /**
+   * C39: an attribute change after first paint re-seeds the filters and
+   * searches again (base `attributeChangedCallback` → `reconfigure()`). The
+   * old guard (`opportunities.length || !loading`) dropped a change made while
+   * the first search was in flight.
+   */
+  protected override reload(): void {
+    this.seedFromAttributes();
+    void this.search();
   }
 
   /** Public hook so demo pages can force a reload. */
@@ -240,13 +249,9 @@ export class OpportunityFinderWidget extends MPNextWidget {
       retry.addEventListener("click", () => this.retryLoad());
     }
 
-    this.root.querySelectorAll<HTMLElement>("[data-opportunity-id]").forEach((el) => {
-      el.addEventListener("click", () => {
-        const id = Number(el.getAttribute("data-opportunity-id"));
-        this.emit("opportunitySelected", { opportunityId: id });
-        const url = this.buildDetailUrl(id);
-        if (url) window.location.href = url;
-      });
+    // Emit only; the card's own anchor navigates (C22).
+    bindCardSelect(this.root, ".nw-of-card", (card) => {
+      this.emit("opportunitySelected", { opportunityId: Number(card.dataset.opportunityId) });
     });
   }
 
@@ -387,12 +392,15 @@ export class OpportunityFinderWidget extends MPNextWidget {
   }
 
   private renderCard(o: OpportunitySearchResult): string {
-    const hasLink = !!this.getAttribute("target-url");
+    const href = this.buildDetailUrl(o.id);
     const img = o.imageUrl
       ? `<img class="nw-of-card-img" src="${this.escapeAttr(o.imageUrl)}" alt="" loading="lazy">`
       : `<div class="nw-of-card-img nw-of-card-img--placeholder">${this.handsSvg()}</div>`;
-    const badge = o.featured
-      ? `<span class="nw-of-badge">${this.escapeHtml(this.t("opportunityFinder.featured"))}</span>`
+    // C25: the old "Featured" badge read a column the proc never returns, so it
+    // was unreachable. The slot now shows the proc's `RibbonText` ("1 hour"),
+    // the commitment size a volunteer wants before clicking. MP-authored copy.
+    const badge = o.ribbonText
+      ? `<span class="nw-of-badge">${this.escapeHtml(o.ribbonText)}</span>`
       : "";
 
     const subtitle = this.buildSubtitle(o);
@@ -409,50 +417,64 @@ export class OpportunityFinderWidget extends MPNextWidget {
       ? `<div class="nw-of-card-desc">${this.escapeHtml(this.truncate(o.description, 160))}</div>`
       : "";
 
-    return `
-      <div class="nw-of-card" data-opportunity-id="${o.id}" role="${hasLink ? "link" : "article"}" ${hasLink ? 'tabindex="0"' : ""}>
+    // C22: a real `<a href>` when `target-url` is set (Enter, middle-click,
+    // copy-link and the accessible name all come from the browser), else a
+    // plain `role="article"`. Never `role="link"` + `tabindex` on a div again.
+    const body = `
         <div class="nw-of-card-imgwrap">${img}${badge}</div>
         <div class="nw-of-card-body">
           <h3 class="nw-of-card-title">${this.escapeHtml(o.title)}</h3>
           ${subtitleHtml}
           ${pills}
           ${description}
-          ${hasLink ? `<span class="nw-of-card-cta">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
-        </div>
-      </div>`;
+          ${href ? `<span class="nw-of-card-cta">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
+        </div>`;
+    return cardLink({
+      href,
+      className: "nw-of-card",
+      body,
+      attrs: { "data-opportunity-id": o.id },
+    });
   }
 
-  /** Compose "Location · Mondays · 9:00 AM" style subtitle. */
+  /** Compose "Location · Fri, Dec 31, 2027" / "Location · Ongoing" subtitle. */
   private buildSubtitle(o: OpportunitySearchResult): string {
-    const day = this.formatMeetingDay(o.meetingDay);
-    const time = this.formatMeetingTime(o);
-    return [o.location, day, time].filter((p) => p && p.length).join(" · ");
+    return [o.location, this.formatWhen(o)].filter((p) => p && p.length).join(" · ");
   }
 
   /**
-   * MP stores `meetingDay` as its own text — either the sentinel "Ongoing" or a
-   * day name. The sentinel becomes translated copy; a day name keeps MP's own
-   * wording and only the recurrence wrapper around it is translated, since
-   * "Mondays" pluralises in a way no other language copies.
+   * When the opportunity happens, decided from the **data**, not the day string
+   * (C25). The proc's `MeetingDay` is `DATENAME(dw, Opportunity_Date)`: for a
+   * dated one-time opportunity it is that date's weekday, *not* a recurrence,
+   * and pluralising it ("Fridays") told volunteers a single Friday two years
+   * out was a weekly slot.
+   *
+   * - "Ongoing" → translated "Ongoing".
+   * - A real date → that date, with its weekday and year (`weekdayMedium`),
+   *   plus the time only when it is not midnight (a date-only opportunity
+   *   stores midnight; legacy printed a meaningless "12:00 AM").
+   * - A weekday with no date (not produced by the stock proc, kept for
+   *   customised ones) → "Every Friday", the weekday localised by `Intl`.
    */
-  private formatMeetingDay(meetingDay: string | null): string {
-    if (!meetingDay) return "";
-    const lower = meetingDay.toLowerCase();
-    if (lower === "ongoing") return this.t("opportunityFinder.ongoing");
-    return this.t("opportunityFinder.everyDay", { day: meetingDay });
+  private formatWhen(o: OpportunitySearchResult): string {
+    const day = (o.meetingDay ?? "").trim();
+    if (day.toLowerCase() === "ongoing") return this.t("opportunityFinder.ongoing");
+    // `parseWallClock`: calendar-parts parse into a local Date, so MP's wall
+    // clock survives and `fmt` formats it with no time zone.
+    const d = o.meetingTime ? parseWallClock(o.meetingTime) : null;
+    if (d) {
+      const date = this.fmt.date(d, "weekdayMedium");
+      if (d.getHours() === 0 && d.getMinutes() === 0) return date;
+      return this.t("opportunityFinder.dateAtTime", { date, time: this.fmt.time(d) });
+    }
+    if (!day) return "";
+    return this.t("opportunityFinder.everyWeekday", { day: this.localWeekday(day) });
   }
 
-  private formatMeetingTime(o: OpportunitySearchResult): string {
-    if (!o.meetingTime) return "";
-    if ((o.meetingDay ?? "").toLowerCase() === "ongoing") return "";
-    // `parseWallClock` replaces the local `parseMpDate`: same calendar-parts
-    // parse into a local Date, so MP's wall clock survives and `fmt.time`
-    // formats it with no time zone.
-    const d = parseWallClock(o.meetingTime);
-    if (!d) return "";
-    // Skip midnight (no real time component on the opportunity).
-    if (d.getHours() === 0 && d.getMinutes() === 0) return "";
-    return this.fmt.time(d);
+  /** MP's English weekday name in the widget's locale; MP's text if unknown. */
+  private localWeekday(englishDay: string): string {
+    const index = ENGLISH_WEEKDAYS.indexOf(englishDay.toLowerCase());
+    return index < 0 ? englishDay : this.fmt.weekdayNames("long")[index];
   }
 
   // ── Date / text helpers ──
@@ -506,9 +528,8 @@ export class OpportunityFinderWidget extends MPNextWidget {
 
       .nw-of-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
       .nw-of-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: border-color 0.15s, box-shadow 0.15s; }
-      .nw-of-card[role="link"] { cursor: pointer; }
-      .nw-of-card[role="link"]:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
-      .nw-of-card[role="link"]:focus-visible { outline: 2px solid #004C97; outline-offset: 2px; }
+      a.nw-of-card { cursor: pointer; }
+      a.nw-of-card:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
       .nw-of-card-imgwrap { position: relative; }
       .nw-of-card-img { width: 100%; height: 160px; object-fit: cover; display: block; }
       .nw-of-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #9ca3af; height: 160px; }

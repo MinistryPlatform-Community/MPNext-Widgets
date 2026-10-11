@@ -76,3 +76,38 @@ drops two other proc columns the same way — `Featured` is never returned by th
 (it returns `RibbonText`), so the "Featured" badge in `renderCard` is unreachable
 dead code; legacy does not render a ribbon either, so that half is parity, but the
 dead branch is worth removing while in here.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W4, branch `ws/w4-serving-forms`).
+
+- **The card says *when* from the data, not from the day string.** `formatWhen()`
+  (`opportunity-finder.ts`) replaces `formatMeetingDay` / `formatMeetingTime`:
+  - `"Ongoing"` renders the translated "Ongoing".
+  - A real `meetingTime` (which the service fills from `StartDate`) renders
+    `this.fmt.date(d, "weekdayMedium")`, for example *Fri, Dec 31, 2027*.
+  - The time is appended (`opportunityFinder.dateAtTime`) only when it is not midnight.
+    A date-only opportunity stores midnight, and legacy's "12:00 AM" was meaningless.
+    This is the "restore the time" half: a real time now shows next to its date, where
+    before it was dropped along with the date.
+  - Only a weekday with **no** date renders a recurrence. The stock proc never produces
+    one (`MeetingDay` is `DATENAME(dw, Opportunity_Date)`), but a customised proc might.
+- **Pluraliser key replaced in all three locales.** `everyDay: "{day}s"` (and es
+  `"los {day}"`, which produced "los Friday") is gone from both `opportunityFinder` and
+  `opportunityDetails`. The new `everyWeekday` key takes a weekday **localised by `Intl`**
+  (`fmt.weekdayNames`), mapped from MP's English `DATENAME`: "Every Friday", "Cada
+  viernes", "Toda semana, sexta-feira". `opportunity-details`' dateless fallback uses it
+  too.
+- **Dead "Featured" badge removed and the slot wired.** The proc never returns `Featured`
+  (it returns `RibbonText`). `OpportunitySearchResult.featured` became `ribbonText`
+  (types, service, widget), and the badge now shows MP's own commitment text ("1 hour"),
+  untranslated because it is MP-authored. That follows the plan's "do better than parity"
+  note; legacy rendered no ribbon. The `opportunityFinder.featured` key was removed in all
+  three locales.
+- `pnpm i18n:sync` was re-run.
+- Tests: `opportunity-finder.test.ts` ("when (C25)") covers:
+  - a one-time opportunity renders "Main Congregation · Fri, Dec 31, 2027" and never
+    "Fridays";
+  - a real time is kept;
+  - Spanish dates and a dateless weekday are localised;
+  - `RibbonText` renders in the badge.

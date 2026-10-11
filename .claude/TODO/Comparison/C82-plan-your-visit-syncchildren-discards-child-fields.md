@@ -66,3 +66,28 @@ The underlying shape is the real lesson: re-rendering from an in-memory array th
 partially mirrors the DOM will keep producing this bug as fields are added to the form. If
 the form grows again, read the row back by iterating the rendered inputs rather than by
 naming each field to preserve.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W4, branch `ws/w4-serving-forms`). This fixes the class of bug, not only this instance.
+
+- **Add and remove no longer re-render.** `addChild()` appends the new row with
+  `insertAdjacentHTML("beforeend", …)` and focuses its first name. `deleteChild()` removes
+  that one `<fieldset>` and returns focus to "Add child". Existing rows are never rebuilt,
+  so nothing typed into them can be lost.
+- **Congregation change** used to rebuild every row as well. It now rebuilds only each
+  child's age/grade `<select>` options in place, and keeps the selection when the group is
+  still offered.
+- **Row state mirrors the whole row.** `ChildState` is `{ key, values }`, and
+  `syncChildren()` iterates the row's rendered `child-<key>-*` controls instead of naming
+  fields, so a field added later is preserved with no change here. `render()` calls it
+  before any full repaint, as a backstop.
+- Listeners for remove and DOB-change are delegated once on `#pyv-children`, so appended
+  rows need no binding and none is bound twice.
+- The child controls moved onto W0 `field()` in the same edit (C28) because the row was
+  rewritten anyway.
+- Tests (`plan-your-visit.test.ts`, "child rows (C82)"):
+  - all five fields of children 1 and 2 survive adding a third;
+  - removing the middle child keeps the first and third;
+  - a congregation change keeps the values and the group selection;
+  - the register payload carries every child's fields.

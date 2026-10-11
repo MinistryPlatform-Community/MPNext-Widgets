@@ -10,8 +10,13 @@ import {
   validateForm,
   bindLiveValidation,
   requiredStar,
+  field,
   FORM_VALIDATION_STYLES,
+  type FieldOptions,
 } from "../shared/form-validation";
+
+/** `DATENAME(dw, …)` output on an English-language MP SQL server; index 0 = Sunday. */
+const ENGLISH_WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
 interface OpportunityContact {
   displayName: string | null;
@@ -95,14 +100,16 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       "id-parameter-name",
       "return-url",
       "response-email-template",
+      "show-full-address",
     ];
   }
 
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    if (name === "opportunity-id" && this.opportunity) {
-      this.init();
-    }
+  /**
+   * C65: legacy `showfulladdress`. Off by default, so the street address is
+   * withheld **by the server** and only "City, State" is ever fetched.
+   */
+  private get showFullAddress(): boolean {
+    return this.getAttribute("show-full-address") === "true";
   }
 
   connectedCallback() {
@@ -112,8 +119,27 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     // this widget already paints while it queries the API.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  /**
+   * C39: any observed attribute change after first paint reloads, through the
+   * base `attributeChangedCallback` → `reconfigure()`. The old guard
+   * (`opportunity-id && this.opportunity`) ignored every attribute but one,
+   * and that one only once an opportunity had loaded, so a widget whose
+   * first load failed (no id yet) could never be pointed at one.
+   */
+  protected override reload(): void {
+    this.error = null;
+    this.init();
+  }
+
+  /** `response-email-template` is read at submit time, so it needs no reload. */
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
+    if (oldValue === newValue || name === "response-email-template") return;
+    this.reconfigure();
   }
 
   /** Public hook so demo pages can force a reload (e.g. after sign-in). */
@@ -167,7 +193,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
     try {
       const res = await this.fetch(
-        `/api/embed/opportunity-details/${encodeURIComponent(opportunityId)}`
+        `/api/embed/opportunity-details/${encodeURIComponent(opportunityId)}${this.showFullAddress ? "?showFullAddress=true" : ""}`
       );
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -291,12 +317,16 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     const form = this.root.querySelector<HTMLFormElement>("#od-form");
     if (!form) return;
 
-    if (!validateForm(form).valid) {
+    if (!validateForm(form, { t: this.t }).valid) {
       this.setMessage("warning", this.t("opportunityDetails.verifyDetails"));
       return;
     }
 
     const payload = this.gatherFormData(form);
+    // Read at submit time, not baked into a hidden input at render (C39). The
+    // respond route now sends this dp_Communications template to the
+    // responder (W4 bonus; it used to be posted and ignored).
+    payload.UseEmailTemplate = (this.getAttribute("response-email-template") || "").trim();
 
     this.setSubmitDisabled(true);
     try {
@@ -429,7 +459,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     const form = this.root.querySelector<HTMLFormElement>("#od-form");
     if (form) {
       bindCustomFormDependsOn(form, this.customFields);
-      bindLiveValidation(form);
+      bindLiveValidation(form, { t: this.t });
     }
   }
 
@@ -595,10 +625,8 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
   private renderHiddenInputs(): string {
     const op = this.opportunity!;
-    const template = this.getAttribute("response-email-template") || "";
     return `
       <input type="hidden" name="OpportunityId" value="${op.id}">
-      <input type="hidden" name="UseEmailTemplate" value="${this.escapeAttr(template)}">
       <input type="hidden" id="od-contact-id" name="ContactId" value="${this.escapeAttr(this.blankForm ? "" : this.respondAs)}">`;
   }
 
@@ -648,14 +676,19 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       <fieldset class="od-fieldset">
         <legend>${this.escapeHtml(this.t("opportunityDetails.yourInformation"))}</legend>
         <div class="od-grid2">
-          <div class="od-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="od-input" name="FirstName" required></div>
-          <div class="od-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="od-input" name="LastName" required></div>
+          ${this.odField({ name: "FirstName", label: this.t("fields.firstName"), required: true, autocomplete: "given-name" })}
+          ${this.odField({ name: "LastName", label: this.t("fields.lastName"), required: true, autocomplete: "family-name" })}
         </div>
         <div class="od-grid2">
-          <div class="od-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="od-input" type="email" name="EmailAddress" required></div>
-          <div class="od-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}${requiredStar()}</label><input class="od-input" name="MobilePhoneNumber" required></div>
+          ${this.odField({ name: "EmailAddress", label: this.t("fields.email"), type: "email", required: true, autocomplete: "email" })}
+          ${this.odField({ name: "MobilePhoneNumber", label: this.t("fields.mobilePhone"), type: "tel", required: true })}
         </div>
       </fieldset>`;
+  }
+
+  /** `field()` with this widget's id prefix and classes (C28, C29). */
+  private odField(opts: FieldOptions): string {
+    return field({ idPrefix: this.instanceId, wrapperClass: "od-field", inputClass: "od-input", ...opts });
   }
 
   private renderMessageField(): string {
@@ -672,7 +705,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     return `
       <div class="od-customform">
         <h3 class="od-reg-subtitle">${this.escapeHtml(this.t("opportunityDetails.additionalInformation"))}</h3>
-        ${renderCustomFormFields(this.customFields, { formId: op.customFormId, t: this.t })}
+        ${renderCustomFormFields(this.customFields, { formId: op.customFormId, t: this.t, idPrefix: this.instanceId })}
       </div>`;
   }
 
@@ -685,8 +718,9 @@ export class OpportunityDetailsWidget extends MPNextWidget {
   /**
    * MP stores `meetingDay` as its own text — the sentinel "Ongoing", or a day
    * name used when the opportunity carries no concrete start. The sentinel and
-   * the recurrence wrapper are translated; the day name itself stays as MP
-   * supplies it, since "Mondays" pluralises in a way no other language copies.
+   * the recurrence wrapper are translated, and the English day name MP returns
+   * is localised through `Intl` ("Every Friday" / "Cada viernes"), never
+   * pluralised by appending "s" (C25).
    *
    * `parseWallClock` replaces the local `parseMpDate`: same calendar-parts
    * parse into a local Date, so MP's wall clock survives and `fmt` formats it
@@ -697,9 +731,11 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     if (day === "ongoing") return this.t("opportunityDetails.ongoing");
     const d = parseWallClock(op.startDate);
     if (!d) {
-      return op.meetingDay
-        ? this.t("opportunityDetails.everyDay", { day: op.meetingDay })
-        : "";
+      // C25: localise the weekday with `Intl` rather than appending an "s".
+      if (!op.meetingDay) return "";
+      const index = ENGLISH_WEEKDAYS.indexOf(op.meetingDay.trim().toLowerCase());
+      const dayName = index < 0 ? op.meetingDay : this.fmt.weekdayNames("long")[index];
+      return this.t("opportunityDetails.everyWeekday", { day: dayName });
     }
     const dateStr = this.fmt.date(d, "full");
     // Midnight means the record has a date but no real time component.

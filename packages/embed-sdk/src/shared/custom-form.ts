@@ -17,7 +17,7 @@
  */
 
 import { getLocaleSession, type Translator } from "../i18n";
-import { requiredStar } from "./form-validation";
+import { fieldId, requiredStar } from "./form-validation";
 
 export interface CustomFormField {
   formFieldId: number;
@@ -62,12 +62,14 @@ function escapeAttr(text: string): string {
  */
 export function renderCustomFormFields(
   fields: CustomFormField[],
-  opts: { formId?: number | null; t?: Translator } = {},
+  opts: { formId?: number | null; t?: Translator; idPrefix?: string } = {},
 ): string {
   // A widget passes its own `this.t`, so a form inside a `<div lang="es">`
   // renders in Spanish on an otherwise English page; omitted, it falls back to
   // the page-wide locale. Same contract as `form-validation.ts`.
   const t = opts.t ?? getLocaleSession().translator();
+  // Pass `this.instanceId` so two forms on one page cannot mint the same id.
+  const idPrefix = opts.idPrefix || "cf";
   const sorted = [...fields].sort((a, b) => a.fieldOrder - b.fieldOrder);
   const formIdInput =
     opts.formId != null
@@ -75,15 +77,41 @@ export function renderCustomFormFields(
       : "";
   const body = sorted
     .filter((f) => !f.isHidden)
-    .map((f) => renderField(f, t))
+    .map((f) => renderField(f, t, idPrefix))
     .join("");
   return `${formIdInput}${body}`;
 }
 
-function renderField(f: CustomFormField, t: Translator): string {
+/**
+ * One MP form field.
+ *
+ * ## Accessible names (C28)
+ *
+ * Every control has one, using the same id scheme as `field()` (`fieldId`):
+ * - single controls (text, textarea, date, dropdown, file) get
+ *   `<label for=id>`;
+ * - a checkbox stays wrapped in its `<label>`;
+ * - a radio group becomes `role="radiogroup"`, named by its label text
+ *   (`aria-labelledby`), and each radio stays wrapped in its option's label.
+ *
+ * Each control also carries `data-mpx-label`, so "required" names the field.
+ *
+ * The wrapper, names, types, `maxlength` and depends-on attributes are
+ * **unchanged**, because these nine field types are at exact parity with
+ * legacy, storage included. That is why this is not a straight `field()` call:
+ * `field()` owns its wrapper, and the depends-on wiring needs `data-field-id` on
+ * this one.
+ *
+ * Phone-ness is never guessed from an MP label (C29). `Form_Field_Types` has no
+ * phone type, and legacy renders "Reference 1: Phone Number" as text too.
+ */
+function renderField(f: CustomFormField, t: Translator, idPrefix: string): string {
   const name = `mp_customform_${f.formFieldId}`;
+  const id = fieldId(name, idPrefix);
   const req = f.required ? "required" : "";
   const label = `${escapeHtml(f.fieldLabel)}${f.required ? requiredStar() : ""}`;
+  const named = `id="${escapeAttr(id)}" data-mpx-label="${escapeAttr(f.fieldLabel)}"`;
+  const labelFor = `<label for="${escapeAttr(id)}">${label}</label>`;
   const isDependent = f.dependsOn != null && f.dependsOnValue != null;
   const isParent = f.fieldType === FT.VerticalRadio || f.fieldType === FT.HorizontalRadio;
   const parentAttr = isParent ? `data-customform-parent="true"` : "";
@@ -99,13 +127,13 @@ function renderField(f: CustomFormField, t: Translator): string {
       return `${wrapOpen}<p class="cf-instructions">${escapeHtml(f.fieldLabel)}</p></div>`;
 
     case FT.Checkbox:
-      return `${wrapOpen}<label class="cf-checkbox"><input type="checkbox" name="${name}" value="true" ${req} ${dep}> ${label}</label></div>`;
+      return `${wrapOpen}<label class="cf-checkbox"><input type="checkbox" ${named} name="${name}" value="true" ${req} ${dep}> ${label}</label></div>`;
 
     case FT.Textarea:
-      return `${wrapOpen}<label>${label}</label><textarea class="cf-input" name="${name}" maxlength="30000" ${req} ${dep}></textarea></div>`;
+      return `${wrapOpen}${labelFor}<textarea class="cf-input" ${named} name="${name}" maxlength="30000" ${req} ${dep}></textarea></div>`;
 
     case FT.Date:
-      return `${wrapOpen}<label>${label}</label><input class="cf-input" type="date" name="${name}" ${req} ${dep}></div>`;
+      return `${wrapOpen}${labelFor}<input class="cf-input" type="date" ${named} name="${name}" ${req} ${dep}></div>`;
 
     case FT.Dropdown: {
       const opts = [
@@ -117,28 +145,32 @@ function renderField(f: CustomFormField, t: Translator): string {
           ),
         )
         .join("");
-      return `${wrapOpen}<label>${label}</label><select class="cf-input" name="${name}" ${req} ${dep}>${opts}</select></div>`;
+      return `${wrapOpen}${labelFor}<select class="cf-input" ${named} name="${name}" ${req} ${dep}>${opts}</select></div>`;
     }
 
     case FT.VerticalRadio:
     case FT.HorizontalRadio: {
       const dir = f.fieldType === FT.HorizontalRadio ? "cf-radio-h" : "cf-radio-v";
+      const groupLabelId = `${id}-label`;
+      const mpxLabel = `data-mpx-label="${escapeAttr(f.fieldLabel)}"`;
       const opts = (f.fieldValues || [])
         .map(
           (v) =>
-            `<label class="cf-radio"><input type="radio" name="${name}" value="${escapeAttr(v)}" ${parentAttr} ${req} ${dep}> ${escapeHtml(v)}</label>`,
+            `<label class="cf-radio"><input type="radio" name="${name}" value="${escapeAttr(v)}" ${mpxLabel} ${parentAttr} ${req} ${dep}> ${escapeHtml(v)}</label>`,
         )
         .join("");
-      return `${wrapOpen}<label>${label}</label><div class="${dir}">${opts}</div></div>`;
+      return `${wrapOpen}<span class="cf-group-label" id="${escapeAttr(groupLabelId)}">${label}</span><div class="${dir}" role="radiogroup" aria-labelledby="${escapeAttr(groupLabelId)}"${f.required ? ` aria-required="true"` : ""}>${opts}</div></div>`;
     }
 
-    case FT.FileUpload:
+    case FT.FileUpload: {
       // Rendered for parity; file bytes are not submitted in this version.
-      return `${wrapOpen}<label>${label}</label><input class="cf-input" type="file" name="${name}_file" ${dep}><small class="cf-note">${escapeHtml(t("customForm.fileUploadUnsupported"))}</small></div>`;
+      const fileId = fieldId(`${name}_file`, idPrefix);
+      return `${wrapOpen}<label for="${escapeAttr(fileId)}">${label}</label><input class="cf-input" type="file" id="${escapeAttr(fileId)}" data-mpx-label="${escapeAttr(f.fieldLabel)}" name="${name}_file" ${dep}><small class="cf-note">${escapeHtml(t("customForm.fileUploadUnsupported"))}</small></div>`;
+    }
 
     case FT.TextBox:
     default:
-      return `${wrapOpen}<label>${label}</label><input class="cf-input" type="text" name="${name}" maxlength="250" ${req} ${dep}></div>`;
+      return `${wrapOpen}${labelFor}<input class="cf-input" type="text" ${named} name="${name}" maxlength="250" ${req} ${dep}></div>`;
   }
 }
 
@@ -178,7 +210,7 @@ export function applyDependsOn(root: ParentNode, fields: CustomFormField[]): voi
 
 export const CUSTOM_FORM_STYLES = `
   .cf-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-  .cf-field > label { font-size: 13px; font-weight: 600; color: #6b7280; }
+  .cf-field > label, .cf-field > .cf-group-label { font-size: 13px; font-weight: 600; color: #6b7280; }
   .cf-input { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; background: white; outline: none; }
   .cf-input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
   textarea.cf-input { min-height: 80px; resize: vertical; }
