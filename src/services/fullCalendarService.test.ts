@@ -344,6 +344,58 @@ describe('FullCalendarService', () => {
       const inWindow = await admits(novStart, novEnd);
       expect(inWindow('2026-11-01 00:00:00', '2026-11-01 00:00:00')).toBe(true);
     });
+
+    // W8 additions. The cases above prove the predicate against UTC bounds;
+    // these two cover what they do not: the offset-tagged range FullCalendar
+    // actually sends (across the US DST change on 2026-11-01), and the
+    // straddling row surviving getEvents' own post-processing intact.
+
+    it('admits the retreat for the offset-tagged November range FullCalendar sends, across DST', async () => {
+      mockGetDomainInfo.mockResolvedValue({ TimeZoneName: 'America/New_York' });
+      mockGetTableRecords.mockResolvedValueOnce([]);
+      const service = await FullCalendarService.getInstance();
+      // Verbatim from C03's network capture: EDT start, EST end.
+      await service.getEvents('2026-11-01T00:00:00-04:00', '2026-12-13T00:00:00-05:00');
+      const filter = mockGetTableRecords.mock.calls[0][0].filter as string;
+      expect(filter).toContain(`Event_Start_Date < '2026-12-13 00:00:00'`);
+      expect(filter).toContain(`Event_End_Date >= '2026-11-01 00:00:00'`);
+      const lt = /Event_Start_Date < '([^']+)'/.exec(filter)![1];
+      const ge = /Event_End_Date >= '([^']+)'/.exec(filter)![1];
+      const inWindow = (s: string, e: string) => s < lt && e >= ge;
+      expect(inWindow('2026-10-30 09:00:00', '2026-11-02 17:00:00')).toBe(true);
+      // The month before: a retreat that ended at 23:59 on Oct 31 stays out.
+      expect(inWindow('2026-10-30 09:00:00', '2026-10-31 23:59:00')).toBe(false);
+    });
+
+    it('returns a straddling event MP sends back, with its wall-clock dates untouched', async () => {
+      const retreat = {
+        Event_ID: 9001,
+        Event_Title: 'ZZTEST-Multi-Day Retreat',
+        Event_Start_Date: '2026-10-30T09:00:00',
+        Event_End_Date: '2026-11-02T17:00:00',
+        Event_Type_ID: null,
+        Congregation_ID: null,
+        Location_ID: null,
+        Description: null,
+        Featured_On_Calendar: false,
+        Registration_Active: false,
+        External_Registration_URL: null,
+        Online_Registration_Product: null,
+        Program_ID: null,
+        Primary_Contact: null,
+        Participants_Expected: null,
+      };
+      mockGetTableRecords.mockImplementation(async ({ table }: { table: string }) =>
+        table === 'Events' ? [retreat] : [],
+      );
+      const service = await FullCalendarService.getInstance();
+      const { events } = await service.getEvents(novStart, novEnd);
+      expect(events.map((e) => e.Event_ID)).toEqual([9001]);
+      // No client-side re-filter by start date, and no UTC round-trip of the
+      // wall-clock strings (the day would shift for any non-UTC domain).
+      expect(events[0].Event_Start_Date).toBe('2026-10-30T09:00:00');
+      expect(events[0].Event_End_Date).toBe('2026-11-02T17:00:00');
+    });
   });
 
   describe('getEventDetail', () => {
