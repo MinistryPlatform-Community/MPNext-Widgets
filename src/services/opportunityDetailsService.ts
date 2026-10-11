@@ -2,6 +2,8 @@ import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv, getEnvOptional } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { CustomFormService } from "@/services/customFormService";
+import { getContactBasics } from "@/services/_shared/household-contact";
+import { sqlLiteral } from "@/services/_shared/mp-lookup";
 import type { OpportunityDetail, OpportunityContact } from "@mpnext/types";
 
 /**
@@ -272,15 +274,26 @@ export class OpportunityDetailsService {
     const contactId = await this.resolveContactId(args);
     const participantId = await this.resolveParticipantId(contactId, args.userId);
 
+    // C21: `Responses.First_Name/Last_Name/Email/Phone` are what MP's response
+    // views, the notification template and church reports merge from. When the
+    // caller responded *as* a household member (`args.contactId`, verified by
+    // the route), the widget hides the typed fields, so back-fill them from the
+    // contact's own record. The record wins over anything typed: the client
+    // only knows the member's display name, and accepting its email for a
+    // contact picked from a list would let a caller write any address they like.
+    const basics = args.contactId ? await getContactBasics(contactId, this.mp!) : null;
+    const pick = (fromRecord: string | null | undefined, typed: string) =>
+      fromRecord || typed || null;
+
     const tz = DomainTimezoneService.getInstance();
     const now = await tz.toMpSqlDatetime(new Date().toISOString());
 
     const record: Record<string, unknown> = {
       Response_Date: now,
-      First_Name: args.firstName || null,
-      Last_Name: args.lastName || null,
-      Phone: args.phone || null,
-      Email: args.email || null,
+      First_Name: pick(basics?.firstName, args.firstName),
+      Last_Name: pick(basics?.lastName, args.lastName),
+      Phone: pick(basics?.phone, args.phone),
+      Email: pick(basics?.email, args.email),
       Comments: args.message || null,
       Opportunity_ID: args.opportunityId,
       Participant_ID: participantId,
@@ -411,6 +424,6 @@ export class OpportunityDetailsService {
   }
 
   private sqlEscape(value: string): string {
-    return (value ?? "").replace(/'/g, "''").trim();
+    return sqlLiteral((value ?? "").trim());
   }
 }
