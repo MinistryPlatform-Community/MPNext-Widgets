@@ -113,9 +113,27 @@ export class GroupDetailsWidget extends MPNextWidget {
     ];
   }
 
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
+  /** Read at submit time, so a change needs no reload. */
+  private static readonly SUBMIT_TIME_ATTRIBUTES = new Set([
+    "inquiry-email-template",
+    "signup-email-template",
+    "leader-signup-email-template",
+  ]);
+
+  /**
+   * C39: every other observed attribute reconfigures through the base class.
+   * The old guard (`name === "group-id" && this.group`) ignored a `group-id`
+   * set after a failed first load — exactly when a host most needs it — and
+   * ignored every other attribute entirely.
+   */
+  override attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
     if (oldValue === newValue) return;
-    if (name === "group-id" && this.group) this.init();
+    if (GroupDetailsWidget.SUBMIT_TIME_ATTRIBUTES.has(name)) return;
+    this.reconfigure();
+  }
+
+  protected override reload(): void {
+    void this.init();
   }
 
   connectedCallback() {
@@ -125,7 +143,8 @@ export class GroupDetailsWidget extends MPNextWidget {
     // this widget already paints while it queries the API.
     void this.initLocale().then(() => {
       this.render();
-      this.init();
+      this.painted = true;
+      void this.init();
     });
   }
 

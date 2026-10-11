@@ -376,4 +376,33 @@ describe("<next-group-details>", () => {
       expect(seen).toEqual([{ wid: "group-details" }]);
     });
   });
+
+  describe("reconfigure (C39)", () => {
+    function detailCalls(fn: ReturnType<typeof mockFetch>, id: string) {
+      return fn.mock.calls.filter(([u]) => String(u).includes(`/group-details/${id}`)).length;
+    }
+
+    it("loads a group-id set after a failed first load", async () => {
+      const fetchFn = mockFetch();
+      const el = await mountSettled(""); // no group id: "No group specified."
+      expect(text(el)).toContain("No group specified.");
+
+      el.setAttribute("group-id", "49");
+      await vi.waitFor(() => expect(text(el)).toContain("Kehayias Home Group"));
+      expect(detailCalls(fetchFn, "49")).toBe(1);
+    });
+
+    it("reloads when show-full-address changes, but not for a template id", async () => {
+      const fetchFn = mockFetch();
+      const el = await mountSettled();
+      expect(detailCalls(fetchFn, "49")).toBe(1);
+
+      el.setAttribute("inquiry-email-template", "665");
+      await Promise.resolve();
+      expect(detailCalls(fetchFn, "49")).toBe(1);
+
+      el.setAttribute("show-full-address", "true");
+      await vi.waitFor(() => expect(detailCalls(fetchFn, "49")).toBe(2));
+    });
+  });
 });
