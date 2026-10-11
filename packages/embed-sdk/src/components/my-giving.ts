@@ -38,12 +38,15 @@ export class MyGivingWidget extends MPNextWidget {
   /** Signed out is a state, not an error (C30 / CROSS-1). */
   private signedOut = false;
 
+  /** C79: the legacy flat spelling is read (with a one-time warning) for one release. */
+  static readonly attributeAliases = { "hide-soft-credits": "hidesoftcredits" };
+
   static get observedAttributes() {
-    return ["hidesoftcredits"];
+    return ["hide-soft-credits", ...Object.values(this.attributeAliases)];
   }
 
   private get hideSoftCredits(): boolean {
-    return (this.getAttribute("hidesoftcredits") || "").toLowerCase() === "true";
+    return (this.readAttr("hide-soft-credits") || "").toLowerCase() === "true";
   }
 
   connectedCallback() {

@@ -303,7 +303,7 @@ const extras: Record<string, WidgetExtras> = {
   "my-giving": {
     controls: [
       {
-        name: "hideSoftCredits", label: "Soft Credits", type: "select", attribute: "hidesoftcredits",
+        name: "hideSoftCredits", label: "Soft Credits", type: "select", attribute: "hide-soft-credits",
         options: [
           { label: "Show", value: "false" },
           { label: "Hide", value: "true" },
@@ -317,7 +317,7 @@ const extras: Record<string, WidgetExtras> = {
   "my-pledges": {
     controls: [
       {
-        name: "hideCancelButton", label: "Cancel Button", type: "select", attribute: "hidecancelbuttonpledge",
+        name: "hideCancelButton", label: "Cancel Button", type: "select", attribute: "hide-cancel-button-pledge",
         options: [
           { label: "Hidden", value: "true" },
           { label: "Shown", value: "false" },
@@ -325,7 +325,7 @@ const extras: Record<string, WidgetExtras> = {
         defaultValue: "true",
       },
     ],
-    implementationCode: `<next-my-pledges hidecancelbuttonpledge="true"></next-my-pledges>`,
+    implementationCode: `<next-my-pledges hide-cancel-button-pledge="true"></next-my-pledges>`,
   },
 
   "pledge-campaign": {

@@ -249,7 +249,7 @@ describe("giving widgets", () => {
       const el = await settled(mount("next-my-giving"));
       expect($(el, "#giving-soft-toggle")).not.toBeNull();
 
-      el.setAttribute("hidesoftcredits", "true");
+      el.setAttribute("hide-soft-credits", "true");
       expect($(el, "#giving-soft-toggle")).toBeNull();
     });
 
@@ -257,11 +257,51 @@ describe("giving widgets", () => {
       mockFetch((url) =>
         url.includes("/api/embed/my-pledges") ? jsonResponse({ pledges: [pledge()] }) : undefined,
       );
-      const el = await settled(mount("next-my-pledges", 'hidecancelbuttonpledge="true"'));
+      const el = await settled(mount("next-my-pledges", 'hide-cancel-button-pledge="true"'));
       expect($(el, '[data-action="request-cancel"]')).toBeNull();
 
-      el.setAttribute("hidecancelbuttonpledge", "false");
+      el.setAttribute("hide-cancel-button-pledge", "false");
       expect($(el, '[data-action="request-cancel"]')).not.toBeNull();
+    });
+  });
+
+  // ── C79: kebab-case names, legacy spellings for one release ────────────
+
+  describe("attribute names (C79)", () => {
+    it("next-my-giving still honours hidesoftcredits, set late, and warns once", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      mockFetch((url) =>
+        url.includes("/api/embed/my-giving")
+          ? jsonResponse({ donations: [donation(), donation({ isSoftCredit: true })] })
+          : undefined,
+      );
+      const el = await settled(mount("next-my-giving"));
+      el.setAttribute("hidesoftcredits", "true");
+      el.setAttribute("hidesoftcredits", "TRUE");
+
+      expect($(el, "#giving-soft-toggle")).toBeNull();
+      const deprecations = warn.mock.calls.filter(([m]) => String(m).includes('"hidesoftcredits"'));
+      expect(deprecations.length).toBeLessThanOrEqual(1);
+    });
+
+    it("next-my-pledges reads cancel-pledge-email-template, and the legacy spelling", async () => {
+      const bodies: unknown[] = [];
+      mockFetch((url, init) => {
+        if (!url.includes("/api/embed/my-pledges")) return undefined;
+        if (init?.method === "POST") bodies.push(JSON.parse(String(init.body)));
+        return jsonResponse({ pledges: [pledge()] });
+      });
+
+      for (const attr of ["cancel-pledge-email-template", "cancelpledgeemailtemplate"]) {
+        bodies.length = 0;
+        const el = await settled(
+          mount("next-my-pledges", `hide-cancel-button-pledge="false" ${attr}="77"`),
+        );
+        $<HTMLButtonElement>(el, '[data-action="request-cancel"]')!.click();
+        $<HTMLButtonElement>(el, '[data-action="confirm-cancel"]')!.click();
+        await vi.waitFor(() => expect(bodies).toHaveLength(1));
+        expect(bodies[0]).toEqual({ pledgeId: 40, cancelEmailTemplateId: 77 });
+      }
     });
   });
 

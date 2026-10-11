@@ -27,16 +27,26 @@ export class MyPledgesWidget extends MPNextWidget {
   private cancelingId: number | null = null;
   private message: { type: "success" | "error"; text: string } | null = null;
 
+  /** C79: the legacy flat spellings are read (with a one-time warning) for one release. */
+  static readonly attributeAliases = {
+    "hide-cancel-button-pledge": "hidecancelbuttonpledge",
+    "cancel-pledge-email-template": "cancelpledgeemailtemplate",
+  };
+
   static get observedAttributes() {
-    return ["hidecancelbuttonpledge", "cancelpledgeemailtemplate"];
+    return [
+      "hide-cancel-button-pledge",
+      "cancel-pledge-email-template",
+      ...Object.values(this.attributeAliases),
+    ];
   }
 
   private get hideCancelButton(): boolean {
-    return (this.getAttribute("hidecancelbuttonpledge") || "true").toLowerCase() !== "false";
+    return (this.readAttr("hide-cancel-button-pledge") || "true").toLowerCase() !== "false";
   }
 
   private get cancelEmailTemplateId(): number | undefined {
-    const raw = this.getAttribute("cancelpledgeemailtemplate");
+    const raw = this.readAttr("cancel-pledge-email-template");
     if (!raw) return undefined;
     const parsed = parseInt(raw, 10);
     return isNaN(parsed) ? undefined : parsed;
