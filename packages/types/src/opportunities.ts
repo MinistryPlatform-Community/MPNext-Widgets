@@ -16,11 +16,18 @@ export const OpportunitySearchResultSchema = z.object({
   description: z.string().nullable(),
   imageUrl: z.string().nullable(),
   location: z.string().nullable(),
-  /** Recurring meeting day name, or "Ongoing" for opportunities with no date. */
+  /**
+   * "Ongoing" for an opportunity with no date; otherwise the English weekday
+   * of its date (`DATENAME(dw, Opportunity_Date)`). Not a recurrence (C25).
+   */
   meetingDay: z.string().nullable(),
   /** Wall-clock start datetime (MP domain time); empty when ongoing. */
   meetingTime: z.string().nullable(),
-  featured: z.boolean(),
+  /**
+   * The proc's `RibbonText` (e.g. "1 hour"), MP-authored, rendered as written.
+   * Replaced `featured`, which the proc never returns (C25).
+   */
+  ribbonText: z.string().nullable(),
   /** Pill strings (required gender, minimum age) for the card. */
   attributes: z.array(z.string()),
 });

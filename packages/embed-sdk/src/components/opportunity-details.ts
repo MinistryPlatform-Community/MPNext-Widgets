@@ -15,6 +15,9 @@ import {
   type FieldOptions,
 } from "../shared/form-validation";
 
+/** `DATENAME(dw, …)` output on an English-language MP SQL server; index 0 = Sunday. */
+const ENGLISH_WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
 interface OpportunityContact {
   displayName: string | null;
   imageUrl: string | null;
@@ -692,8 +695,9 @@ export class OpportunityDetailsWidget extends MPNextWidget {
   /**
    * MP stores `meetingDay` as its own text — the sentinel "Ongoing", or a day
    * name used when the opportunity carries no concrete start. The sentinel and
-   * the recurrence wrapper are translated; the day name itself stays as MP
-   * supplies it, since "Mondays" pluralises in a way no other language copies.
+   * the recurrence wrapper are translated, and the English day name MP returns
+   * is localised through `Intl` ("Every Friday" / "Cada viernes"), never
+   * pluralised by appending "s" (C25).
    *
    * `parseWallClock` replaces the local `parseMpDate`: same calendar-parts
    * parse into a local Date, so MP's wall clock survives and `fmt` formats it
@@ -704,9 +708,11 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     if (day === "ongoing") return this.t("opportunityDetails.ongoing");
     const d = parseWallClock(op.startDate);
     if (!d) {
-      return op.meetingDay
-        ? this.t("opportunityDetails.everyDay", { day: op.meetingDay })
-        : "";
+      // C25: localise the weekday with `Intl` rather than appending an "s".
+      if (!op.meetingDay) return "";
+      const index = ENGLISH_WEEKDAYS.indexOf(op.meetingDay.trim().toLowerCase());
+      const dayName = index < 0 ? op.meetingDay : this.fmt.weekdayNames("long")[index];
+      return this.t("opportunityDetails.everyWeekday", { day: dayName });
     }
     const dateStr = this.fmt.date(d, "full");
     // Midnight means the record has a date but no real time component.

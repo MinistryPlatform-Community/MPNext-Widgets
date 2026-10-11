@@ -136,9 +136,14 @@ export const groups = {
     attributes: "Attributes",
     loading: "Loading opportunities…",
     empty: "No opportunities found.",
-    featured: "Featured",
-    /** Weekly recurrence around an MP-authored day name ("Mondays"). */
-    everyDay: "{day}s",
+    /**
+     * Weekly recurrence around a weekday the widget localises with `Intl`
+     * ("Every Friday"). Replaces `everyDay: "{day}s"`, a string-append plural
+     * that no other language can copy (C25).
+     */
+    everyWeekday: "Every {day}",
+    /** A dated opportunity with a real start time: "Fri, Dec 31, 2027, 6:00 PM". */
+    dateAtTime: "{date}, {time}",
   },
 
   opportunityDetails: {
@@ -146,8 +151,6 @@ export const groups = {
     backToOpportunities: "Back to opportunities",
     noOpportunitySpecified: "No opportunity specified.",
     ongoing: "Ongoing",
-    /** Weekly recurrence around an MP-authored day name ("Mondays"). */
-    everyDay: "{day}s",
     volunteersNeeded: "Volunteers Needed",
     mapTitle: "Opportunity location map",
     respondTitle: "Respond",
@@ -167,6 +170,8 @@ export const groups = {
     responseFailed: "Unable to save your response.",
     responseReceived: "Thank you! Your response has been received.",
     responseReceivedNamed: "Thank you, {name}! Your response has been received.",
+    /** Weekly recurrence around an `Intl`-localised weekday (C25). */
+    everyWeekday: "Every {day}",
   },
 
   planYourVisit: {

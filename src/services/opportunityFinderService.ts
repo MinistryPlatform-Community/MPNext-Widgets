@@ -42,7 +42,8 @@ interface SearchRow {
   MeetingDay: string | null;
   MeetingTime: string | null;
   StartDate: string | null;
-  Featured: boolean | number | null;
+  /** Commitment-size text ("1 hour"). The proc has no `Featured` column (C25). */
+  RibbonText: string | null;
   RequiredGender: string | null;
   MinimumAge: string | null;
   MaximumNeeded: number | string | null;
@@ -255,7 +256,7 @@ export class OpportunityFinderService {
         meetingDay: row.MeetingDay ?? null,
         // MP returns wall-clock datetimes; pass through verbatim (no Z-shift).
         meetingTime: row.MeetingTime ? String(row.MeetingTime) : row.StartDate ?? null,
-        featured: Boolean(row.Featured),
+        ribbonText: row.RibbonText?.trim() || null,
         attributes,
       });
     }

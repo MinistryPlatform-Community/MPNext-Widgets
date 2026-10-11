@@ -34,6 +34,7 @@ interface Opp {
   location: string | null;
   meetingDay: string | null;
   meetingTime: string | null;
+  ribbonText: string | null;
   attributes: string[];
 }
 
@@ -45,6 +46,7 @@ const opp = (id: number, extra: Partial<Opp> = {}): Opp => ({
   location: "Main Congregation",
   meetingDay: "Ongoing",
   meetingTime: null,
+  ribbonText: null,
   attributes: [],
   ...extra,
 });
@@ -97,6 +99,43 @@ describe("<next-opportunity-finder>", () => {
     document.body.innerHTML = "";
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  describe("when (C25)", () => {
+    const sub = (el: HTMLElement, i: number) =>
+      cards(el)[i].querySelector(".nw-of-card-sub")?.textContent ?? "";
+
+    it("shows a dated one-time opportunity's date, not a pluralised weekday", async () => {
+      results = [opp(5, { meetingDay: "Friday", meetingTime: "2027-12-31T00:00:00" }), opp(6)];
+      const el = await mount();
+      expect(sub(el, 0)).toBe("Main Congregation · Fri, Dec 31, 2027");
+      expect(sub(el, 0)).not.toMatch(/Fridays/);
+      expect(sub(el, 1)).toBe("Main Congregation · Ongoing");
+    });
+
+    it("keeps a real start time", async () => {
+      results = [opp(5, { meetingDay: "Friday", meetingTime: "2027-12-31T18:30:00" })];
+      const el = await mount();
+      expect(sub(el, 0)).toBe("Main Congregation · Fri, Dec 31, 2027, 6:30 PM");
+    });
+
+    it("localises the date and a dateless weekday", async () => {
+      results = [
+        opp(5, { meetingDay: "Friday", meetingTime: "2027-12-31T00:00:00" }),
+        opp(7, { meetingDay: "Friday", meetingTime: null }),
+      ];
+      document.documentElement.setAttribute("lang", "es");
+      const el = await mount();
+      await vi.waitFor(() => expect(sub(el, 1)).toBe("Main Congregation · Cada viernes"));
+      expect(sub(el, 0)).toMatch(/2027/);
+      expect(sub(el, 0)).not.toMatch(/Friday/);
+    });
+
+    it("renders RibbonText in the badge slot", async () => {
+      results = [opp(5, { ribbonText: "1 hour" })];
+      const el = await mount();
+      expect(shadow(el).querySelector(".nw-of-badge")?.textContent).toBe("1 hour");
+    });
   });
 
   describe("cards (C22)", () => {
