@@ -1,6 +1,11 @@
 # Remediation plans — 82 comparison findings, grouped into work
 
 > **2026-10-11: execution now runs through [`EPIC/`](EPIC/README.md)** (branch `epic/comparison-remediation`). Its status is re-verified against the code; where these files disagree, the EPIC files win.
+>
+> **Closed out, 2026-10-11.** Every wave of the epic has merged; see [Outcome](#outcome) at
+> the foot of this file. 74 of the 81 findings are resolved and C68 is partial. Four items
+> are won't-port, won't-do or keep-ours: C71, C77, C27 and C57. Two are deferred: C74 and
+> C75. The per-widget plans below are the design record. They are no longer a to-do list.
 
 Written 2026-09-09 from the 82 `C`-numbered items in
 [`../`](..) (see [`../README.md`](../README.md) for the findings themselves).
@@ -45,7 +50,7 @@ statement widgets exist as a pair precisely because C38 is about the split.
 | [`CROSS-3-accessibility.md`](CROSS-3-accessibility.md) | C05 · C10 · C22 · C45 · C28 · C35 · C29 · C08 · C54 · C19 |
 | [`CROSS-4-attribute-plumbing-and-naming.md`](CROSS-4-attribute-plumbing-and-naming.md) | C39 · C79 |
 | [`CROSS-5-theming-labels-locale.md`](CROSS-5-theming-labels-locale.md) | C68 · C67 · C73 · C77 · C36 · the copy rows of C09/C18/C19/C37 |
-| [`ROADMAP-missing-widgets.md`](ROADMAP-missing-widgets.md) | C52 · C69–C78 — **Tier 1 built; six gaps remain** |
+| [`ROADMAP-missing-widgets.md`](ROADMAP-missing-widgets.md) | C52 · C69–C78 — **Tiers 1–2 built. C71 won't port, C77 won't do, C74/C75 deferred** |
 | [`unsubscribe.md`](unsubscribe.md) | C72 — **built** (`next-unsubscribe`) |
 | [`prayer-feedback.md`](prayer-feedback.md) | C69 — **built** (`next-prayer-feedback`) |
 | [`subscribe-to-publication.md`](subscribe-to-publication.md) | C70 — **built** (`next-subscribe-to-publication`) |
@@ -171,6 +176,17 @@ The original descriptions follow, for the reasoning.
 
 ## Four test gaps that let these classes survive
 
+> **All four closed by W8 (`bd4d17e`), plus both guard tests.** The four e2e specs:
+> - `e2e/widget/auth-only-widgets-signed-out.spec.ts` runs in both legacy and dual.
+> - `signed-in-invoice-participants.spec.ts` covers the signed-in invoice reads.
+> - `a11y-probe.spec.ts` probes every demo page for accessibility.
+> - `src/services/mp-url-length.test.ts` measures built query strings and covers the
+>   straddling cases.
+>
+> The two guard tests are `observed-attributes.test.ts` (W0) and
+> `src/lib/no-silent-empty-catch.test.ts`. W8 also widened `mp-column-names.test.ts` into a
+> scan of every `{ table, select }`.
+
 Worth adding with the fixes, not after. The run is explicit that **each class survived because
 nothing checked**:
 
@@ -214,3 +230,41 @@ Recorded so no plan quietly undoes it:
 **The pattern in the findings is not that the data layer is wrong — it is almost entirely
 right. It is that the shell around it regressed.** That is a much better problem to have, and
 it is why most of this backlog is shared primitives rather than per-widget rewrites.
+
+---
+
+## Outcome
+
+**Closed out 2026-10-11** through [`EPIC/`](EPIC/README.md). The per-item ledger is in
+[`../README.md`](../README.md#item-ledger--final-state-2026-10-11). The full merge history
+and follow-up table are in [`EPIC/README.md`](EPIC/README.md#outcome).
+
+| Stage / plan | State | Landed as |
+|---|---|---|
+| Stage 0 (C24, C40, CROSS-2, C51, C50, C06) | **Done** | W4, W1, W1, W6, W6, W2 |
+| Stage 1 (CROSS-1, `cardLink()`, CROSS-4 C39, C41/C43, C44, C02/C03, C11/C12, C31) | **Done** | W0 primitives, then W1/W2/W3/W5 |
+| Stage 2 (what a migrating church visibly loses) | **Done**, except **C27**: won't port, because `Form_Responses` has no country column | W1–W6 |
+| Stage 3: CROSS-3, CROSS-4 C79, the cosmetics | **Done** | W0 + wave 1 |
+| Stage 3: CROSS-5 | **Partial**. The tokens shipped (W7a + W7b). `custom-css`, `part=` and the domain stylesheet are still open (**C68**). C77 is **won't do**. | W7 |
+| Stage 4: roadmap | Tier 1 and Tier 2 were built before the epic. **C71** is won't port, **C77** won't do, and **C74/C75** are **deferred**. | — |
+| The three shared UI primitives | **Built** in W0 (`renderSignInRequired`, `cardLink`/`cardButton`, `field()`, `dialogFocus`), plus `reconfigure` and `readAttr` | W0 |
+| The four test gaps + two guards | **Built** | W8 (+ W0's attribute guard) |
+
+**Done in the epic; the final fix-up branch lands them:**
+- headings in `checkout`, `pay`, `full-calendar` and `unsubscribe`;
+- `pledge-campaign` raw error messages, which now go through `errorText()`;
+- `--nw-color-warning`, which empties the token ratchet;
+- a live check of the opportunity image `$select`.
+
+**Still open after the epic:**
+- **C43**: whether to refuse an overpayment or record and flag it, once a real vendor is
+  wired in.
+- **C48**: where the vendor gets payor and billing data.
+- **C68**: `part=`, `custom-css` and the domain stylesheet.
+- **C74 / C75**: the auth-design decision.
+- Registering the local OAuth callback on MP `TM.Widgets`, so the signed-in e2e specs can
+  run.
+- Regenerating the MP models (`Forms.Standalone_Form_Use_Only` is missing).
+- An `Application_Code` filter in `planYourVisitService.getConfigValue`.
+- Optional: adopt `renderSignInRequired` in the five partly-public widgets.
+- Optional: remove the C79 aliases after one release.
