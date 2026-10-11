@@ -32,13 +32,17 @@ export const esAccount = {
     payNow: "Pagar ahora",
     detailTitle: "Detalles de la factura",
     backToList: "Volver a las facturas",
-    backToInvoice: "Volver a la factura",
     invoiceDate: "Fecha de la factura",
     // Cada línea de una factura es un "concepto" en el uso comercial habitual.
     lineItems: "Conceptos",
     product: "Producto",
     quantity: "Cant.",
     unitPrice: "Precio unitario",
+    signInPrompt: "Inicie sesión para ver sus facturas.",
+    searchLabel: "Buscar facturas",
+    showFree: "Mostrar inscripciones gratuitas",
+    free: "Gratis",
+    payLabel: "Pagar {description}",
   },
 
   /**

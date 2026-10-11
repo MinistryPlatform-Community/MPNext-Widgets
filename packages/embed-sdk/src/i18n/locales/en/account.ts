@@ -25,16 +25,16 @@ export const account = {
     payNow: "Pay Now",
     detailTitle: "Invoice Details",
     backToList: "Back to Invoices",
-    /**
-     * Leaves the legacy `<mpp-checkout>` overlay. The checkout inside it is
-     * MP's own element and carries MP's copy, in MP's locale.
-     */
-    backToInvoice: "Back to Invoice",
     invoiceDate: "Invoice Date",
     lineItems: "Line Items",
     product: "Product",
     quantity: "Qty",
     unitPrice: "Unit Price",
+    signInPrompt: "Sign in to see your invoices.",
+    searchLabel: "Search invoices",
+    showFree: "Show free registrations",
+    free: "Free",
+    payLabel: "Pay {description}",
   },
 
   /**

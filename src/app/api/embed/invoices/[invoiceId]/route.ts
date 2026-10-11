@@ -1,10 +1,20 @@
 /**
  * Invoice detail endpoint for embed widgets
  * GET /api/embed/invoices/:invoiceId - invoice with line items
+ *
+ * Scoped to the signed-in purchaser (`getInvoiceDetail` filters on
+ * `Purchaser_Contact_ID`); another contact's id is a 404.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { requireWidgetAuth, getCorsHeaders, resolveRequestOrigin, buildOptionsResponse, buildFallbackCorsHeaders } from "@/lib/embed/auth";
+import {
+  requireWidgetAuth,
+  getCorsHeaders,
+  resolveRequestOrigin,
+  buildOptionsResponse,
+  buildFallbackCorsHeaders,
+} from "@/lib/embed/auth";
+import { errorResponse } from "@/lib/embed/anonymous-write";
 import { getMpUserAccessToken } from "@/lib/embed/embed-session";
 import { InvoiceService } from "@/services/invoiceService";
 
@@ -14,35 +24,37 @@ export async function GET(
 ) {
   const origin = resolveRequestOrigin(req);
 
+  let claims;
   try {
     // The invoices tab is rendered inside the next-user-menu modal on any page,
     // so it rides on whatever page-level token the host issues. Accept any
     // authenticated widget for the read (still enforces non-public sub).
-    const claims = await requireWidgetAuth(req, { widget: "*" });
+    claims = await requireWidgetAuth(req, { widget: "*" });
+  } catch {
+    return errorResponse(
+      "auth_required",
+      "A valid widget token is required.",
+      401,
+      buildFallbackCorsHeaders(origin)
+    );
+  }
 
-    if (claims.sub === "public") {
-      return NextResponse.json(
-        { error: "auth_required", message: "Authentication required. Please sign in." },
-        { status: 401, headers: getCorsHeaders(origin) }
-      );
-    }
+  const cors = getCorsHeaders(origin);
+  if (claims.sub === "public") {
+    return errorResponse("auth_required", "Authentication required. Please sign in.", 401, cors);
+  }
 
-    const { invoiceId } = await params;
-    const invoiceIdNum = parseInt(invoiceId, 10);
-    if (isNaN(invoiceIdNum)) {
-      return NextResponse.json(
-        { error: "invalid_request", message: "Invalid invoice ID" },
-        { status: 400, headers: getCorsHeaders(origin) }
-      );
-    }
+  const { invoiceId } = await params;
+  const invoiceIdNum = parseInt(invoiceId, 10);
+  if (isNaN(invoiceIdNum)) {
+    return errorResponse("invalid_request", "Invalid invoice ID", 400, cors);
+  }
 
+  try {
     const service = await InvoiceService.getInstance();
     const user = await service.getUserByGuid(claims.sub);
     if (!user) {
-      return NextResponse.json(
-        { error: "user_not_found", message: "User not found" },
-        { status: 404, headers: getCorsHeaders(origin) }
-      );
+      return errorResponse("user_not_found", "User not found", 404, cors);
     }
 
     const detail = await service.getInvoiceDetail(
@@ -51,25 +63,13 @@ export async function GET(
       (await getMpUserAccessToken(claims)) ?? undefined
     );
     if (!detail) {
-      return NextResponse.json(
-        { error: "invoice_not_found", message: "Invoice not found" },
-        { status: 404, headers: getCorsHeaders(origin) }
-      );
+      return errorResponse("invoice_not_found", "Invoice not found", 404, cors);
     }
 
-    const headers = getCorsHeaders(origin);
-
-    return NextResponse.json(detail, { status: 200, headers });
+    return NextResponse.json(detail, { status: 200, headers: cors });
   } catch (error) {
-    console.error("Error loading invoice detail:", error);
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal server error" },
-      {
-        status: error instanceof Error && error.message.includes("Token") ? 403 : 500,
-        headers: buildFallbackCorsHeaders(origin),
-      }
-    );
+    console.error("[invoices/:id] MP read failed:", error);
+    return errorResponse("mp_unavailable", "MP did not respond", 503, cors);
   }
 }
 

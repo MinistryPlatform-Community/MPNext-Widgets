@@ -1,7 +1,18 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
-import type { PaymentResponseToken } from "@mpnext/types";
+import { InvoiceService } from "@/services/invoiceService";
+import { sqlLiteral } from "@/services/_shared/mp-lookup";
+import { getSessionStore } from "@/lib/embed/session-store";
+import {
+  MessageTemplateService,
+  TemplateNotFoundError,
+} from "@/services/messageTemplateService";
+import type {
+  CheckoutInvoice,
+  PaymentOutcome,
+  PaymentResponseToken,
+} from "@mpnext/types";
 
 /**
  * Payment write orchestration for the checkout flow, migrated from the legacy
@@ -15,8 +26,10 @@ import type { PaymentResponseToken } from "@mpnext/types";
  *      invoice's unpaid detail lines (greedy fill, summing to token.amount).
  *   4. Bump Invoice_Status_ID to PaidInFull / SomePaid.
  *
- * Writes are wrapped defensively: on failure we return success:false with a
- * message rather than throwing, so the webhook/response endpoints stay 200.
+ * The answer is one `status` discriminant (C41): `received` | `pending` |
+ * `declined` | `error`. Failures are returned rather than thrown so the
+ * webhook endpoint stays 200 (a vendor retrying on 5xx would double-post), but
+ * every one is logged at `error` level — the silent catch is what hid C40.
  */
 
 // Invoice status ids (mirror the legacy InvoiceStatus enum).
@@ -27,22 +40,16 @@ const INVOICE_STATUS_PAID_IN_FULL = 3;
 const PAYMENT_TYPE_CREDIT_DEBIT = 4;
 const PAYMENT_TYPE_ACH = 5;
 
-interface InvoiceRow {
-  Invoice_ID: number;
-  Invoice_Total: number;
-  Amount_Paid: number | null;
-  Invoice_Status_ID: number;
-  Purchaser_Contact_ID: number | null;
-  Invoice_GUID: string;
-}
-
 interface ExistingPaymentRow {
   Payment_ID: number;
 }
 
+/** A row of `api_MPPW_GetUnpaidInvoiceDetails` result set 0. */
 interface UnpaidDetailRow {
   Invoice_Detail_ID: number | string | null;
   Line_Total: number | string | null;
+  /** Already allocated to this line by earlier payments. */
+  Payment_Amount?: number | string | null;
 }
 
 function toNumberOrNull(value: number | string | null | undefined): number | null {
@@ -59,11 +66,25 @@ function toNumber(
   return n === null ? fallback : n;
 }
 
-export interface PaymentResult {
-  invoiceId: number | null;
-  success: boolean;
-  paymentReceived: boolean;
-  message?: string;
+/**
+ * True when `amount` is more than `balanceDue`, compared in whole cents so
+ * floating-point noise (`0.1 + 0.2`) cannot refuse an exact payment. The
+ * tolerance is exactly that rounding: a deposit or "other amount" may equal
+ * the balance, never exceed it (C43).
+ */
+export function exceedsBalance(amount: number, balanceDue: number): boolean {
+  return Math.round(amount * 100) > Math.round(balanceDue * 100);
+}
+
+/** How long a transaction code stays claimed while its write is in flight. */
+const IN_FLIGHT_TTL_SECONDS = 120;
+
+/**
+ * The wire `PaymentOutcome` plus a diagnostic `detail` for the server log.
+ * Routes return `{ invoiceId, status }` only — `detail` never reaches a payer.
+ */
+export interface PaymentResult extends PaymentOutcome {
+  detail?: string;
 }
 
 export class PaymentService {
@@ -96,111 +117,235 @@ export class PaymentService {
     mpContactId?: number
   ): Promise<PaymentResult> {
     try {
-      // Resolve the invoice the token references (token.invoiceId = Invoice_GUID).
-      const guid = (token.invoiceId ?? "").replace(/'/g, "''");
-      const invoices = await this.mp!.getTableRecords<InvoiceRow>({
-        table: "Invoices",
-        select:
-          "Invoice_ID,Invoice_Total,Amount_Paid,Invoice_Status_ID,Purchaser_Contact_ID,Invoice_GUID",
-        filter: `Invoice_GUID = '${guid}'`,
-        top: 1,
-      });
-      const invoice = invoices[0];
+      // Resolve the invoice through `api_MPPW_GetInvoice` — the one definition
+      // of "amount paid" in this codebase. The `Invoices` *table* has no
+      // `Amount_Paid` column (C40): selecting it 500'd every payment write.
+      const invoiceService = await InvoiceService.getInstance();
+      const invoice = await invoiceService.getCheckoutInvoiceByGuid(
+        token.invoiceId ?? ""
+      );
       if (!invoice) {
-        return {
-          invoiceId: null,
-          success: false,
-          paymentReceived: false,
-          message: "Invoice not found",
-        };
+        console.error(
+          "PaymentService: no invoice for response token",
+          token.transactionCode
+        );
+        return { invoiceId: null, status: "error", detail: "Invoice not found" };
       }
 
-      const invoiceId = invoice.Invoice_ID;
-
-      // Idempotency: a payment with this transaction code already exists.
-      if (token.transactionCode) {
-        const code = token.transactionCode.replace(/'/g, "''");
-        const existing = await this.mp!.getTableRecords<ExistingPaymentRow>({
-          table: "Payments",
-          select: "Payment_ID",
-          filter: `Transaction_Code = '${code}'`,
-          top: 1,
-        });
-        if (existing[0]) {
-          return { invoiceId, success: true, paymentReceived: true };
-        }
-      }
+      const invoiceId = invoice.invoiceId;
 
       // A declined/failed transaction records nothing.
       if (!token.transactionSuccess) {
-        return {
-          invoiceId,
-          success: false,
-          paymentReceived: false,
-          message: "Transaction failed",
-        };
+        return { invoiceId, status: "declined", detail: "Transaction declined" };
       }
 
-      const amount = Number(token.amount) || 0;
-      const paymentTypeId =
-        token.type === "CREDIT_DEBIT"
-          ? PAYMENT_TYPE_CREDIT_DEBIT
-          : PAYMENT_TYPE_ACH;
-      const contactId = invoice.Purchaser_Contact_ID ?? (mpContactId ?? null);
-
-      // Payments header.
-      const tz = DomainTimezoneService.getInstance();
-      const now = await tz.toMpSqlDatetime(new Date().toISOString());
-
-      const paymentRecord: Record<string, unknown> = {
-        Payment_Total: amount,
-        Contact_ID: contactId,
-        Invoice_Number: invoiceId,
-        Payment_Type_ID: paymentTypeId,
-        Payment_Date: now,
-        Invoice_ID: invoiceId,
-        Transaction_Code: token.transactionCode,
-        Notes: "Recorded by Web Widget checkout",
-        Currency: "USD",
-        Item_Number: token.itemNumber ?? null,
-        Processed: false,
-      };
-      const createdPayments = (await this.mp!.createTableRecords("Payments", [
-        paymentRecord,
-      ])) as Array<{ Payment_ID?: number }>;
-      const paymentId = createdPayments[0]?.Payment_ID;
-      if (!paymentId) {
-        return {
-          invoiceId,
-          success: false,
-          paymentReceived: false,
-          message: "Failed to create payment",
-        };
+      // Every recordable transaction carries a code; it is the idempotency
+      // key, so one without it cannot be recorded safely.
+      const code = token.transactionCode?.trim();
+      if (!code) {
+        console.error("PaymentService: successful response token has no transaction code");
+        return { invoiceId, status: "error", detail: "Missing transaction code" };
       }
 
-      // Allocate the payment across the invoice's unpaid detail lines.
-      await this.allocatePaymentDetails(paymentId, invoiceId, amount);
+      // Idempotency, fast path: a re-posted response token whose payment is
+      // already recorded is `received`, with no write.
+      if (await this.paymentExists(code)) {
+        return { invoiceId, status: "received" };
+      }
 
-      // Update the invoice status based on the new paid total.
-      const newAmountPaid = toNumber(invoice.Amount_Paid) + amount;
-      const newStatusId =
-        newAmountPaid >= toNumber(invoice.Invoice_Total)
-          ? INVOICE_STATUS_PAID_IN_FULL
-          : INVOICE_STATUS_SOME_PAID;
+      // Claim the code for the duration of the write, so two concurrent posts
+      // of one response token (a reload mid-request, a vendor retry racing the
+      // browser) cannot both pass the existence check and write twice. The
+      // loser answers `pending`: the payment *is* being recorded right now.
+      const store = getSessionStore();
+      const claimKey = `pay:txn:${code}`;
+      if ((await store.kvIncrement(claimKey, IN_FLIGHT_TTL_SECONDS)) > 1) {
+        return { invoiceId, status: "pending", detail: "Already being recorded" };
+      }
+
       try {
-        await this.mp!.updateTableRecords("Invoices", [
-          { Invoice_ID: invoiceId, Invoice_Status_ID: newStatusId },
-        ]);
-      } catch (err) {
-        console.warn("PaymentService: invoice status update failed:", err);
+        return await this.recordPayment(token, code, invoice, mpContactId);
+      } finally {
+        // Released on every path: once recorded, the Payments row answers
+        // replays; otherwise a corrected retry must not be locked out.
+        await store.kvDelete(claimKey).catch(() => undefined);
       }
-
-      return { invoiceId, success: true, paymentReceived: true };
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Payment processing failed";
+      // Keep the 200 for webhooks (a vendor retrying on 5xx would double-post),
+      // but never quietly: this catch is what hid C40 for the widget's life.
       console.error("PaymentService: createPaymentFromResponse failed:", error);
-      return { invoiceId: null, success: false, paymentReceived: false, message };
+      return { invoiceId: null, status: "error", detail: "Payment processing failed" };
+    }
+  }
+
+  /** Whether a `Payments` row already carries this transaction code. */
+  private async paymentExists(code: string): Promise<boolean> {
+    const existing = await this.mp!.getTableRecords<ExistingPaymentRow>({
+      table: "Payments",
+      select: "Payment_ID",
+      filter: `Transaction_Code = '${sqlLiteral(code)}'`,
+      top: 1,
+    });
+    return existing.length > 0;
+  }
+
+  /** The write half of `createPaymentFromResponse`, run under the code claim. */
+  private async recordPayment(
+    token: PaymentResponseToken,
+    code: string,
+    invoice: CheckoutInvoice,
+    mpContactId?: number
+  ): Promise<PaymentResult> {
+    const invoiceId = invoice.invoiceId;
+
+    // Re-check under the claim: the holder before us may have just written it.
+    if (await this.paymentExists(code)) {
+      return { invoiceId, status: "received" };
+    }
+
+    const amount = Number(token.amount) || 0;
+
+    // Server-side overpay guard (C43). `checkout/payment-token` already
+    // refused an amount above the balance before any processor saw it, so
+    // reaching this means the balance moved between token and response — a
+    // second tab paid first. The processor has the money; recording it would
+    // overpay the invoice silently. Refuse, and log enough for staff to
+    // reconcile (and refund) from the transaction code.
+    if (exceedsBalance(amount, invoice.balanceDue)) {
+      console.error(
+        "PaymentService: response amount exceeds balance due; NOT recorded — reconcile manually",
+        { transactionCode: code, invoiceId, amount, balanceDue: invoice.balanceDue }
+      );
+      return { invoiceId, status: "error", detail: "Amount exceeds balance due" };
+    }
+
+    const paymentTypeId =
+      token.type === "CREDIT_DEBIT"
+        ? PAYMENT_TYPE_CREDIT_DEBIT
+        : PAYMENT_TYPE_ACH;
+    const contactId = invoice.payorContactId ?? (mpContactId ?? null);
+
+    // Payments header.
+    const tz = DomainTimezoneService.getInstance();
+    const now = await tz.toMpSqlDatetime(new Date().toISOString());
+
+    const paymentRecord: Record<string, unknown> = {
+      Payment_Total: amount,
+      Contact_ID: contactId,
+      Invoice_Number: invoiceId,
+      Payment_Type_ID: paymentTypeId,
+      Payment_Date: now,
+      Invoice_ID: invoiceId,
+      Transaction_Code: code,
+      Notes: "Recorded by Web Widget checkout",
+      Currency: "USD",
+      Item_Number: token.itemNumber ?? null,
+      Processed: false,
+    };
+    const createdPayments = (await this.mp!.createTableRecords("Payments", [
+      paymentRecord,
+    ])) as Array<{ Payment_ID?: number }>;
+    const paymentId = createdPayments[0]?.Payment_ID;
+    if (!paymentId) {
+      console.error("PaymentService: MP returned no Payment_ID for", code);
+      return { invoiceId, status: "error", detail: "Failed to create payment" };
+    }
+
+    // Allocate the payment across the invoice's unpaid detail lines.
+    await this.allocatePaymentDetails(paymentId, invoiceId, amount);
+
+    // Update the invoice status from the proc's paid total plus this payment.
+    const newAmountPaid = Number((invoice.amountPaid + amount).toFixed(2));
+    const newStatusId =
+      newAmountPaid >= invoice.invoiceTotal
+        ? INVOICE_STATUS_PAID_IN_FULL
+        : INVOICE_STATUS_SOME_PAID;
+    try {
+      await this.mp!.updateTableRecords("Invoices", [
+        { Invoice_ID: invoiceId, Invoice_Status_ID: newStatusId },
+      ]);
+    } catch (err) {
+      // The payment is recorded; a stale status is a staff-visible nuisance,
+      // not a lost payment. Still `error`: it needs a human.
+      console.error("PaymentService: invoice status update failed:", err);
+    }
+
+    // Receipt (C66) — only for a payment recorded *now*, never for a replay,
+    // and never able to fail the payment: the money is recorded either way.
+    if (token.receiptTemplateId) {
+      await this.sendReceipt(token.receiptTemplateId, token, invoice, {
+        paymentId,
+        amount,
+        code,
+        paymentDate: now,
+      }).catch((err) =>
+        console.error("PaymentService: receipt not sent (payment is recorded):", err)
+      );
+    }
+
+    return { invoiceId, status: "received" };
+  }
+
+  /**
+   * Send the payment receipt from the template `next-checkout` was configured
+   * with (`receipt-template-id`, legacy `receipttemplateid`).
+   *
+   * ## Which template table
+   *
+   * Legacy's id is documented (C66) as a `dp_Communication_Templates` id, but
+   * the one live example (`2695`) could not be read on any domain we reach,
+   * and a church migrating may hold either kind of id. So the communication
+   * template is tried first and a **not-found** falls back to the
+   * `dp_Communications` message template of the same id. Only not-found falls
+   * back — a missing From address or a send failure is a real fault and is
+   * reported as one.
+   *
+   * ## Merge tokens
+   *
+   * `[mpp_contact_first_name]`, `[mpp_contact_last_name]`,
+   * `[mpp_payment_amount]` (formatted, USD), `[mpp_payment_date]`,
+   * `[mpp_transaction_code]`, `[mpp_payment_id]`, `[mpp_invoice_id]`,
+   * `[mpp_invoice_total]`, `[mpp_balance_due]` (after this payment). Same
+   * `mpp_` convention as the plan-your-visit templates.
+   */
+  private async sendReceipt(
+    templateId: number,
+    token: PaymentResponseToken,
+    invoice: CheckoutInvoice,
+    payment: { paymentId: number; amount: number; code: string; paymentDate: string }
+  ): Promise<void> {
+    const email = invoice.payor.email ?? token.email ?? null;
+    if (!email) {
+      console.warn("PaymentService: no payor email; receipt not sent for", payment.code);
+      return;
+    }
+    const firstName = invoice.payor.firstName ?? token.firstName ?? "";
+    const lastName = invoice.payor.lastName ?? token.lastName ?? "";
+    const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+    const balanceAfter = Math.max(
+      0,
+      Number((invoice.balanceDue - payment.amount).toFixed(2))
+    );
+    const merge = {
+      mpp_contact_first_name: firstName,
+      mpp_contact_last_name: lastName,
+      mpp_payment_amount: money.format(payment.amount),
+      // The MP wall-clock date (`YYYY-MM-DD`), as the domain recorded it.
+      mpp_payment_date: payment.paymentDate.slice(0, 10),
+      mpp_transaction_code: payment.code,
+      mpp_payment_id: String(payment.paymentId),
+      mpp_invoice_id: String(invoice.invoiceId),
+      mpp_invoice_total: money.format(invoice.invoiceTotal),
+      mpp_balance_due: money.format(balanceAfter),
+    };
+    const to = { email, name: [firstName, lastName].filter(Boolean).join(" ") };
+
+    const templates = await MessageTemplateService.getInstance();
+    try {
+      await templates.sendCommunicationTemplate(templateId, to, merge);
+    } catch (err) {
+      if (!(err instanceof TemplateNotFoundError)) throw err;
+      await templates.sendMessageTemplate(templateId, to, merge);
     }
   }
 
@@ -237,7 +382,12 @@ export class PaymentService {
         if (remaining <= 0) break;
         const detailId = toNumberOrNull(row.Invoice_Detail_ID);
         if (detailId == null) continue;
-        const lineRemaining = Math.max(0, toNumber(row.Line_Total));
+        // The proc returns each line's total *and* what is already paid on it
+        // (verified live 2026-10-11); only the difference is open.
+        const lineRemaining = Math.max(
+          0,
+          toNumber(row.Line_Total) - toNumber(row.Payment_Amount)
+        );
         const applied = Number(Math.min(remaining, lineRemaining).toFixed(2));
         if (applied <= 0) continue;
         records.push({

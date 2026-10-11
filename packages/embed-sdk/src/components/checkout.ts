@@ -6,6 +6,7 @@ import {
   FORM_VALIDATION_STYLES,
   type ValidateOptions,
 } from "../shared/form-validation";
+import { paymentOutcomeView, type PaymentTone } from "./checkout-status";
 
 interface CheckoutLineItem {
   invoiceDetailId: number;
@@ -16,6 +17,7 @@ interface CheckoutLineItem {
   lineTotal: number;
   isSubItem: boolean;
   eventParticipantId: number | null;
+  eventId?: number | null;
 }
 
 interface CheckoutInvoice {
@@ -42,6 +44,8 @@ interface CheckoutInvoice {
     postalCode: string | null;
   };
   lineItems: CheckoutLineItem[];
+  /** The registration's event (C49); absent from an older server. */
+  eventId?: number | null;
 }
 
 type PayChoice = "full" | "deposit" | "other";
@@ -62,15 +66,23 @@ export class CheckoutWidget extends MPNextWidget {
   private otherAmount = "";
   private processing = false;
 
-  private confirmation: { kind: "success" | "pending"; message: string } | null = null;
+  private confirmation: { tone: PaymentTone; message: string } | null = null;
+  /**
+   * True after a payment response we could not record (`error`) or could not
+   * read: the card may have been charged, so the Pay form is not offered again
+   * until the payer reloads. A decline does not set it.
+   */
+  private holdPayForm = false;
 
   static get observedAttributes() {
     return [
       "api-host",
       "payment-processor-url",
       "back-to-event-url",
+      "back-to-event-id-parameter-name",
       "invoice-id-parameter-name",
       "invoice-id",
+      "receipt-template-id",
     ];
   }
 
@@ -157,30 +169,24 @@ export class CheckoutWidget extends MPNextWidget {
         const data = await res.json().catch(() => ({}));
         throw new Error(this.errorText(data));
       }
-      const data: {
-        invoiceId: number | null;
-        success: boolean;
-        paymentReceived: boolean;
-      } = await res.json();
+      const data: { invoiceId?: number | null; status?: unknown } = await res.json();
 
-      if (data.paymentReceived) {
-        this.confirmation = {
-          kind: "success",
-          message: this.t("checkout.paymentReceived"),
-        };
-      } else {
-        this.confirmation = {
-          kind: "pending",
-          message: this.t("checkout.paymentPending"),
-        };
-      }
+      // One mapper for both payment widgets (C41): a decline is coral and
+      // keeps the Pay form; an error is coral and holds it back.
+      const view = paymentOutcomeView(data);
+      this.confirmation = { tone: view.tone, message: this.t(view.bannerKey) };
+      this.holdPayForm = view.status === "error";
       this.emit("paymentComplete", {
-        invoiceId: data.invoiceId,
-        paymentReceived: data.paymentReceived,
+        invoiceId: data.invoiceId ?? null,
+        status: view.status,
+        paymentReceived: view.status === "received",
       });
     } catch (err) {
+      // We do not know whether it was recorded, so this is never the amber
+      // "processing" banner (C41), and the form is held back.
+      this.holdPayForm = true;
       this.confirmation = {
-        kind: "pending",
+        tone: "failed",
         // `err.message` is itself already a translated sentence from
         // `errorText`, so it is safe to quote inside this one.
         message:
@@ -248,6 +254,11 @@ export class CheckoutWidget extends MPNextWidget {
           if (isNaN(n) || n <= 0) {
             return this.t("checkout.invalidAmount");
           }
+          // A courtesy cap (C43) — `checkout/payment-token` enforces it.
+          const due = this.invoice?.balanceDue ?? 0;
+          if (Math.round(n * 100) > Math.round(due * 100)) {
+            return this.t("checkout.amountTooHigh", { amount: this.fmt.currency(due) });
+          }
           return null;
         },
       },
@@ -293,12 +304,27 @@ export class CheckoutWidget extends MPNextWidget {
     this.render();
 
     try {
-      const returnUrl = encodeURIComponent(this.currentPageUrlWithoutToken());
-      const res = await this.fetch(
-        `/api/embed/checkout/payment-token?guid=${encodeURIComponent(
-          this.guid,
-        )}&amount=${encodeURIComponent(String(amount))}&returnUrl=${returnUrl}`,
-      );
+      const params = new URLSearchParams({
+        guid: this.guid,
+        amount: String(amount),
+        returnUrl: this.currentPageUrlWithoutToken(),
+      });
+      // Legacy `receipttemplateid` (C66): threaded into the request token so
+      // the server sends the receipt wherever the payment is recorded.
+      const receipt = this.getAttribute("receipt-template-id")?.trim();
+      if (receipt) params.set("receiptTemplateId", receipt);
+      const res = await this.fetch(`/api/embed/checkout/payment-token?${params.toString()}`);
+      if (res.status === 422) {
+        // The server refused an amount above the balance due (C43). The form
+        // already caps it, so the balance has most likely moved under us — a
+        // payment from another tab. Reload and say so.
+        this.processing = false;
+        await this.loadInvoice();
+        this.error = this.t("checkout.balanceChanged");
+        this.render();
+        this.attachListeners();
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(this.errorText(data));
@@ -406,9 +432,11 @@ export class CheckoutWidget extends MPNextWidget {
 
   private renderConfirmation(): string {
     if (!this.confirmation) return "";
-    const cls = this.confirmation.kind === "success" ? "nw-co-confirm--success" : "nw-co-confirm--pending";
+    const { tone } = this.confirmation;
+    // A failure is announced assertively; success and pending politely.
+    const role = tone === "failed" ? "alert" : "status";
     return `
-      <div class="nw-co-confirm ${cls}">
+      <div class="nw-co-confirm nw-co-confirm--${tone}" role="${role}">
         ${this.escapeHtml(this.confirmation.message)}
       </div>`;
   }
@@ -423,10 +451,16 @@ export class CheckoutWidget extends MPNextWidget {
           <span class="nw-co-meta-label">${this.escapeHtml(this.t("checkout.invoiceDate"))}</span>
           <span class="nw-co-meta-value">${this.escapeHtml(this.fmt.date(inv.invoiceDate, "long"))}</span>
         </div>
-        <div>
-          <span class="nw-co-meta-label">${this.escapeHtml(this.t("checkout.status"))}</span>
-          <span class="nw-co-meta-value">${this.escapeHtml(inv.status)}</span>
-        </div>
+        ${
+          // MP's status vocabulary is about payment; a free registration has
+          // no payment to describe, so "Status: None Paid" is left out (C47).
+          inv.invoiceTotal > 0
+            ? `<div>
+                <span class="nw-co-meta-label">${this.escapeHtml(this.t("checkout.status"))}</span>
+                <span class="nw-co-meta-value">${this.escapeHtml(inv.status)}</span>
+              </div>`
+            : ""
+        }
       </div>
 
       ${
@@ -453,7 +487,7 @@ export class CheckoutWidget extends MPNextWidget {
         </div>
       </div>
 
-      ${inv.canPay ? this.renderPaySection(inv) : this.renderStatusSection(inv)}
+      ${inv.canPay ? (this.holdPayForm ? "" : this.renderPaySection(inv)) : this.renderStatusSection(inv)}
     `;
   }
 
@@ -480,7 +514,11 @@ export class CheckoutWidget extends MPNextWidget {
   }
 
   private renderPaySection(inv: CheckoutInvoice): string {
-    const hasDeposit = inv.depositDue != null && inv.depositDue > 0;
+    // A deposit at or above what is left is not a deposit any more — and
+    // offering it would ask for more than the balance (C43).
+    const hasDeposit =
+      inv.depositDue != null && inv.depositDue > 0 && inv.depositDue < inv.balanceDue;
+    const changesHref = this.makeChangesHref(inv);
     return `
       <form id="nw-co-pay-form" class="nw-co-pay" novalidate>
         <div class="nw-co-pay-title">${this.escapeHtml(this.t("checkout.paymentAmount"))}</div>
@@ -525,24 +563,69 @@ export class CheckoutWidget extends MPNextWidget {
         </div>
         <button type="submit" class="nw-co-btn nw-co-btn--pay" data-action="pay">${this.escapeHtml(this.t("checkout.pay"))}</button>
         ${
-          this.getAttribute("back-to-event-url")
-            ? `<a class="nw-co-changes" href="${this.escapeAttr(this.getAttribute("back-to-event-url") as string)}">${this.escapeHtml(this.t("checkout.makeChanges"))}</a>`
+          changesHref
+            ? `<a class="nw-co-changes" href="${this.escapeAttr(changesHref)}">${this.escapeHtml(this.t("checkout.makeChanges"))}</a>`
             : ""
         }
       </form>`;
   }
 
+  /**
+   * The closing line for an invoice with nothing to pay (C47). Three cases,
+   * because "nothing to pay" and "has been paid" are different facts:
+   *
+   * - a zero-total invoice (a free registration) → neutral "registration is
+   *   complete". It never had a balance, so "Paid in full" — in the success
+   *   colour, under "Status: None Paid" — was false on its face;
+   * - money paid and no balance left → "Paid in full";
+   * - otherwise → MP's own status wording (Cancelled, say), as written.
+   */
   private renderStatusSection(inv: CheckoutInvoice): string {
-    const paid = inv.balanceDue <= 0;
-    const cls = paid ? "nw-co-status--paid" : "nw-co-status--closed";
-    // A non-paid status is MP's own wording for it, so it renders as written.
-    const label = paid
-      ? this.escapeHtml(this.t("checkout.paidInFull"))
-      : this.escapeHtml(inv.status);
+    let cls: string;
+    let label: string;
+    if (inv.invoiceTotal <= 0) {
+      cls = "nw-co-status--complete";
+      label = this.t("checkout.registrationComplete");
+    } else if (inv.amountPaid > 0 && inv.balanceDue <= 0) {
+      cls = "nw-co-status--paid";
+      label = this.t("checkout.paidInFull");
+    } else {
+      cls = "nw-co-status--closed";
+      label = inv.status;
+    }
     return `
-      <div class="nw-co-status ${cls}">
-        ${label}
+      <div class="nw-co-status ${cls}" role="status">
+        ${this.escapeHtml(label)}
       </div>`;
+  }
+
+  /**
+   * "Make Changes" (C49): back to the event's registration with this invoice
+   * re-opened — `<back-to-event-url>?id=<eventId>&invoiceid=<guid>`, legacy's
+   * shape and exactly what `next-event-details` reads (`id-parameter-name`,
+   * default `id`; `invoiceid`). The event-id parameter name follows the
+   * destination's: `back-to-event-id-parameter-name`, default `id`.
+   *
+   * Built with `URL` / `URLSearchParams`, so a configured URL that already has
+   * a query string keeps it. A non-event invoice gets the bare URL. A
+   * `javascript:` / `data:` URL is refused. The label stays "Make Changes":
+   * clearer than legacy's "Back to Event Details", and deliberate.
+   */
+  private makeChangesHref(inv: CheckoutInvoice): string | null {
+    const base = this.getAttribute("back-to-event-url")?.trim();
+    if (!base) return null;
+    let url: URL;
+    try {
+      url = new URL(base, window.location.href);
+    } catch {
+      return null;
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (inv.eventId == null) return base;
+    const idParam = this.getAttribute("back-to-event-id-parameter-name")?.trim() || "id";
+    url.searchParams.set(idParam, String(inv.eventId));
+    url.searchParams.set("invoiceid", inv.invoiceGuid);
+    return url.toString();
   }
 
   // ── Helpers ──
@@ -594,6 +677,7 @@ export class CheckoutWidget extends MPNextWidget {
       .nw-co-confirm { border-radius: 10px; padding: 14px 16px; font-size: 14px; font-weight: 600; margin-bottom: 20px; }
       .nw-co-confirm--success { background: rgba(134,173,63,0.15); color: #4d6a14; border: 1px solid rgba(134,173,63,0.4); }
       .nw-co-confirm--pending { background: rgba(241,190,72,0.18); color: #8a6d10; border: 1px solid rgba(241,190,72,0.5); }
+      .nw-co-confirm--failed { background: rgba(255,109,106,0.15); color: #b91c1c; border: 1px solid rgba(255,109,106,0.5); }
 
       .nw-co-meta { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb; margin-bottom: 16px; }
       .nw-co-meta-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #9ca3af; font-weight: 600; }
@@ -639,6 +723,7 @@ export class CheckoutWidget extends MPNextWidget {
       .nw-co-status { margin-top: 20px; padding: 16px; border-radius: 10px; text-align: center; font-size: 16px; font-weight: 700; }
       .nw-co-status--paid { background: rgba(134,173,63,0.15); color: #4d6a14; }
       .nw-co-status--closed { background: #f3f4f6; color: #474747; }
+      .nw-co-status--complete { background: rgba(0,76,151,0.08); color: #002855; }
 
       @media (max-width: 640px) {
         .nw-co-header, .nw-co-body { padding: 16px; }

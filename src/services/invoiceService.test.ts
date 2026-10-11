@@ -1,14 +1,147 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { InvoiceService } from '@/services/invoiceService';
+import { InvoiceService, resolveInvoiceOwner } from '@/services/invoiceService';
 
 const mockGetTableRecords = vi.fn();
+const mockExecuteProcedure = vi.fn();
 
 vi.mock('@/lib/providers/ministry-platform', () => {
   return {
     MPHelper: class {
       getTableRecords = mockGetTableRecords;
+      executeProcedure = mockExecuteProcedure;
     },
   };
+});
+
+/** An `api_MPPW_GetInvoice` result: header in [0][0], detail rows in [1]. */
+function procResult(header: Record<string, unknown>, details: Record<string, unknown>[] = []) {
+  return [
+    [
+      {
+        Contact_ID: 98,
+        First_Name: 'Pat',
+        Last_Name: 'Payer',
+        Mobile_Phone: null,
+        Email_Address: 'pat@example.org',
+        Address_Line_1: null,
+        Address_Line_2: null,
+        City: null,
+        State: null,
+        Postal_Code: null,
+        Amount_Paid: 0,
+        Invoice_ID: 6,
+        Invoice_Date: '2026-09-01T00:00:00',
+        Invoice_GUID: 'inv-guid',
+        Invoice_Total: 40,
+        Invoice_Status_ID: 1,
+        Notes: null,
+        ...header,
+      },
+    ],
+    details,
+  ];
+}
+
+describe('getCheckoutInvoiceByGuid (C80 / C42)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (InvoiceService as any).instance = undefined;
+    mockGetTableRecords.mockResolvedValue([{ Invoice_Status_ID: 1, Invoice_Status: 'Pending' }]);
+  });
+
+  it('calls the proc with @InvoiceGuid only, signed in', async () => {
+    mockExecuteProcedure.mockResolvedValueOnce(procResult({}));
+    const service = await InvoiceService.getInstance();
+    const invoice = await service.getCheckoutInvoiceByGuid('inv-guid', 98);
+
+    expect(mockExecuteProcedure).toHaveBeenCalledWith('api_MPPW_GetInvoice', {
+      '@InvoiceGuid': 'inv-guid',
+    });
+    expect(invoice?.invoiceId).toBe(6);
+    expect(invoice?.balanceDue).toBe(40);
+  });
+
+  it("returns null for another contact's invoice when signed in", async () => {
+    mockExecuteProcedure.mockResolvedValueOnce(procResult({ Contact_ID: 1234 }));
+    const service = await InvoiceService.getInstance();
+    expect(await service.getCheckoutInvoiceByGuid('inv-guid', 98)).toBeNull();
+  });
+
+  it('does not scope the anonymous read', async () => {
+    mockExecuteProcedure.mockResolvedValueOnce(procResult({ Contact_ID: 1234 }));
+    const service = await InvoiceService.getInstance();
+    const invoice = await service.getCheckoutInvoiceByGuid('inv-guid');
+    expect(invoice?.payorContactId).toBe(1234);
+  });
+
+  it('carries Event_ID onto the lines and the invoice (C49)', async () => {
+    mockExecuteProcedure.mockResolvedValueOnce(
+      procResult({}, [
+        { Invoice_Detail_ID: 1, Item_Name: 'Fee', Line_Total: 40, Item_Quantity: 1, Event_ID: null },
+        { Invoice_Detail_ID: 2, Item_Name: 'Camp', Line_Total: 0, Item_Quantity: 1, Event_ID: 16 },
+      ])
+    );
+    const service = await InvoiceService.getInstance();
+    const invoice = await service.getCheckoutInvoiceByGuid('inv-guid');
+    expect(invoice?.lineItems.map((li) => li.eventId)).toEqual([null, 16]);
+    expect(invoice?.eventId).toBe(16);
+  });
+
+  it('returns null when the proc has no header row', async () => {
+    mockExecuteProcedure.mockResolvedValueOnce([[], []]);
+    const service = await InvoiceService.getInstance();
+    expect(await service.getCheckoutInvoiceByGuid('nope', 98)).toBeNull();
+  });
+});
+
+describe('getInvoices filters (C60)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (InvoiceService as any).instance = undefined;
+    mockGetTableRecords.mockResolvedValue([]);
+  });
+
+  async function filterFor(filters: Parameters<InvoiceService['getInvoices']>[2]) {
+    const service = await InvoiceService.getInstance();
+    await service.getInvoices(100, undefined, filters);
+    const call = mockGetTableRecords.mock.calls.filter(([a]) => a.table === 'Invoices').at(-1);
+    return (call?.[0] as { filter: string }).filter;
+  }
+
+  it('narrows by congregation, month and legacy status vocabulary in MP', async () => {
+    expect(await filterFor({ congregationId: 4, monthId: 10, invoiceStatus: 1 })).toBe(
+      'Purchaser_Contact_ID = 100 AND Congregation_ID = 4 AND MONTH(Invoice_Date) = 10 AND Invoice_Status_ID IN (1,2)'
+    );
+    expect(await filterFor({ invoiceStatus: 2 })).toBe(
+      'Purchaser_Contact_ID = 100 AND Invoice_Status_ID = 3'
+    );
+  });
+
+  it('ignores out-of-range values and "all"', async () => {
+    expect(await filterFor({ congregationId: 0, monthId: 13, invoiceStatus: 0 })).toBe(
+      'Purchaser_Contact_ID = 100'
+    );
+  });
+});
+
+describe('resolveInvoiceOwner', () => {
+  it('is undefined for a public token', async () => {
+    const svc = { getUserByGuid: vi.fn() };
+    expect(await resolveInvoiceOwner(svc, 'public')).toBeUndefined();
+    expect(svc.getUserByGuid).not.toHaveBeenCalled();
+  });
+
+  it("is the signed-in user's contact", async () => {
+    const svc = { getUserByGuid: vi.fn().mockResolvedValue({ Contact_ID: 98 }) };
+    expect(await resolveInvoiceOwner(svc, 'user-guid')).toBe(98);
+  });
+
+  it('fails closed (0) when the user has no dp_Users row', async () => {
+    const svc = { getUserByGuid: vi.fn().mockResolvedValue(null) };
+    expect(await resolveInvoiceOwner(svc, 'user-guid')).toBe(0);
+  });
 });
 
 describe('InvoiceService', () => {

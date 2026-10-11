@@ -79,3 +79,24 @@ Separate "nothing to pay" from "has been paid". `renderStatusSection` already ha
 
 While there: consider not printing "Status: None Paid" at all on a zero-total invoice,
 since MP's status vocabulary is about payment and there is no payment to describe.
+
+## Resolution — 2026-10-11
+
+**Fixed (epic W1, branch `ws/w1-payments`).** `renderStatusSection` in
+`packages/embed-sdk/src/components/checkout.ts` now separates "nothing to pay" from "has
+been paid":
+
+- `invoiceTotal <= 0` → **"Your registration is complete."** in a neutral blue treatment
+  (`nw-co-status--complete`), not the success green. **Decision:** the "Status: None Paid"
+  meta row is also left out for a zero-total invoice, as suggested. MP's status vocabulary is
+  about payment, and there is no payment to describe.
+- `amountPaid > 0 && balanceDue <= 0` → "Paid in full" (green), the case the string was
+  written for.
+- otherwise → MP's own status text (for example "Cancelled"), as before.
+
+The line carries `role="status"`. New copy `checkout.registrationComplete` is in en / es /
+pt-BR. Tests: `packages/embed-sdk/src/components/checkout.test.ts` ("nothing-to-pay wording")
+covers all three branches and asserts that a zero-total invoice shows neither "Paid in full"
+nor "None Paid".
+
+The "Show Free Events" toggle this pairs with on `next-my-invoices` lands under C60.

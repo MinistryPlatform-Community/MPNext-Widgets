@@ -1,6 +1,13 @@
 /**
  * Load a single invoice for the checkout / payment flow.
  * GET /api/embed/checkout/invoice?guid=<Invoice_GUID>
+ *
+ * Public-allowed: an anonymous payer holding the GUID may open it (legacy
+ * parity). A signed-in payer may open only an invoice they purchased — anything
+ * else is a 404, never a disclosure (C80 / C42).
+ *
+ * Errors are machine codes. An MP fault answers `mp_unavailable`; the MP text
+ * (procedure name, HTTP status) goes to the server log and never to the payer.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -11,55 +18,44 @@ import {
   buildOptionsResponse,
   buildFallbackCorsHeaders,
 } from "@/lib/embed/auth";
-import { InvoiceService } from "@/services/invoiceService";
+import { errorResponse } from "@/lib/embed/anonymous-write";
+import { InvoiceService, resolveInvoiceOwner } from "@/services/invoiceService";
 
 export async function GET(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
 
+  let claims;
   try {
-    const claims = await requireWidgetAuth(req, {
+    claims = await requireWidgetAuth(req, {
       widget: ["checkout", "my-invoices", "user-menu", "*"],
     });
+  } catch {
+    return errorResponse(
+      "auth_required",
+      "A valid widget token is required.",
+      401,
+      buildFallbackCorsHeaders(origin)
+    );
+  }
 
-    const guid = req.nextUrl.searchParams.get("guid")?.trim();
-    if (!guid) {
-      return NextResponse.json(
-        { error: "invalid_request", message: "Missing guid" },
-        { status: 400, headers: getCorsHeaders(origin) }
-      );
-    }
+  const cors = getCorsHeaders(origin);
+  const guid = req.nextUrl.searchParams.get("guid")?.trim();
+  if (!guid) {
+    return errorResponse("invalid_request", "Missing guid", 400, cors);
+  }
 
+  try {
     const service = await InvoiceService.getInstance();
-
-    // Authenticated payor → scope the proc to their contact; public → unscoped.
-    let mpContactId: number | undefined;
-    if (claims.sub !== "public") {
-      const user = await service.getUserByGuid(claims.sub);
-      mpContactId = user?.Contact_ID;
-    }
-
-    const invoice = await service.getCheckoutInvoiceByGuid(guid, mpContactId);
+    const owner = await resolveInvoiceOwner(service, claims.sub);
+    const invoice = await service.getCheckoutInvoiceByGuid(guid, owner);
     if (!invoice) {
-      return NextResponse.json(
-        { error: "invoice_not_found", message: "Invoice not found" },
-        { status: 404, headers: getCorsHeaders(origin) }
-      );
+      return errorResponse("invoice_not_found", "Invoice not found", 404, cors);
     }
 
-    return NextResponse.json(
-      { invoice },
-      { status: 200, headers: getCorsHeaders(origin) }
-    );
+    return NextResponse.json({ invoice }, { status: 200, headers: cors });
   } catch (error) {
-    console.error("Error loading checkout invoice:", error);
-    const message = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json(
-      { error: message },
-      {
-        status: message.includes("Token") ? 403 : 500,
-        headers: buildFallbackCorsHeaders(origin),
-      }
-    );
+    console.error("[checkout/invoice] MP read failed:", error);
+    return errorResponse("mp_unavailable", "MP did not respond", 503, cors);
   }
 }
 

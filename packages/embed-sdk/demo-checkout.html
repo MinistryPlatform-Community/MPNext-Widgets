@@ -58,7 +58,7 @@
       <div class="demo-box">
         <next-checkout
           payment-processor-url="/demo-pay.html"
-          back-to-event-url="/demo-event-finder.html"
+          back-to-event-url="/demo-event-details.html"
           invoice-id-parameter-name="id"
           api-host="__API_HOST__"></next-checkout>
       </div>
@@ -81,9 +81,12 @@
           <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
         </div>
         <pre><code id="widget-code">&lt;!-- Use the widget (invoice GUID comes from ?id=... on the URL) --&gt;
+&lt;!-- receipt-template-id (optional): the MP template emailed to the payer
+     once the payment is recorded (legacy receipttemplateid) --&gt;
 &lt;next-checkout
   payment-processor-url="/pay"
-  back-to-event-url="/events/details"&gt;&lt;/next-checkout&gt;
+  back-to-event-url="/events/details"
+  receipt-template-id="2695"&gt;&lt;/next-checkout&gt;
 
 &lt;!-- Listen to events --&gt;
 &lt;script&gt;

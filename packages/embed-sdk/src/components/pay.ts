@@ -2,7 +2,7 @@ import { MPNextWidget } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
-  requiredStar,
+  field,
   FORM_VALIDATION_STYLES,
   type ValidateOptions,
 } from "../shared/form-validation";
@@ -28,6 +28,54 @@ interface PaymentRequestToken {
 
 const TEST_CARD = "4111 1111 1111 1111";
 
+// ── Card format checks (C48) ────────────────────────────────────────────────
+//
+// The sandbox is what every demo, developer and E2E run exercises, so it
+// validates formats the way a processor's hosted page would: `13/99` and CVV
+// `abc` used to submit. Pure functions, exported for the unit tests.
+
+/** Digits of a card number, with spaces and dashes allowed as separators. */
+function cardDigits(value: string): string | null {
+  const compact = value.replace(/[\s-]/g, "");
+  return /^\d+$/.test(compact) ? compact : null;
+}
+
+/** 13–19 digits passing the Luhn checksum. */
+export function isValidCardNumber(value: string): boolean {
+  const digits = cardDigits(value);
+  if (!digits || digits.length < 13 || digits.length > 19) return false;
+  let sum = 0;
+  for (let i = 0; i < digits.length; i++) {
+    let d = Number(digits[digits.length - 1 - i]);
+    if (i % 2 === 1) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+  }
+  return sum % 10 === 0;
+}
+
+/**
+ * `MM/YY` (or `MM/YYYY`) → whether it is malformed, past, or fine. A card is
+ * good through the last day of its expiry month, so the current month passes.
+ */
+export function checkExpiry(value: string, now = new Date()): "invalid" | "expired" | "ok" {
+  const m = /^\s*(\d{1,2})\s*\/\s*(\d{2}|\d{4})\s*$/.exec(value);
+  if (!m) return "invalid";
+  const month = Number(m[1]);
+  if (month < 1 || month > 12) return "invalid";
+  const year = m[2].length === 2 ? 2000 + Number(m[2]) : Number(m[2]);
+  const expiry = year * 12 + (month - 1);
+  const current = now.getFullYear() * 12 + now.getMonth();
+  return expiry < current ? "expired" : "ok";
+}
+
+/** 3 or 4 digits. */
+export function isValidCvv(value: string): boolean {
+  return /^\d{3,4}$/.test(value.trim());
+}
+
 /**
  * `next-pay` — a clearly-labeled SANDBOX payment gateway. It unpacks the
  * request token built by `next-checkout`, shows a read-only summary, collects
@@ -41,6 +89,8 @@ export class PayWidget extends MPNextWidget {
   private error: string | null = null;
   private submitting = false;
   private formError: string | null = null;
+  /** Set when the request token is spent or expired (C43). */
+  private linkState: "used" | "expired" | null = null;
 
   static get observedAttributes() {
     return ["api-host", "token"];
@@ -69,6 +119,20 @@ export class PayWidget extends MPNextWidget {
         "card-number": this.t("pay.enterCard"),
         expiry: this.t("pay.enterExpiry"),
         cvv: this.t("pay.enterCvv"),
+      },
+      // Formats (C48). Empty is left to `required`, so its message stays the
+      // "please enter…" one above.
+      customValidators: {
+        "card-number": (v) =>
+          !v.trim() || isValidCardNumber(v) ? null : this.t("pay.invalidCard"),
+        expiry: (v) => {
+          if (!v.trim()) return null;
+          const result = checkExpiry(v);
+          if (result === "invalid") return this.t("pay.invalidExpiry");
+          if (result === "expired") return this.t("pay.expiredCard");
+          return null;
+        },
+        cvv: (v) => (!v.trim() || isValidCvv(v) ? null : this.t("pay.invalidCvv")),
       },
     };
   }
@@ -112,6 +176,7 @@ export class PayWidget extends MPNextWidget {
       );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (this.isLinkState(data)) return;
         throw new Error(this.errorText(data));
       }
       const data: { request: PaymentRequestToken } = await res.json();
@@ -132,10 +197,10 @@ export class PayWidget extends MPNextWidget {
     const form = this.root.querySelector<HTMLFormElement>("#nw-pay-form");
     if (!form || !validateForm(form, this.validationOpts()).valid) return;
 
-    const nameOnCard = this.value("#nw-pay-name");
-    const cardNumber = this.value("#nw-pay-card");
-    const expiry = this.value("#nw-pay-expiry");
-    const cvv = this.value("#nw-pay-cvv");
+    const nameOnCard = this.value('[name="name-on-card"]');
+    const cardNumber = this.value('[name="card-number"]');
+    const expiry = this.value('[name="expiry"]');
+    const cvv = this.value('[name="cvv"]');
 
     this.formError = null;
     this.submitting = true;
@@ -156,6 +221,12 @@ export class PayWidget extends MPNextWidget {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (this.isLinkState(data)) {
+          this.submitting = false;
+          this.render();
+          this.attachListeners();
+          return;
+        }
         throw new Error(this.errorText(data, "errors.payment_declined"));
       }
       const data: { token: string } = await res.json();
@@ -171,6 +242,49 @@ export class PayWidget extends MPNextWidget {
       this.render();
       this.attachListeners();
     }
+  }
+
+  /**
+   * Recognise the single-use outcomes (C43) by their wire code and switch to
+   * the designed "link" state. Returns false for anything else, which stays an
+   * ordinary error.
+   */
+  private isLinkState(body: unknown): boolean {
+    const code = (body as { error?: unknown } | null)?.error;
+    if (code === "verification_used") this.linkState = "used";
+    else if (code === "verification_expired") this.linkState = "expired";
+    else return false;
+    this.emit("paymentLinkUnavailable", { reason: this.linkState });
+    return true;
+  }
+
+  /** The invoice page without any `token`, for the "return to invoice" link. */
+  private invoiceUrl(): string | null {
+    if (!this.request?.returnUrl) return null;
+    try {
+      const url = new URL(this.request.returnUrl, window.location.href);
+      url.searchParams.delete("token");
+      return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private renderLinkState(): string {
+    const used = this.linkState === "used";
+    const href = this.invoiceUrl();
+    return `
+      <div class="nw-pay-state nw-pay-link" role="status">
+        <p class="nw-pay-link-title">${this.escapeHtml(
+          this.t(used ? "pay.linkUsedTitle" : "pay.linkExpiredTitle"),
+        )}</p>
+        <p>${this.escapeHtml(this.t(used ? "pay.linkUsed" : "pay.linkExpired"))}</p>
+        ${
+          href
+            ? `<a class="nw-pay-btn" href="${this.escapeAttr(href)}">${this.escapeHtml(this.t("pay.returnToInvoice"))}</a>`
+            : ""
+        }
+      </div>`;
   }
 
   private buildReturnUrl(returnUrl: string, responseToken: string): string {
@@ -207,6 +321,13 @@ export class PayWidget extends MPNextWidget {
   }
 
   render() {
+    // A spent or expired link is a designed state, not an error: no Try
+    // Again (it would fail identically), and a way back to the invoice.
+    if (this.linkState) {
+      this.root.innerHTML = this.shell(this.renderLinkState());
+      return;
+    }
+
     if (this.loading) {
       this.root.innerHTML = this.shell(`
         <div class="nw-pay-state">
@@ -261,26 +382,51 @@ export class PayWidget extends MPNextWidget {
         </div>
       </div>
 
-      <form id="nw-pay-form" class="nw-pay-form" autocomplete="off" novalidate>
-        <div class="nw-pay-field">
-          <label for="nw-pay-name">${this.escapeHtml(this.t("pay.nameOnCard"))}${requiredStar()}</label>
-          <input id="nw-pay-name" name="name-on-card" type="text" placeholder="${this.escapeAttr(this.t("pay.namePlaceholder"))}"
-            required value="${this.escapeAttr(name === "—" ? "" : name)}">
-        </div>
-        <div class="nw-pay-field">
-          <label for="nw-pay-card">${this.escapeHtml(this.t("pay.cardNumber"))}${requiredStar()}</label>
-          <input id="nw-pay-card" name="card-number" type="text" inputmode="numeric"
-            required placeholder="${TEST_CARD}">
-        </div>
+      <form id="nw-pay-form" class="nw-pay-form" novalidate>
+        ${field({
+          name: "name-on-card",
+          label: this.t("pay.nameOnCard"),
+          required: true,
+          autocomplete: "cc-name",
+          placeholder: this.t("pay.namePlaceholder"),
+          value: name === "—" ? "" : name,
+          idPrefix: this.instanceId,
+          wrapperClass: "nw-pay-field",
+        })}
+        ${field({
+          name: "card-number",
+          label: this.t("pay.cardNumber"),
+          required: true,
+          autocomplete: "cc-number",
+          inputmode: "numeric",
+          placeholder: TEST_CARD,
+          attrs: { maxlength: 23 },
+          idPrefix: this.instanceId,
+          wrapperClass: "nw-pay-field",
+        })}
         <div class="nw-pay-row">
-          <div class="nw-pay-field">
-            <label for="nw-pay-expiry">${this.escapeHtml(this.t("pay.expiry"))}${requiredStar()}</label>
-            <input id="nw-pay-expiry" name="expiry" type="text" required placeholder="${this.escapeAttr(this.t("pay.expiryPlaceholder"))}">
-          </div>
-          <div class="nw-pay-field">
-            <label for="nw-pay-cvv">${this.escapeHtml(this.t("pay.cvv"))}${requiredStar()}</label>
-            <input id="nw-pay-cvv" name="cvv" type="text" inputmode="numeric" required placeholder="123">
-          </div>
+          ${field({
+            name: "expiry",
+            label: this.t("pay.expiry"),
+            required: true,
+            autocomplete: "cc-exp",
+            inputmode: "numeric",
+            placeholder: this.t("pay.expiryPlaceholder"),
+            attrs: { maxlength: 7 },
+            idPrefix: this.instanceId,
+            wrapperClass: "nw-pay-field",
+          })}
+          ${field({
+            name: "cvv",
+            label: this.t("pay.cvv"),
+            required: true,
+            autocomplete: "cc-csc",
+            inputmode: "numeric",
+            placeholder: "123",
+            attrs: { maxlength: 4 },
+            idPrefix: this.instanceId,
+            wrapperClass: "nw-pay-field",
+          })}
         </div>
         ${this.formError ? `<div class="nw-pay-inline-error">${this.escapeHtml(this.formError)}</div>` : ""}
         <button type="submit" class="nw-pay-btn nw-pay-btn--pay" ${this.submitting ? "disabled" : ""}>
@@ -324,6 +470,9 @@ export class PayWidget extends MPNextWidget {
       .nw-pay-spinner { animation: nw-pay-spin 1s linear infinite; color: #004C97; }
       @keyframes nw-pay-spin { to { transform: rotate(360deg); } }
       .nw-pay-error p { color: #b91c1c; margin: 0 0 12px; }
+      .nw-pay-link p { margin: 0; color: #474747; }
+      .nw-pay-link .nw-pay-link-title { font-size: 17px; font-weight: 700; color: #002855; }
+      .nw-pay-link a.nw-pay-btn { text-decoration: none; margin-top: 8px; }
 
       .nw-pay-summary { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }
       .nw-pay-summary-row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding: 4px 0; color: #474747; }

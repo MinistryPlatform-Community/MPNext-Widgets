@@ -163,6 +163,11 @@ export const ptBRGiving = {
     paymentUnconfirmed: "Não conseguimos confirmar seu pagamento.",
     paymentUnconfirmedDetail:
       "Não conseguimos confirmar seu pagamento: {detail}",
+    paymentDeclined: "Seu pagamento foi recusado e nada foi cobrado. Tente outro cartão.",
+    paymentError: "Não conseguimos registrar seu pagamento. Entre em contato conosco antes de tentar novamente, para não ser cobrado duas vezes.",
+    amountTooHigh: "O valor não pode ser maior que o saldo devedor ({amount}).",
+    balanceChanged: "O saldo desta fatura mudou. Revise-o e tente novamente.",
+    registrationComplete: "Sua inscrição está concluída.",
   },
 
   checkoutComplete: {
@@ -174,9 +179,10 @@ export const ptBRGiving = {
     received: "Obrigado! Seu pagamento foi recebido.",
     processing:
       "Obrigado! Seu pagamento está sendo processado e será confirmado em breve.",
-    failed:
-      "Não conseguimos confirmar seu pagamento. Tente novamente ou entre em contato conosco.",
     unconfirmed: "Não conseguimos confirmar seu pagamento.",
+    titleDeclined: "Pagamento recusado",
+    declined: "Seu pagamento foi recusado e nada foi cobrado. Volte à sua fatura e tente outro cartão.",
+    error: "Não conseguimos registrar seu pagamento. Entre em contato conosco antes de tentar novamente, para não ser cobrado duas vezes.",
   },
 
   pay: {
@@ -201,6 +207,15 @@ export const ptBRGiving = {
     enterCard: "Informe o número do cartão.",
     enterExpiry: "Informe a data de validade.",
     enterCvv: "Informe o CVV.",
+    linkUsedTitle: "Este link de pagamento já foi usado",
+    linkUsed: "Nada mais foi cobrado. Volte à sua fatura para ver o saldo atual.",
+    linkExpiredTitle: "Este link de pagamento expirou",
+    linkExpired: "Nada foi cobrado. Volte à sua fatura e inicie o pagamento novamente.",
+    returnToInvoice: "Voltar à fatura",
+    invalidCard: "Digite um número de cartão válido.",
+    invalidExpiry: "Digite a data de validade como MM/AA.",
+    expiredCard: "Este cartão está vencido.",
+    invalidCvv: "Digite o código de segurança de 3 ou 4 dígitos.",
   },
 
   subscriptions: {

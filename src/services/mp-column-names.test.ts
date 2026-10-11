@@ -57,6 +57,32 @@ const FORBIDDEN: ForbiddenColumn[] = [
   },
 ];
 
+interface ForbiddenSelect {
+  /** The MP table the `$select` reads. */
+  table: string;
+  /** A column that table does not have. */
+  column: string;
+  /** Where the value really comes from. */
+  note: string;
+}
+
+/**
+ * Columns that are real on a *procedure's* result but not on the table of the
+ * same name, so declaring them in a proc-row interface is fine and selecting
+ * them from the table is not. Table-scoped for exactly that reason.
+ */
+const FORBIDDEN_SELECT: ForbiddenSelect[] = [
+  {
+    table: "Invoices",
+    column: "Amount_Paid",
+    note:
+      "`Invoices` has no `Amount_Paid` column (12 columns, confirmed live) — MP " +
+      "500s the whole GET. The paid total comes from the `api_MPPW_GetInvoice` " +
+      "header via `invoiceService.getCheckoutInvoiceByGuid`. See " +
+      ".claude/TODO/Comparison/C40-*.",
+  },
+];
+
 /** Every non-test service source. */
 function serviceFiles(): string[] {
   return readdirSync(servicesDir)
@@ -93,6 +119,40 @@ describe("MP column names in service record literals", () => {
       expect(offenders, `${note} Use \`${right}\`.`).toEqual([]);
     });
   }
+
+  for (const { table, column, note } of FORBIDDEN_SELECT) {
+    it(`never selects \`${column}\` from the \`${table}\` table`, () => {
+      // A record-key scan cannot see this class: a `$select` naming a column
+      // the table lacks is a string, not a key. Unlike an unknown write key,
+      // MP does *not* ignore it — the whole GET answers 500 — so this is the
+      // failure that took every payment write down in C40.
+      //
+      // Matches each `table: "<T>", select: "<cols>"` pair (whitespace and a
+      // line break between them allowed), then checks the column list.
+      const pattern = new RegExp(
+        String.raw`table:\s*"${table}"\s*,\s*select:\s*"([^"]*)"`,
+        "g"
+      );
+      const offenders: string[] = [];
+      for (const file of serviceFiles()) {
+        const source = readFileSync(file, "utf-8");
+        for (const match of source.matchAll(pattern)) {
+          const cols = (match[1] ?? "").split(",").map((c) => c.trim());
+          if (cols.includes(column)) {
+            offenders.push(file.slice(servicesDir.length + 1));
+          }
+        }
+      }
+      expect(offenders, note).toEqual([]);
+    });
+  }
+
+  it("the select scan recognises the shape it guards", () => {
+    // Guard against the guard: if the call-site shape drifted, the scan above
+    // would pass vacuously. `invoiceService` selects from `Invoices` today.
+    const source = readFileSync(join(servicesDir, "invoiceService.ts"), "utf-8");
+    expect(source).toMatch(/table:\s*"Invoices"\s*,\s*select:\s*"/);
+  });
 
   it("still finds the real column, so the fix is present rather than merely absent", () => {
     // The paired assertion. Deleting the write entirely would satisfy the

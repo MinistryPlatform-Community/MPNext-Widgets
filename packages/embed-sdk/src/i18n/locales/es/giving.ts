@@ -166,6 +166,11 @@ export const esGiving = {
       "Su pago se está procesando. Esta factura se actualizará cuando el pago se acredite.",
     paymentUnconfirmed: "No pudimos confirmar su pago.",
     paymentUnconfirmedDetail: "No pudimos confirmar su pago: {detail}",
+    paymentDeclined: "Su pago fue rechazado y no se realizó ningún cargo. Intente con otra tarjeta.",
+    paymentError: "No pudimos registrar su pago. Comuníquese con nosotros antes de volver a intentarlo, para que no se le cobre dos veces.",
+    amountTooHigh: "El monto no puede ser mayor que el saldo pendiente ({amount}).",
+    balanceChanged: "El saldo de esta factura cambió. Revíselo e inténtelo de nuevo.",
+    registrationComplete: "Su inscripción está completa.",
   },
 
   checkoutComplete: {
@@ -177,9 +182,10 @@ export const esGiving = {
     received: "¡Gracias! Recibimos su pago.",
     processing:
       "¡Gracias! Su pago se está procesando y se confirmará en breve.",
-    failed:
-      "No pudimos confirmar su pago. Inténtelo de nuevo o comuníquese con nosotros.",
     unconfirmed: "No pudimos confirmar su pago.",
+    titleDeclined: "Pago rechazado",
+    declined: "Su pago fue rechazado y no se realizó ningún cargo. Vuelva a su factura e intente con otra tarjeta.",
+    error: "No pudimos registrar su pago. Comuníquese con nosotros antes de volver a intentarlo, para que no se le cobre dos veces.",
   },
 
   pay: {
@@ -204,6 +210,15 @@ export const esGiving = {
     enterCard: "Ingrese un número de tarjeta.",
     enterExpiry: "Ingrese la fecha de vencimiento.",
     enterCvv: "Ingrese el CVV.",
+    linkUsedTitle: "Este enlace de pago ya se utilizó",
+    linkUsed: "No se realizó ningún cargo adicional. Vuelva a su factura para ver el saldo actual.",
+    linkExpiredTitle: "Este enlace de pago venció",
+    linkExpired: "No se realizó ningún cargo. Vuelva a su factura e inicie el pago de nuevo.",
+    returnToInvoice: "Volver a la factura",
+    invalidCard: "Ingrese un número de tarjeta válido.",
+    invalidExpiry: "Ingrese la fecha de vencimiento como MM/AA.",
+    expiredCard: "Esta tarjeta está vencida.",
+    invalidCvv: "Ingrese el código de seguridad de 3 o 4 dígitos.",
   },
 
   subscriptions: {

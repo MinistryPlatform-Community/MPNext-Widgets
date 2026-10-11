@@ -206,6 +206,11 @@ export const giving = {
       "Your payment is being processed. This invoice will update once the payment clears.",
     paymentUnconfirmed: "We could not confirm your payment.",
     paymentUnconfirmedDetail: "We could not confirm your payment: {detail}",
+    paymentDeclined: "Your payment was declined and nothing was charged. Please try another card.",
+    paymentError: "We could not record your payment. Please contact us before trying again, so you are not charged twice.",
+    amountTooHigh: "The amount cannot be more than the balance due ({amount}).",
+    balanceChanged: "The balance on this invoice has changed. Please review it and try again.",
+    registrationComplete: "Your registration is complete.",
   },
 
   checkoutComplete: {
@@ -217,8 +222,10 @@ export const giving = {
     received: "Thank you! Your payment was received.",
     processing:
       "Thank you! Your payment is being processed and will be confirmed shortly.",
-    failed: "We were unable to confirm your payment. Please try again or contact us.",
     unconfirmed: "We were unable to confirm your payment.",
+    titleDeclined: "Payment Declined",
+    declined: "Your payment was declined and nothing was charged. Please return to your invoice and try another card.",
+    error: "We could not record your payment. Please contact us before trying again, so you are not charged twice.",
   },
 
   pay: {
@@ -246,6 +253,15 @@ export const giving = {
     enterCard: "Please enter a card number.",
     enterExpiry: "Please enter the expiry date.",
     enterCvv: "Please enter the CVV.",
+    linkUsedTitle: "This payment link has already been used",
+    linkUsed: "Nothing more has been charged. Return to your invoice to see its current balance.",
+    linkExpiredTitle: "This payment link has expired",
+    linkExpired: "Nothing has been charged. Return to your invoice and start the payment again.",
+    returnToInvoice: "Return to invoice",
+    invalidCard: "Please enter a valid card number.",
+    invalidExpiry: "Please enter the expiry date as MM/YY.",
+    expiredCard: "This card has expired.",
+    invalidCvv: "Please enter the 3- or 4-digit security code.",
   },
 
   subscriptions: {

@@ -28,6 +28,19 @@ export const PaymentRequestTokenSchema = z.object({
   addressZip: z.string().nullable(),
   addressCountry: z.string().nullable(),
   fundId: z.number().nullable(),
+  /**
+   * Single-use id (C43). Open in the KV store from issue until the first
+   * successful submit; a spent or unknown `jti` cannot be unpacked or paid.
+   */
+  jti: z.string(),
+  /**
+   * `receipt-template-id` from `next-checkout` (C66) — legacy
+   * `receipttemplateid`. Carried through the processor round trip so the
+   * receipt is sent from wherever the payment is recorded, including the
+   * server-to-server notify with no browser involved. Optional so a token
+   * minted before this field existed still decodes.
+   */
+  receiptTemplateId: z.number().int().positive().nullable().optional(),
 });
 export type PaymentRequestToken = z.infer<typeof PaymentRequestTokenSchema>;
 
@@ -48,8 +61,40 @@ export const PaymentResponseTokenSchema = z.object({
   addressCity: z.string().nullable().optional(),
   addressState: z.string().nullable().optional(),
   addressZip: z.string().nullable().optional(),
+  /** Echoed from the request token (C66); a vendor passes it through. */
+  receiptTemplateId: z.number().int().positive().nullable().optional(),
 });
 export type PaymentResponseToken = z.infer<typeof PaymentResponseTokenSchema>;
+
+// ── Payment outcome (C41) ───────────────────────────────────────────────
+
+/**
+ * The single discriminant every payment-recording endpoint answers with
+ * (`checkout/payment-response`, `payment/notify`). It replaced a pair of
+ * booleans (`success`, `paymentReceived`) that invited each widget to invent
+ * its own branch — and one of them reported a declined card as "processing".
+ *
+ * - `received` — recorded in MP (or already recorded: an idempotent replay).
+ * - `pending`  — the processor accepted it but has not settled it. Reserved
+ *   for a vendor that reports that state; the sandbox never does.
+ * - `declined` — the processor refused the transaction. Nothing was recorded;
+ *   the payer can retry with another card.
+ * - `error`    — an infrastructure fault on our side or MP's. Must never be
+ *   rendered as pending: the payer needs to know it did not go through.
+ */
+export const PaymentOutcomeStatusSchema = z.enum([
+  "received",
+  "pending",
+  "declined",
+  "error",
+]);
+export type PaymentOutcomeStatus = z.infer<typeof PaymentOutcomeStatusSchema>;
+
+export const PaymentOutcomeSchema = z.object({
+  invoiceId: z.number().nullable(),
+  status: PaymentOutcomeStatusSchema,
+});
+export type PaymentOutcome = z.infer<typeof PaymentOutcomeSchema>;
 
 // ── Checkout invoice display ────────────────────────────────────────────
 
@@ -62,6 +107,8 @@ export const CheckoutLineItemSchema = z.object({
   lineTotal: z.number(),
   isSubItem: z.boolean(),
   eventParticipantId: z.number().nullable(),
+  /** `Event_ID` from the proc's detail row (C49); null for a non-event line. */
+  eventId: z.number().nullable(),
 });
 export type CheckoutLineItem = z.infer<typeof CheckoutLineItemSchema>;
 
@@ -89,5 +136,11 @@ export const CheckoutInvoiceSchema = z.object({
     postalCode: z.string().nullable(),
   }),
   lineItems: z.array(CheckoutLineItemSchema),
+  /**
+   * The event this invoice registers for (C49): the first line's `Event_ID`.
+   * In practice one registration invoice is one event. Null for a non-event
+   * invoice, where "Make Changes" falls back to the bare URL.
+   */
+  eventId: z.number().nullable(),
 });
-export type CheckoutInvoice = z.infer<typeof CheckoutInvoiceSchema>;
+export type CheckoutInvoice= z.infer<typeof CheckoutInvoiceSchema>;

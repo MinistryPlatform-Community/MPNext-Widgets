@@ -122,3 +122,47 @@ real form? If the former, `PaymentRequestToken` should still carry the payor's a
 through to `PaymentResponseToken` — it currently does, but with nothing able to fill the
 gaps when the invoice payor record is sparse. If the latter, the billing block and the
 ACH option both need building, and `Payment_Type_ID` 5 needs a UI to select it.
+
+## Resolution — 2026-10-11
+
+**Product half: decided (2026-09-09, recorded in `Plans/checkout-pay.md`).** `next-pay` is a
+**sandbox stand-in** for a vendor-hosted payment page, not the production card form. Legacy's
+payor-contact block, billing-address block and card / bank-account choice are the
+**vendor's** job. They are therefore not a gap in `next-pay`, and this item does not port
+them.
+
+**Format half: fixed (epic W1, branch `ws/w1-payments`).** The sandbox is what every demo,
+developer and E2E run exercises, so it now validates like a processor's hosted page.
+`13/99` and CVV `abc` no longer submit:
+
+- **Card number:** digits, with spaces or dashes allowed as separators; 13–19 digits; Luhn
+  checksum (`isValidCardNumber`).
+- **Expiry:** `MM/YY` or `MM/YYYY`, month 01–12, and not past (`checkExpiry`). A card is good
+  through its expiry month, so the current month passes. Malformed and expired get different
+  messages.
+- **CVV:** 3–4 digits (`isValidCvv`).
+- Wired as `customValidators` in the existing `form-validation.ts` usage, so the protected
+  behaviour stays intact: `aria-invalid`, a `role="alert"` message per field, focus to the
+  first invalid field, no native popup, and the double-submit guard. An empty field is left to
+  `required`, so it keeps its "please enter…" message.
+- The controls now come from W0's `field()`. Each has a real `<label for>`, the
+  `cc-name` / `cc-number` / `cc-exp` / `cc-csc` autocomplete tokens, `inputmode="numeric"` on
+  the numeric fields, and `maxlength` limits. The form-level `autocomplete="off"`, which
+  defeated browser card fill, is gone.
+- **Decision:** expiry stays one `MM/YY` text field rather than legacy's two `<select>`s. With
+  `cc-exp` autofill and the format check, the class of error the selects remove is now
+  reported precisely, and one field is what processors' hosted pages use.
+- Copy (`pay.invalidCard`, `invalidExpiry`, `expiredCard`, `invalidCvv`) is in en / es /
+  pt-BR.
+- **Tests:** `packages/embed-sdk/src/components/pay.test.ts` (new) covers the pure checks
+  (Luhn, lengths, separators, the expiry boundary month, malformed months) and the widget
+  wiring (labels, autocomplete tokens, and `13/99` + `abc` marked `aria-invalid` with no
+  `/pay/response` request sent).
+
+**Open, for the vendor integration (not this epic):** *where payor and billing data come from.*
+`PaymentRequestToken` carries `firstName`…`addressZip` from the invoice purchaser's MP record,
+and all of them are nullable. When that record is sparse, or a guest pays someone else's
+invoice, nothing fills the gaps. Before a real processor is wired in, decide whether the
+vendor page collects billing details itself (most hosted pages do), or whether `next-checkout`
+should collect and pass them. The vendor also has to echo `receiptTemplateId` (C66) and keep
+the request `jti` single-use semantics (C43) in its own flow.
