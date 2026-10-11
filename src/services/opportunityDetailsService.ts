@@ -3,6 +3,7 @@ import { getEnv, getEnvOptional } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { CustomFormService } from "@/services/customFormService";
 import { getContactBasics } from "@/services/_shared/household-contact";
+import { MessageTemplateService } from "@/services/messageTemplateService";
 import { sqlLiteral } from "@/services/_shared/mp-lookup";
 import type { OpportunityDetail, OpportunityContact } from "@mpnext/types";
 
@@ -73,6 +74,11 @@ export interface RespondArgs {
   phone: string;
   message: string;
   userId: number | null;
+  /**
+   * `response-email-template`: a `dp_Communications` id sent to the responder
+   * once the response is saved. Best-effort; null sends nothing.
+   */
+  responseTemplateId?: number | null;
 }
 
 export class OpportunityDetailsService {
@@ -335,7 +341,58 @@ export class OpportunityDetailsService {
     if (!responseId) {
       throw new Error("Unable to save your response.");
     }
+
+    if (args.responseTemplateId) {
+      await this.sendResponseEmail(args.responseTemplateId, record, opportunity.title);
+    }
     return responseId;
+  }
+
+  /**
+   * Send the `response-email-template` to the responder (W4 bonus, same class
+   * as C11: the attribute was posted as `UseEmailTemplate` and nobody read it).
+   *
+   * Goes to the address stored on the `Responses` row, so for a picked
+   * household member it is their own record's email (C21), never one the
+   * client typed for them. Best-effort and logged: the response is already
+   * saved, and a church's template misconfiguration must not turn a
+   * successful sign-up into an error for the volunteer.
+   *
+   * Merge tokens: MP's column-style names plus the `mpp_*` names this repo's
+   * other templates use, so a template written for either convention fills.
+   */
+  private async sendResponseEmail(
+    templateId: number,
+    record: Record<string, unknown>,
+    opportunityTitle: string
+  ): Promise<void> {
+    const email = typeof record.Email === "string" ? record.Email : "";
+    if (!email) return;
+    const first = typeof record.First_Name === "string" ? record.First_Name : "";
+    const last = typeof record.Last_Name === "string" ? record.Last_Name : "";
+    const comments = typeof record.Comments === "string" ? record.Comments : "";
+    try {
+      const templates = await MessageTemplateService.getInstance();
+      await templates.sendMessageTemplate(
+        templateId,
+        { email, name: [first, last].filter(Boolean).join(" ") },
+        {
+          First_Name: first,
+          Last_Name: last,
+          Opportunity_Title: opportunityTitle,
+          Comments: comments,
+          mpp_contact_first_name: first,
+          mpp_contact_last_name: last,
+          mpp_opportunity_title: opportunityTitle,
+          mpp_response_comments: comments,
+        }
+      );
+    } catch (err) {
+      console.error(
+        "OpportunityDetailsService: response email failed:",
+        err instanceof Error ? err.message : err
+      );
+    }
   }
 
   /** Save a submitted custom-form response (best-effort; never blocks respond). */

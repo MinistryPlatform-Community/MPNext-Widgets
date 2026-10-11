@@ -20,6 +20,11 @@ import { OpportunityDetailsService } from "@/services/opportunityDetailsService"
 import { EventDetailsService } from "@/services/eventDetailsService";
 import { canActAsContact } from "@/services/_shared/household-contact";
 
+function positiveInt(value: unknown): number | null {
+  const n = Number(String(value ?? "").trim());
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 export async function POST(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
 
@@ -80,6 +85,8 @@ export async function POST(req: NextRequest) {
       phone: (payload.MobilePhoneNumber ?? "").trim(),
       message: (payload.Message ?? "").trim(),
       userId,
+      // The widget's `response-email-template` (a dp_Communications id).
+      responseTemplateId: positiveInt(payload.UseEmailTemplate),
     });
 
     // Persist any custom-form answers (best-effort; does not block the response).

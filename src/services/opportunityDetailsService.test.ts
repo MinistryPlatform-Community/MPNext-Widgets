@@ -27,6 +27,11 @@ vi.mock("@/services/domainTimezoneService", () => ({
   },
 }));
 
+const sendMessageTemplate = vi.fn();
+vi.mock("@/services/messageTemplateService", () => ({
+  MessageTemplateService: { getInstance: async () => ({ sendMessageTemplate }) },
+}));
+
 import { OpportunityDetailsService } from "@/services/opportunityDetailsService";
 
 const OPPORTUNITY = {
@@ -149,6 +154,30 @@ describe("OpportunityDetailsService.respond (C21)", () => {
     const svc = await OpportunityDetailsService.getInstance();
     await svc.respond({ opportunityId: 5, contactId: 44, userId: 9, ...BLANK, phone: "321-555-0199" });
     expect(writtenResponse().Phone).toBe("321-555-0199");
+  });
+
+  it("sends response-email-template to the stored (record) address", async () => {
+    sendMessageTemplate.mockReset().mockResolvedValue(undefined);
+    const svc = await OpportunityDetailsService.getInstance();
+    await svc.respond({ opportunityId: 5, contactId: 44, userId: 9, ...BLANK, responseTemplateId: 131 });
+    expect(sendMessageTemplate).toHaveBeenCalledWith(
+      131,
+      { email: "sarah@example.com", name: "Sarah Kehayias" },
+      expect.objectContaining({ Opportunity_Title: "Greeter", mpp_contact_first_name: "Sarah" })
+    );
+  });
+
+  it("keeps the response when the template send fails, and sends nothing without an id", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    sendMessageTemplate.mockReset().mockRejectedValue(new Error("Template 131 not found"));
+    const svc = await OpportunityDetailsService.getInstance();
+    await expect(
+      svc.respond({ opportunityId: 5, contactId: 44, userId: 9, ...BLANK, responseTemplateId: 131 })
+    ).resolves.toBe(77);
+
+    sendMessageTemplate.mockReset();
+    await svc.respond({ opportunityId: 5, contactId: 44, userId: 9, ...BLANK });
+    expect(sendMessageTemplate).not.toHaveBeenCalled();
   });
 
   it("writes the typed values for an anonymous (blank-form) response", async () => {
