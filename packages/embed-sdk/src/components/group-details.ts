@@ -451,9 +451,6 @@ export class GroupDetailsWidget extends MPNextWidget {
   // ── Listeners ──
 
   private attachListeners() {
-    const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.requestLogin("group-details"));
-
     // Tab switching (C19): click, plus the ARIA tabs keyboard pattern —
     // Left/Right wrap between tabs, Home/End jump, activation follows focus.
     const tabs = Array.from(this.root.querySelectorAll<HTMLElement>('[role="tab"]'));
@@ -762,11 +759,16 @@ export class GroupDetailsWidget extends MPNextWidget {
 
   private renderSignupForm(): string {
     if (!this.isAuthenticated) {
-      return `
-        <div class="gd-login-panel">
-          <p>${this.escapeHtml(this.t("groupDetails.signInToSignUp"))}</p>
-          <button class="gd-btn gd-btn--primary" type="button" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button>
-        </div>`;
+      // The shared, mode-aware panel (W0 / C81): a Sign In button where the
+      // SDK can start a sign-in, the page's own sign-in link named in
+      // `legacy` — where the old hand-rolled button did nothing visible. The
+      // base class binds the button.
+      return this.renderSignInRequired({
+        subject: "group-details",
+        message: this.t("groupDetails.signInToSignUp"),
+        className: "gd-login-panel",
+        buttonClass: "gd-btn gd-btn--primary",
+      });
     }
     const showBlank = this.signupContactId === "blank";
     return `

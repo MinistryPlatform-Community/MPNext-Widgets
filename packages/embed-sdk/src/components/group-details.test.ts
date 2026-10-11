@@ -351,4 +351,29 @@ describe("<next-group-details>", () => {
       expect(text(el)).not.toContain("This field is required.");
     });
   });
+
+  describe("signed-out sign-up tab (C81)", () => {
+    it("legacy: names the page's sign-in link and draws no dead button", async () => {
+      mockFetch({}, { signedIn: false, mode: "legacy" });
+      const el = await mountSettled();
+      clickTab(el, "signup");
+      expect(shadow(el).querySelector("[data-nw-signin]")).not.toBeNull();
+      expect(shadow(el).querySelector('[data-action="login"]')).toBeNull();
+      expect(text(el)).toContain("Please sign in to sign up for this group.");
+      expect(text(el)).toContain("Use the sign-in link on this page.");
+    });
+
+    it("dual: one press of Sign In fires exactly one loginRequired", async () => {
+      mockFetch({}, { signedIn: false, mode: "dual" });
+      const el = await mountSettled();
+      clickTab(el, "signup");
+      const seen: unknown[] = [];
+      el.addEventListener("loginRequired", (e) => {
+        e.preventDefault();
+        seen.push((e as CustomEvent).detail);
+      });
+      shadow(el).querySelector<HTMLButtonElement>('[data-action="login"]')!.click();
+      expect(seen).toEqual([{ wid: "group-details" }]);
+    });
+  });
 });
