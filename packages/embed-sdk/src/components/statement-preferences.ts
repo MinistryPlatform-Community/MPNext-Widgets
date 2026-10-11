@@ -263,40 +263,40 @@ export class StatementPreferencesWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-statement {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
+        background: var(--_nw-color-surface);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .header {
-        background: #002855;
-        color: white;
-        padding: 24px;
+        background: var(--_nw-color-secondary);
+        color: var(--_nw-color-on-primary);
+        padding: var(--_nw-space-6);
       }
       .title {
         font-size: 24px;
         font-weight: bold;
         text-align: center;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
       }
       .subtitle {
         text-align: center;
         opacity: 0.8;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         margin: 0;
       }
       .loading-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         font-size: 18px;
       }
 
@@ -310,27 +310,27 @@ export class StatementPreferencesWidget extends MPNextWidget {
       }
 
       .card-body {
-        padding: 24px;
+        padding: var(--_nw-space-6);
       }
 
       .empty-state {
         text-align: center;
-        padding: 40px 20px;
+        padding: 40px var(--_nw-space-5);
         color: #9E9E9E;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
       }
 
       .toggle-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 16px;
+        gap: var(--_nw-space-4);
         cursor: pointer;
       }
       .toggle-label {
         font-size: 15px;
-        color: #2D2926;
-        line-height: 1.5;
+        color: var(--_nw-color-text);
+        line-height: var(--_nw-line-height);
         font-weight: 500;
       }
 
@@ -368,7 +368,7 @@ export class StatementPreferencesWidget extends MPNextWidget {
         transition: transform 0.2s;
       }
       .switch input:checked + .slider {
-        background: #86AD3F;
+        background: var(--_nw-color-success);
       }
       .switch input:checked + .slider::before {
         transform: translateX(24px);
@@ -376,7 +376,7 @@ export class StatementPreferencesWidget extends MPNextWidget {
       /* C35: the checkbox is visually hidden, so its focus ring is drawn on
          the slider it is paired with. */
       .switch input:focus-visible + .slider {
-        outline: 2px solid #009CDE;
+        outline: var(--_nw-focus-ring);
         outline-offset: 2px;
         box-shadow: 0 0 0 3px rgba(0, 76, 151, 0.4);
       }
@@ -386,10 +386,10 @@ export class StatementPreferencesWidget extends MPNextWidget {
       }
 
       .message {
-        margin-top: 16px;
+        margin-top: var(--_nw-space-4);
         padding: 10px 14px;
-        border-radius: 8px;
-        font-size: 14px;
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
       }
       .message--success {
         background: rgba(134, 173, 63, 0.15);
@@ -398,40 +398,40 @@ export class StatementPreferencesWidget extends MPNextWidget {
       }
       .message--error {
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
         border: 1px solid rgba(255, 109, 106, 0.4);
       }
 
       .retry-section {
-        padding: 20px;
+        padding: var(--_nw-space-5);
         text-align: center;
       }
       .retry-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .retry-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       @media (max-width: 640px) {
         .header, .card-body {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .toggle-row {
-          gap: 12px;
+          gap: var(--_nw-space-3);
         }
         .toggle-label {
-          font-size: 14px;
+          font-size: var(--_nw-font-size-base);
         }
       }
     `;
