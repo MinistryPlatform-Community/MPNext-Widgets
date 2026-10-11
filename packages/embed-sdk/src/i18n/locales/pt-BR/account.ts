@@ -31,12 +31,16 @@ export const ptBRAccount = {
     payNow: "Pagar agora",
     detailTitle: "Detalhes da fatura",
     backToList: "Voltar para as faturas",
-    backToInvoice: "Voltar para a fatura",
     invoiceDate: "Data da fatura",
     lineItems: "Itens da fatura",
     product: "Produto",
     quantity: "Qtd.",
     unitPrice: "Preço unitário",
+    signInPrompt: "Entre para ver suas faturas.",
+    searchLabel: "Pesquisar faturas",
+    showFree: "Mostrar inscrições gratuitas",
+    free: "Grátis",
+    payLabel: "Pagar {description}",
   },
 
   /**

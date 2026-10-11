@@ -101,3 +101,22 @@ one.
 Four agents found this independently in four widget families (C13, C30, C46, C53). The
 sign-in affordance already exists as `requestLogin()` in `base-widget.ts` and is used by
 nine other components, so the fix is shared — do not close this item by fixing one widget.
+
+## Resolution — 2026-10-11
+
+**Fixed (epic W1, branch `ws/w1-payments`).** `next-my-invoices` adopts W0's signed-out
+primitive:
+
+- `loadInvoices()` / `loadInvoiceDetail()` check `this.isNeedsAuth(res)`. A 401 under a public
+  token renders `renderSignInRequired({ subject: "my-invoices", message:
+  myInvoices.signInPrompt })` inside the widget's own header.
+- In `dual` / `hardened` it renders a real Sign In button, which the base class delegates. In
+  `legacy` it renders copy only, with no button, and the base class fires the passive
+  `loginRequired` event once.
+- **There is no Try Again in this state.** Try Again is now reserved for real faults
+  (`mp_unavailable`, network).
+- The routes answer `401 auth_required` both for a public token and for an unusable token. The
+  latter was previously a string-matched 403/500 carrying the raw message.
+
+Tests: `my-invoices.test.ts` checks that signed out shows the prompt with no retry and no
+button in legacy, and with a button in dual.

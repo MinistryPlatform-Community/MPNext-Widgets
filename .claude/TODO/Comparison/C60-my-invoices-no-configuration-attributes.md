@@ -142,3 +142,45 @@ Separately filed from the same session, and not duplicates of this item: **C44**
 in-widget Pay Now flow that replaced `targeturl` is itself non-functional), **C45**
 (rows are not keyboard reachable), **C46** (anonymous state shows an error, not a
 sign-in prompt).
+
+## Resolution — 2026-10-11
+
+**Fixed (epic W1, branch `ws/w1-payments`).** The six legacy options, in kebab-case, are now
+in `observedAttributes`:
+
+| attribute | legacy | effect |
+|---|---|---|
+| `congregation-id` | `congregationid` | **server-side**: `Congregation_ID = n` |
+| `month-id` | `monthid` | **server-side**: `MONTH(Invoice_Date) = n` (1–12). MP `$filter` accepts `MONTH()`; verified live 2026-10-11 |
+| `invoice-status-id` | `invoiceStatusId` | **server-side, legacy vocabulary**: `1` balance due → `Invoice_Status_ID IN (1,2)`; `2` paid in full → `= 3`; `0` or absent → all. These are not MP status ids, which is what legacy's select posts. |
+| `keyword` | `keyword` | seeds the search box (client-side search kept; see below) |
+| `hide-free-events-checkbox` | `hidefreeeventscheckbox` | hides the "Show free registrations" toggle |
+| `checkout-url` | `targeturl` | where "Pay" links (C44) |
+
+The values flow `my-invoices.ts` → `GET /api/embed/invoices?congregationId=&monthId=&invoiceStatusId=`
+→ `invoiceService.getInvoices(…, filters)`. Non-integer values are ignored, and every value is
+range-checked again before it reaches `$filter`. Attribute changes after the first paint reload
+the list through the W0 reconfigure convention (`painted` + `reload()`).
+
+**Decisions:**
+- **Free registrations default to shown, and are badged "Free" instead of `$0.00`**, which is
+  the plan's recommendation. They *are* the member's registrations. This uses the same
+  vocabulary as C47 (a zero-total invoice is not "paid"). A visible **"Show free
+  registrations"** checkbox appears whenever the list contains one. A new
+  `show-free-events="false"` reproduces legacy's default of hiding them.
+  **Migration note (for W9):** a migrating church sees zero-total invoices that legacy hid. Set
+  `show-free-events="false"` (and `hide-free-events-checkbox`) for legacy's exact behaviour.
+- **No visible Campus / Month / Status controls.** The plan's "do better than parity" note
+  applies: most members have one to six invoices and the list is a status page. Churches that
+  need narrowing set the attributes, which filter server-side. This is a deliberate non-port of
+  legacy's "Show Advanced" form.
+- **Keyword stays client-side.** The comparison run showed our search is a superset of
+  legacy's server-side keyword (it also matches amount and date), and the route does not
+  paginate. The search box now also shows when a `keyword` is preset, even with three or fewer
+  invoices.
+- **`targeturl` was ported, not dropped,** because Route A (C44) needs it.
+
+Tests: `src/services/invoiceService.test.ts` ("getInvoices filters": the exact `$filter`
+text, and out-of-range values ignored); `my-invoices.test.ts` (attributes reach the route,
+keyword seeds the search, Free badge and toggle, `show-free-events="false"` plus a hidden
+toggle, and reload on an attribute change).

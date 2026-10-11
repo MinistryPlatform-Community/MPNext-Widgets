@@ -105,3 +105,34 @@ Either way, do not leave a code path that injects an `mpp-*` tag from inside a `
 widget without the re-insert watch that `user-menu.ts` uses; and note that C42 currently
 blocks the signed-in `next-checkout` path this would route into, so C42 has to land
 first for the fix to be demonstrable.
+
+## Resolution — 2026-10-11
+
+**Fixed (epic W1, branch `ws/w1-payments`) using Route A** from `Plans/my-invoices.md`: link out.
+
+- "Pay" (on the row) and "Pay Now" (in the detail view) are real
+  `<a href="<checkout-url>?id=<Invoice_GUID>">` links. They are addressed by the **GUID**, as
+  `next-checkout` (default `invoice-id-parameter-name="id"`) and legacy's own "Pay Balance"
+  link expect. The href is built with `URL` / `URLSearchParams`, so a configured URL keeps
+  its query string, and anything other than http(s) is refused.
+- `showCheckout()`, the page overlay, its injected `<style>`, the `?invoiceId=` history
+  rewrite and the `<mpp-checkout invoiceid="<numeric id>">` tag are **deleted**. **No `mpp-*`
+  tag is injected anywhere in the component.** A test asserts this, both in the shadow root
+  and in the document.
+- `checkout-url` is the new attribute (legacy `targeturl`, see C60). **Decision:** with no
+  `checkout-url`, there is **no Pay affordance**, rather than a dead one. "Pay" also no longer
+  appears on a cancelled, paid or zero-total invoice. Previously the detail view offered
+  "Pay Now" for anything not paid, including cancelled and free invoices.
+- Clicking a Pay link emits `invoicePay` with `{ invoiceGuid }`, and the anchor navigates by
+  itself.
+- **Route B** (an inline `next-checkout` overlay behind `checkout-mode="inline"`) is
+  deliberately left for later, as the plan recommends. It is now unblocked, because
+  `checkout-pay.md` has landed (C40–C49).
+
+**Needs a change in a file W1 does not own:** `user-menu.ts` (W6) renders
+`<next-my-invoices api-host="…">` in its Invoices tab with no `checkout-url`. So inside the
+user menu there is now no Pay link, where before there was a broken one. The fix is to forward a
+`checkout-url` attribute from `next-user-menu` to the embedded element. The exact change is in
+the W1 report.
+
+Tests: `packages/embed-sdk/src/components/my-invoices.test.ts`.

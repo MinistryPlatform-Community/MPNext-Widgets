@@ -88,3 +88,24 @@ strictly more code than using a `button`, which is the argument for the button.
 If C44 is resolved by the link-out route, the payable affordance becomes an `<a href>`
 and this item is largely resolved with it; the non-payable rows still need a focusable
 control to open the detail view.
+
+## Resolution — 2026-10-11
+
+**Fixed (epic W1, branch `ws/w1-payments`).**
+
+- Each invoice row is now W0's `cardButton()`, a real `<button type="button">`. Focus,
+  Enter / Space and the button role come from the platform. The `:focus-visible` ring comes
+  from `CARD_LINK_STYLES`, and the row body is phrasing content (spans) only.
+- The row-level **Pay** is a real anchor (C44) placed **beside** the button inside a
+  `role="listitem"` wrapper, never inside it, because an anchor inside a button is invalid and
+  unreachable. It has an accessible name, "Pay {description}", via `aria-label`, plus its own
+  focus ring. The list is `role="list"`, and the visual column header is `aria-hidden`.
+- **Keyboard path to payment:** Tab reaches each row and its Pay link. Enter on a row opens the
+  detail view, and focus moves to "Back to Invoices". From there, Tab reaches "Pay Now",
+  another anchor. Back returns focus to the row that opened the detail, instead of dropping it
+  on `<body>`.
+- The search box gained an accessible name (`aria-label`, `myInvoices.searchLabel`) and is now
+  `type="search"`.
+
+Tests: `my-invoices.test.ts` checks that rows are buttons, Pay is an anchor outside the
+button, a row opens the detail view with focus on Back, and the detail view's Pay Now is a link.
