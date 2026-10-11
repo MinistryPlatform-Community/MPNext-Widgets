@@ -8,6 +8,31 @@ Read this before comparing any widget pair. It tells you *what configuration to 
 the new widget so the comparison is like-for-like*, and it lists the parity gaps that
 are already conclusive without a browser.
 
+> **Updated 2026-10-11, after the comparison-remediation epic.** The body below records
+> the `next-*` side **as it was on 2026-09-08**. Most gaps it lists have since closed.
+>
+> **Renamed attributes (C79).** Four `my-` widgets are now kebab-case, with the old names
+> accepted as one-release aliases. They are annotated in place in §2.9, §2.10, §2.12,
+> §2.13 and §4.11.
+>
+> **Closed gaps, with their new attributes:**
+> - `next-my-invoices`: `checkout-url`, `congregation-id`, `month-id`, `invoice-status-id`,
+>   `keyword`, `hide-free-events-checkbox` and `show-free-events` (C60).
+> - `next-checkout`: `receipt-template-id` (C66).
+> - `next-subscriptions`: `congregation-id` (C61).
+> - `next-my-contribution-statement`: `my-giving-url` (C62) and `show-paperless-toggle`
+>   (C38).
+> - `next-plan-your-visit`: `user-notification-email-template-id` (C63) and
+>   `google-maps-api-key` (C23).
+> - `next-group-finder`: `city-postal-code` (C64).
+> - `next-opportunity-details`: `show-full-address` (C65).
+> - `next-group-details`: `require-inquiry-phone` (C16).
+> - `next-full-calendar`: `cards-scope` (C02).
+>
+> When re-measuring, use the **current** attribute names:
+> - README, "Migrating from MPWidgets.js";
+> - `.claude/TODO/Comparison/README.md`, the item ledger.
+
 ---
 
 ## 0. Confidence and method, up front
@@ -253,6 +278,10 @@ the paperless control inside the legacy contribution-statement widget.
 spelling** (flat lowercase, not kebab). `setAttribute("hidegrouplife","false")` is
 already the default, so the demo is like-for-like as shipped.
 
+> **Updated 2026-10-11 (C79):** the canonical name is now **`hide-group-life`**.
+> `hidegrouplife` is still read as a one-release alias, and it warns once. When
+> re-measuring, set `hide-group-life`.
+
 ### 2.10 My Household — `/widgets/my_household.aspx` (also `/widgets/MyHousehold`)
 
 ```html
@@ -261,6 +290,9 @@ already the default, so the demo is like-for-like as shipped.
 
 **Match with:** `/demo-my-household.html`. New accepts `hideaddhouseholdmember`
 verbatim. Like-for-like as shipped.
+
+> **Updated 2026-10-11 (C79):** the canonical name is now **`hide-add-household-member`**.
+> `hideaddhouseholdmember` is still read as a one-release alias, and it warns once.
 
 ### 2.11 My Invoices — `/widgets/my_invoices.aspx`
 
@@ -283,6 +315,11 @@ equivalent, and the corresponding **filter controls** are absent too. Filed **C6
 **Match with:** `/demo-my-pledges.html`. New accepts `hidecancelbuttonpledge` and
 `cancelpledgeemailtemplate` verbatim — **full parity**. Like-for-like as shipped.
 
+> **Updated 2026-10-11 (C79, C31):** the canonical names are now
+> **`hide-cancel-button-pledge`** and **`cancel-pledge-email-template`**. The flat
+> spellings are still read as one-release aliases. Cancel Pledge is now **shown by
+> default**, as in legacy.
+
 ### 2.13 My Giving — `/widgets/my_giving.aspx`
 
 ```html
@@ -291,6 +328,9 @@ equivalent, and the corresponding **filter controls** are absent too. Filed **C6
 
 **Match with:** `/demo-my-giving.html`. New accepts `hidesoftcredits` verbatim — full
 parity, like-for-like as shipped.
+
+> **Updated 2026-10-11 (C79):** the canonical name is now **`hide-soft-credits`**.
+> `hidesoftcredits` is still read as a one-release alias.
 
 ### 2.14 My Subscriptions — `/widgets/subscriptions.aspx` (also `/widgets/Subscriptions`)
 
@@ -690,6 +730,17 @@ attributes; new takes `token`. **Parity (new adds one).**
 
 Full functional parity for all four — and the only four new widgets that kept legacy
 spelling. Every other new widget is kebab-case. Filed as **C79** (consistency, cosmetic).
+
+> **Resolved 2026-10-11 (C79).** All four widgets are now kebab-case. The flat names above
+> are still accepted for one release through `attributeAliases` + `readAttr()`, and each
+> warns once. `observed-attributes.test.ts` enforces kebab-case catalogue-wide.
+>
+> | Pair | Old (legacy, alias) | New (canonical) |
+> |---|---|---|
+> | `next-my-giving` ← `mpp-my-giving` | `hidesoftcredits` | `hide-soft-credits` |
+> | `next-my-groups` ← `mpp-my-groups` | `hidegrouplife` | `hide-group-life` |
+> | `next-my-household` ← `mpp-household` | `hideaddhouseholdmember` | `hide-add-household-member` |
+> | `next-my-pledges` ← `mpp-my-pledges` | `hidecancelbuttonpledge`, `cancelpledgeemailtemplate` | `hide-cancel-button-pledge`, `cancel-pledge-email-template` |
 
 ### 4.12 `next-my-invoices` ← `mpp-my-invoices`
 

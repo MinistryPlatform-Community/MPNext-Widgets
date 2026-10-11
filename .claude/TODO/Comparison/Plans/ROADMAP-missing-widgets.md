@@ -5,6 +5,21 @@
 recommendation each. **No per-widget implementation plan is written until one is picked up** —
 this file exists so the decisions get made deliberately rather than discovered at cutover.
 
+> ## Final state — 2026-10-11 (comparison-remediation epic)
+>
+> All eleven items are decided:
+> - **Seven are built:** C72, C69, C70, C78, C73, C52 and C76.
+> - **C71** `mpp-rss-reader` is **won't port** (decided 2026-09-11).
+> - **C77** `mpp-user-label` is **won't do** (decided 2026-10-11; see Tier 4).
+> - **C74** `mpp-smart-link` and **C75** `mpp-smart-frame` are **deferred**. They were left
+>   out of the epic and still wait on the Tier 3 auth-design question below. Each now has a
+>   status section saying so.
+>
+> Nothing in this file is waiting on engineering. The only open item is a policy decision.
+> The customer migration notes are in README, "Migrating from MPWidgets.js". They cover the
+> RSS reader prominently, and they tell a church that relies on smart-link or smart-frame to
+> keep MPWidgets.js on that page for now.
+
 > ## Tier 1 is built — 2026-09-09
 >
 > **All four Tier 1 widgets shipped** on `feature/tier1-missing-widgets`: `next-unsubscribe`
@@ -108,6 +123,9 @@ moved both estimates, one of them by a whole widget.
 | **7** | **C71 `mpp-rss-reader`** — publication feed | **WON'T PORT — decided 2026-09-11.** Not being carried into the new catalogue. The open question in C71's own *Suggested fix* (does MP publish an actual RSS/Atom feed, or does the widget read rows?) is therefore moot and should not be investigated — the resolution section appended to `C71-no-rss-reader-widget.md` says so too, so nobody disassembles `RssReader.js` to answer a question that no longer has a consumer. This needs a line in the customer migration notes like any other unported widget: *"The RSS reader has no replacement — a church using it keeps MPWidgets.js on that page, or renders the feed from its own CMS."* Note that it is on **MP's own sample home page**, so it is the one won't-port a church is likely to meet before it meets anything else; the migration note should be prominent rather than a footnote. |
 
 ### Tier 3 — needs an auth-design decision before it is a build question
+
+> **DEFERRED, 2026-10-11.** Both items were kept out of the comparison-remediation epic, by
+> decision. They stay open here until the question below has an owner and an answer.
 
 | # | Widget | The decision |
 |---|---|---|

@@ -98,3 +98,18 @@ before implementing — it may be a deliberate reason this element was not porte
 
 Beyond that: read `href`, `target`, `link-text`, `link-classes`; fall back to child text
 when `link-text` is absent; resolve tokens from `AuthSession`; render one anchor.
+
+## Status — DEFERRED, decided 2026-10-11 (comparison-remediation epic)
+
+**Still open, and deliberately left out of the epic.** C74 (`mpp-smart-link`) and C75
+(`mpp-smart-frame`) both wait on the same Tier 3 auth-design decision.
+
+- **The question:** can the signed-in user's PII (email, display name) be merged into a URL
+  that is handed to a third party, or to a framed origin, under the hardened auth model?
+- **Where it is framed:** `Plans/ROADMAP-missing-widgets.md`, Tier 3. That section also
+  lists the security requirements that apply if either element is built.
+- **Possible outcome:** "won't port, here is what to use instead" is still a legitimate
+  answer.
+
+Until the decision is made, a church that relies on this widget keeps MPWidgets.js on that
+page. README "Migrating from MPWidgets.js" says so.

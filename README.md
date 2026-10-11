@@ -44,6 +44,7 @@ Embeddable Web Component widgets for [Ministry Platform](https://www.ministrypla
 - [Event Pre Check-In](#event-pre-check-in)
 - [About Me — Skills & Spiritual Gifts](#about-me--skills--spiritual-gifts)
 - [Mission Trips](#mission-trips)
+- [Migrating from MPWidgets.js](#migrating-from-mpwidgetsjs)
 - [Testing](#testing)
 - [Development](#development)
 - [Claude Code Commands](#claude-code-commands)
@@ -1845,6 +1846,108 @@ widgets' own labels are available in Spanish and Portuguese.
 - Both authorization rules are covered by fixture-driven unit tests, including the
   head-of-household-whose-child-is-the-leader case, which a naive "check the
   caller's own pledge" implementation gets wrong.
+
+## Migrating from MPWidgets.js
+
+This section covers moving a page from a legacy `mpp-*` widget to its `next-*` counterpart.
+It is about what changes for the widgets themselves. Sign-in is a separate topic: see
+[Cutover Runbook](#cutover-runbook) and the per-widget "Migrating from…" sections above
+(prayer, newsletter, pre-check, about-me, mission trips). The full side-by-side comparison
+behind these notes is `.claude/TODO/Comparison/`.
+
+> ### The RSS reader has no replacement
+>
+> `mpp-rss-reader` is **not** being carried over, and nothing in the `next-*` catalogue
+> renders a publication feed.
+>
+> **What to do:** keep MPWidgets.js on that one page, or render the feed from your own
+> CMS.
+>
+> It is on MP's own sample home page, so it is the gap a church is most likely to meet
+> first. Check your home page before you cut over.
+
+### Widgets that have no counterpart
+
+| Legacy | Status | What to do |
+|---|---|---|
+| `mpp-rss-reader` | **Won't port** | See above. |
+| `mpp-smart-link`, `mpp-smart-frame` | **Deferred.** Both would merge a signed-in member's details into a URL handed to a third party. That needs an auth-design decision first. | Keep MPWidgets.js on those pages for now. `/widgets/giving.aspx` is a smart-link, not a payment widget. |
+| `mpp-user-label` | **Won't do** | Write the word on your page yourself. To rename a label across every widget, use [`MPNextEmbed.setMessages()`](#renaming-labels). |
+
+A page that keeps MPWidgets.js for one of these runs both login models side by side. Sign-in
+still works, but read [Widget Authentication](#widget-authentication) before mixing them on
+one page.
+
+### Styling: your MP domain stylesheet no longer reaches the widgets
+
+Legacy widgets pick up the domain's skin stylesheet automatically, and accept a `customCss`
+attribute. The `next-*` widgets render in Shadow DOM and do neither.
+
+**Restate your branding as `--nw-*` theme tokens** on your own site. A few lines on `:root`
+usually covers it. See [Theming](#theming).
+
+Not available yet:
+- a per-element `custom-css` attribute;
+- `::part()` hooks;
+- a domain-level stylesheet.
+
+### Renamed attributes
+
+Every `next-*` attribute is kebab-case. Five widgets once took flat-lowercase names, and
+those have been renamed:
+
+| Widget | Use | Old spelling (still accepted for one release) |
+|---|---|---|
+| `next-my-giving` | `hide-soft-credits` | `hidesoftcredits` |
+| `next-my-pledges` | `hide-cancel-button-pledge` | `hidecancelbuttonpledge` |
+| `next-my-pledges` | `cancel-pledge-email-template` | `cancelpledgeemailtemplate` |
+| `next-my-groups` | `hide-group-life` | `hidegrouplife` |
+| `next-my-household` | `hide-add-household-member` | `hideaddhouseholdmember` |
+
+**The old spellings still work for one release.** When one is used, the widget logs a
+single console warning naming the new spelling. Update your snippets now; the old names
+will be removed.
+
+**Other legacy attributes map to new names**, as the table below shows. For example,
+`targeturl` on my-invoices is now `checkout-url`. These were never accepted under their old
+spelling.
+
+### New attributes, and behaviour that changed
+
+Rows marked **changed default** behave differently from the legacy widget, or from an
+earlier `next-*` release, unless you set the attribute.
+
+| Widget | Attribute / behaviour | Notes |
+|---|---|---|
+| `next-full-calendar` | `cards-scope="month\|rolling"` (default `month`) | **Changed default.** `view="cards" show-toolbar="false"` used to show a fixed window of this month plus two more. It now shows the current month only. For a home-page "upcoming events" strip, add `cards-scope="rolling"`. |
+| `next-opportunity-details` | `show-full-address` (default hidden) | **Changed default.** The page now shows city and state only, matching legacy's privacy default. Add `show-full-address="true"` to show the street address. The address is withheld on the server, not hidden in the browser. |
+| `next-opportunity-details` | `response-email-template` | Now actually sent. The responder receives the `dp_Communications` template after their response is saved. |
+| `next-my-invoices` | `show-free-events` (default shown) | **Changed default.** Zero-total registrations now appear, badged "Free", with a "Show free registrations" toggle. Legacy hid them. For legacy behaviour, set `show-free-events="false"`, and `hide-free-events-checkbox` to hide the toggle too. |
+| `next-my-invoices` | `checkout-url` (legacy `targeturl`) | Where **Pay** links to. The link is `?id=<Invoice_GUID>`, which `next-checkout` reads. **With no `checkout-url`, no Pay link is shown.** |
+| `next-my-invoices` | `congregation-id`, `month-id`, `invoice-status-id`, `keyword`, `hide-free-events-checkbox` | Legacy's filters. They now filter on the server. There is no visible "Show Advanced" form. |
+| `next-user-menu` | `invoices-checkout-url` | Gives the Invoices tab its Pay link: it is forwarded as `checkout-url`. |
+| `next-user-menu` | custom links need `slot="menu-items"` | Write `<next-user-menu><a slot="menu-items" href="/give">Give</a></next-user-menu>`. Signed in, any other child markup is not rendered, and the widget logs a console warning. |
+| `next-checkout` | `receipt-template-id` (legacy `receipttemplateid`) | Sends a receipt when the payment is recorded. Replays and reloads do not send it again. |
+| `next-my-contribution-statement` | `show-paperless-toggle` (opt-in) | Legacy's statement widget included Go Paperless. Add `show-paperless-toggle="true"` to get the same surface. `next-statement-preferences` still exists on its own. |
+| `next-my-contribution-statement` | `my-giving-url` (legacy `mygivingwidgettargeturl`) | Adds a "See my giving" link. |
+| `next-my-giving`, `next-my-pledges`, `next-my-contribution-statement`, `next-statement-preferences` | `heading-level` (1–6, default 2) | The widgets now emit real headings. Legacy hard-coded `h1`. Set `heading-level` so the widget fits under your page's own heading. |
+| `next-my-pledges` | Cancel Pledge shown by default | Matches legacy. `hide-cancel-button-pledge="true"` hides it. |
+| `next-group-details` | `require-inquiry-phone` (default required) | The phone number is required on an inquiry, as in legacy. Set `require-inquiry-phone="false"` to make it optional. |
+| `next-group-details` | `inquiry-email-template`, `signup-email-template`, `leader-signup-email-template` | **Now actually sent.** They were accepted before but did nothing. Check that the template ids exist on your domain. |
+| `next-group-finder` | `city-postal-code` | Pre-fills and pre-scopes the first search. Visitors can still change it. |
+| `next-subscriptions` | `congregation-id` | Scopes the list and its save to one campus. Publications with **no** congregation stay visible on every campus page. To get a strictly campus-only list, give every publication a congregation. |
+| `next-subscriptions`, `next-profile` | Bulk-email preference | Shown as "Send me general church emails": checked means the member receives email. This replaces legacy's double negative, "Do not send me bulk email messages". It writes the same `Bulk_Email_Opt_Out` field. |
+| `next-plan-your-visit` | `google-maps-api-key` | Address autocomplete. By default it uses your MP `GoogleMapsAPIKey`. That key must allow the **Maps JavaScript API** and **Places**, and must allow your site's origin as a referrer. The same applies to `next-custom-form` and `next-my-household`. |
+| `next-plan-your-visit` | `user-notification-email-template-id` | The visitor's confirmation template. Without it, the congregation's `Plan_A_Visit_Template` applies. |
+| Signed-out auth-only widgets | Sign-in panel | In `dual` / `hardened` mode the panel has a **Sign In** button. **In `legacy` mode it has no button.** It reads "Use the sign-in link on this page", because MPWidgets.js's `<mpp-user-login>` owns sign-in there. Keep that login widget on the page, or use `next-user-menu`. |
+
+### Smaller differences
+
+- **Custom forms no longer ask for Country.** MP's `Form_Responses` has no country column,
+  and the form does not update the contact's address.
+- **My Household shows a member's birthday as month and day** (for example "Mar 4"), not
+  the full date of birth. The full date is still editable in the member form.
+- **MP-authored content is not translated.** See [Widget Languages](#widget-languages).
 
 ## Testing
 

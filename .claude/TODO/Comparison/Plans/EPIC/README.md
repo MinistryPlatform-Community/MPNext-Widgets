@@ -3,6 +3,12 @@
 Written 2026-10-11. This epic closes every open `C`-numbered finding in
 [`../../`](../../), fanned out across parallel subagents working in git worktrees.
 
+> **Status: complete, 2026-10-11.**
+> - Every wave has merged into `epic/comparison-remediation`. See [Outcome](#outcome) for
+>   the merge commits, the final item ledger and the follow-ups that remain open.
+> - W9's close-out (this documentation) and the final fix-up branch merge last. After
+>   them, a single PR opens: `epic/comparison-remediation → dev`.
+
 **Branch model (decided 2026-10-11):** the epic branch `epic/comparison-remediation` is cut
 from `dev`. Each workstream runs on its own branch in its own worktree, cut from the epic's
 head at the start of its wave. When the workstream's gates pass, it is **merged into the
@@ -47,17 +53,18 @@ Wave 2  ─┬ W7a Theming tokens: contract (1 agent) ─► merge → W7b fan-o
 Close   ─ W9 Docs & ledger closeout (me) ─► epic → dev PR
 ```
 
-| WS | File | Items | Size |
-|---|---|---|---|
-| **W0** | [W0-foundation.md](W0-foundation.md) | C81 (helper) · C39 (convention) · C79 (guard + rule) · C68 (`injectStyles` push) · C28/C29 (`field()` primitive) · C05/C10/C22 (`cardLink()`) · C08/C54 (`dialogFocus()`) · close C36 / C77 | M — shared primitives only |
-| **W1** | [W1-payments-invoices.md](W1-payments-invoices.md) | C80 · C01 · C42 · C40 · C41 · C43 · C47 · C48 · C49 · C66 · C44 · C45 · C46 · C60 | **L**: the cutover-critical one |
-| **W2** | [W2-events-calendar.md](W2-events-calendar.md) | C02 · C03 · C04 · C05 · C06 · C07 · C08 · C09 | M |
-| **W3** | [W3-groups.md](W3-groups.md) | C10 · C11 · C12 · C13 · C14 · C15 · C16 · C17 · C18 · C19 · C64 | M–L |
-| **W4** | [W4-serving-visit-forms.md](W4-serving-visit-forms.md) | C20 · C21 · C22 · C23 · C24 · C25 · C26 · C27 · C28 · C29 · C63 · C65 · C82 | L |
-| **W5** | [W5-giving.md](W5-giving.md) | C30 · C31 · C32 · C33 · C34 · C35 · C37 · C38 · C62 | M |
-| **W6** | [W6-people-account.md](W6-people-account.md) | C50 · C51 · C53 · C54 · C55 · C56 · C57 · C61 | M |
-| **W7** | [W7-theming-tokens.md](W7-theming-tokens.md) | C68 (tokens; `part=` / `custom-css` / domain sheet are **out of scope**, decided 2026-10-11) | M, mechanical |
-| **W8** | [W8-qa-guards.md](W8-qa-guards.md) | The four test gaps from `Plans/README.md`, plus two guard tests | M |
+| WS | File | Items | Size | Status |
+|---|---|---|---|---|
+| **W0** | [W0-foundation.md](W0-foundation.md) | C81 (helper) · C39 (convention) · C79 (guard + rule) · C68 (`injectStyles` push) · C28/C29 (`field()` primitive) · C05/C10/C22 (`cardLink()`) · C08/C54 (`dialogFocus()`) · close C36 / C77 | M — shared primitives only | **Done**, merged as `b7dfdef` |
+| **W1** | [W1-payments-invoices.md](W1-payments-invoices.md) | C80 · C01 · C42 · C40 · C41 · C43 · C47 · C48 · C49 · C66 · C44 · C45 · C46 · C60 | **L**: the cutover-critical one | **Done**, merged as `d48637a` |
+| **W2** | [W2-events-calendar.md](W2-events-calendar.md) | C02 · C03 · C04 · C05 · C06 · C07 · C08 · C09 | M | **Done**, merged as `71ea5df` |
+| **W3** | [W3-groups.md](W3-groups.md) | C10 · C11 · C12 · C13 · C14 · C15 · C16 · C17 · C18 · C19 · C64 | M–L | **Done**, merged as `0281ad4` |
+| **W4** | [W4-serving-visit-forms.md](W4-serving-visit-forms.md) | C20 · C21 · C22 · C23 · C24 · C25 · C26 · C27 · C28 · C29 · C63 · C65 · C82 | L | **Done**, merged as `eab2e09` (C27 is won't port) |
+| **W5** | [W5-giving.md](W5-giving.md) | C30 · C31 · C32 · C33 · C34 · C35 · C37 · C38 · C62 | M | **Done**, merged as `a5c8e34` |
+| **W6** | [W6-people-account.md](W6-people-account.md) | C50 · C51 · C53 · C54 · C55 · C56 · C57 · C61 | M | **Done**, merged as `da1ccaf` (C57 is keep ours) |
+| **W7** | [W7-theming-tokens.md](W7-theming-tokens.md) | C68 (tokens; `part=` / `custom-css` / domain sheet are **out of scope**, decided 2026-10-11) | M, mechanical | **Done**: W7a merged as `eb34771`. The W7b fan-out merged as `5d74e50` (events), `a127f5a` (serving), `0236ca9` (giving), `4581192` (groups), `7dcf2ac` (payments) and `b69110d` (people). C68 itself is partial. |
+| **W8** | [W8-qa-guards.md](W8-qa-guards.md) | The four test gaps from `Plans/README.md`, plus two guard tests | M | **Done**: `bd4d17e` (guards and e2e), then `972fd10` (the service defects the guards found) |
+| **W9** | this file, *W9: Close-out* below | Indexes, ledger, CLAUDE.md, migration notes | S | **Done**, on branch `ws/w9-docs` |
 
 Each per-widget slice of C39 (reconfigure), C79 (kebab rename) and C81 (adopt the sign-in
 helper) belongs to the workstream that owns that widget. W0 only builds the primitive and
@@ -145,6 +152,10 @@ the guard.
 
 ## W9: Close-out (integrator)
 
+> **Done 2026-10-11 on `ws/w9-docs`**, except the last two bullets.
+> - The e2e run and the PR are the integrator's, after the fix-up branch merges.
+> - The migration notes are in README, "Migrating from MPWidgets.js".
+
 - Update `Comparison/README.md` and `Plans/README.md`:
   - mark each item resolved, with a link to its resolution;
   - move C74/C75 to "deferred";
@@ -196,3 +207,84 @@ the guard.
 | C02 cards scope | Follow `full-calendar.md`: add a `cards-scope="month|rolling"` attribute, default `month` |
 | C06 private events | Strict public-only predicate now. The staff relaxation waits until someone asks for it. |
 | C48 | The product half is settled (`next-pay` is a sandbox stand-in). Do the format validation now. Where payor/billing data comes from stays a vendor-integration question. |
+
+## Outcome
+
+Closed out by W9 on 2026-10-11. The final per-item table is in
+[`../../README.md`](../../README.md#item-ledger--final-state-2026-10-11).
+
+### The item ledger, final
+
+| State | Count | Items |
+|---|---|---|
+| Resolved in the epic | 64 | W1: 14 · W2: 8 · W3: 11 · W4: 12 · W5: 9 · W6: 7 · plus the shared C39, C79 and C81 |
+| Resolved by i18n, closed in W0 | 1 | C36 |
+| Resolved before the epic | 9 | C52 · C67 · C69 · C70 · C72 · C73 · C76 · C78 · C83 |
+| Partially resolved | 1 | **C68**. The `--nw-*` tokens shipped. `part=`, `custom-css` and the domain stylesheet are still open. |
+| Won't port / won't do / keep ours | 4 | C71 · C77 · C27 · C57 |
+| Deferred | 2 | C74 · C75 |
+| **Total** | **81** | |
+
+### Merge history, in the order things landed on the epic
+
+| Merge | What |
+|---|---|
+| `b7dfdef` | W0: the foundation primitives |
+| `71ea5df` · `da1ccaf` · `0281ad4` · `a5c8e34` · `eab2e09` · `d48637a` | Wave 1: W2, W6, W3, W5, W4, then W1. This was not the planned W1-first order. Each merged once its gates passed. |
+| `58e536b` | Integration follow-ups after wave 1 |
+| `eb34771` | W7a: the theming-token contract |
+| `56c251d` | The payment widgets' `render()` re-binds its listeners |
+| `bd4d17e` | W8: QA guards and e2e |
+| `5d74e50` · `a127f5a` · `0236ca9` · `4581192` · `7dcf2ac` · `b69110d` | W7b: token conversion for events, serving, giving, groups, payments and people |
+| `972fd10` | W8: the service defects its guards found (`id-batches`, image URLs, logged catches) |
+
+The integration follow-ups (`58e536b`) were these:
+
+- `base-widget` no longer refreshes and retries a 401 when the token was already public.
+- `dialogFocus` traps Tab through open shadow roots, which turned the account-modal trap
+  back on.
+- `has-inquired` / `has-signed-up` answer only for the caller's household. The one-bit leak
+  recorded in C12 is closed.
+- Every widget's `render()` re-binds its own listeners, so a locale switch no longer leaves
+  dead buttons.
+- `event-details` prefixes custom-form field ids with the widget's instance id.
+
+### Done in the epic; the final fix-up branch lands them
+
+These were found late, mostly by W8's accessibility probe and the token ratchet. They are
+fixed on the final fix-up branch, which merges after W9:
+
+- Headings in `next-checkout`, `next-pay`, `next-full-calendar` (including its cards and list
+  views) and `next-unsubscribe`. Their `fixme` entries in `e2e/widget/a11y-probe.spec.ts`
+  go away.
+- `next-pledge-campaign` rendered a raw `err.message` in two places. It now goes through
+  `errorText()`.
+- The three theming-token leftovers. A new `--nw-color-warning` token covers them, and the
+  `theme-tokens.test.ts` ratchet is then empty.
+- A live check of the `next-opportunity-details` image `$select`, which W8 moved from the
+  `$select` into JS (C50 pattern).
+
+### Open follow-ups: not fixed in this epic
+
+| Follow-up | Owner / next step |
+|---|---|
+| Register `http://localhost:3000/api/embed/auth/callback` on the MP `TM.Widgets` OAuth client. The signed-in e2e specs (`signed-in-invoice-participants.spec.ts`, `login-hardened.spec.ts`) cannot run until then: MP answers "redirect URI is not registered". | A Platform admin; user action |
+| `Forms.Standalone_Form_Use_Only` is missing from the generated MP model. | Regenerate the models (`README` "Generate Ministry Platform Types") |
+| `planYourVisitService.getConfigValue` reads `dp_Configuration_Settings` with no `Application_Code` filter, so a key that exists under two applications is ambiguous. | Small service fix |
+| **C43**: when the balance moves between token and response, should the payment be refused, or recorded and flagged? Refusing is right for the sandbox. With a real vendor, the money has already moved by then. | The vendor integration |
+| **C48**: where payor and billing data come from for the vendor page. The vendor page could collect them, or `next-checkout` could pass them. | The vendor integration |
+| **C68**: the channels still open: `part=` / `::part()`, a per-element `custom-css` attribute (with its own security decision), and a domain-level stylesheet endpoint. | A future theming workstream |
+| **C74 / C75**: the Tier 3 auth-design decision on merging user PII into third-party URLs. | Whoever owns the auth design |
+| Partly-public widgets still hand-roll their sign-in panel: `next-custom-form`, `next-opportunity-details`, `next-event-details`, `next-plan-your-visit`, `next-pledge-campaign`. Adopting `renderSignInRequired()` would give them the same legacy/dual behaviour. | Optional consolidation |
+| Remove the five C79 legacy attribute aliases after one release: delete the `attributeAliases` entries. | Optional, next release |
+| Hidden-opportunity exposure (`SearchRow.Hidden` is never read). This is still the comparison run's "Known gap". | Needs a database answer |
+
+Cleaning up after this session (worktrees, temporary branches, scratch files) is the
+integrator's job and is not tracked here.
+
+### Gates
+
+`pnpm test:run` and `pnpm lint` passed on `ws/w9-docs`. This branch changes documentation
+only.
+- `pnpm test:e2e:widget` runs three Playwright projects (see `CLAUDE.md` Testing).
+- Its signed-in specs stay skipped until the OAuth redirect URI above is registered.

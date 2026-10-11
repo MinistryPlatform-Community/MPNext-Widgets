@@ -16,6 +16,8 @@
 `demo-my-groups.html` is like-for-like as served with no injection needed
 (CONFIG-MAP.md sections 2.9 and 4.11).
 
+> *Updated 2026-10-11 (C79):* the canonical spelling is now `hide-group-life`.
+> `hidegrouplife` is read as a one-release alias.
 One demo-page detail that matters for the signed-out test: `demo-my-groups.html` wraps the
 widget in `<div id="widget-container" style="display:none;">` and shows an
 `#auth-placeholder` until the user signs in. The signed-out run therefore un-hid the

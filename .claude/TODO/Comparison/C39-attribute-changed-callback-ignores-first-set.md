@@ -138,3 +138,57 @@ entity has loaded.
 - Known limit, left as is: overlapping loads are not sequence-guarded, so a reload fired
   mid-load paints whichever response lands last. Attribute changes are rare; a
   `loadSeq` guard is the fix if it ever matters.
+
+## Resolution — 2026-10-11 (epic summary, W9)
+
+**Fixed across the catalogue.** This item had no single owner, so this section collects
+what each workstream did. The W4 section above covers one slice of it.
+
+**The convention (W0, `39750bf`).** `MPNextWidget` now owns the attribute-change path, so a
+widget cannot get it wrong in its own way:
+
+- `protected painted: boolean`: the widget sets it to `true` after its first paint.
+- `attributeChangedCallback`: the base default calls `reconfigure()` when
+  `oldValue !== newValue`.
+- `protected reconfigure()`: does nothing before `painted` or while disconnected; otherwise
+  it calls `reload()`.
+- `protected reload()`: the subclass overrides it to re-read its attributes and fetch again.
+
+**The rule:** never guard on `oldValue !== null` or on "already loaded". Those two guards
+are what C39 was.
+
+- A widget that keeps its own `attributeChangedCallback` does so only to filter names, and
+  then calls `this.reconfigure()`.
+- An attribute read at the moment it is used needs no reload, for example a template id or
+  a return URL. Leaving it out of the reload keeps a half-filled form intact.
+
+**Converted, by workstream:**
+
+| WS | Widgets | Commit(s) |
+|---|---|---|
+| W0 | `next-pre-check` (the reference consumer); `next-subscribe-to-publication`, because its private `painted`/`reconfigure` collided with the new protected ones | `39750bf` |
+| W1 | `next-my-invoices`, where the six C60 attributes reload the list | `ea6b05b` |
+| W2 | `next-event-finder`; `next-event-details`, with a `RELOAD_ATTRIBUTES` set and a load-sequence guard; `next-full-calendar`, which replays a change that arrived during initialisation (`view` and `show-toolbar` re-render without refetching) | `bf47691`, `17ef12f`, `18dbcfb` |
+| W3 | `next-group-details` (was the `group-id && loaded` guard), `next-group-finder` (was `groups.length \|\| !loading`), `next-my-groups` | `b75c0ae`, `bffe9d1`, `967d6da` |
+| W4 | `next-opportunity-details`, `next-custom-form`, `next-plan-your-visit`, `next-opportunity-finder` | `b6c6aec` (see the section above) |
+| W5 | `next-my-giving` and `next-my-pledges`, **the two widgets this item was filed against**; `next-pledge-campaign`; `next-my-contribution-statement` and `next-statement-preferences` for `heading-level`, `my-giving-url` and `show-paperless-toggle` | `a2d17fa`, `e3cbe0b`, `51c7865`, `3e384f3` |
+| W6 | `next-my-household`; `next-subscriptions`, where `congregation-id` re-scopes the list | `8e07b6d`, `b90e211` |
+
+**Acceptance.** C39's own reproduction now works: setting `hide-cancel-button-pledge="false"`
+on a live `next-my-pledges` re-renders it, and so does the legacy spelling (see C79).
+
+- `giving-widgets.test.ts` pins that case.
+- Each converted widget's suite also has a "reconfigure (C39)" block.
+
+**Left as is:**
+
+- **Widgets with no `reload()`.** Each one either observes no attribute that drives a fetch,
+  or reads its attributes when it uses them:
+  - `next-user-menu`
+  - `next-locale-selector`
+  - `next-online-directory`
+  - `next-mission-trip-finder`
+  - `next-my-mission-trips`
+- **Overlapping loads.** Only `next-full-calendar` and `next-event-details` sequence-guard
+  them. In other widgets, a reload fired mid-load paints whichever response lands last.
+  Attribute changes are rare; if this ever matters, the fix is a `loadSeq` guard.
