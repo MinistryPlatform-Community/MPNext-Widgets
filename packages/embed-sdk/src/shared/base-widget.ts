@@ -11,6 +11,7 @@ import {
   type MessageKey,
   type Translator,
 } from "../i18n";
+import { THEME_TOKENS_CSS } from "./theme-tokens";
 
 /**
  * Wire error codes whose catalogue key is spelled differently, plus the ones
@@ -287,8 +288,13 @@ export abstract class MPNextWidget extends HTMLElement {
    * open shadow root therefore survives re-injection and re-render, and — being
    * later in the list — wins on equal specificity, as a church's override
    * should.
+   *
+   * The `--nw-*` theme-token block (`THEME_TOKENS_CSS`, `./theme-tokens`) is
+   * prepended to every widget's sheet here, so each widget reads the resolved
+   * `var(--_nw-…)` names without including the block itself.
    */
-  protected injectStyles(css: string): void {
+  protected injectStyles(widgetCss: string): void {
+    const css = [THEME_TOKENS_CSS, widgetCss].join("\n");
     if (
       "adoptedStyleSheets" in Document.prototype &&
       "replace" in CSSStyleSheet.prototype

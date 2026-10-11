@@ -116,3 +116,46 @@ Two independent pieces, and the first is small enough to do now:
 
 If domain-level automatic styling is judged out of scope, record that in the migration
 notes, because it is the piece a legacy church gets for free today.
+
+## Resolution — 2026-10-11 (partial)
+
+**Partially fixed.** Scope was decided on 2026-10-11: `--nw-*` tokens only. Three of the
+channels above stay **open** (see the end of this section).
+
+**Shipped:**
+
+- **W0** — `injectStyles()` no longer assigns over `adoptedStyleSheets`. The widget's own
+  sheet goes first and is replaced in place, so a sheet that a host page adopts into the
+  open shadow root survives re-render and wins on equal specificity. This is suggested fix
+  §1's "companion change". The `custom-css` attribute itself was not built.
+- **W7a** (branch `ws/w7a-tokens`) — the theming-token contract, suggested fix §2:
+  - `packages/embed-sdk/src/shared/theme-tokens.ts` declares 35 public `--nw-*` tokens
+    (colour, type, shape, space, controls), with defaults equal to the values the
+    components hard-coded. `injectStyles()` prepends the block to every widget sheet.
+  - It is documented in README "Theming" as a supported, versioned API.
+  - **Design decision: public input, private resolved name.** A church sets
+    `--nw-color-primary`. The SDK never declares that name. It declares
+    `--_nw-color-primary: var(--nw-color-primary, #004C97)` on `:host`, and widget CSS
+    reads the `--_nw-` form. The simpler plan was to declare `--nw-color-primary: #004C97`
+    on `:host`, but that would break `:root { --nw-color-primary: … }`: a value declared
+    on the host element beats an inherited one, so only rules aimed at the element itself
+    would reach the widget.
+  - `next-event-finder` is the reference conversion, with zero raw brand values left.
+    Computed styles and screenshots are identical before and after, at 1280px and 390px.
+    A `:root` override re-brands it.
+  - `full-calendar-styles.ts` maps eight brand `--fc-classic-*` defaults onto the tokens,
+    keeping the old hex as the `var()` fallback.
+  - Guard: `shared/theme-tokens.test.ts` is a per-file ratchet on raw brand hexes and
+    literal font stacks. Its baseline is 497 + 35 across 37 files. W7b converts the
+    remaining widgets and drives the ratchet to zero.
+
+**Still open, and out of this epic's scope (decided 2026-10-11):**
+
+1. **`part=` / `::part()`** on structural elements (card, card media, toolbar, form row,
+   submit button).
+2. **A per-element `custom-css` attribute.** This includes the open security call on
+   `custom-css-integrity` and on restricting it to `https:`.
+3. **A domain-level stylesheet endpoint**, the `GetCustomStyles` equivalent that legacy
+   churches get automatically. **Migration notes must say this.** A legacy church that
+   brands its widgets through the domain stylesheet has to restate that branding as
+   `--nw-*` tokens on its own site. Its MP skin stylesheet no longer reaches the widgets.

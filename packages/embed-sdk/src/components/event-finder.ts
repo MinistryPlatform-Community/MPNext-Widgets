@@ -451,45 +451,45 @@ export class EventFinderWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .nw-ef { max-width: 1024px; margin: 0 auto; }
 
-      .nw-ef-form { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      .nw-ef-search-row { display: flex; gap: 8px; }
-      .nw-ef-input { flex: 1; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; outline: none; }
-      .nw-ef-input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
-      .nw-ef-btn { padding: 10px 20px; background: #004C97; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
-      .nw-ef-btn:hover { background: #002855; }
-      .nw-ef-advanced-link { display: inline-block; margin-top: 12px; font-size: 13px; color: #004C97; text-decoration: none; cursor: pointer; font-weight: 600; }
+      .nw-ef-form { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-4); margin-bottom: var(--_nw-space-5); box-shadow: var(--_nw-shadow); }
+      .nw-ef-search-row { display: flex; gap: var(--_nw-space-2); }
+      .nw-ef-input { flex: 1; padding: 10px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); outline: none; }
+      .nw-ef-input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
+      .nw-ef-btn { padding: 10px var(--_nw-space-5); background: var(--_nw-button-bg); color: var(--_nw-button-fg); border: none; border-radius: var(--_nw-button-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+      .nw-ef-btn:hover { background: var(--_nw-button-bg-hover); }
+      .nw-ef-advanced-link { display: inline-block; margin-top: var(--_nw-space-3); font-size: 13px; color: var(--_nw-color-primary); text-decoration: none; cursor: pointer; font-weight: 600; }
       .nw-ef-advanced-link:hover { text-decoration: underline; }
-      .nw-ef-advanced { margin-top: 16px; gap: 12px; grid-template-columns: repeat(2, 1fr); }
-      .nw-ef-field { display: flex; flex-direction: column; gap: 4px; }
-      .nw-ef-field label { font-size: 12px; font-weight: 600; color: #6b7280; }
-      .nw-ef-select { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; background: white; outline: none; cursor: pointer; }
-      .nw-ef-select:focus { border-color: #004C97; }
+      .nw-ef-advanced { margin-top: var(--_nw-space-4); gap: var(--_nw-space-3); grid-template-columns: repeat(2, 1fr); }
+      .nw-ef-field { display: flex; flex-direction: column; gap: var(--_nw-space-1); }
+      .nw-ef-field label { font-size: 12px; font-weight: 600; color: var(--_nw-color-muted); }
+      .nw-ef-select { padding: 9px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); background: var(--_nw-color-surface); outline: none; cursor: pointer; }
+      .nw-ef-select:focus { border-color: var(--_nw-color-primary); }
       .nw-ef-field--check { justify-content: flex-end; }
-      .nw-ef-field label.nw-ef-check { display: inline-flex; align-items: center; gap: 8px; padding: 9px 0; font-size: 14px; font-weight: 600; color: #2D2926; cursor: pointer; }
-      .nw-ef-check input { width: 16px; height: 16px; margin: 0; accent-color: #004C97; cursor: pointer; }
+      .nw-ef-field label.nw-ef-check { display: inline-flex; align-items: center; gap: var(--_nw-space-2); padding: 9px 0; font-size: var(--_nw-font-size-base); font-weight: 600; color: var(--_nw-color-text); cursor: pointer; }
+      .nw-ef-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--_nw-color-primary); cursor: pointer; }
 
-      .nw-ef-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-      .nw-ef-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: border-color 0.15s, box-shadow 0.15s; }
+      .nw-ef-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--_nw-space-4); }
+      .nw-ef-card { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--_nw-shadow); transition: border-color 0.15s, box-shadow 0.15s; }
       a.nw-ef-card { cursor: pointer; }
-      a.nw-ef-card:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+      a.nw-ef-card:hover { border-color: var(--_nw-color-primary); box-shadow: var(--_nw-shadow-hover); }
       .nw-ef-card-imgwrap { position: relative; }
       .nw-ef-card-img { width: 100%; height: 160px; object-fit: cover; display: block; }
-      .nw-ef-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #9ca3af; }
-      .nw-ef-badge { position: absolute; top: 10px; left: 10px; background: #F1BE48; color: #2D2926; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.03em; }
-      .nw-ef-card-body { padding: 16px; display: flex; flex-direction: column; flex: 1; }
-      .nw-ef-card-title { font-size: 16px; font-weight: 700; color: #002855; margin: 0 0 6px; }
-      .nw-ef-card-date { font-size: 13px; color: #004C97; font-weight: 600; margin-bottom: 4px; }
-      .nw-ef-card-loc { font-size: 13px; color: #6b7280; margin-bottom: 8px; }
-      .nw-ef-card-desc { font-size: 13px; color: #474747; line-height: 1.5; flex: 1; }
-      .nw-ef-card-cta { margin-top: 12px; font-size: 13px; font-weight: 600; color: #004C97; }
+      .nw-ef-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: var(--_nw-color-surface-muted); color: #9ca3af; }
+      .nw-ef-badge { position: absolute; top: 10px; left: 10px; background: var(--_nw-color-accent); color: var(--_nw-color-text); font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.03em; }
+      .nw-ef-card-body { padding: var(--_nw-space-4); display: flex; flex-direction: column; flex: 1; }
+      .nw-ef-card-title { font-size: 16px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: 0 0 6px; }
+      .nw-ef-card-date { font-size: 13px; color: var(--_nw-color-primary); font-weight: 600; margin-bottom: var(--_nw-space-1); }
+      .nw-ef-card-loc { font-size: 13px; color: var(--_nw-color-muted); margin-bottom: var(--_nw-space-2); }
+      .nw-ef-card-desc { font-size: 13px; color: var(--_nw-color-text-subtle); line-height: var(--_nw-line-height); flex: 1; }
+      .nw-ef-card-cta { margin-top: var(--_nw-space-3); font-size: 13px; font-weight: 600; color: var(--_nw-color-primary); }
 
-      .nw-ef-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; font-size: 15px; flex-direction: column; text-align: center; }
-      .nw-ef-spinner { animation: nw-ef-spin 1s linear infinite; color: #004C97; }
+      .nw-ef-state { display: flex; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 48px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; flex-direction: column; text-align: center; }
+      .nw-ef-spinner { animation: nw-ef-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes nw-ef-spin { to { transform: rotate(360deg); } }
-      .nw-ef-error p { color: #b91c1c; margin: 0; }
+      .nw-ef-error p { color: var(--_nw-color-error-text); margin: 0; }
 
       @media (max-width: 1024px) { .nw-ef-grid { grid-template-columns: repeat(2, 1fr); } }
       @media (max-width: 640px) {

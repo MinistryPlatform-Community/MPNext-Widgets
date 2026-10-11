@@ -88,6 +88,15 @@ export const BASE_STYLES = `
    *     | grep -oE -- "--fc-[a-z0-9-]+" | sort -u
    */
 
+  /*
+   * Brand-coloured entries read the resolved '--_nw-*' theme tokens (W7a,
+   * shared/theme-tokens.ts) so a church's '--nw-color-primary' etc. reaches
+   * the calendar too. Each keeps its old literal as the var() fallback, so the
+   * contract stays complete even without the token block. Tints derived from
+   * the brand (the rgba(0, 76, 151, …) values, #D6F0FC) stay literal: CSS
+   * cannot derive them from a token without color-mix(), which is a visual
+   * change on browsers that lack it.
+   */
   :host {
     /* Skeleton stacking order (skeleton.css declares these on :root too). */
     --fc-sticky-header-footer-z: 3;
@@ -95,23 +104,23 @@ export const BASE_STYLES = `
 
     /* Buttons. FullCalendar's own toolbar is off ('headerToolbar: false') so
        nothing reads these today; kept in brand so enabling it stays correct. */
-    --fc-classic-button: #004C97;
-    --fc-classic-button-border: #004C97;
-    --fc-classic-button-strong: #002855;
-    --fc-classic-button-strong-border: #002855;
+    --fc-classic-button: var(--_nw-color-primary, #004C97);
+    --fc-classic-button-border: var(--_nw-color-primary, #004C97);
+    --fc-classic-button-strong: var(--_nw-color-secondary, #002855);
+    --fc-classic-button-strong-border: var(--_nw-color-secondary, #002855);
     --fc-classic-button-outline: rgba(0, 76, 151, 0.5);
     --fc-classic-button-foreground: #fff;
 
     /* Primary / events */
-    --fc-classic-primary: #004C97;
-    --fc-classic-event: #004C97;
+    --fc-classic-primary: var(--_nw-color-primary, #004C97);
+    --fc-classic-event: var(--_nw-color-primary, #004C97);
     --fc-classic-event-contrast: #fff;
     --fc-classic-background-event: #D6F0FC;
     --fc-classic-background-event-opacity: 50%;
     --fc-classic-background-event-foreground-opacity: 50%;
     --fc-classic-highlight: rgba(0, 76, 151, 0.1);
     --fc-classic-today: #D6F0FC;
-    --fc-classic-now: #FF6D6A;
+    --fc-classic-now: var(--_nw-color-error, #FF6D6A);
     --fc-classic-small-dot-width: 8px;
     --fc-classic-large-dot-width: 10px;
 
@@ -122,7 +131,7 @@ export const BASE_STYLES = `
     --fc-classic-strong: rgba(0, 0, 0, 0.14);
 
     /* Neutral foregrounds */
-    --fc-classic-foreground: #2D2926;
+    --fc-classic-foreground: var(--_nw-color-text, #2D2926);
     --fc-classic-faint-foreground: #9E9E9E;
     --fc-classic-muted-foreground: #474747;
 
