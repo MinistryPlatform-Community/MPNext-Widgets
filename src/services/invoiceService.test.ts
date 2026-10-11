@@ -1,14 +1,103 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { InvoiceService } from '@/services/invoiceService';
+import { InvoiceService, resolveInvoiceOwner } from '@/services/invoiceService';
 
 const mockGetTableRecords = vi.fn();
+const mockExecuteProcedure = vi.fn();
 
 vi.mock('@/lib/providers/ministry-platform', () => {
   return {
     MPHelper: class {
       getTableRecords = mockGetTableRecords;
+      executeProcedure = mockExecuteProcedure;
     },
   };
+});
+
+/** An `api_MPPW_GetInvoice` result: header in [0][0], detail rows in [1]. */
+function procResult(header: Record<string, unknown>, details: Record<string, unknown>[] = []) {
+  return [
+    [
+      {
+        Contact_ID: 98,
+        First_Name: 'Pat',
+        Last_Name: 'Payer',
+        Mobile_Phone: null,
+        Email_Address: 'pat@example.org',
+        Address_Line_1: null,
+        Address_Line_2: null,
+        City: null,
+        State: null,
+        Postal_Code: null,
+        Amount_Paid: 0,
+        Invoice_ID: 6,
+        Invoice_Date: '2026-09-01T00:00:00',
+        Invoice_GUID: 'inv-guid',
+        Invoice_Total: 40,
+        Invoice_Status_ID: 1,
+        Notes: null,
+        ...header,
+      },
+    ],
+    details,
+  ];
+}
+
+describe('getCheckoutInvoiceByGuid (C80 / C42)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (InvoiceService as any).instance = undefined;
+    mockGetTableRecords.mockResolvedValue([{ Invoice_Status_ID: 1, Invoice_Status: 'Pending' }]);
+  });
+
+  it('calls the proc with @InvoiceGuid only, signed in', async () => {
+    mockExecuteProcedure.mockResolvedValueOnce(procResult({}));
+    const service = await InvoiceService.getInstance();
+    const invoice = await service.getCheckoutInvoiceByGuid('inv-guid', 98);
+
+    expect(mockExecuteProcedure).toHaveBeenCalledWith('api_MPPW_GetInvoice', {
+      '@InvoiceGuid': 'inv-guid',
+    });
+    expect(invoice?.invoiceId).toBe(6);
+    expect(invoice?.balanceDue).toBe(40);
+  });
+
+  it("returns null for another contact's invoice when signed in", async () => {
+    mockExecuteProcedure.mockResolvedValueOnce(procResult({ Contact_ID: 1234 }));
+    const service = await InvoiceService.getInstance();
+    expect(await service.getCheckoutInvoiceByGuid('inv-guid', 98)).toBeNull();
+  });
+
+  it('does not scope the anonymous read', async () => {
+    mockExecuteProcedure.mockResolvedValueOnce(procResult({ Contact_ID: 1234 }));
+    const service = await InvoiceService.getInstance();
+    const invoice = await service.getCheckoutInvoiceByGuid('inv-guid');
+    expect(invoice?.payorContactId).toBe(1234);
+  });
+
+  it('returns null when the proc has no header row', async () => {
+    mockExecuteProcedure.mockResolvedValueOnce([[], []]);
+    const service = await InvoiceService.getInstance();
+    expect(await service.getCheckoutInvoiceByGuid('nope', 98)).toBeNull();
+  });
+});
+
+describe('resolveInvoiceOwner', () => {
+  it('is undefined for a public token', async () => {
+    const svc = { getUserByGuid: vi.fn() };
+    expect(await resolveInvoiceOwner(svc, 'public')).toBeUndefined();
+    expect(svc.getUserByGuid).not.toHaveBeenCalled();
+  });
+
+  it("is the signed-in user's contact", async () => {
+    const svc = { getUserByGuid: vi.fn().mockResolvedValue({ Contact_ID: 98 }) };
+    expect(await resolveInvoiceOwner(svc, 'user-guid')).toBe(98);
+  });
+
+  it('fails closed (0) when the user has no dp_Users row', async () => {
+    const svc = { getUserByGuid: vi.fn().mockResolvedValue(null) };
+    expect(await resolveInvoiceOwner(svc, 'user-guid')).toBe(0);
+  });
 });
 
 describe('InvoiceService', () => {

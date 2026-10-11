@@ -1,6 +1,9 @@
 /**
  * Build the signed payment request token handed off to the gateway.
  * GET /api/embed/checkout/payment-token?guid=<Invoice_GUID>&amount=&returnUrl=
+ *
+ * Same ownership rule as `checkout/invoice`: anonymous holders of the GUID may
+ * pay it; a signed-in payer may pay only an invoice they purchased (C80 / C42).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -11,49 +14,46 @@ import {
   buildOptionsResponse,
   buildFallbackCorsHeaders,
 } from "@/lib/embed/auth";
-import { InvoiceService } from "@/services/invoiceService";
+import { errorResponse } from "@/lib/embed/anonymous-write";
+import { InvoiceService, resolveInvoiceOwner } from "@/services/invoiceService";
 import { CheckoutService } from "@/services/checkoutService";
 import type { PaymentRequestToken } from "@mpnext/types";
 
 export async function GET(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
 
+  let claims;
   try {
-    const claims = await requireWidgetAuth(req, {
+    claims = await requireWidgetAuth(req, {
       widget: ["checkout", "my-invoices", "user-menu", "*"],
     });
+  } catch {
+    return errorResponse(
+      "auth_required",
+      "A valid widget token is required.",
+      401,
+      buildFallbackCorsHeaders(origin)
+    );
+  }
 
-    const sp = req.nextUrl.searchParams;
-    const guid = sp.get("guid")?.trim();
-    if (!guid) {
-      return NextResponse.json(
-        { error: "invalid_request", message: "Missing guid" },
-        { status: 400, headers: getCorsHeaders(origin) }
-      );
-    }
-    const returnUrl = sp.get("returnUrl")?.trim() ?? "";
-    const amountParam = Number(sp.get("amount"));
+  const cors = getCorsHeaders(origin);
+  const sp = req.nextUrl.searchParams;
+  const guid = sp.get("guid")?.trim();
+  if (!guid) {
+    return errorResponse("invalid_request", "Missing guid", 400, cors);
+  }
+  const returnUrl = sp.get("returnUrl")?.trim() ?? "";
+  const amountParam = Number(sp.get("amount"));
 
+  try {
     const service = await InvoiceService.getInstance();
-
-    let mpContactId: number | undefined;
-    if (claims.sub !== "public") {
-      const user = await service.getUserByGuid(claims.sub);
-      mpContactId = user?.Contact_ID;
-    }
-
-    const invoice = await service.getCheckoutInvoiceByGuid(guid, mpContactId);
+    const owner = await resolveInvoiceOwner(service, claims.sub);
+    const invoice = await service.getCheckoutInvoiceByGuid(guid, owner);
     if (!invoice) {
-      return NextResponse.json(
-        { error: "invoice_not_found", message: "Invoice not found" },
-        { status: 404, headers: getCorsHeaders(origin) }
-      );
+      return errorResponse("invoice_not_found", "Invoice not found", 404, cors);
     }
     if (!invoice.canPay) {
-      return NextResponse.json(
-        { error: "invoice_not_payable", message: "Invoice is not payable" },
-        { status: 409, headers: getCorsHeaders(origin) }
-      );
+      return errorResponse("invoice_not_payable", "Invoice is not payable", 409, cors);
     }
 
     const amount =
@@ -82,20 +82,10 @@ export async function GET(req: NextRequest) {
 
     const token = CheckoutService.getInstance().buildRequestToken(requestToken);
 
-    return NextResponse.json(
-      { token },
-      { status: 200, headers: getCorsHeaders(origin) }
-    );
+    return NextResponse.json({ token }, { status: 200, headers: cors });
   } catch (error) {
-    console.error("Error building payment token:", error);
-    const message = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json(
-      { error: message },
-      {
-        status: message.includes("Token") ? 403 : 500,
-        headers: buildFallbackCorsHeaders(origin),
-      }
-    );
+    console.error("[checkout/payment-token] failed:", error);
+    return errorResponse("mp_unavailable", "MP did not respond", 503, cors);
   }
 }
 

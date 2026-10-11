@@ -90,3 +90,14 @@ it behind an env flag — but do not let its absence 500 the route.
 **Shared root cause:** see `C80-mploggedincontactid-param-breaks-signed-in-invoice-reads.md`.
 This defect and its counterpart (C42, next-checkout) are the same `@MpLoggedInContactId` fault in two
 services, found independently by two agents on this run. Fix both call sites together.
+
+## Resolution — 2026-10-11
+
+**Fixed** with C80 (see its resolution for the proc-signature evidence).
+`EventDetailsService.getEventParticipantsByInvoice` now calls `api_MPPW_GetInvoice` with
+`@InvoiceGuid` only, and returns `null` when a signed-in caller is not the invoice's purchaser.
+`src/app/api/embed/event-details/participants/[invoiceGuid]/route.ts` answers that as
+`404 invoice_not_found`; the widget's `if (!res.ok) return;` already treats a 404 as "no list".
+The route's catch now answers `503 mp_unavailable` instead of the raw MP message, and an auth
+failure is `401 auth_required`. Signed-in tests: `src/services/eventDetailsService.test.ts`.
+No change to `event-details.ts` (W2's file) was needed.

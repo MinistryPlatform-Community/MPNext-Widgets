@@ -98,6 +98,29 @@ function toCheckoutNumber(
   return n === null ? fallback : n;
 }
 
+/**
+ * The contact an invoice read must belong to, from the widget JWT's `sub`.
+ *
+ * - `"public"` → `undefined`: no ownership check; the GUID is the capability.
+ * - signed in → that user's `Contact_ID`.
+ * - signed in but no `dp_Users` row → `0`, which matches no purchaser, so the
+ *   read fails **closed** (404) rather than silently degrading to the
+ *   anonymous, unscoped path.
+ *
+ * Shared by the checkout routes and the event-details participants route; any
+ * service exposing `getUserByGuid` will do.
+ */
+export async function resolveInvoiceOwner(
+  service: {
+    getUserByGuid(guid: string): Promise<{ Contact_ID: number } | null>;
+  },
+  sub: string
+): Promise<number | undefined> {
+  if (sub === "public") return undefined;
+  const user = await service.getUserByGuid(sub);
+  return user?.Contact_ID ?? 0;
+}
+
 export class InvoiceService {
   private static instance: InvoiceService;
   private mp: MPHelper | null = null;
@@ -399,27 +422,39 @@ export class InvoiceService {
    * the legacy `api_MPPW_GetInvoice` proc (header in result[0][0], detail rows
    * in result[1]) and maps it onto the shared CheckoutInvoice contract.
    *
-   * Pass `mpContactId` (> 0) for an authenticated payor so the proc can scope
-   * to the logged-in contact; omit it for the public/guest checkout path.
+   * ## Ownership is enforced here, not by the proc (C80 / C42)
+   *
+   * `api_MPPW_GetInvoice` takes `@InvoiceGuid` and nothing else. It used to be
+   * sent a contact-id parameter for a signed-in payer, which MP rejects with
+   * "Parameter ... does not exists in the requested procedure" — so every
+   * signed-in read 500'd while the anonymous one worked. The proc is now called
+   * with the GUID only, and when `ownerContactId` is supplied the header's
+   * `Contact_ID` (the invoice's `Purchaser_Contact_ID`, verified against the
+   * live proc 2026-10-11) must equal it, or the invoice reads as not found.
+   * That is the shape `getInvoiceDetail` already uses for `next-my-invoices`.
+   *
+   * Omit `ownerContactId` for the public/guest path, where the GUID itself is
+   * the capability (legacy parity).
    */
   public async getCheckoutInvoiceByGuid(
     invoiceGuid: string,
-    mpContactId?: number
+    ownerContactId?: number
   ): Promise<CheckoutInvoice | null> {
-    const params: Record<string, string | number | null> = {
-      "@InvoiceGuid": invoiceGuid,
-    };
-    if (mpContactId != null && mpContactId > 0) {
-      params["@MpLoggedInContactId"] = mpContactId;
-    }
-
     const [result, statusMap] = await Promise.all([
-      this.mp!.executeProcedure("api_MPPW_GetInvoice", params),
+      this.mp!.executeProcedure("api_MPPW_GetInvoice", {
+        "@InvoiceGuid": invoiceGuid,
+      }),
       this.getStatusMap(),
     ]);
 
     const header = ((result[0] as CheckoutInvoiceHeaderRow[] | undefined) ?? [])[0];
     if (!header) return null;
+    if (
+      ownerContactId !== undefined &&
+      toCheckoutNumberOrNull(header.Contact_ID) !== ownerContactId
+    ) {
+      return null;
+    }
 
     const details = (result[1] as CheckoutInvoiceDetailRow[] | undefined) ?? [];
 

@@ -65,3 +65,40 @@ Two things to get right while fixing:
    character is that it is invisible anonymously, so an anonymous-only test asserts the
    working half. This is the same class of harness blindness as `.claude/TODO/37-*`,
    where specs passed against a silently de-authenticated SDK.
+
+## Resolution — 2026-10-11
+
+**Fixed (epic W1, branch `ws/w1-payments`).** Both call sites, in one change.
+
+- **The proc's real signature, verified against the live domain 2026-10-11:**
+  `api_MPPW_GetInvoice` takes `@InvoiceGuid` only. Result set 0 is the header
+  (`Invoice_ID, Invoice_GUID, First_Name, Contact_ID, Last_Name, Display_Name, Email_Address,
+  Mobile_Phone, Address_ID, Address_Line_1, Address_Line_2, City, State, Country, Postal_Code,
+  Invoice_Status_ID, Invoice_Total, Invoice_Date, Notes, Amount_Paid`); result set 1 holds the
+  detail rows. Header `Contact_ID` equals `Invoices.Purchaser_Contact_ID` on every invoice
+  probed, so it is the owner column.
+- `src/services/invoiceService.ts` `getCheckoutInvoiceByGuid(guid, ownerContactId?)` and
+  `src/services/eventDetailsService.ts` `getEventParticipantsByInvoice(guid, ownerContactId?)`
+  call the proc with `@InvoiceGuid` only. When an owner is supplied, a header whose
+  `Contact_ID` differs reads as **not found** (`null` → route 404), the same shape as
+  `getInvoiceDetail`.
+- `resolveInvoiceOwner(service, claims.sub)` (exported from `invoiceService.ts`) is the one
+  place the rule lives: `public` → no check (the GUID is the capability, legacy parity);
+  signed in → the user's `Contact_ID`; signed in with **no `dp_Users` row → `0`**, which fails
+  closed rather than degrading to the unscoped anonymous read.
+- **Decision: no probe, no env flag.** CROSS-2 §3 allowed "probe once and cache" if the
+  parameter existed on some MP versions. Nothing suggests it does, and the in-code ownership
+  check is strictly stronger than anything the proc could do with it, so there is nothing to
+  probe for.
+- `grep -rn MpLoggedInContactId src/` is empty.
+
+**Tests (signed-in cases, the half the defect hid in):** `src/services/invoiceService.test.ts`
+(proc param list, foreign contact → null, anonymous unscoped, fail-closed owner),
+`src/services/eventDetailsService.test.ts` (new), and
+`src/app/api/embed/checkout/invoice/route.test.ts` (new: own invoice → 200, foreign → 404, MP
+fault → `mp_unavailable` with no MP text, no token → `auth_required`).
+
+**Left open, deliberately:** a signed-in visitor can still sign out and open the same GUID
+anonymously. The GUID remains a bearer capability on the guest path, as in legacy. The check
+stops a signed-in session from being used to read someone else's invoice; it is not a reason to
+make guest checkout require sign-in.

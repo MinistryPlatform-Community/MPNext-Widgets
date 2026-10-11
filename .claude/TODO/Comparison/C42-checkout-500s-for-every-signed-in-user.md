@@ -98,3 +98,23 @@ keep the MP text in `console.error` / the server log.
 **Shared root cause:** see `C80-mploggedincontactid-param-breaks-signed-in-invoice-reads.md`.
 This defect and its counterpart (C01, next-event-details) are the same `@MpLoggedInContactId` fault in two
 services, found independently by two agents on this run. Fix both call sites together.
+
+## Resolution — 2026-10-11
+
+**Fixed** with C80 (see its resolution for the proc-signature evidence and the ownership rule).
+
+- `checkout/invoice` and `checkout/payment-token` resolve the owner with
+  `resolveInvoiceOwner` and call `getCheckoutInvoiceByGuid(guid, owner)`, which no longer sends
+  the phantom parameter. A signed-in payer opens their own invoice; another contact's GUID gets
+  `404 invoice_not_found`.
+- **Secondary finding (raw MP text shown to the payer):** the client half was already fixed by
+  i18n, because `checkout.ts` renders `this.errorText(body)`. The route half is fixed here.
+  Every route in the checkout flow now answers `{ error: <code>, message }`. MP faults return
+  `503 mp_unavailable`, the W0 key ("temporarily unavailable … try again in a few minutes").
+  Token failures return `401 auth_required`. The MP text goes only to `console.error`. The
+  `pay/*`, `checkout/payment-response` and `payment/notify` routes were converted in the C41 /
+  C43 commits that rewrote them.
+- "Try Again" now has something to retry. It appears only for the `mp_unavailable` class of
+  fault, which is genuinely transient, rather than for a deterministic parameter error.
+- Test: `src/app/api/embed/checkout/invoice/route.test.ts` asserts that the 503 body contains
+  neither the procedure name nor the HTTP status.

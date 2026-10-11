@@ -106,6 +106,8 @@ interface EventContactRow {
 }
 
 interface InvoiceHeaderRow {
+  /** The invoice's `Purchaser_Contact_ID`; the ownership check compares it. */
+  Contact_ID: number | string | null;
   Invoice_Status_ID: number | string | null;
   Amount_Paid: number | string | null;
   Invoice_Total: number | string | null;
@@ -520,20 +522,32 @@ export class EventDetailsService {
 
   // ── Existing invoice / participants ──
 
+  /**
+   * Re-population data for an in-progress or completed registration.
+   *
+   * `api_MPPW_GetInvoice` accepts `@InvoiceGuid` only; sending it a
+   * contact-id parameter 500'd every signed-in read (C80 / C01). When
+   * `ownerContactId` is supplied, the header's `Contact_ID` (the invoice's
+   * purchaser) must match it, otherwise this returns `null` and the route
+   * answers 404 — another contact's registration is not disclosed. Omit it for
+   * the anonymous path, where the GUID is the capability.
+   */
   public async getEventParticipantsByInvoice(
     invoiceGuid: string,
-    mpContactId?: number
-  ): Promise<ExistingInvoice> {
-    const params: Record<string, string | number | null> = {
+    ownerContactId?: number
+  ): Promise<ExistingInvoice | null> {
+    const result = await this.mp!.executeProcedure("api_MPPW_GetInvoice", {
       "@InvoiceGuid": invoiceGuid,
-    };
-    if (mpContactId != null && mpContactId > 0) {
-      params["@MpLoggedInContactId"] = mpContactId;
-    }
-
-    const result = await this.mp!.executeProcedure("api_MPPW_GetInvoice", params);
+    });
 
     const header = ((result[0] as InvoiceHeaderRow[] | undefined) ?? [])[0];
+    if (
+      header &&
+      ownerContactId !== undefined &&
+      toNumberOrNull(header.Contact_ID) !== ownerContactId
+    ) {
+      return null;
+    }
     const details = (result[1] as InvoiceDetailRow[] | undefined) ?? [];
 
     const invoiceStatusId = toNumberOrNull(header?.Invoice_Status_ID);
