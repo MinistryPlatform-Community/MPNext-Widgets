@@ -286,3 +286,78 @@ describe("<next-full-calendar> month navigation (C02)", () => {
     });
   });
 });
+
+describe("<next-full-calendar> event modal focus (C08)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    requests = [];
+    failStart = null;
+    window.__nextSDKReady = Promise.resolve();
+    window.__nextTokenProvider = { get: async () => "test-token", refresh: async () => "test-token" };
+    vi.stubGlobal("fetch", vi.fn(fakeFetch));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  async function openFromLearnMore() {
+    const el = mount('view="month"');
+    await settle();
+    const trigger = shadow(el).querySelector<HTMLButtonElement>(".nw-fc-card-learn-more")!;
+    trigger.focus();
+    trigger.click();
+    await settle();
+    const dialog = shadow(el).querySelector<HTMLElement>('[role="dialog"]')!;
+    return { el, trigger, dialog };
+  }
+
+  const press = (target: EventTarget, key: string, shiftKey = false) =>
+    target.dispatchEvent(new KeyboardEvent("keydown", { key, shiftKey, bubbles: true, composed: true }));
+
+  it("moves focus into the dialog on open", async () => {
+    const { el, dialog } = await openFromLearnMore();
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    const active = shadow(el).activeElement;
+    expect(dialog.contains(active)).toBe(true);
+    expect(active).toHaveClass("nw-fc-modal-close");
+  });
+
+  it("keeps Tab and Shift+Tab inside the dialog", async () => {
+    const { el, dialog } = await openFromLearnMore();
+    const focusables = Array.from(dialog.querySelectorAll<HTMLElement>("button, a[href]"));
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+
+    last.focus();
+    press(last, "Tab");
+    expect(shadow(el).activeElement).toBe(first);
+
+    first.focus();
+    press(first, "Tab", true);
+    expect(shadow(el).activeElement).toBe(last);
+  });
+
+  it("returns focus to the trigger on Escape", async () => {
+    const { el, trigger } = await openFromLearnMore();
+    press(shadow(el).activeElement!, "Escape");
+    expect(shadow(el).activeElement).toBe(trigger);
+  });
+
+  it("returns focus to the trigger from the close button", async () => {
+    const { el, trigger, dialog } = await openFromLearnMore();
+    dialog.querySelector<HTMLButtonElement>(".nw-fc-modal-close")!.click();
+    expect(shadow(el).activeElement).toBe(trigger);
+  });
+
+  it("does not steal focus back after a backdrop click", async () => {
+    const { el, trigger, dialog } = await openFromLearnMore();
+    dialog.click(); // the overlay itself is the backdrop
+    expect(shadow(el).activeElement).not.toBe(trigger);
+  });
+});

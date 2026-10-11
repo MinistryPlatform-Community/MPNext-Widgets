@@ -15,6 +15,7 @@ import {
   type EventCountMap,
 } from "./full-calendar-mini-cal";
 import { renderDetailModal } from "./full-calendar-modal";
+import { dialogFocus, type DialogCloseReason, type DialogFocusHandle } from "../shared/dialog-focus";
 import { renderAgendaList } from "./full-calendar-list";
 
 // ── Constants ──
@@ -198,6 +199,8 @@ export class FullCalendarWidget extends MPNextWidget {
   private loadSeq = 0;
   private cardsLoading = false;
   private cardsError: string | null = null;
+  /** Focus contract of the open event modal (C08); null when none is open. */
+  private modalFocus: DialogFocusHandle | null = null;
 
   static get observedAttributes() {
     return ["api-host", "view", "show-toolbar", "cards-scope"];
@@ -283,6 +286,8 @@ export class FullCalendarWidget extends MPNextWidget {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.destroyCalendar();
+    this.modalFocus?.release("programmatic");
+    this.modalFocus = null;
     // Re-arm: a re-inserted element runs connectedCallback again, so it owns
     // the attribute read again. Attribute changes made while detached are
     // picked up by that pass rather than acted on off-document.
@@ -724,6 +729,12 @@ export class FullCalendarWidget extends MPNextWidget {
       title: raw.Event_Title,
     });
 
+    // Capture the trigger now, before the admin fetch below can let focus
+    // drift: a card's LEARN MORE, a list row, or a FullCalendar event chip.
+    // Focus returns here when the modal closes (C08).
+    const active = this.root.activeElement;
+    const trigger = active instanceof HTMLElement ? active : null;
+
     // For admin users, fetch fresh detail with admin enrichment
     let event = raw;
     let isAdmin = this.isAdmin;
@@ -753,22 +764,33 @@ export class FullCalendarWidget extends MPNextWidget {
     // Remove existing modal if present
     const existing = this.root.querySelector(".nw-fc-modal-overlay");
     if (existing) existing.remove();
+    this.modalFocus?.release("programmatic");
+    this.modalFocus = null;
 
     const modal = renderDetailModal({
       event,
       fcEvent: fcEventObj,
       isAdmin,
-      onClose: () => this.closeModal(),
+      onClose: (reason) => this.closeModal(reason),
       getEventColor: (typeId) => this.getEventColor(typeId),
       t: this.t,
       fmt: this.fmt,
     });
 
     this.root.appendChild(modal);
+    // `role="dialog" aria-modal="true"` promises assistive tech that the page
+    // behind is inert, which only holds if focus is inside (C08): move it to
+    // the close button, keep Tab inside, and give it back to the trigger on
+    // close. Escape is handled by the modal itself (it reports "escape").
+    this.modalFocus = dialogFocus(modal, () => trigger, {
+      initialFocus: ".nw-fc-modal-close",
+    });
     requestAnimationFrame(() => modal.classList.add("nw-fc-modal-visible"));
   }
 
-  private closeModal(): void {
+  private closeModal(reason: DialogCloseReason = "programmatic"): void {
+    this.modalFocus?.release(reason);
+    this.modalFocus = null;
     const overlay = this.root.querySelector<HTMLElement>(".nw-fc-modal-overlay");
     if (overlay) {
       overlay.classList.remove("nw-fc-modal-visible");

@@ -87,3 +87,43 @@ Three additions, all inside `renderDetailModal`:
 
 `inert` on the sibling content would be a cleaner alternative to a hand-rolled trap if
 browser support is acceptable; either satisfies the `aria-modal` contract.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W2, branch `ws/w2-events`) on the shared W0 `dialogFocus()` primitive. No third
+implementation was written.
+
+**`showEventModal`** (`full-calendar.ts`):
+
+- It captures `this.root.activeElement` as the trigger before the admin detail fetch can let
+  focus drift. The trigger is a card's LEARN MORE, a list row, or a FullCalendar chip.
+- After appending the modal it calls
+  `dialogFocus(modal, () => trigger, { initialFocus: ".nw-fc-modal-close" })`. Focus moves to
+  the close button, and Tab / Shift+Tab cycle inside the dialog.
+- `closeModal(reason)` calls `release(reason)`:
+  - Escape and the close button return focus to the trigger.
+  - A backdrop click (`"outside"`) leaves focus where the visitor clicked, per the
+    primitive's contract.
+- A second open, or `disconnectedCallback`, releases any open handle.
+
+**`renderDetailModal`** (`full-calendar-modal.ts`):
+
+- `onClose` now receives a `DialogCloseReason`.
+- Every close path runs through one `close()`.
+- **Incidental bug fixed:** the document-level Escape listener used to be removed *only* on
+  Escape. A modal closed by its button or its backdrop therefore left a live listener behind,
+  and that listener fired `closeModal()` the next time the visitor pressed Escape anywhere on
+  the page.
+- Escape stays on `document`, not on `dialogFocus`'s `onEscape`, so that it still works if a
+  click on non-focusable modal content drops focus out of the dialog.
+
+**Decided:** no `inert` on the sibling content. The Tab trap satisfies the `aria-modal`
+contract, and `inert` across a shadow root and its host page is not ours to set.
+
+**Tests** (`full-calendar-range.test.ts`, "event modal focus (C08)"):
+
+- focus lands on the close button inside `role="dialog"` on open;
+- Tab wraps last → first, and Shift+Tab wraps first → last;
+- Escape restores focus to the LEARN MORE trigger;
+- the close button restores focus to the trigger;
+- a backdrop click does not steal focus back.
