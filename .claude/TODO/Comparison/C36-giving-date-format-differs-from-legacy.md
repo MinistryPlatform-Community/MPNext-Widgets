@@ -75,3 +75,29 @@ migrating customer will see it. I lean toward keeping the current long form (it 
 unambiguous for non-US readers, which matters if `C67`/locale ever lands) and simply
 making both widgets consistent with each other and with any other `next-*` widget that
 prints a date — worth one sweep across the SDK rather than two edits here.
+
+## Resolution — FIXED IN PASSING by widget localisation, closed 2026-10-11 (epic W0)
+
+The sweep this item asked for happened as part of the i18n work (C67 / C73), which replaced
+every `"en-US"`-pinned `Intl.*` / `toLocale*` call site in the widgets with the shared,
+locale-aware `this.fmt` formatters (`packages/embed-sdk/src/i18n/formatters.ts`). Both call
+sites named here now go through the same formatter and the same style:
+
+- `next-my-giving` donation date — `packages/embed-sdk/src/components/my-giving.ts:441`,
+  `this.fmt.date(d.donationDate, "medium")`;
+- `next-my-pledges` first installment — `packages/embed-sdk/src/components/my-pledges.ts:242`,
+  `this.fmt.date(p.firstInstallmentDate, "medium")`.
+
+**Decision: keep the long form**, as this item recommended. `"medium"` is
+`{ month: "short", day: "numeric", year: "numeric" }`, so an English page still reads
+`Jun 8, 2026`, and a Spanish or Portuguese page now reads the same date in its own locale's
+order — the unambiguity argument above is exactly why. The two widgets now agree with each
+other and with every other `next-*` widget that prints a date. Legacy's numeric `6/8/2026`
+is not reproduced; note it in the customer migration notes as a deliberate difference.
+
+The one `"en-US"` left in `packages/embed-sdk/src` is
+`packages/embed-sdk/src/shared/calendar-links.ts:100`, and it is **deliberate**: that
+formatter builds the machine-readable date parts for calendar URLs / `.ics` (with
+`hourCycle: "h23"`), never visitor-facing text, so it must not vary with the page locale.
+
+Nothing was changed in this commit; it records the closure.

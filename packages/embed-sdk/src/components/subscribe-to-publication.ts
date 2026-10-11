@@ -96,8 +96,6 @@ export class SubscribeToPublicationWidget extends MPNextWidget {
   private submitting = false;
   /** The handle out of the page URL, read and stripped before the first await. */
   private verifyToken: string | null = null;
-  /** True once `render()` has run, so `reconfigure()` knows to re-init. */
-  private painted = false;
   /** Set on disconnect, so an in-flight request never paints a detached root. */
   private detached = false;
 
@@ -126,13 +124,11 @@ export class SubscribeToPublicationWidget extends MPNextWidget {
     this.detached = true;
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue !== newValue) this.reconfigure();
-  }
-
-  /** A no-op before the first paint; a full re-init after it. */
-  private reconfigure(): void {
-    if (!this.painted || this.detached) return;
+  /**
+   * An observed attribute changed after the first paint (base class
+   * `attributeChangedCallback` → `reconfigure()` → here). A full re-init.
+   */
+  protected override reload(): void {
     this.publication = null;
     this.errorPayload = null;
     this.formMessage = null;

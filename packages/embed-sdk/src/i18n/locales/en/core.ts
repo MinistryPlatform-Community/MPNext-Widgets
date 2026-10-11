@@ -42,6 +42,13 @@ export const core = {
     getDirections: "Get Directions",
     signInPrompt: "Please sign in to continue.",
     dismiss: "Dismiss",
+    /**
+     * `legacy` auth mode, under the prompt in the shared signed-out panel
+     * (`MPNextWidget.renderSignInRequired`). The SDK cannot start a sign-in in
+     * that mode, so the copy points at the host page's own control rather than
+     * drawing a button that would silently do nothing.
+     */
+    signInViaPage: "Use the sign-in link on this page.",
   },
 
   /**
@@ -98,6 +105,14 @@ export const core = {
     generic: "Please correct this field.",
     formIncomplete: "Please complete the required fields.",
     phone: "Enter a valid phone number.",
+    /**
+     * `required` with the field named (C19 row 10: "which field?"). Used when
+     * the control came from `field()`, which stamps its label on it; the bare
+     * `required` stays for hand-written markup. `{label}` is the visible label
+     * as rendered — so in Spanish/Portuguese the sentence is built around
+     * "the field" to stay correct whatever the label's grammatical gender.
+     */
+    requiredField: "{label} is required.",
   },
 
   /**
@@ -217,6 +232,13 @@ export const core = {
     // household), so the number stays in the server's English `message` for the
     // log and the rendered sentence is limit-free rather than sometimes wrong.
     file_too_large: "That file is too large. Please choose a smaller image.",
+    // Generic "MinistryPlatform did not answer" (C42 remainder): a timeout,
+    // a 5xx or a refused connection upstream. Emitted first by the payment and
+    // checkout routes (W1), available to any route. Unlike the `*_unavailable`
+    // codes above it is transient, so the sentence does invite a retry —
+    // later, not immediately.
+    mp_unavailable:
+      "This service is temporarily unavailable. Please try again in a few minutes.",
   },
 
   localeSelector: {

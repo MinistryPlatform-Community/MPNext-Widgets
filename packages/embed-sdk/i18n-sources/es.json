@@ -60,6 +60,7 @@
   "common.seeDetails": "c43ee26b",
   "common.signIn": "bcc0bcc9",
   "common.signInPrompt": "ecbd45b6",
+  "common.signInViaPage": "ac4653b2",
   "common.signOut": "0b184bc5",
   "common.submit": "155f816c",
   "common.submitting": "49195f55",
@@ -113,6 +114,7 @@
   "errors.invoice_not_payable": "4e08f3a5",
   "errors.link_expired": "ee4d71c0",
   "errors.mission_trips_unavailable": "e4e75f02",
+  "errors.mp_unavailable": "8067ed63",
   "errors.network": "d3fc48be",
   "errors.no_file": "e3015d12",
   "errors.not_a_participant": "23b488fc",
@@ -740,6 +742,7 @@
   "validation.pattern": "64ede462",
   "validation.phone": "90eeb8ff",
   "validation.required": "68cadcee",
+  "validation.requiredField": "760bcf6e",
   "validation.tooLong": "9ef8db29",
   "validation.tooShort": "248ce67b",
   "validation.url": "cabf6d7c"

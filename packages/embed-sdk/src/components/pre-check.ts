@@ -31,9 +31,8 @@ import type { PreCheckMember } from "@mpnext/types";
  * is not the live path in that mode and a button that silently does nothing is
  * worse than none. `common.retry` is never rendered in this state.
  *
- * `CROSS-1`'s shared `renderSignInRequired()` helper has not landed yet, so the
- * panel is built here in the shape that plan specifies — the later extraction
- * should be a move, not a rewrite.
+ * The panel is the base class's shared `renderSignInRequired()` (W0), which
+ * this widget's own earlier implementation was the model for.
  *
  * ## Times are wall-clock and stay wall-clock
  *
@@ -96,8 +95,6 @@ export class PreCheckWidget extends MPNextWidget {
   private errorPayload: unknown = null;
   /** The date currently being shown — the attribute, the query string, or the server's. */
   private activeDate: string | null = null;
-  /** True once `render()` has run, so `reconfigure()` knows to reload. */
-  private painted = false;
   /** Set on disconnect, so an in-flight request never paints a detached root. */
   private detached = false;
   /** A save is in flight: the submit control is disabled and reads `Saving…`. */
@@ -137,13 +134,13 @@ export class PreCheckWidget extends MPNextWidget {
     this.detached = true;
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue !== newValue) this.reconfigure();
-  }
-
-  /** A no-op before the first paint; a full reload after it. */
-  private reconfigure(): void {
-    if (!this.painted || this.detached) return;
+  /**
+   * An observed attribute changed after the first paint (the base class's
+   * `attributeChangedCallback` → `reconfigure()` → here; a no-op before the
+   * first paint and once disconnected). A full reload: the date and the QR
+   * panel both derive from attributes.
+   */
+  protected override reload(): void {
     this.data = null;
     this.errorPayload = null;
     this.activeDate = null;
@@ -232,9 +229,10 @@ export class PreCheckWidget extends MPNextWidget {
         this.errorPayload = payload;
         const code = (payload as { error?: string }).error ?? "";
 
-        // Never inferred from a message string: the 401 status is the signal,
-        // and the route only answers it for an absent or public subject.
-        if (res.status === 401) {
+        // Never inferred from a message string: a 401 carried by a public
+        // token is the signal (`isNeedsAuth`). A 401 that reaches a signed-in
+        // visitor is a fault, and renders as one.
+        if (this.isNeedsAuth(res)) {
           this.state = "needs-auth";
         } else if (code === "household_not_found") {
           this.state = "no-household";
@@ -381,7 +379,7 @@ export class PreCheckWidget extends MPNextWidget {
         const code = (payload as { error?: string }).error ?? "";
         this.saving = false;
 
-        if (res.status === 401) {
+        if (this.isNeedsAuth(res)) {
           this.state = "needs-auth";
           this.errorPayload = payload;
           this.emit("preCheckError", { code, status: res.status });
@@ -468,7 +466,7 @@ export class PreCheckWidget extends MPNextWidget {
         );
 
       case "needs-auth":
-        return this.renderSignInRequired();
+        return this.renderSignedOut();
 
       case "no-household":
         return this.statusRegion(
@@ -503,34 +501,19 @@ export class PreCheckWidget extends MPNextWidget {
   }
 
   /**
-   * The signed-out panel, in the shape `CROSS-1` phase 1 specifies.
-   *
-   * Mode-aware, and that is the whole point: in `legacy` the SDK cannot start a
-   * sign-in — the host page does it through `<mpp-user-login>` /
-   * `next-user-menu` — so a Sign In button there would silently no-op on every
-   * customer we have today. Instructional copy naming the page's own control is
-   * strictly better than legacy, which always drew a button whether or not it
-   * could work.
+   * The signed-out panel — the base class's mode-aware helper. `dual` /
+   * `hardened` get the prompt and a real Sign In button; `legacy` gets copy
+   * naming the page's own sign-in link and no button, because a button that
+   * silently does nothing is worse than none. Never "Try Again".
    */
-  private renderSignInRequired(): string {
-    const mode = this.authSession.getMode();
-    const canSignIn = mode !== null && mode !== "legacy";
-
-    const body = this.escapeHtml(
-      this.t(canSignIn ? "preCheck.signedOutPrompt" : "preCheck.signedOutLegacy"),
-    );
-
-    // No `[data-action="retry"]` in this state, ever: re-issuing the same
-    // anonymous request fails identically, which is a loop with no exit.
-    const action = canSignIn
-      ? `<div class="pc-actions">
-           <button class="pc-btn" type="button" data-action="login">${this.escapeHtml(
-             this.t("common.signIn"),
-           )}</button>
-         </div>`
-      : "";
-
-    return `${this.statusRegion(`<p class="pc-msg">${body}</p>`)}${action}`;
+  private renderSignedOut(): string {
+    return this.renderSignInRequired({
+      subject: "pre-check",
+      message: this.t("preCheck.signedOutPrompt"),
+      legacyMessage: this.t("preCheck.signedOutLegacy"),
+      className: "pc-status",
+      buttonClass: "pc-btn",
+    });
   }
 
   private renderDateControl(): string {
@@ -706,8 +689,7 @@ export class PreCheckWidget extends MPNextWidget {
   // ── Listeners ────────────────────────────────────────────────────────────
 
   private attachListeners(): void {
-    const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.requestLogin("pre-check"));
+    // The signed-out panel's Sign In button is bound by the base class.
 
     const retry = this.root.querySelector('[data-action="retry"]');
     if (retry) retry.addEventListener("click", () => this.retryLoad());

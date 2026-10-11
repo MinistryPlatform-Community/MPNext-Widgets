@@ -115,10 +115,13 @@ interface Routes {
   team?: Response;
 }
 
-function mockFetch(routes: Routes = {}) {
+function mockFetch(
+  routes: Routes = {},
+  mode: "legacy" | "dual" | "hardened" = "legacy",
+) {
   const fn = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input.toString();
-    if (url.includes("/api/embed/auth/config")) return jsonResponse({ mode: "legacy" });
+    if (url.includes("/api/embed/auth/config")) return jsonResponse({ mode });
     if (url.includes("/api/embed/session")) return jsonResponse({ token: makeJwt() });
     if (url.includes("/mission-trips/mine")) {
       return routes.mine ?? jsonResponse({ trips: [myTrip()] });
@@ -236,15 +239,38 @@ describe("<next-my-mission-trips>", () => {
       expect(text(el)).not.toContain("Unable to Load");
     });
 
-    it("asks for login when the sign-in button is pressed", async () => {
-      mockFetch({ mine: jsonResponse({ error: "auth_required" }, 401) });
+    // Converted onto the shared `renderSignInRequired()` (W0), which is
+    // mode-aware: the button exists only where the SDK can start a sign-in.
+    it("asks for login when the sign-in button is pressed (dual)", async () => {
+      mockFetch({ mine: jsonResponse({ error: "auth_required" }, 401) }, "dual");
       const el = await mountSettled();
 
       const seen: unknown[] = [];
-      el.addEventListener("loginRequired", (e) => seen.push((e as CustomEvent).detail));
+      el.addEventListener("loginRequired", (e) => {
+        e.preventDefault(); // jsdom cannot navigate
+        seen.push((e as CustomEvent).detail);
+      });
       shadow(el).querySelector<HTMLButtonElement>('[data-action="login"]')!.click();
 
       expect(seen).toEqual([{ wid: "my-mission-trips" }]);
+    });
+
+    it("draws no button in legacy mode, names the page's link, and still announces loginRequired", async () => {
+      mockFetch({ mine: jsonResponse({ error: "auth_required" }, 401) }, "legacy");
+      const seen: unknown[] = [];
+      document.addEventListener(
+        "loginRequired",
+        (e) => seen.push((e as CustomEvent).detail),
+        { once: true },
+      );
+      const el = await mountSettled();
+
+      expect(shadow(el).querySelector('[data-action="login"]')).toBeNull();
+      expect(shadow(el).querySelector('[data-action="retry"]')).toBeNull();
+      expect(text(el)).toContain("Use the sign-in link on this page.");
+      await vi.waitFor(() =>
+        expect(seen).toEqual([{ wid: "my-mission-trips", passive: true }]),
+      );
     });
   });
 

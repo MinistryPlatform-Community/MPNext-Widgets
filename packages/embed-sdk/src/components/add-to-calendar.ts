@@ -7,6 +7,11 @@ import {
   icsFileName,
   type CalendarEventInput,
 } from "../shared/calendar-links";
+import {
+  dialogFocus,
+  type DialogCloseReason,
+  type DialogFocusHandle,
+} from "../shared/dialog-focus";
 
 // ── Local types (mirrors @mpnext/types without importing) ───────────────
 interface CalendarEventData {
@@ -144,16 +149,18 @@ export class AddToCalendarWidget extends MPNextWidget {
 
   private eventId: number;
   private providers: ProviderId[];
+  /** Focus management for the open menu — the shared `dialogFocus()`. */
+  private menuFocus: DialogFocusHandle | null = null;
   private onDocumentPointerDown = (e: Event) => {
     // `composedPath` rather than `contains`: a click inside our Shadow DOM is
     // retargeted to the host, so `e.target` alone cannot tell inside from out.
-    if (!e.composedPath().includes(this)) this.close();
+    // An outside click does not pull focus back to the trigger.
+    if (!e.composedPath().includes(this)) this.close("outside");
   };
   private onDocumentKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape" && this.state.open) {
-      this.close();
-      this.root.querySelector<HTMLButtonElement>(".atc-trigger")?.focus();
-    }
+    // Escape anywhere on the page closes the menu and restores focus to the
+    // trigger (via `dialogFocus().release("escape")`).
+    if (e.key === "Escape" && this.state.open) this.close("escape");
   };
 
   constructor() {
@@ -332,13 +339,26 @@ export class AddToCalendarWidget extends MPNextWidget {
     if (this.state.open) return;
     this.state.open = true;
     this.render();
-    this.root.querySelector<HTMLButtonElement>(".atc-option")?.focus();
+    const menu = this.root.querySelector<HTMLElement>(".atc-menu");
+    if (menu) {
+      // Focus the first option. No Tab trap: this is a `role="menu"`, and Tab
+      // out of a menu is expected to leave it (the outside-pointer listener
+      // closes it). The trigger is re-rendered on close, so it is resolved
+      // late rather than held.
+      this.menuFocus = dialogFocus(
+        menu,
+        () => this.root.querySelector<HTMLButtonElement>(".atc-trigger"),
+        { trapTab: false },
+      );
+    }
   }
 
-  private close(): void {
+  private close(reason: DialogCloseReason = "programmatic"): void {
     if (!this.state.open) return;
     this.state.open = false;
     this.render();
+    this.menuFocus?.release(reason);
+    this.menuFocus = null;
   }
 
   private toggle(): void {

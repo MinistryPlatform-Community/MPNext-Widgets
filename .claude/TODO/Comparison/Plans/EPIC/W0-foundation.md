@@ -129,4 +129,209 @@ No route edits in W0; W1 does those. Confirm `WIRE_CODE_KEYS` / `errorText` cove
 
 ## How to consume
 
-_(W0 agent fills this in on completion.)_
+Written by the W0 agent on 2026-10-11, branch `ws/w0-foundation`. Everything below already
+exists. **Do not fork any of it** — if a primitive is wrong, stop and report it (epic README
+rule). Reference consumers to copy from: `my-mission-trips.ts` (sign-in), `pre-check.ts`
+(sign-in + reconfigure), `add-to-calendar.ts` (dialogFocus).
+
+### 1. Signed-out state — `MPNextWidget` (`shared/base-widget.ts`)
+
+```ts
+protected isNeedsAuth(input: unknown): boolean            // a Response, or a parsed body
+protected renderSignInRequired(opts?: SignInRequiredOptions): string
+export interface SignInRequiredOptions {
+  subject?: string;       // wid for requestLogin / loginRequired; default: tag minus "next-"
+  message?: string;       // translated prompt; default common.signInPrompt
+  legacyMessage?: string; // translated legacy-mode sentence; default message + common.signInViaPage
+  className?: string;     // extra wrapper classes (keep your own layout)
+  buttonClass?: string;   // extra button classes (keep your own button look)
+}
+export const SIGN_IN_REQUIRED_STYLES: string              // include if you pass no classes
+```
+
+```ts
+const res = await this.fetch("/api/embed/my-giving");
+if (this.isNeedsAuth(res)) { this.state = "needs-auth"; this.render(); return; }
+if (!res.ok) { /* error state: errorText(body) + Try Again */ }
+// render():
+case "needs-auth":
+  return this.renderSignInRequired({
+    subject: "my-giving",
+    message: this.t("myGiving.signInPrompt"),
+    className: "mg-state", buttonClass: "mg-btn",
+  });
+```
+
+- `isNeedsAuth` is true for a 401 (or `auth_required` / `session_expired` /
+  `invalid_session` in a body) **only when the request's token was public**; a 401 reaching a
+  signed-in visitor is an error, not this state. Never test message text.
+- `dual`/`hardened`: prompt + `[data-action="login"]` button. `legacy`/unknown: copy only, no
+  button; a `loginRequired` event with `detail: { wid, passive: true }` fires once per element.
+- **Do not bind `[data-action="login"]` inside the panel** — the base class delegates it.
+  Never render Try Again in this state.
+
+### 2. Result cards — `shared/card-link.ts`
+
+```ts
+import { cardLink, cardButton, bindCardSelect, isModifiedClick, CARD_LINK_STYLES } from "../shared/card-link";
+cardLink(opts: { href: string | null | undefined; className: string; body: string;
+                 attrs?: Record<string, string|number|boolean|null|undefined>; target?: string }): string
+cardButton(opts: { className: string; body: string; attrs?: Record<...> }): string
+bindCardSelect(root: ParentNode, selector: string,
+               onSelect: (card: HTMLElement, e: MouseEvent) => boolean | void): void
+isModifiedClick(e: MouseEvent): boolean
+```
+
+```ts
+// getStyles(): `${css}${CARD_LINK_STYLES}`
+html += cardLink({ href: this.buildDetailUrl(e.id), className: "ef-card",
+                   body: inner /* already escaped */, attrs: { "data-id": e.id } });
+// after render — emit only, the anchor navigates:
+bindCardSelect(this.root, ".ef-card", (card) => { this.emit("eventSelected", { id: Number(card.dataset.id) }); });
+```
+
+`href` null/empty (no `target-url`) → `role="article"` div. `javascript:`/`data:` are
+refused. Remove the old `role="link"`, `tabindex` and `window.location` navigation. No
+interactive element inside the body. `cardButton` is for `my-invoices` rows (phrasing
+content only: spans, not divs). Return `false` from `onSelect` to cancel a *plain* click.
+
+### 3. Labelled form controls — `shared/form-validation.ts`
+
+```ts
+import { field, fieldId, FORM_VALIDATION_STYLES, validateForm } from "../shared/form-validation";
+field(opts: FieldOptions): string
+fieldId(name: string, idPrefix?: string): string   // `${idPrefix}-f-${slug(name)}`
+interface FieldOptions {
+  name: string; label: string;          // label already translated; field() escapes it
+  type?: string;                        // input type | "textarea" | "select"; default "text"
+  required?: boolean; autocomplete?: string; inputmode?: string;
+  value?: string | number | null; placeholder?: string;
+  options?: { value: string; label: string; selected?: boolean; disabled?: boolean }[];
+  attrs?: Record<string, string|number|boolean|null|undefined>; // maxlength, pattern, data-*
+  describedBy?: string | string[];      // help-text ids (the error id is added by validateForm)
+  idPrefix?: string;                    // pass this.instanceId
+  wrapperClass?: string;                // default "nw-field"; keep yours, e.g. "cf-field"
+  inputClass?: string; labelClass?: string;
+}
+```
+
+```ts
+field({ name: "mobile_phone", label: this.t("fields.mobilePhone"), type: "tel",
+        required: true, idPrefix: this.instanceId, wrapperClass: "pyv-field", inputClass: "pyv-input" })
+```
+
+`type: "tel"` adds `autocomplete="tel"` + `inputmode="tel"` (C29). A missing required value
+in a `field()` control reads **"{label} is required."** (`validation.requiredField`); bare
+`validation.required` is unchanged for hand-written markup. `this.instanceId` (`nw1`, `nw2`, …)
+is a new protected base-class field.
+
+### 4. Dialog / menu focus — `shared/dialog-focus.ts`
+
+```ts
+import { dialogFocus, type DialogFocusHandle, type DialogCloseReason } from "../shared/dialog-focus";
+dialogFocus(container: HTMLElement,
+            trigger: HTMLElement | null | (() => HTMLElement | null | undefined),
+            opts?: { initialFocus?: HTMLElement | string | null; trapTab?: boolean;  // default true
+                     onEscape?: () => void; restoreOnOutsideClick?: boolean })     // default false
+  : DialogFocusHandle   // { release(reason?: "escape" | "outside" | "programmatic"): void; readonly active: boolean }
+```
+
+```ts
+// open:
+this.render();
+this.modalFocus = dialogFocus(this.root.querySelector(".fc-modal")!, () => this.lastTrigger,
+                              { onEscape: () => this.closeModal() });
+// close (after re-render):
+this.modalFocus?.release(reason);   // "outside" for an outside click → focus not stolen back
+this.modalFocus = null;
+```
+
+A modal dialog keeps `trapTab` on; a `role="menu"` passes `trapTab: false`. Pass the trigger
+as a function if your render replaces it.
+
+### 5. Reconfigure — `MPNextWidget`
+
+```ts
+protected painted: boolean                         // set true yourself after the first paint
+attributeChangedCallback(name, oldValue, newValue) // base default: oldValue !== newValue → reconfigure()
+protected reconfigure(): void                      // no-op before painted / when disconnected; else reload()
+protected reload(): void                           // override this
+```
+
+```ts
+connectedCallback() {
+  this.injectStyles(this.getStyles());
+  void this.initLocale().then(() => { this.render(); this.painted = true; void this.load(); });
+}
+protected override reload(): void {
+  this.data = null; this.state = "loading"; this.render(); void this.load();
+}
+// and DELETE your own attributeChangedCallback (or keep it only to filter names, then call this.reconfigure()).
+```
+
+Never guard on `oldValue !== null` or on "already loaded". A subclass must not declare its own
+`private painted` / `private reconfigure` (TypeScript rejects it).
+
+### 6. Attribute naming — `MPNextWidget` + guard
+
+```ts
+static readonly attributeAliases: Readonly<Record<string, string>>   // { "kebab-name": "oldname" }
+protected readAttr(name: string, legacyAlias?: string): string | null // warns once per class on fallback
+```
+
+```ts
+static readonly attributeAliases = { "hide-soft-credits": "hidesoftcredits" };
+static get observedAttributes() {
+  return ["api-host", "hide-soft-credits", ...Object.values(this.attributeAliases)];
+}
+private get hideSoftCredits() { return this.readAttr("hide-soft-credits") === "true"; }
+```
+
+Then **delete the entry from `LEGACY_SPELLINGS` in
+`packages/embed-sdk/src/components/observed-attributes.test.ts` in the same commit** — the
+ratchet fails while a renamed spelling is still listed. Owners: W5 `hidesoftcredits`,
+`hidecancelbuttonpledge`, `cancelpledgeemailtemplate`; W3 `hidegrouplife`; W6
+`hideaddhouseholdmember`. (This test file is the one W0 file wave 1 edits — delete-only.)
+
+### 7. `injectStyles` — nothing to do
+
+It now adds the widget's sheet once and replaces only that sheet; host-adopted sheets
+survive. Call it as before. Tokens (`--nw-*`) are W7.
+
+### 8. `mp_unavailable`
+
+```ts
+return NextResponse.json({ error: "mp_unavailable", message: "MP did not respond" }, { status: 503 });
+// widget: this.errorText(body) → "This service is temporarily unavailable. Please try again in a few minutes."
+```
+
+Already in en / es / pt-BR; no `WIRE_CODE_KEYS` entry needed. It is a 5xx-class fault, so the
+widget shows it with Try Again (unlike `needs-auth`).
+
+### Shared escaping — `shared/html.ts`
+
+`escapeHtml(value: unknown): string`, `escapeAttr` (alias), `renderAttrs(attrs): string`
+(drops `false`/`null`/`undefined`, `true` → bare attribute, invalid names dropped).
+
+### Deviations from this plan (W0, 2026-10-11)
+
+- **§1** The legacy-mode `loginRequired` fires automatically once per element (with
+  `detail.passive: true`), since with no button nothing else could fire it. `isNeedsAuth`
+  decides by the token's `sub` when it is readable and only falls back to
+  `isAuthenticated()` otherwise, so a 401 to a signed-in visitor is an error, not a sign-in
+  loop. `my-mission-trips.test.ts`'s "button pressed" test was split into a dual case and a
+  legacy case: it asserted a legacy-mode button, which is what this plan removes.
+- **§1/§5** `pre-check.ts` was converted onto the sign-in helper as well as reconfigure (its
+  private `renderSignInRequired` collided with the new protected one), and
+  `subscribe-to-publication.ts` onto reconfigure (its private `painted`/`reconfigure`
+  collided). Both are mechanical; their suites pass unchanged.
+- **§3** `validation.required` was not given an optional slot (the ICU subset has no optional
+  placeholders); the named version is a sibling key, `validation.requiredField`, used when the
+  control came from `field()`. es/pt-BR phrase it around "the field" for gender agreement.
+- **§4** `add-to-calendar` now also returns focus to the trigger after choosing a provider or
+  toggling closed (previously focus dropped to `<body>` when the re-render detached it).
+  Escape and outside-click behave exactly as before.
+- **§6** The guard cannot check "contains a hyphen when more than one word" (it cannot see
+  word boundaries); the regex plus the ratchet is what is enforced.
+- **§7** The widget sheet is placed *before* host sheets rather than appended after them, so
+  a host override wins on equal specificity.

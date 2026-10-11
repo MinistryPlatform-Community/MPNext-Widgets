@@ -250,6 +250,28 @@ describe("<next-add-to-calendar>", () => {
       expect(shadow(el).querySelector(".atc-menu")).toBeNull();
     });
 
+    // Focus contract, now through the shared `dialogFocus()` (W0).
+    it("focuses the first option on open and returns focus to the trigger on Escape", async () => {
+      const el = await mountLoaded();
+      trigger(el)!.click();
+      expect(shadow(el).activeElement).toBe(options(el)[0]);
+
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      expect(shadow(el).activeElement).toBe(trigger(el));
+    });
+
+    it("does not pull focus back to the trigger after an outside pointerdown", async () => {
+      const el = await mountLoaded();
+      const outside = document.createElement("button");
+      document.body.appendChild(outside);
+      trigger(el)!.click();
+
+      outside.focus();
+      outside.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, composed: true }));
+      expect(shadow(el).querySelector(".atc-menu")).toBeNull();
+      expect(document.activeElement).toBe(outside);
+    });
+
     it("closes on an outside pointerdown but not on an inside one", async () => {
       const el = await mountLoaded();
       trigger(el)!.click();

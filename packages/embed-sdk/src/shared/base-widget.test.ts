@@ -39,6 +39,14 @@ class TestWidget extends MPNextWidget {
   public callRequestLogin(wid: string): void {
     (this as unknown as { requestLogin: MPNextWidget["requestLogin"] }).requestLogin(wid);
   }
+  public callIsNeedsAuth(input: unknown): boolean {
+    return (this as unknown as { isNeedsAuth: (i: unknown) => boolean }).isNeedsAuth(input);
+  }
+  public callRenderSignInRequired(opts?: Record<string, string>): string {
+    return (
+      this as unknown as { renderSignInRequired: (o?: Record<string, string>) => string }
+    ).renderSignInRequired(opts);
+  }
   public getRoot(): ShadowRoot {
     return (this as unknown as { root: ShadowRoot }).root;
   }
@@ -297,6 +305,81 @@ describe("MPNextWidget", () => {
       }
     });
 
+    // C68 part 1: the widget's sheet must never clobber one a host page adopted
+    // into the open shadow root — the previous `adoptedStyleSheets = [sheet]`
+    // assignment threw every host override away on the next inject.
+    /**
+     * jsdom implements neither `adoptedStyleSheets` nor `CSSStyleSheet.replace`,
+     * so without this the C68 tests would silently exercise the `<style>`
+     * fallback. A WeakMap-backed accessor is all the code under test touches.
+     */
+    function polyfillAdoptedStyleSheets(): () => void {
+      const store = new WeakMap<object, CSSStyleSheet[]>();
+      const accessor: PropertyDescriptor = {
+        configurable: true,
+        get(this: object) {
+          return store.get(this) ?? [];
+        },
+        set(this: object, value: CSSStyleSheet[]) {
+          store.set(this, [...value]);
+        },
+      };
+      const hadReplace = "replace" in CSSStyleSheet.prototype;
+      Object.defineProperty(Document.prototype, "adoptedStyleSheets", accessor);
+      Object.defineProperty(ShadowRoot.prototype, "adoptedStyleSheets", accessor);
+      if (!hadReplace) {
+        Object.defineProperty(CSSStyleSheet.prototype, "replace", {
+          configurable: true,
+          value: async () => undefined,
+        });
+      }
+      return () => {
+        delete (Document.prototype as unknown as Record<string, unknown>).adoptedStyleSheets;
+        delete (ShadowRoot.prototype as unknown as Record<string, unknown>).adoptedStyleSheets;
+        if (!hadReplace) {
+          delete (CSSStyleSheet.prototype as unknown as Record<string, unknown>).replace;
+        }
+      };
+    }
+
+    let restorePolyfill: (() => void) | null = null;
+    afterEach(() => {
+      restorePolyfill?.();
+      restorePolyfill = null;
+    });
+
+    it("keeps a host-adopted sheet across re-injection and render (C68)", () => {
+      restorePolyfill = polyfillAdoptedStyleSheets();
+      const widget = makeWidget();
+      document.body.appendChild(widget);
+      widget.callInjectStyles(":host { color: red; }");
+
+      const hostSheet = new CSSStyleSheet();
+      hostSheet.replaceSync(":host { color: purple; }");
+      const root = widget.getRoot();
+      root.adoptedStyleSheets = [...root.adoptedStyleSheets, hostSheet];
+
+      widget.callInjectStyles(":host { color: blue; }");
+      widget.render();
+
+      const sheets = root.adoptedStyleSheets;
+      expect(sheets).toContain(hostSheet);
+      expect(sheets).toHaveLength(2);
+      // The widget's own sheet stays first, so the host's rules win on equal
+      // specificity.
+      expect(sheets[1]).toBe(hostSheet);
+      expect(sheets[0]).not.toBe(hostSheet);
+    });
+
+    it("replaces only its own sheet on re-inject rather than stacking copies", () => {
+      restorePolyfill = polyfillAdoptedStyleSheets();
+      const widget = makeWidget();
+      widget.callInjectStyles(":host { color: red; }");
+      widget.callInjectStyles(":host { color: blue; }");
+      widget.callInjectStyles(":host { color: green; }");
+      expect(widget.getRoot().adoptedStyleSheets).toHaveLength(1);
+    });
+
     it("falls back to a <style> tag when adoptedStyleSheets path throws", () => {
       const widget = makeWidget();
 
@@ -397,6 +480,236 @@ describe("MPNextWidget", () => {
       stubMode(null);
       widget.callRequestLogin("plan-your-visit");
       expect(nav).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("signed-out state (C81 / CROSS-1)", () => {
+    function jwt(claims: Record<string, unknown>): string {
+      const b64 = (o: unknown) =>
+        btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      return `${b64({ alg: "HS256" })}.${b64(claims)}.sig`;
+    }
+    function stubMode(mode: "legacy" | "dual" | "hardened" | null) {
+      vi.spyOn(AuthSession.prototype, "getMode").mockReturnValue(mode);
+    }
+    async function widgetAfter401(sub: string | null): Promise<TestWidget> {
+      const token = sub === null ? "opaque-token" : jwt({ sub });
+      window.__nextTokenProvider = { get: vi.fn().mockResolvedValue(token) };
+      fetchMock.mockResolvedValue(makeResponse({ error: "auth_required" }, { status: 401 }));
+      const widget = makeWidget();
+      document.body.appendChild(widget);
+      await widget.callFetch("/api/embed/thing");
+      return widget;
+    }
+
+    describe("isNeedsAuth()", () => {
+      it("is true for a 401 carried by a public token", async () => {
+        const widget = await widgetAfter401("public");
+        expect(widget.callIsNeedsAuth({ status: 401, ok: false })).toBe(true);
+      });
+
+      it("is false for a 401 that reaches a signed-in visitor — that is a fault, not a state", async () => {
+        const widget = await widgetAfter401("user-guid-1");
+        expect(widget.callIsNeedsAuth({ status: 401, ok: false })).toBe(false);
+      });
+
+      it("falls back to AuthSession.isAuthenticated() when the token is not a readable JWT", async () => {
+        const signedOut = vi.spyOn(AuthSession.prototype, "isAuthenticated").mockReturnValue(false);
+        const widget = await widgetAfter401(null);
+        expect(widget.callIsNeedsAuth({ status: 401 })).toBe(true);
+        signedOut.mockReturnValue(true);
+        expect(widget.callIsNeedsAuth({ status: 401 })).toBe(false);
+      });
+
+      it("is false for every non-401 status, 403 and 500 included", async () => {
+        const widget = await widgetAfter401("public");
+        for (const status of [200, 400, 403, 404, 500, 503]) {
+          expect(widget.callIsNeedsAuth({ status }), String(status)).toBe(false);
+        }
+      });
+
+      it("reads machine codes from a parsed body, never message text", async () => {
+        const widget = await widgetAfter401("public");
+        expect(widget.callIsNeedsAuth({ error: "auth_required" })).toBe(true);
+        expect(widget.callIsNeedsAuth({ error: "session_expired" })).toBe(true);
+        expect(widget.callIsNeedsAuth({ error: "invalid_session" })).toBe(true);
+        expect(widget.callIsNeedsAuth({ error: "internal_error", message: "Authentication required" })).toBe(false);
+        expect(widget.callIsNeedsAuth(null)).toBe(false);
+        expect(widget.callIsNeedsAuth("auth_required")).toBe(false);
+      });
+    });
+
+    describe("renderSignInRequired()", () => {
+      function mountPanel(widget: TestWidget, opts?: Record<string, string>) {
+        widget.getRoot().innerHTML = widget.callRenderSignInRequired(opts);
+        return widget.getRoot();
+      }
+
+      it("draws a Sign In button in dual and hardened mode, and no retry", () => {
+        for (const mode of ["dual", "hardened"] as const) {
+          vi.restoreAllMocks();
+          stubMode(mode);
+          const widget = makeWidget();
+          const root = mountPanel(widget);
+          expect(root.querySelector('[data-action="login"]'), mode).not.toBeNull();
+          expect(root.querySelector('[data-action="retry"]'), mode).toBeNull();
+          expect(root.textContent).toContain("Please sign in to continue.");
+        }
+      });
+
+      it("draws no button in legacy mode or before the mode is known", () => {
+        for (const mode of ["legacy", null] as const) {
+          vi.restoreAllMocks();
+          stubMode(mode);
+          const root = mountPanel(makeWidget());
+          expect(root.querySelector('[data-action="login"]'), String(mode)).toBeNull();
+          expect(root.querySelector('[data-action="retry"]'), String(mode)).toBeNull();
+          expect(root.textContent).toContain("Use the sign-in link on this page.");
+        }
+      });
+
+      it("uses the caller's legacy sentence in place of the default pair", () => {
+        stubMode("legacy");
+        const root = mountPanel(makeWidget(), {
+          message: "Sign in to see your giving.",
+          legacyMessage: "Use the sign-in link above to see your giving.",
+        });
+        expect(root.textContent).toContain("Use the sign-in link above to see your giving.");
+        expect(root.textContent).not.toContain("Sign in to see your giving.");
+      });
+
+      it("binds the button itself: one click, one loginRequired with the subject", () => {
+        stubMode("dual");
+        vi.spyOn(
+          AuthSession.prototype as unknown as { navigateTo: (u: string) => void },
+          "navigateTo",
+        ).mockImplementation(() => {});
+        const widget = makeWidget();
+        document.body.appendChild(widget);
+        const root = mountPanel(widget, { subject: "my-giving" });
+        const seen: unknown[] = [];
+        widget.addEventListener("loginRequired", (e) => seen.push((e as CustomEvent).detail));
+
+        root.querySelector<HTMLButtonElement>('[data-action="login"]')!.click();
+        expect(seen).toEqual([{ wid: "my-giving" }]);
+      });
+
+      it("defaults the subject to the tag name without its next- prefix", () => {
+        stubMode("dual");
+        const root = mountPanel(makeWidget());
+        expect(root.querySelector<HTMLElement>("[data-nw-signin]")!.dataset.subject).toBe(
+          "test-mpnext-widget",
+        );
+      });
+
+      it("announces loginRequired once in legacy mode, however often it re-renders", async () => {
+        stubMode("legacy");
+        const widget = makeWidget();
+        document.body.appendChild(widget);
+        const seen: unknown[] = [];
+        widget.addEventListener("loginRequired", (e) => seen.push((e as CustomEvent).detail));
+
+        mountPanel(widget, { subject: "my-groups" });
+        mountPanel(widget, { subject: "my-groups" });
+        await Promise.resolve();
+        expect(seen).toEqual([{ wid: "my-groups", passive: true }]);
+      });
+
+      it("escapes caller-supplied copy", () => {
+        stubMode("dual");
+        const root = mountPanel(makeWidget(), { message: "<img src=x onerror=alert(1)>" });
+        expect(root.querySelector("img")).toBeNull();
+      });
+    });
+  });
+
+  describe("readAttr() (C79)", () => {
+    class AliasWidget extends MPNextWidget {
+      static readonly attributeAliases = { "hide-soft-credits": "hidesoftcredits" };
+      render(): void {}
+      connectedCallback(): void {}
+      public read(name: string, alias?: string): string | null {
+        return this.readAttr(name, alias);
+      }
+    }
+    class OtherAliasWidget extends AliasWidget {}
+    const ATAG = "test-alias-widget";
+    const OTAG = "test-other-alias-widget";
+    if (!customElements.get(ATAG)) customElements.define(ATAG, AliasWidget);
+    if (!customElements.get(OTAG)) customElements.define(OTAG, OtherAliasWidget);
+
+    it("prefers the kebab-case name and does not warn", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      document.body.innerHTML = `<${ATAG} hide-soft-credits="true" hidesoftcredits="false"></${ATAG}>`;
+      const el = document.body.firstElementChild as AliasWidget;
+      expect(el.read("hide-soft-credits")).toBe("true");
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the class's declared alias, warning once per element class", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      document.body.innerHTML = `<${OTAG} hidesoftcredits="true"></${OTAG}><${OTAG} hidesoftcredits="false"></${OTAG}>`;
+      const [a, b] = Array.from(document.body.children) as AliasWidget[];
+      expect(a.read("hide-soft-credits")).toBe("true");
+      expect(a.read("hide-soft-credits")).toBe("true");
+      expect(b.read("hide-soft-credits")).toBe("false");
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain('"hidesoftcredits" is deprecated; use "hide-soft-credits"');
+    });
+
+    it("accepts an explicit alias argument, and returns null when neither is set", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      document.body.innerHTML = `<${ATAG} hidegrouplife="true"></${ATAG}>`;
+      const el = document.body.firstElementChild as AliasWidget;
+      expect(el.read("hide-group-life", "hidegrouplife")).toBe("true");
+      expect(el.read("hide-address")).toBeNull();
+      expect(el.read("hide-address", "hideaddress")).toBeNull();
+    });
+  });
+
+  describe("reconfigure() convention (C39)", () => {
+    class ReconfigWidget extends MPNextWidget {
+      static get observedAttributes() {
+        return ["campaign-id"];
+      }
+      public reloads = 0;
+      render(): void {}
+      connectedCallback(): void {
+        this.render();
+        this.painted = true;
+      }
+      protected override reload(): void {
+        this.reloads += 1;
+      }
+    }
+    const RTAG = "test-reconfig-widget";
+    if (!customElements.get(RTAG)) customElements.define(RTAG, ReconfigWidget);
+
+    it("reloads on the first set of an attribute absent at upgrade (oldValue === null)", () => {
+      const el = document.createElement(RTAG) as ReconfigWidget;
+      document.body.appendChild(el);
+      el.setAttribute("campaign-id", "4");
+      expect(el.reloads).toBe(1);
+    });
+
+    it("reloads on a change and on removal, not on a same-value set", () => {
+      document.body.innerHTML = `<${RTAG} campaign-id="4"></${RTAG}>`;
+      const el = document.body.firstElementChild as ReconfigWidget;
+      el.setAttribute("campaign-id", "4");
+      expect(el.reloads).toBe(0);
+      el.setAttribute("campaign-id", "5");
+      el.removeAttribute("campaign-id");
+      expect(el.reloads).toBe(2);
+    });
+
+    it("is a no-op before the first paint and once disconnected", () => {
+      const el = document.createElement(RTAG) as ReconfigWidget;
+      el.setAttribute("campaign-id", "1"); // not connected, not painted
+      expect(el.reloads).toBe(0);
+      document.body.appendChild(el);
+      el.remove();
+      el.setAttribute("campaign-id", "2");
+      expect(el.reloads).toBe(0);
     });
   });
 
