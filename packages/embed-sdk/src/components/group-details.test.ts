@@ -77,7 +77,7 @@ interface Routes {
 
 function mockFetch(routes: Routes = {}, opts: { signedIn?: boolean; mode?: string } = {}) {
   const signedIn = opts.signedIn ?? true;
-  const fn = vi.fn(async (input: RequestInfo | URL) => {
+  const fn = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/api/embed/auth/config")) return jsonResponse({ mode: opts.mode ?? "legacy" });
     if (url.includes("/api/embed/session")) {
@@ -269,6 +269,37 @@ describe("<next-group-details>", () => {
       submit(el, "inquire");
       await vi.waitFor(() => expect(postsTo(fetchFn, "/group-details/inquire")).toHaveLength(1));
       expect(postsTo(fetchFn, "/group-details/inquire")[0]).toMatchObject({ contactId: 98 });
+    });
+  });
+
+  describe("greeting (C17)", () => {
+    it("greets a household member by nickname, not surname-first", async () => {
+      const el = await mountSettled();
+      submit(el, "inquire");
+      await vi.waitFor(() => expect(text(el)).toContain("Thanks, Chris!"));
+      expect(text(el)).not.toContain("Kehayias Chris");
+    });
+
+    it("falls back to the first name, then to reordering Display_Name", async () => {
+      mockFetch({
+        me: jsonResponse({
+          contact: {
+            ...ME,
+            members: [
+              { contactId: 98, displayName: "Kehayias, Chris", firstName: null, nickname: null },
+              { contactId: 99, displayName: "Kehayias, Sarah", firstName: "Sarah", nickname: null },
+            ],
+          },
+        }),
+      });
+      const el = await mountSettled();
+      submit(el, "inquire");
+      await vi.waitFor(() => expect(text(el)).toContain("Thanks, Chris!"));
+
+      clickTab(el, "signup");
+      select(el, "#gd-signup-as", "99");
+      submit(el, "signup");
+      await vi.waitFor(() => expect(text(el)).toContain("You're signed up, Sarah!"));
     });
   });
 });

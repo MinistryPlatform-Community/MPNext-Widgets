@@ -129,7 +129,11 @@ export type SuggestGroupRequest = z.infer<typeof SuggestGroupRequestSchema>;
 /** Current signed-in contact + household members for the Inquire/Sign-up "as" picker. */
 export const GroupContactOptionSchema = z.object({
   contactId: z.number(),
+  /** MP `Display_Name` ("Last, First") — the picker label. */
   displayName: z.string(),
+  /** For the post-submit greeting (C17); nickname wins when present. */
+  firstName: z.string().nullable(),
+  nickname: z.string().nullable(),
 });
 export type GroupContactOption = z.infer<typeof GroupContactOptionSchema>;
 

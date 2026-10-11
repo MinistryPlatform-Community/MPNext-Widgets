@@ -46,6 +46,8 @@ interface GroupDetail {
 interface ContactOption {
   contactId: number;
   displayName: string;
+  firstName?: string | null;
+  nickname?: string | null;
 }
 
 interface CurrentContact {
@@ -370,13 +372,29 @@ export class GroupDetailsWidget extends MPNextWidget {
     return out;
   }
 
+  /**
+   * The name in the post-submit greeting: the first name alone — "Thanks,
+   * Chris!" (C17). MP's `Display_Name` is "Last, First", and the greeting used
+   * to strip its comma, producing "Thanks, Kehayias Chris!". Nickname wins over
+   * First_Name, as it does everywhere MP addresses a person.
+   */
   private displayNameFor(tab: Tab, payload: { firstName: string | null; lastName: string | null }): string {
     const id = tab === "inquire" ? this.inquireContactId : this.signupContactId;
     if (id && id !== "blank") {
       const member = this.contact?.members.find((m) => String(m.contactId) === id);
-      if (member) return member.displayName.replace(/,/g, "");
+      if (member) {
+        const first = member.nickname || member.firstName;
+        if (first) return first;
+        // An older server without the first-name columns: reorder
+        // "Last, First" rather than deleting the comma.
+        const [last, given] = member.displayName.split(",").map((p) => p.trim());
+        return given || last || "";
+      }
+      if (this.contact && String(this.contact.contactId) === id) {
+        return this.contact.firstName ?? "";
+      }
     }
-    return [payload.firstName, payload.lastName].filter(Boolean).join(" ");
+    return payload.firstName ?? "";
   }
 
   private setSubmitDisabled(disabled: boolean) {
@@ -753,6 +771,7 @@ export class GroupDetailsWidget extends MPNextWidget {
       : [
           {
             contactId: this.contact.contactId,
+            firstName: this.contact.firstName,
             displayName:
               [this.contact.firstName, this.contact.lastName]
                 .filter(Boolean)

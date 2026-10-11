@@ -485,9 +485,14 @@ export class GroupsService {
     const rows = await this.mp!.getTableRecords<{
       ContactId: number | string;
       DisplayName: string | null;
+      FirstName: string | null;
+      Nickname: string | null;
     }>({
       table: "Contacts",
-      select: "Contacts.Contact_ID AS ContactId, Contacts.Display_Name AS DisplayName",
+      // First_Name / Nickname feed the post-submit greeting (C17): MP's
+      // Display_Name is "Last, First", so greeting from it reads backwards.
+      select:
+        "Contacts.Contact_ID AS ContactId, Contacts.Display_Name AS DisplayName, Contacts.First_Name AS FirstName, Contacts.Nickname AS Nickname",
       filter: `Contacts.Household_ID = ${householdId} AND Contacts.Contact_Status_ID <> 3`,
       orderBy: "Contacts.Date_Of_Birth",
     });
@@ -495,6 +500,8 @@ export class GroupsService {
       .map((r) => ({
         contactId: toNumber(r.ContactId),
         displayName: clean(r.DisplayName) ?? "",
+        firstName: clean(r.FirstName),
+        nickname: clean(r.Nickname),
       }))
       .filter((m) => m.contactId > 0 && m.displayName);
   }
