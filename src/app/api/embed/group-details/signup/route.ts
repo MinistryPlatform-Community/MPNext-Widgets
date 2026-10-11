@@ -6,9 +6,10 @@
  * (creating one when missing) and adds a pending Group_Participant using the
  * group type's default role.
  *
- * NOTE: optional participant-confirmation and leader-notification emails the
- * legacy widget could send are not ported in v1 — the Group_Participants record
- * is still created exactly as before.
+ * `signup-email-template` sends a confirmation to the person signed up, and
+ * `leader-signup-email-template` notifies the group's leaders (C11). Both are
+ * `dp_Communications` message templates and both are best-effort: a template
+ * fault answers `200 { success: true, warning: "email_not_sent" }`.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -21,6 +22,11 @@ import {
 } from "@/lib/embed/auth";
 import { GroupsService, NotHouseholdMemberError } from "@/services/groupsService";
 import type { GroupInquiryRequest } from "@mpnext/types";
+
+function templateId(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
 
 export async function POST(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
@@ -68,8 +74,16 @@ export async function POST(req: NextRequest) {
       payload.contactId = user.Contact_ID;
     }
 
+    let emailed = true;
     try {
-      await service.signUp(payload, { userId: user.User_ID, contactId: user.Contact_ID });
+      const who = await service.signUp(payload, {
+        userId: user.User_ID,
+        contactId: user.Contact_ID,
+      });
+      emailed = await service.sendSignupEmails(payload.targetId, who, payload.message, {
+        signup: templateId(payload.signupEmailTemplate),
+        leaderSignup: templateId(payload.leaderSignupEmailTemplate),
+      });
     } catch (err) {
       if (err instanceof NotHouseholdMemberError) {
         return NextResponse.json(
@@ -81,7 +95,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: true },
+      emailed ? { success: true } : { success: true, warning: "email_not_sent" },
       { status: 200, headers: getCorsHeaders(origin) }
     );
   } catch (error) {

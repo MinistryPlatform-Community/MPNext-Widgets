@@ -8,9 +8,13 @@
  * (C12). A contact outside the caller's household is refused with
  * `not_household_member`.
  *
- * NOTE: the legacy widget could also fire an optional confirmation email via an
- * MP message template. That email send is intentionally not ported in v1 — the
- * Group_Inquiries record is still created exactly as before.
+ * When the widget carries `inquiry-email-template`, a confirmation is sent to
+ * the inquirer from that `dp_Communications` message template (C11). The send
+ * is best-effort: a template fault answers `200 { success: true, warning:
+ * "email_not_sent" }`, because the inquiry row is already written.
+ *
+ * Anonymous inquiries are rate-limited per IP (fail-closed): the route writes
+ * an MP record and can send email to a typed address.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -20,9 +24,19 @@ import {
   resolveRequestOrigin,
   buildOptionsResponse,
   buildFallbackCorsHeaders,
+  getClientIp,
 } from "@/lib/embed/auth";
+import { checkRateLimit } from "@/lib/embed/rate-limit";
 import { GroupsService, NotHouseholdMemberError } from "@/services/groupsService";
 import type { GroupInquiryRequest } from "@mpnext/types";
+
+/** Anonymous inquiries allowed per IP per hour. */
+const ANON_INQUIRIES_PER_HOUR = 10;
+
+function templateId(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
 
 export async function POST(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
@@ -59,8 +73,26 @@ export async function POST(req: NextRequest) {
       actorContactId = user?.Contact_ID ?? null;
     }
 
+    if (claims.sub === "public") {
+      const rate = await checkRateLimit(
+        `group-inquiry:ip:${getClientIp(req)}`,
+        ANON_INQUIRIES_PER_HOUR,
+        { windowSeconds: 3600, failClosed: true }
+      );
+      if (!rate.ok) {
+        return NextResponse.json(
+          { success: false, error: "rate_limited", message: "Too many inquiries" },
+          { status: 429, headers: getCorsHeaders(origin) }
+        );
+      }
+    }
+
+    let emailed = true;
     try {
-      await service.createInquiry(payload, { userId, contactId: actorContactId });
+      const who = await service.createInquiry(payload, { userId, contactId: actorContactId });
+      emailed = await service.sendInquiryEmails(payload.targetId, who, payload.message, {
+        inquiry: templateId(payload.inquiryEmailTemplate),
+      });
     } catch (err) {
       if (err instanceof NotHouseholdMemberError) {
         return NextResponse.json(
@@ -72,7 +104,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: true },
+      emailed ? { success: true } : { success: true, warning: "email_not_sent" },
       { status: 200, headers: getCorsHeaders(origin) }
     );
   } catch (error) {

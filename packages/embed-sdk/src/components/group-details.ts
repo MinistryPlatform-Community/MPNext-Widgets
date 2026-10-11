@@ -68,10 +68,12 @@ type Tab = "inquire" | "signup";
  * "Sign Up for this Group" (requires sign-in). Honors the legacy attributes for
  * hiding tabs, inquiring about full groups, and showing the full address.
  *
+ * Notification emails (C11): `inquiry-email-template`, `signup-email-template`
+ * and `leader-signup-email-template` are `dp_Communications` message-template
+ * ids, posted with the write. The server sends after the insert; a template
+ * fault still reports success, with a sentence saying the email did not go.
+ *
  * Simplifications relative to legacy (noted inline):
- *  - Optional inquiry/sign-up confirmation + leader-notification emails are not
- *    sent in v1; the Group_Inquiries / Group_Participants records are still
- *    created. The *-email-template attributes are accepted but currently no-op.
  *  - Sign-up uses a household-member contact (no anonymous "Blank Form" sign-up,
  *    which the backend cannot attribute to a participant).
  */
@@ -280,6 +282,7 @@ export class GroupDetailsWidget extends MPNextWidget {
       emailAddress: String(fd.get("emailAddress") || "").trim() || null,
       mobilePhoneNumber: String(fd.get("mobilePhoneNumber") || "").trim() || null,
       message: String(fd.get("message") || "").trim() || null,
+      ...this.emailTemplates(tab),
     };
 
     const endpoint =
@@ -294,7 +297,7 @@ export class GroupDetailsWidget extends MPNextWidget {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data: { success: boolean; message?: string } = await res
+      const data: { success: boolean; message?: string; warning?: string } = await res
         .json()
         .catch(() => ({ success: false }));
 
@@ -317,22 +320,24 @@ export class GroupDetailsWidget extends MPNextWidget {
       // so splicing a name into the middle of a translated string does not
       // travel.
       const who = this.displayNameFor(tab, payload);
+      let done: string;
       if (tab === "inquire") {
         this.emit("inquirySubmitted", { groupId: this.group.id });
-        this.setMessage(
-          "success",
-          who
-            ? this.t("groupDetails.inquirySentNamed", { name: who })
-            : this.t("groupDetails.inquirySent")
-        );
+        done = who
+          ? this.t("groupDetails.inquirySentNamed", { name: who })
+          : this.t("groupDetails.inquirySent");
       } else {
         this.emit("signupSubmitted", { groupId: this.group.id });
-        this.setMessage(
-          "success",
-          who
-            ? this.t("groupDetails.signedUpNamed", { name: who })
-            : this.t("groupDetails.signedUp")
-        );
+        done = who
+          ? this.t("groupDetails.signedUpNamed", { name: who })
+          : this.t("groupDetails.signedUp");
+      }
+      // The record is saved either way; a template fault (C11) is reported as
+      // a second sentence rather than as a failure.
+      if (data.warning === "email_not_sent") {
+        this.setMessage("warning", [done, this.t("groupDetails.emailNotSent")].join(" "));
+      } else {
+        this.setMessage("success", done);
       }
       form.reset();
       this.setSubmitDisabled(false);
@@ -343,6 +348,25 @@ export class GroupDetailsWidget extends MPNextWidget {
       );
       this.setSubmitDisabled(false);
     }
+  }
+
+  /** The configured template ids for this tab's write (C11). */
+  private emailTemplates(tab: Tab): Record<string, number> {
+    const id = (name: string): number | null => {
+      const n = Number(this.getAttribute(name));
+      return Number.isInteger(n) && n > 0 ? n : null;
+    };
+    const out: Record<string, number> = {};
+    if (tab === "inquire") {
+      const inquiry = id("inquiry-email-template");
+      if (inquiry) out.inquiryEmailTemplate = inquiry;
+    } else {
+      const signup = id("signup-email-template");
+      const leader = id("leader-signup-email-template");
+      if (signup) out.signupEmailTemplate = signup;
+      if (leader) out.leaderSignupEmailTemplate = leader;
+    }
+    return out;
   }
 
   private displayNameFor(tab: Tab, payload: { firstName: string | null; lastName: string | null }): string {

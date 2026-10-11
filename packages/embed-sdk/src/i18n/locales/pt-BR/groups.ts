@@ -86,6 +86,8 @@ export const ptBRGroups = {
     signedUp: "Você está inscrito! O líder do grupo entrará em contato.",
     signedUpNamed:
       "Você está inscrito, {name}! O líder do grupo entrará em contato.",
+    emailNotSent:
+      "Não foi possível enviar o e-mail de confirmação, mas sua solicitação foi salva.",
   },
 
   myGroups: {

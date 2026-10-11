@@ -91,12 +91,25 @@ export const GroupInquiryRequestSchema = z.object({
   emailAddress: z.string().nullable().optional(),
   mobilePhoneNumber: z.string().nullable().optional(),
   message: z.string().nullable().optional(),
+  /**
+   * `dp_Communications` message-template ids from the widget's
+   * `inquiry-email-template` / `signup-email-template` /
+   * `leader-signup-email-template` attributes (C11). Absent = no email.
+   */
+  inquiryEmailTemplate: z.number().nullable().optional(),
+  signupEmailTemplate: z.number().nullable().optional(),
+  leaderSignupEmailTemplate: z.number().nullable().optional(),
 });
 export type GroupInquiryRequest = z.infer<typeof GroupInquiryRequestSchema>;
 
 export const GroupActionResponseSchema = z.object({
   success: z.boolean(),
   message: z.string().optional(),
+  /**
+   * Set on a **successful** write whose configured notification email could
+   * not be sent (C11). The record exists; the widget says the email did not go.
+   */
+  warning: z.literal("email_not_sent").optional(),
 });
 export type GroupActionResponse = z.infer<typeof GroupActionResponseSchema>;
 

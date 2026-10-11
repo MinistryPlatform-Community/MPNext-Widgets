@@ -131,3 +131,44 @@ is allowed, however no email notifications will be sent"). Mirror legacy's up-fr
 template validation too, or at minimum log loudly when an attribute is supplied and no
 sender is configured, so the next migration does not go quiet again. Until this lands,
 the success copy at `group-details.ts:306` overstates what happened and should be softened.
+
+## Resolution — 2026-10-11
+
+**Fixed (W3, `ws/w3-groups`).** All three attributes are now honoured.
+
+- **Which template table.** Checked in MP: ids 664/665 exist in **neither**
+  `dp_Communications` nor `dp_Communication_Templates` on our domain (the legacy page runs
+  on `mpi.ministryplatform.com`, a different instance; C66's 2695 has the same story). The
+  decision was made from the evidence available: the same domain's stock group templates —
+  `dp_Communications` 72 "New Group Inquiry" and 84 "Small Group Sign-up" — are
+  `Template = 1` **message templates**; every other legacy `*emailtemplate` attribute
+  already ported (`next-plan-your-visit`'s church notification, `next-prayer-feedback`,
+  `next-subscribe-to-publication`) resolves to `dp_Communications`; and ids in the 600s
+  fit that table's id space, not `dp_Communication_Templates` (a few dozen rows). So the
+  sends go through `MessageTemplateService.sendMessageTemplate`.
+- **Wiring.** `group-details.ts` posts `inquiryEmailTemplate` / `signupEmailTemplate` /
+  `leaderSignupEmailTemplate` with the write (`GroupInquiryRequestSchema`); the routes call
+  `GroupsService.sendInquiryEmails` / `sendSignupEmails` **after** the insert:
+  1. inquiry → the inquirer (`inquiry-email-template`);
+  2. sign-up → the person signed up (`signup-email-template`);
+  3. sign-up → every leader with an address, read from the detail proc's second result set
+     on the server (`leader-signup-email-template`) — never a client-supplied list.
+- **Soft failure.** A template fault (not a template, no recipient, no From address, send
+  failed, group read failed) is logged and answers `200 { success: true, warning:
+  "email_not_sent" }`; the widget shows the success sentence plus
+  `groupDetails.emailNotSent` in the warning style. A 500 is never produced by a send.
+- **Merge tokens.** Both vocabularies are supplied: MP's stock tokens (`[Group_Name]`,
+  `[Web_First_Name]`, `[Web_Email]`, `[Web_Phone]`, `[Comments]`, `[GP_Display_Name]`,
+  `[GP_Email_Address]`, `[GP_Mobile_Phone]`) and the column names (`[First_Name]`,
+  `[Nickname]`, `[Email_Address]`, …). Values are HTML-escaped by the template service.
+- **Hardening decided here.** A template id must be a `dp_Communications` row with
+  `Template = 1`, or nothing is sent — the id comes from page markup, and without the check
+  any past communication could be replayed to a typed address. Anonymous inquiries are
+  now rate-limited at 10 per IP per hour, fail-closed (`429 rate_limited`), because the
+  route writes an MP record and can mail a typed address.
+- The "intentionally not ported" comments are gone from the component and both routes.
+- Tests: `src/services/groupsService.test.ts` ("notification emails (C11)").
+
+Not done: legacy's up-front template validation on page load (the "Invalid Email
+Template" banner). The server's check plus the post-submit warning covers the outcome; a
+pre-flight read per page view was not judged worth an extra request.

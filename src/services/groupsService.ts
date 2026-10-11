@@ -2,6 +2,11 @@ import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { cap, clean } from "@/services/_shared/mp-lookup";
+import {
+  MessageTemplateService,
+  type TemplateMergeData,
+  type TemplateRecipient,
+} from "@/services/messageTemplateService";
 import type {
   GroupCard,
   GroupConfigurations,
@@ -131,6 +136,20 @@ export interface InquirerDetails {
   lastName: string | null;
   emailAddress: string | null;
   mobilePhoneNumber: string | null;
+}
+
+/**
+ * The three `*-email-template` attributes of `next-group-details` (C11). Each
+ * is a `dp_Communications` **message template** id — the same kind of id every
+ * other legacy widget's `*emailtemplate` attribute carries.
+ */
+export interface GroupEmailTemplates {
+  /** Confirmation to the inquirer. */
+  inquiry?: number | null;
+  /** Confirmation to the person signed up. */
+  signup?: number | null;
+  /** Notification to the group's leaders on a sign-up. */
+  leaderSignup?: number | null;
 }
 
 /**
@@ -592,7 +611,7 @@ export class GroupsService {
   public async signUp(
     form: GroupInquiryRequest,
     actor: { userId: number | null; contactId: number | null }
-  ): Promise<void> {
+  ): Promise<InquirerDetails> {
     const userId = actor.userId;
     const selectedId = form.contactId && form.contactId > 0 ? form.contactId : null;
     if (selectedId == null) {
@@ -600,7 +619,8 @@ export class GroupsService {
     }
     // The same household rule as an inquiry: a caller may sign up themselves
     // or a member of their own household, never an arbitrary Contact_ID.
-    const contactId = (await this.resolveActingContact(selectedId, actor.contactId)).contactId;
+    const person = await this.resolveActingContact(selectedId, actor.contactId);
+    const contactId = person.contactId;
 
     const participantId = await this.resolveParticipantId(contactId, userId);
     const defaultRoleId = await this.getDefaultGroupRole(form.targetId);
@@ -620,6 +640,187 @@ export class GroupsService {
     await this.mp!.createTableRecords("Group_Participants", [record], {
       ...(userId != null ? { $userId: userId } : {}),
     });
+    return {
+      contactId,
+      firstName: person.firstName,
+      nickname: person.nickname,
+      lastName: person.lastName,
+      emailAddress: person.emailAddress,
+      mobilePhoneNumber: person.mobilePhoneNumber,
+    };
+  }
+
+  // ── Notification emails (C11) ──
+
+  /**
+   * Send the inquiry confirmation. Best-effort by design: the
+   * `Group_Inquiries` row is already written, so a template fault must not
+   * turn a recorded inquiry into a reported failure. Returns `false` when a
+   * configured template could not be sent, so the route can answer
+   * `200 { success: true, warning: "email_not_sent" }` — legacy's own promise
+   * ("Saving the record is allowed, however no email notifications will be
+   * sent"), made visible instead of silent.
+   */
+  public async sendInquiryEmails(
+    groupId: number,
+    who: InquirerDetails,
+    message: string | null | undefined,
+    templates: GroupEmailTemplates
+  ): Promise<boolean> {
+    if (!templates.inquiry) return true;
+    const group = await this.getGroupForEmail(groupId);
+    return this.trySend(
+      templates.inquiry,
+      [this.recipientFor(who)],
+      this.mergeData(group.title, who, message),
+      group.fromContactId
+    );
+  }
+
+  /**
+   * Send the sign-up confirmation to the person signed up and the
+   * notification to the group's leaders. Same best-effort contract as
+   * {@link sendInquiryEmails}; `false` when any configured send failed.
+   */
+  public async sendSignupEmails(
+    groupId: number,
+    who: InquirerDetails,
+    message: string | null | undefined,
+    templates: GroupEmailTemplates
+  ): Promise<boolean> {
+    if (!templates.signup && !templates.leaderSignup) return true;
+    const group = await this.getGroupForEmail(groupId);
+    const merge = this.mergeData(group.title, who, message);
+
+    let ok = true;
+    if (templates.signup) {
+      ok =
+        (await this.trySend(templates.signup, [this.recipientFor(who)], merge, group.fromContactId)) &&
+        ok;
+    }
+    if (templates.leaderSignup) {
+      // Leaders come from MP (the detail proc's second result set), never from
+      // the request — a client-supplied recipient list would make this an open
+      // relay for church-branded mail.
+      ok =
+        (await this.trySend(templates.leaderSignup, group.leaders, merge, group.fromContactId)) &&
+        ok;
+    }
+    return ok;
+  }
+
+  /** The group's title, its leaders' addresses, and a fallback sender. */
+  private async getGroupForEmail(groupId: number): Promise<{
+    title: string;
+    leaders: TemplateRecipient[];
+    fromContactId: number | undefined;
+  }> {
+    // Never throws: the record is already written by the time this runs, so a
+    // failed read degrades to "no group name, no leaders" and the send that
+    // needed them reports itself as not sent.
+    const detail = await this.getGroupDetails(groupId, false, false, null).catch((err) => {
+      console.warn(`GroupsService: could not read group ${groupId} for email:`, err);
+      return null;
+    });
+    const contacts = detail?.contacts ?? [];
+    return {
+      title: detail?.title ?? "",
+      leaders: contacts
+        .filter((c) => c.emailAddress)
+        .map((c) => ({
+          email: c.emailAddress as string,
+          name: [c.nickName || c.firstName, c.lastName].filter(Boolean).join(" "),
+        })),
+      // Used only when the template row carries no From contact: the group's
+      // own leader is the least surprising sender for a group email.
+      fromContactId: contacts[0]?.contactId,
+    };
+  }
+
+  private recipientFor(who: InquirerDetails): TemplateRecipient {
+    return {
+      email: who.emailAddress ?? "",
+      name: [who.nickname || who.firstName, who.lastName].filter(Boolean).join(" "),
+    };
+  }
+
+  /**
+   * Merge tokens. Two vocabularies, because two kinds of template exist in the
+   * wild: MP's own platform notifications use `[Web_First_Name]` /
+   * `[GP_Display_Name]` and friends (the stock "New Group Inquiry" and "Small
+   * Group Sign-up" templates), while church-authored ones use the column names.
+   * Supplying both costs nothing — an absent token is simply not substituted.
+   * Values are HTML-escaped by `MessageTemplateService`.
+   */
+  private mergeData(
+    groupName: string,
+    who: InquirerDetails,
+    message: string | null | undefined
+  ): TemplateMergeData {
+    const first = who.firstName ?? "";
+    const nick = who.nickname || first;
+    const last = who.lastName ?? "";
+    const email = who.emailAddress ?? "";
+    const phone = who.mobilePhoneNumber ?? "";
+    const comments = clean(message) ?? "";
+    const display = [last, nick].filter(Boolean).join(", ");
+    return {
+      Group_Name: groupName,
+      First_Name: first,
+      Nickname: nick,
+      Last_Name: last,
+      Display_Name: display,
+      Email_Address: email,
+      Mobile_Phone: phone,
+      Comments: comments,
+      Message: comments,
+      Web_First_Name: first,
+      Web_Last_Name: last,
+      Web_Email: email,
+      Web_Phone: phone,
+      GP_Display_Name: display,
+      GP_Email_Address: email,
+      GP_Mobile_Phone: phone,
+    };
+  }
+
+  /**
+   * Send one template, swallowing (and logging) any failure. Refuses an id
+   * that is not a **message template** (`dp_Communications.Template = 1`): the
+   * id arrives from a page attribute, and without the check any past
+   * communication — a staff email, say — could be replayed to an inquirer's
+   * typed address.
+   */
+  private async trySend(
+    templateId: number,
+    to: TemplateRecipient[],
+    merge: TemplateMergeData,
+    fromContactId: number | undefined
+  ): Promise<boolean> {
+    if (!to.some((r) => r.email)) {
+      console.warn(`GroupsService: email template ${templateId} has no recipient address; no email sent.`);
+      return false;
+    }
+    try {
+      const rows = await this.mp!.getTableRecords<{ Communication_ID: number }>({
+        table: "dp_Communications",
+        select: "Communication_ID",
+        filter: `Communication_ID = ${templateId} AND Template = 1`,
+        top: 1,
+      });
+      if (!rows[0]) {
+        console.warn(
+          `GroupsService: email template ${templateId} is not a dp_Communications message template; no email sent.`
+        );
+        return false;
+      }
+      const templates = await MessageTemplateService.getInstance();
+      await templates.sendMessageTemplate(templateId, to, merge, { fromContactId });
+      return true;
+    } catch (err) {
+      console.warn(`GroupsService: email template ${templateId} could not be sent:`, err);
+      return false;
+    }
   }
 
   /** Resolve the contact's Participant_Record, creating one when missing. */

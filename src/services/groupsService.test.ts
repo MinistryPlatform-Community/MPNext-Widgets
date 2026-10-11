@@ -14,12 +14,21 @@ import { GroupsService, NotHouseholdMemberError } from "@/services/groupsService
 const mockGetTableRecords = vi.fn();
 const mockCreateTableRecords = vi.fn();
 const mockUpdateTableRecords = vi.fn();
+const mockExecuteProcedure = vi.fn();
+const mockSendMessageTemplate = vi.fn();
 
 vi.mock("@/lib/providers/ministry-platform", () => ({
   MPHelper: class {
     getTableRecords = mockGetTableRecords;
     createTableRecords = mockCreateTableRecords;
     updateTableRecords = mockUpdateTableRecords;
+    executeProcedure = mockExecuteProcedure;
+  },
+}));
+
+vi.mock("@/services/messageTemplateService", () => ({
+  MessageTemplateService: {
+    getInstance: async () => ({ sendMessageTemplate: mockSendMessageTemplate }),
   },
 }));
 
@@ -94,8 +103,22 @@ function installMp(extra: (opts: { table: string; filter?: string }) => unknown[
       return [];
     }
     if (opts.table === "Groups") return [{ DefaultRole: 16 }];
+    if (opts.table === "dp_Communications") {
+      // Only 665 and 664 are message templates; 12 is an ordinary sent email.
+      const m = /Communication_ID = (\d+)/.exec(opts.filter ?? "");
+      return m && ["664", "665"].includes(m[1]) ? [{ Communication_ID: Number(m[1]) }] : [];
+    }
     return [];
   });
+  mockExecuteProcedure.mockResolvedValue([
+    [{ Id: 49, Title: "Kehayias Home Group" }],
+    [
+      { ContactId: 98, FirstName: "Christopher", NickName: "Chris", LastName: "Kehayias", EmailAddress: "chris@example.com" },
+      { ContactId: 120, FirstName: "Candice", NickName: null, LastName: "Hoy", EmailAddress: "candice@example.com" },
+      { ContactId: 121, FirstName: "No", NickName: null, LastName: "Email", EmailAddress: null },
+    ],
+  ]);
+  mockSendMessageTemplate.mockResolvedValue(undefined);
   mockCreateTableRecords.mockImplementation(async (_table: string, records: unknown[]) => records);
 }
 
@@ -226,5 +249,80 @@ describe("GroupsService.signUp household rule (C12)", () => {
       svc.signUp({ targetId: 49, contactId: 500 }, { userId: 7, contactId: 98 }),
     ).rejects.toBeInstanceOf(NotHouseholdMemberError);
     expect(createdRecords("Group_Participants")).toEqual([]);
+  });
+});
+
+describe("GroupsService notification emails (C11)", () => {
+  const sarah = {
+    contactId: 99,
+    firstName: "Sarah",
+    nickname: null,
+    lastName: "Kehayias",
+    emailAddress: "sarah@example.com",
+    mobilePhoneNumber: "321-555-0100",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    installMp();
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  it("sends nothing and reports success when no template is configured", async () => {
+    const svc = await service();
+    expect(await svc.sendInquiryEmails(49, sarah, "Hi", {})).toBe(true);
+    expect(await svc.sendSignupEmails(49, sarah, "Hi", {})).toBe(true);
+    expect(mockSendMessageTemplate).not.toHaveBeenCalled();
+  });
+
+  it("sends the inquiry confirmation to the inquirer with both merge vocabularies", async () => {
+    const svc = await service();
+    expect(await svc.sendInquiryEmails(49, sarah, "Hello <b>", { inquiry: 665 })).toBe(true);
+    expect(mockSendMessageTemplate).toHaveBeenCalledTimes(1);
+    const [id, to, merge] = mockSendMessageTemplate.mock.calls[0];
+    expect(id).toBe(665);
+    expect(to).toEqual([{ email: "sarah@example.com", name: "Sarah Kehayias" }]);
+    expect(merge).toMatchObject({
+      Group_Name: "Kehayias Home Group",
+      First_Name: "Sarah",
+      Web_First_Name: "Sarah",
+      Web_Email: "sarah@example.com",
+      Web_Phone: "321-555-0100",
+      Comments: "Hello <b>",
+    });
+  });
+
+  it("notifies the group's leaders from MP, skipping a leader with no email", async () => {
+    const svc = await service();
+    expect(await svc.sendSignupEmails(49, sarah, null, { signup: 664, leaderSignup: 664 })).toBe(true);
+    expect(mockSendMessageTemplate).toHaveBeenCalledTimes(2);
+    const leaderCall = mockSendMessageTemplate.mock.calls[1];
+    expect(leaderCall[1]).toEqual([
+      { email: "chris@example.com", name: "Chris Kehayias" },
+      { email: "candice@example.com", name: "Candice Hoy" },
+    ]);
+    expect(leaderCall[2]).toMatchObject({ GP_Display_Name: "Kehayias, Sarah" });
+    // The template's own From contact wins; the first leader is the fallback.
+    expect(leaderCall[3]).toEqual({ fromContactId: 98 });
+  });
+
+  it("refuses an id that is not a message template, without sending", async () => {
+    const svc = await service();
+    expect(await svc.sendInquiryEmails(49, sarah, null, { inquiry: 12 })).toBe(false);
+    expect(mockSendMessageTemplate).not.toHaveBeenCalled();
+  });
+
+  it("swallows a send failure and reports it", async () => {
+    mockSendMessageTemplate.mockRejectedValueOnce(new Error("SMTP down"));
+    const svc = await service();
+    await expect(svc.sendInquiryEmails(49, sarah, null, { inquiry: 665 })).resolves.toBe(false);
+  });
+
+  it("does not throw when the group read fails after the write", async () => {
+    mockExecuteProcedure.mockRejectedValueOnce(new Error("proc failed"));
+    const svc = await service();
+    await expect(
+      svc.sendSignupEmails(49, sarah, null, { leaderSignup: 664 }),
+    ).resolves.toBe(false);
   });
 });

@@ -87,6 +87,8 @@ export const esGroups = {
       "¡Ya está inscrito! El líder del grupo se pondrá en contacto con usted.",
     signedUpNamed:
       "¡Ya está inscrito, {name}! El líder del grupo se pondrá en contacto con usted.",
+    emailNotSent:
+      "No pudimos enviar el correo de confirmación, pero su solicitud quedó guardada.",
   },
 
   myGroups: {

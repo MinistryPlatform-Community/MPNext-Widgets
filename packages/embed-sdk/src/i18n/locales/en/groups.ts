@@ -98,6 +98,8 @@ export const groups = {
     signedUp: "You're signed up! The group leader will be in touch.",
     signedUpNamed:
       "You're signed up, {name}! The group leader will be in touch.",
+    /** Appended to the success sentence when the configured email failed (C11). */
+    emailNotSent: "We could not send the confirmation email, but your request was saved.",
   },
 
   myGroups: {
