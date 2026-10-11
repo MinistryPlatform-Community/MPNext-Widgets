@@ -43,6 +43,13 @@ export const giving = {
     badgeNonDeductible: "Non-deductible",
     /** Signed-out prompt (C30); legacy: "Please login to view your giving information." */
     signInPrompt: "Please sign in to view your giving information.",
+    // ── By Month chart readout (C33) ──
+    /** Column header of the hidden data table behind the By Month chart. */
+    month: "Month",
+    /** A month with its year: "March 2026". Also the month picker's options (C37). */
+    monthYear: "{month} {year}",
+    /** Native tooltip on a By Month bar: "March 2026: $1,250.00". */
+    barTooltip: "{label}: {amount}",
   },
 
   myPledges: {

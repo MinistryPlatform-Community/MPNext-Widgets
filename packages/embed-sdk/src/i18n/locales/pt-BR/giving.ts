@@ -33,6 +33,9 @@ export const ptBRGiving = {
     badgeSoftCredit: "Crédito indireto",
     badgeNonDeductible: "Não dedutível",
     signInPrompt: "Entre para ver as informações das suas doações.",
+    month: "Mês",
+    monthYear: "{month} de {year}",
+    barTooltip: "{label}: {amount}",
   },
 
   myPledges: {

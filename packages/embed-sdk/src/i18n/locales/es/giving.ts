@@ -33,6 +33,9 @@ export const esGiving = {
     badgeSoftCredit: "Crédito indirecto",
     badgeNonDeductible: "No deducible",
     signInPrompt: "Inicie sesión para ver la información de sus donaciones.",
+    month: "Mes",
+    monthYear: "{month} de {year}",
+    barTooltip: "{label}: {amount}",
   },
 
   myPledges: {

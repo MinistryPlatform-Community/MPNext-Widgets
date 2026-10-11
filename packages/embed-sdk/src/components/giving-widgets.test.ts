@@ -427,6 +427,62 @@ describe("giving widgets", () => {
     });
   });
 
+  // ── C33: the By Month chart says what each month was ───────────────────
+
+  describe("next-my-giving By Month chart (C33)", () => {
+    const gifts = [
+      donation({ donationDate: `${YEAR}-01-15T10:00:00`, amount: 1250 }),
+      donation({ donationDate: `${YEAR}-01-20T10:00:00`, amount: 250 }),
+    ];
+    const giving = (list = gifts): Handler => (url) =>
+      url.includes("/api/embed/my-giving") ? jsonResponse({ donations: list }) : undefined;
+
+    it("gives every month a tooltip and prints the value over a non-zero bar", async () => {
+      mockFetch(giving());
+      const el = await settled(mount("next-my-giving"));
+
+      const months = shadow(el).querySelectorAll(".chart-svg .chart-month");
+      expect(months).toHaveLength(12);
+      expect(months[0].querySelector("title")?.textContent).toBe(`January ${YEAR}: $1,500.00`);
+      expect(months[0].querySelector(".chart-value")?.textContent).toBe("$1.5K");
+      expect(months[1].querySelector(".chart-value")).toBeNull();
+    });
+
+    it("carries a visually hidden table of month and amount, up to this month", async () => {
+      mockFetch(giving());
+      const el = await settled(mount("next-my-giving"));
+
+      const rows = [...shadow(el).querySelectorAll("table.nw-sr-only tbody tr")];
+      expect(rows).toHaveLength(new Date().getMonth() + 1);
+      expect(rows[0].textContent).toBe(`January ${YEAR}$1,500.00`);
+    });
+
+    it("stays visible under a month filter", async () => {
+      mockFetch(giving());
+      const el = await settled(mount("next-my-giving"));
+      const select = $<HTMLSelectElement>(el, "#giving-month-select")!;
+      select.value = "1";
+      select.dispatchEvent(new Event("change"));
+      await settled(el);
+
+      expect(shadow(el).querySelector(".chart-svg")).not.toBeNull();
+      expect($(el, ".chart-month--selected title")?.textContent).toContain("January");
+    });
+
+    it("buckets a Dec 31 23:30 gift into December of that year (year boundary)", async () => {
+      mockFetch(
+        giving([donation({ donationDate: `${YEAR - 1}-12-31T23:30:00`, amount: 44.44 })]),
+      );
+      const el = await settled(mount("next-my-giving"));
+      $<HTMLButtonElement>(el, '[data-action="prev-year"]')!.click();
+      await settled(el);
+
+      const months = shadow(el).querySelectorAll(".chart-svg .chart-month");
+      expect(months[11].querySelector("title")?.textContent).toBe(`December ${YEAR - 1}: $44.44`);
+      expect(months[0].querySelector("title")?.textContent).toBe(`January ${YEAR - 1}: $0.00`);
+    });
+  });
+
   // ── protect: the money ─────────────────────────────────────────────────
 
   describe("next-my-giving money (regression guard)", () => {

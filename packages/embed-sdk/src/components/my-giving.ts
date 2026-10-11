@@ -305,11 +305,11 @@ export class MyGivingWidget extends MPNextWidget {
   }
 
   private renderCharts(filtered: DonationRecord[]): string {
-    const showByMonth = this.selectedMonth <= 0;
-    const byMonth = showByMonth ? this.renderByMonthChart(filtered) : "";
+    // C33: By Month stays visible under a month filter. The API returns only
+    // that month, so the chart shows one bar in its place in the year — still
+    // informative, and its absence used to read as a bug.
+    const byMonth = this.renderByMonthChart(filtered);
     const byProgram = this.renderByProgramChart(filtered);
-
-    if (!byMonth && !byProgram) return "";
 
     return `
       <div class="graphs-container">
@@ -318,35 +318,46 @@ export class MyGivingWidget extends MPNextWidget {
       </div>`;
   }
 
+  /**
+   * Giving by month (C33). No charting library (CDN policy): an SVG where every
+   * month carries a `<title>` (native tooltip: "March 2026: $1,250.00"), every
+   * non-zero bar prints its value above it, and a visually hidden table gives
+   * screen-reader and keyboard users the actual numbers.
+   *
+   * All twelve months are laid out. In the current year the months still to
+   * come keep their slot, with a muted label and no bar, so a donor sees that
+   * the year is unfinished rather than a nine-bar chart with no explanation.
+   */
   private renderByMonthChart(filtered: DonationRecord[]): string {
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
-    const monthsToShow = this.selectedYear === currentYear ? currentMonth : 12;
+    const now = new Date();
+    const lastMonth = this.selectedYear === now.getFullYear() ? now.getMonth() + 1 : 12;
 
-    const totals = new Array(monthsToShow).fill(0) as number[];
+    const totals = new Array(12).fill(0) as number[];
     for (const d of filtered) {
       const parts = this.parseDateParts(d.donationDate);
       if (!parts) continue;
       const idx = parts.month - 1;
-      if (idx >= 0 && idx < monthsToShow) {
+      if (idx >= 0 && idx < 12) {
         totals[idx] += d.amount;
       }
     }
 
+    const title = `<${this.h(1)} class="chart-title">${this.escapeHtml(this.t("myGiving.byMonth"))}</${this.h(1)}>`;
     const max = Math.max(...totals, 0);
     if (max <= 0) {
       return `
         <div class="chart-card">
-          <${this.h(1)} class="chart-title">${this.escapeHtml(this.t("myGiving.byMonth"))}</${this.h(1)}>
+          ${title}
           <div class="chart-empty">${this.escapeHtml(this.t("myGiving.chartEmpty"))}</div>
         </div>`;
     }
 
     const chartW = 320;
-    const chartH = 160;
+    const chartH = 172;
     const labelH = 18;
+    const valueH = 14; // headroom for the value printed above the tallest bar
     const plotH = chartH - labelH;
-    const slot = chartW / monthsToShow;
+    const slot = chartW / 12;
     const barW = slot * 0.6;
 
     // The axis labels are SVG `<text>`, which CSS `text-transform` does not
@@ -355,23 +366,77 @@ export class MyGivingWidget extends MPNextWidget {
     const axisLabels = this.fmt
       .monthNames("short")
       .map((m) => m.toLocaleUpperCase(this.locale));
+    const longNames = this.fmt.monthNames("long");
+    const compact = this.compactCurrency();
 
     let bars = "";
-    for (let i = 0; i < monthsToShow; i++) {
-      const h = max > 0 ? (totals[i] / max) * (plotH - 8) : 0;
+    const rows: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const cx = (i * slot + slot / 2).toFixed(1);
+      const future = i + 1 > lastMonth;
+      const label = this.t("myGiving.monthYear", { month: longNames[i], year: this.selectedYear });
+      const amount = this.fmt.currency(totals[i]);
+      const selected = this.selectedMonth === i + 1;
+      if (!future) {
+        rows.push(
+          `<tr><th scope="row">${this.escapeHtml(label)}</th><td>${this.escapeHtml(amount)}</td></tr>`,
+        );
+      }
+      const h = (totals[i] / max) * (plotH - valueH);
       const x = i * slot + (slot - barW) / 2;
       const y = plotH - h;
-      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="#009CDE"></rect>`;
-      bars += `<text x="${(i * slot + slot / 2).toFixed(1)}" y="${chartH - 4}" text-anchor="middle" class="chart-axis-label">${this.escapeHtml(axisLabels[i])}</text>`;
+      const classes = [
+        "chart-month",
+        future ? "chart-month--future" : "",
+        selected ? "chart-month--selected" : "",
+      ].filter(Boolean).join(" ");
+      bars += [
+        `<g class="${classes}">`,
+        `<title>${this.escapeHtml(this.t("myGiving.barTooltip", { label, amount }))}</title>`,
+        // A full-height transparent hit area, so a short or $0 month still shows its tooltip.
+        `<rect class="chart-hit" x="${(i * slot).toFixed(1)}" y="0" width="${slot.toFixed(1)}" height="${plotH}" fill="transparent"></rect>`,
+        h > 0
+          ? `<rect class="chart-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2"></rect>`
+          : "",
+        totals[i] > 0
+          ? `<text x="${cx}" y="${(y - 3).toFixed(1)}" text-anchor="middle" class="chart-value">${this.escapeHtml(compact(totals[i]))}</text>`
+          : "",
+        `<text x="${cx}" y="${chartH - 4}" text-anchor="middle" class="chart-axis-label">${this.escapeHtml(axisLabels[i])}</text>`,
+        `</g>`,
+      ].join("");
     }
 
     return `
       <div class="chart-card">
-        <${this.h(1)} class="chart-title">${this.escapeHtml(this.t("myGiving.byMonth"))}</${this.h(1)}>
+        ${title}
         <svg viewBox="0 0 ${chartW} ${chartH}" class="chart-svg" role="img" aria-label="${this.escapeAttr(this.t("myGiving.byMonthChartLabel"))}">
           ${bars}
         </svg>
+        <table class="nw-sr-only">
+          <caption>${this.escapeHtml(this.t("myGiving.byMonthChartLabel"))}</caption>
+          <thead><tr><th scope="col">${this.escapeHtml(this.t("myGiving.month"))}</th><th scope="col">${this.escapeHtml(this.t("fields.amount"))}</th></tr></thead>
+          <tbody>${rows.join("")}</tbody>
+        </table>
       </div>`;
+  }
+
+  /**
+   * Short currency for the value printed above a bar ("$14K", "$2.9K") —
+   * twelve full "$14,000.00" labels do not fit a 320-unit chart. The exact
+   * figure is in each bar's `<title>` and in the hidden table.
+   */
+  private compactCurrency(): (n: number) => string {
+    try {
+      const nf = new Intl.NumberFormat(this.locale, {
+        style: "currency",
+        currency: this.fmt.defaultCurrency,
+        notation: "compact",
+        maximumFractionDigits: 1,
+      });
+      return (n) => nf.format(n);
+    } catch {
+      return (n) => this.fmt.currency(n);
+    }
   }
 
   private renderByProgramChart(filtered: DonationRecord[]): string {
@@ -736,6 +801,34 @@ export class MyGivingWidget extends MPNextWidget {
         width: 100%;
         height: auto;
         display: block;
+      }
+      .chart-bar {
+        fill: #009CDE;
+        transition: fill 0.15s;
+      }
+      .chart-month:hover .chart-bar,
+      .chart-month--selected .chart-bar {
+        fill: #004C97;
+      }
+      .chart-value {
+        font-size: 8px;
+        font-weight: 600;
+        fill: #002855;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      .chart-month--future .chart-axis-label {
+        opacity: 0.4;
+      }
+      .nw-sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
       }
       .chart-axis-label {
         font-size: 9px;
