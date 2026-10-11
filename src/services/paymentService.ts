@@ -1,6 +1,8 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
+import { InvoiceService } from "@/services/invoiceService";
+import { sqlLiteral } from "@/services/_shared/mp-lookup";
 import type { PaymentResponseToken } from "@mpnext/types";
 
 /**
@@ -27,22 +29,16 @@ const INVOICE_STATUS_PAID_IN_FULL = 3;
 const PAYMENT_TYPE_CREDIT_DEBIT = 4;
 const PAYMENT_TYPE_ACH = 5;
 
-interface InvoiceRow {
-  Invoice_ID: number;
-  Invoice_Total: number;
-  Amount_Paid: number | null;
-  Invoice_Status_ID: number;
-  Purchaser_Contact_ID: number | null;
-  Invoice_GUID: string;
-}
-
 interface ExistingPaymentRow {
   Payment_ID: number;
 }
 
+/** A row of `api_MPPW_GetUnpaidInvoiceDetails` result set 0. */
 interface UnpaidDetailRow {
   Invoice_Detail_ID: number | string | null;
   Line_Total: number | string | null;
+  /** Already allocated to this line by earlier payments. */
+  Payment_Amount?: number | string | null;
 }
 
 function toNumberOrNull(value: number | string | null | undefined): number | null {
@@ -96,16 +92,13 @@ export class PaymentService {
     mpContactId?: number
   ): Promise<PaymentResult> {
     try {
-      // Resolve the invoice the token references (token.invoiceId = Invoice_GUID).
-      const guid = (token.invoiceId ?? "").replace(/'/g, "''");
-      const invoices = await this.mp!.getTableRecords<InvoiceRow>({
-        table: "Invoices",
-        select:
-          "Invoice_ID,Invoice_Total,Amount_Paid,Invoice_Status_ID,Purchaser_Contact_ID,Invoice_GUID",
-        filter: `Invoice_GUID = '${guid}'`,
-        top: 1,
-      });
-      const invoice = invoices[0];
+      // Resolve the invoice through `api_MPPW_GetInvoice` — the one definition
+      // of "amount paid" in this codebase. The `Invoices` *table* has no
+      // `Amount_Paid` column (C40): selecting it 500'd every payment write.
+      const invoiceService = await InvoiceService.getInstance();
+      const invoice = await invoiceService.getCheckoutInvoiceByGuid(
+        token.invoiceId ?? ""
+      );
       if (!invoice) {
         return {
           invoiceId: null,
@@ -115,15 +108,14 @@ export class PaymentService {
         };
       }
 
-      const invoiceId = invoice.Invoice_ID;
+      const invoiceId = invoice.invoiceId;
 
       // Idempotency: a payment with this transaction code already exists.
       if (token.transactionCode) {
-        const code = token.transactionCode.replace(/'/g, "''");
         const existing = await this.mp!.getTableRecords<ExistingPaymentRow>({
           table: "Payments",
           select: "Payment_ID",
-          filter: `Transaction_Code = '${code}'`,
+          filter: `Transaction_Code = '${sqlLiteral(token.transactionCode)}'`,
           top: 1,
         });
         if (existing[0]) {
@@ -146,7 +138,7 @@ export class PaymentService {
         token.type === "CREDIT_DEBIT"
           ? PAYMENT_TYPE_CREDIT_DEBIT
           : PAYMENT_TYPE_ACH;
-      const contactId = invoice.Purchaser_Contact_ID ?? (mpContactId ?? null);
+      const contactId = invoice.payorContactId ?? (mpContactId ?? null);
 
       // Payments header.
       const tz = DomainTimezoneService.getInstance();
@@ -181,10 +173,10 @@ export class PaymentService {
       // Allocate the payment across the invoice's unpaid detail lines.
       await this.allocatePaymentDetails(paymentId, invoiceId, amount);
 
-      // Update the invoice status based on the new paid total.
-      const newAmountPaid = toNumber(invoice.Amount_Paid) + amount;
+      // Update the invoice status from the proc's paid total plus this payment.
+      const newAmountPaid = Number((invoice.amountPaid + amount).toFixed(2));
       const newStatusId =
-        newAmountPaid >= toNumber(invoice.Invoice_Total)
+        newAmountPaid >= invoice.invoiceTotal
           ? INVOICE_STATUS_PAID_IN_FULL
           : INVOICE_STATUS_SOME_PAID;
       try {
@@ -192,15 +184,22 @@ export class PaymentService {
           { Invoice_ID: invoiceId, Invoice_Status_ID: newStatusId },
         ]);
       } catch (err) {
-        console.warn("PaymentService: invoice status update failed:", err);
+        // The payment is recorded; a stale status is a staff-visible nuisance,
+        // not a lost payment. Still `error`: it needs a human.
+        console.error("PaymentService: invoice status update failed:", err);
       }
 
       return { invoiceId, success: true, paymentReceived: true };
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Payment processing failed";
+      // Keep the 200 for webhooks (a vendor retrying on 5xx would double-post),
+      // but never quietly: this catch is what hid C40 for the widget's life.
       console.error("PaymentService: createPaymentFromResponse failed:", error);
-      return { invoiceId: null, success: false, paymentReceived: false, message };
+      return {
+        invoiceId: null,
+        success: false,
+        paymentReceived: false,
+        message: "Payment processing failed",
+      };
     }
   }
 
@@ -237,7 +236,12 @@ export class PaymentService {
         if (remaining <= 0) break;
         const detailId = toNumberOrNull(row.Invoice_Detail_ID);
         if (detailId == null) continue;
-        const lineRemaining = Math.max(0, toNumber(row.Line_Total));
+        // The proc returns each line's total *and* what is already paid on it
+        // (verified live 2026-10-11); only the difference is open.
+        const lineRemaining = Math.max(
+          0,
+          toNumber(row.Line_Total) - toNumber(row.Payment_Amount)
+        );
         const applied = Number(Math.min(remaining, lineRemaining).toFixed(2));
         if (applied <= 0) continue;
         records.push({
