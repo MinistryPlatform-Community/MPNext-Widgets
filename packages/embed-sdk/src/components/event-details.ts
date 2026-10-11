@@ -238,6 +238,8 @@ export class EventDetailsWidget extends MPNextWidget {
   private editingParticipantId: number | null = null;
   private sessionExpired = false;
   private promoError = false;
+  /** Bumped per `init()`; a load superseded by a reconfigure stops painting. */
+  private initSeq = 0;
 
   static get observedAttributes() {
     return [
@@ -252,11 +254,33 @@ export class EventDetailsWidget extends MPNextWidget {
     ];
   }
 
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
+  /**
+   * Attributes that decide *what* is loaded. A change to one after the first
+   * paint reloads through the base class's `reconfigure()` (W0 / C39); the old
+   * guard (`name === "event-id" && this.event`) ignored every attribute but
+   * `event-id`, and ignored that too when the first load had failed — exactly
+   * the "create, insert, then configure" host that most needs it.
+   *
+   * The rest (`return-url`, `checkout-url`, `opportunity-finder-url`) are read
+   * through getters at the moment they are used, so they need no reload, and
+   * a reload would throw away a half-filled registration form.
+   */
+  private static readonly RELOAD_ATTRIBUTES = new Set([
+    "api-host",
+    "event-id",
+    "id-parameter-name",
+    "invoice-id-parameter-name",
+    "invoice-id",
+  ]);
+
+  override attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
     if (oldValue === newValue) return;
-    if (name === "event-id" && this.event) {
-      this.init();
-    }
+    if (EventDetailsWidget.RELOAD_ATTRIBUTES.has(name)) this.reconfigure();
+  }
+
+  protected override reload(): void {
+    this.apiHost = this.getAttribute("api-host") || this.apiHost;
+    void this.init();
   }
 
   connectedCallback() {
@@ -266,6 +290,7 @@ export class EventDetailsWidget extends MPNextWidget {
     // the loading state this widget already paints while it loads the event.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
   }
@@ -313,6 +338,7 @@ export class EventDetailsWidget extends MPNextWidget {
   // ── Init / load ─────────────────────────────────────────────────────────
 
   private async init() {
+    const seq = ++this.initSeq;
     this.loading = true;
     this.error = null;
     this.message = null;
@@ -347,6 +373,7 @@ export class EventDetailsWidget extends MPNextWidget {
       if (!data || !data.event) {
         throw new Error(this.t("eventDetails.notAvailable"));
       }
+      if (seq !== this.initSeq) return;
       this.event = data.event;
       if (typeof data.isUserStaff === "boolean") {
         this.event.isUserStaff = data.isUserStaff;
@@ -355,6 +382,7 @@ export class EventDetailsWidget extends MPNextWidget {
       // 2. Determine auth (+ household for the Register As picker / prefill)
       await this.loadBasicContact();
       if (this.isAuthenticated) await this.loadHousehold();
+      if (seq !== this.initSeq) return;
 
       this.invoiceId = this.resolveInvoiceId();
 
@@ -385,7 +413,30 @@ export class EventDetailsWidget extends MPNextWidget {
     this.render();
   }
 
+  /**
+   * Is the visitor anonymous, judged by the token the event request just
+   * carried? Answered by the W0 needs-auth primitive: "would a 401 on that
+   * request mean *sign in*?" is true exactly when the token was public, or,
+   * for a token it cannot read, when `AuthSession` holds no session. So a
+   * custom `MPNextEmbed.init()` provider that mints user tokens is still
+   * treated as signed in, which a bare `authSession.isAuthenticated()` check
+   * would get wrong.
+   */
+  private visitorIsAnonymous(): boolean {
+    return this.isNeedsAuth({ status: 401 });
+  }
+
   private async loadBasicContact() {
+    // C07: `basic-contact` is user-scoped and 401s a public token by design.
+    // Asking for it anyway cost every anonymous page view a 401, a pointless
+    // token refresh (the shared fetch retries any 401), a second identical
+    // 401, and two console errors. Don't ask. The 401 branch below stays for
+    // a session that goes stale mid-visit.
+    if (this.visitorIsAnonymous()) {
+      this.isAuthenticated = false;
+      this.contact = null;
+      return;
+    }
     try {
       const res = await this.fetch(`/api/embed/event-details/basic-contact`);
       if (res.status === 401) {
