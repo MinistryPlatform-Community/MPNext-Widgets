@@ -83,7 +83,10 @@ export const OpportunityDetailSchema = z.object({
   description: z.string().nullable(),
   imageUrl: z.string().nullable(),
   location: z.string().nullable(),
-  /** Full address line for the map, when resolvable. */
+  /**
+   * The address line for the map, when resolvable. Full only when the request
+   * asked `showFullAddress=true`; otherwise "City, State" (C65).
+   */
   address: z.string().nullable(),
   /** Wall-clock start datetime (MP domain time); empty when ongoing. */
   startDate: z.string(),

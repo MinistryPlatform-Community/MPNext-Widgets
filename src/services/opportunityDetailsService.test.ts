@@ -72,6 +72,39 @@ function writtenResponse(): Record<string, unknown> {
 
 const BLANK = { firstName: "", lastName: "", email: "", phone: "", message: "Happy to help" };
 
+describe("OpportunityDetailsService.getOpportunityById address (C65)", () => {
+  const ADDRESS = {
+    Address_ID: 31,
+    Address_Line_1: "12 Shelter Lane",
+    Address_Line_2: "Unit 4",
+    City: "Melbourne",
+    "State/Region": "FL",
+    Postal_Code: "32901",
+  };
+
+  beforeEach(() => {
+    mockGetTableRecords.mockReset();
+    mockGetTableRecords.mockImplementation(async (q: { table: string }) => {
+      if (q.table === "Opportunities") return [{ ...OPPORTUNITY, AddressId: 31 }];
+      if (q.table === "Addresses") return [ADDRESS];
+      return [];
+    });
+  });
+
+  it("withholds the street and postal code by default", async () => {
+    const svc = await OpportunityDetailsService.getInstance();
+    const op = await svc.getOpportunityById(5);
+    expect(op.address).toBe("Melbourne, FL");
+    expect(JSON.stringify(op)).not.toMatch(/Shelter Lane|32901|Unit 4/);
+  });
+
+  it("returns the full address only when asked", async () => {
+    const svc = await OpportunityDetailsService.getInstance();
+    const op = await svc.getOpportunityById(5, { showFullAddress: true });
+    expect(op.address).toBe("12 Shelter Lane, Unit 4, Melbourne, FL 32901");
+  });
+});
+
 describe("OpportunityDetailsService.respond (C21)", () => {
   beforeEach(() => {
     mockGetTableRecords.mockReset();

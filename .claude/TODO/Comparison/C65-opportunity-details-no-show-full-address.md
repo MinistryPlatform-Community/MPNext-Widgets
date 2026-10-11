@@ -87,3 +87,29 @@ the full address and declines to paint it still ships it to the browser, where i
 network-tab click away. Check what `mpp-opportunity-details` does here before deciding;
 if legacy filters server-side, match that, and if it only hides client-side, this is a
 chance to do better than parity.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W4, branch `ws/w4-serving-forms`), and better than a straight copy of `group-details`.
+
+- `next-opportunity-details` observes `show-full-address`. Only the literal `"true"` opts
+  in, and the widget then requests `GET /api/embed/opportunity-details/:id?showFullAddress=true`.
+- **The address is withheld server-side.** `OpportunityDetailsService.getOpportunityById(id,
+  { showFullAddress })` returns only `"City, State"` by default. Street lines and postal
+  code never leave the server, so the network tab carries no street address either. With
+  the flag, the full line is returned as before. The map embed uses whichever line it
+  got, so by default it centres on the city.
+- **Default flips to hidden**, matching legacy's privacy default. Migration note for W9:
+  an existing embed that showed the full address now shows city and state until
+  `show-full-address="true"` is added. The demo page's code sample documents the
+  attribute.
+- Legacy's own behaviour (server- vs client-side) could not be observed from its bundle
+  alone. Withholding server-side is at least as strict, so it is the choice taken.
+- `group-details` was **not** touched: it is W3's. It forwards `@ShowFullAddress` to
+  `api_MPPW_GetGroupDetails`, so its withholding is whatever that proc does.
+- In passing: the address read's bare `catch` now logs.
+- **Bonus item (W4 list #14) recorded here:** `response-email-template` → see the C39 /
+  W4 bonus resolution below.
+- Test: `src/services/opportunityDetailsService.test.ts`. With the flag absent, the
+  serialised opportunity contains no street, unit or postal code. With it, the full line
+  is returned.

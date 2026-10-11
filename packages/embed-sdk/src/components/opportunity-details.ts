@@ -100,7 +100,16 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       "id-parameter-name",
       "return-url",
       "response-email-template",
+      "show-full-address",
     ];
+  }
+
+  /**
+   * C65: legacy `showfulladdress`. Off by default, so the street address is
+   * withheld **by the server** and only "City, State" is ever fetched.
+   */
+  private get showFullAddress(): boolean {
+    return this.getAttribute("show-full-address") === "true";
   }
 
   attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
@@ -172,7 +181,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
     try {
       const res = await this.fetch(
-        `/api/embed/opportunity-details/${encodeURIComponent(opportunityId)}`
+        `/api/embed/opportunity-details/${encodeURIComponent(opportunityId)}${this.showFullAddress ? "?showFullAddress=true" : ""}`
       );
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

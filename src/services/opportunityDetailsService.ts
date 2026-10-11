@@ -135,7 +135,18 @@ export class OpportunityDetailsService {
     ].join(", ");
   }
 
-  public async getOpportunityById(opportunityId: number): Promise<OpportunityDetail> {
+  /**
+   * One opportunity.
+   *
+   * `showFullAddress` (C65) is legacy `showfulladdress`: a privacy switch, off
+   * by default. Off, the street lines and postal code are **withheld here**,
+   * not merely left unpainted, and only "City, State" reaches the browser.
+   * Serving locations are often a volunteer's home or a shelter.
+   */
+  public async getOpportunityById(
+    opportunityId: number,
+    opts: { showFullAddress?: boolean } = {}
+  ): Promise<OpportunityDetail> {
     const tz = DomainTimezoneService.getInstance();
     const now = await tz.toMpSqlDatetime(new Date().toISOString());
 
@@ -158,7 +169,8 @@ export class OpportunityDetailsService {
       maximumNeeded == null ? null : Math.max(0, maximumNeeded - numberOfResponses);
 
     const addressId = toNumberOrNull(row.AddressId);
-    const address = addressId != null ? await this.getAddressLine(addressId) : null;
+    const address =
+      addressId != null ? await this.getAddressLine(addressId, !!opts.showFullAddress) : null;
 
     const minimumAgeNum = toNumberOrNull(row.MinimumAge);
     const minimumAge = minimumAgeNum != null ? `Age ${minimumAgeNum}+` : null;
@@ -220,7 +232,7 @@ export class OpportunityDetailsService {
     }
   }
 
-  private async getAddressLine(addressId: number): Promise<string | null> {
+  private async getAddressLine(addressId: number, full: boolean): Promise<string | null> {
     try {
       const rows = await this.mp!.getTableRecords<AddressRow>({
         table: "Addresses",
@@ -233,6 +245,13 @@ export class OpportunityDetailsService {
       });
       const a = rows[0];
       if (!a) return null;
+      if (!full) {
+        // Coarse form only: no street lines, no postal code (C65).
+        const coarse = [a.City, a["State/Region"]]
+          .filter((p): p is string => p != null && String(p).trim().length > 0)
+          .join(", ");
+        return coarse || null;
+      }
       const cityStateZip = [a.City ? `${a.City},` : null, a["State/Region"], a.Postal_Code]
         .filter((p) => p != null && String(p).trim().length > 0)
         .join(" ")
@@ -241,7 +260,11 @@ export class OpportunityDetailsService {
         (p): p is string => p != null && String(p).trim().length > 0
       );
       return parts.length > 0 ? parts.join(", ") : null;
-    } catch {
+    } catch (err) {
+      console.error(
+        "OpportunityDetailsService: address read failed; no address will show:",
+        err instanceof Error ? err.message : err
+      );
       return null;
     }
   }
