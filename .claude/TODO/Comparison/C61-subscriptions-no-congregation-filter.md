@@ -71,3 +71,34 @@ join table rather than a column, in which case the filter needs `_TABLE` travers
 `.claude/references/ministryplatform.query-syntax.md`) — worth confirming how
 `mpp-subscriptions` builds its own query before copying a guess. Keep the existing
 `Available_Online` clause; congregation should narrow, not replace, it.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W6, `ws/w6-people`).
+
+- **Schema checked** (`mp_lookup dp_Publications`): `Congregation_ID` is a plain nullable FK
+  column to `Congregations`, as `api_MPPW_SearchSubscriptions.sql` was recorded to show — no
+  join table, no `_TABLE` traversal.
+- `next-subscriptions` observes **`congregation-id`** (kebab-case; legacy `congregationid` is
+  not aliased because no `next-*` spelling of it ever shipped). It is sent as
+  `?congregationId=`; a non-numeric value is ignored client-side, and the route answers
+  **400 `validation_failed`** to anything but a positive integer rather than silently
+  unscoping. A late or changed attribute re-scopes through W0 `reconfigure()` (C39).
+- `publicationFilter(congregationId)` (exported from `subscriptionService.ts`) **narrows** the
+  existing clause: `(Available_Online = 1 OR Available_Online IS NULL) AND (Congregation_ID =
+  N OR Congregation_ID IS NULL)`. Unscoped, the filter string is byte-identical to before.
+- **Decision: publications with no congregation stay visible on every scoped page.** They are
+  church-wide; strict equality would remove the main newsletter from every campus page. If a
+  church wants a strictly campus-only list, every publication needs a congregation — record
+  that in the migration notes.
+- **The save is scoped too.** `PUT` carries `congregationId` and `updateSubscriptions` diffs
+  `subscribedIds` against the *same* universe. Without that, a campus page's full-set save
+  would read every publication it did not show as unticked and unsubscribe the member from
+  other campuses' lists — a real `dp_Contact_Publications` write. Pinned by a service test.
+- Deliberate non-port (per `subscriptions.md`): no visitor-facing campus dropdown, no keyword
+  box. Demo page snippet documents the attribute.
+
+**Verified live** (with teardown): with `dp_Publications` 4 temporarily set to
+`Congregation_ID = 1`, scope 1 → `[3,2,4]`, scope 2 → `[3,2]`, unscoped → `[3,2,4]`;
+restored to `NULL` and re-read as `NULL`. Every publication on the reference domain has a
+NULL congregation, so without the temporary write the narrowing is not observable there.

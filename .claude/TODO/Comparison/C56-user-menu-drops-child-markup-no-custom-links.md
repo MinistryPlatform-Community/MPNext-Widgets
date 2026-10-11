@@ -134,3 +134,29 @@ present in the signed-in state and cannot be rendered, `console.warn` once, the
 way the widget already warns when MPWidgets.js fails to register
 `<mpp-user-login>`. And pin it with a test that appends a child in the
 authenticated state and asserts it is assigned to a slot.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W6, `ws/w6-people`), as the plan's Phase 1 proposed.
+
+- The signed-in dropdown renders `<slot name="menu-items">` between the built-in items and
+  **Sign Out**, so sign-out stays last. A church writes
+  `<next-user-menu><a slot="menu-items" href="/give">Give</a></next-user-menu>`.
+- **Named, not default, on purpose:** the default light DOM still carries the injected
+  `<mpp-user-login>` in `legacy` mode (and `dual` + `prefer-mp-login`), and the signed-out
+  `<slot></slot>` still projects it exactly as before. A `slot="menu-items"` child is not
+  assigned to the default slot, so custom links never appear beside MP's login while signed
+  out — they belong to the signed-in menu.
+- `::slotted(a)` / `::slotted(button)` give host items the `.nw-dropdown-item` look without the
+  host knowing class names. Clicking a slotted item closes the dropdown like a built-in one.
+- **No more silent drop:** when signed in, any child that is not `slot="menu-items"` (and is
+  not `<mpp-user-login>`) produces exactly one `console.warn` naming the fix.
+- Safer than legacy's `userUrls` `innerHTML`: no HTML is parsed on our side; the host's own
+  elements stay in its own light DOM.
+- `watchMpLoginRegistration()`, the 300ms/6s loop, and the legacy/dual branches are untouched.
+  The demo page shows one slotted link and documents the pattern in its snippet.
+
+Tests (`user-menu.test.ts`, "custom menu items (C56)"): a slotted child is unassigned while
+the dropdown is closed, assigned to `menu-items` when open, and sits before Sign Out; choosing
+it closes the dropdown; an unslotted child warns exactly once. The existing legacy
+`<mpp-user-login>` projection tests still pass.

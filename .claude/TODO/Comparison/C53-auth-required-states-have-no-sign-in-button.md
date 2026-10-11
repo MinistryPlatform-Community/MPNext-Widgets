@@ -120,3 +120,33 @@ becomes one cross-cutting fix rather than three.
 Four agents found this independently in four widget families (C13, C30, C46, C53). The
 sign-in affordance already exists as `requestLogin()` in `base-widget.ts` and is used by
 nine other components, so the fix is shared — do not close this item by fixing one widget.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W6, `ws/w6-people`), on W0's shared `renderSignInRequired()` / `isNeedsAuth()`
+rather than three more hand-rolled panels.
+
+- `next-profile`, `next-my-household`, `next-subscriptions`: the data fetch now branches on
+  `isNeedsAuth(res)` *before* the generic error path into a `needsAuth` state that renders the
+  widget's own prompt — new keys `profile.signInPrompt`, `myHousehold.signInPrompt`,
+  `subscriptions.signInPrompt` (en / es / pt-BR, worded after legacy's "Please login to …")
+  inside the widget's frame, with the widget's own button classes. "Unable to Load" and Try
+  Again are now reserved for genuine failures.
+- **C81 adoption, same commit:** `next-online-directory` (its `access === "login"` panel) and
+  `next-contact-attributes` (its `signedOut` phase, load *and* save) moved off their
+  hand-rolled panels and private `[data-action="login"]` bindings onto the helper, keeping
+  their copy (`onlineDirectory.signInRequired`, `contactAttributes.signedOut`) and button
+  look. Both used `res.status === 401`; they now use `isNeedsAuth`, so a 401 reaching a
+  *signed-in* visitor is an error with Try Again rather than a sign-in loop.
+- Behaviour that changes by design (W0 §1): in `legacy` mode there is no button — the panel
+  says "Use the sign-in link on this page." and fires a passive `loginRequired` once.
+  `online-directory` and `contact-attributes` previously drew a button in legacy mode too;
+  `contact-attributes.test.ts` was split into dual (button) and legacy (no button) cases,
+  as W0 did for `my-mission-trips`.
+- `SIGN_IN_REQUIRED_STYLES` is injected *before* each widget's own sheet so its button classes
+  win on equal specificity.
+
+Test: `packages/embed-sdk/src/components/people-signin.test.ts` — for all four widgets, dual
+shows the prompt + Sign In (firing `loginRequired` with the right `wid`) and no Try Again;
+legacy shows the prompt + page-link sentence and no button; a 401 with a signed-in token
+renders the error state, not the sign-in panel.

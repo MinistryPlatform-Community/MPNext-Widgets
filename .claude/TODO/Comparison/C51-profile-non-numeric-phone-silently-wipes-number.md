@@ -123,3 +123,29 @@ runs: the field is already empty by the time anything could object to it, which 
 the `v && …` validator skips it and the save writes `null`. That ordering is the reason
 this presents as a silent 200 rather than a validation error, and it is what the fix has
 to change — rejecting or preserving the raw text, rather than normalising it in place.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W6, `ws/w6-people`). Both halves of the suggested fix, plus a server guard:
+
+1. **The input is never rewritten while typing.** `formatPhone` (the per-keystroke
+   `replace(/\D/g, "")`) is gone. `normalizePhone()` runs on **blur** and only reformats a value
+   made of digits and phone punctuation with exactly 10 digits (or 11 with a leading `1`), so
+   `+1 (407) 555-0199` → `407-555-0199`; `ZZTEST-abc`, `… x204` and short fragments are left
+   exactly as typed for the validator to reject visibly (`profile.phoneFormat`).
+2. **An unchanged phone is never sent.** `handleProfileSubmit` adds `Mobile_Phone` /
+   `Company_Phone` to the PUT body only when the value differs from what was loaded
+   (`phoneChanged`). The only way to send `null` is for the visitor to empty a field that
+   held a number. The format validator also only checks a *changed* value, so a stored number
+   in another format (`(321) 555-0100 x12`) no longer blocks saving the rest of the profile.
+   The `… || null` idiom stays on Middle_Name/Nickname, where emptying the field is the
+   visitor's own deliberate action and no mask is involved.
+3. **Server:** `ProfileUpdateSchema` phones are now `ProfilePhoneSchema` (`@mpnext/types`):
+   absent = untouched (zod keeps it absent, so `updateTableRecords` never names the column),
+   `null`/blank = explicit clear, anything with letters = **400 `validation_failed`** rather
+   than a write. The route needed no change: it already passes only the parsed keys through.
+
+Tests: `packages/embed-sdk/src/components/profile.test.ts` (typing letters leaves the text,
+shows an error and sends no PUT; an unchanged phone is absent from the payload; a deliberate
+clear sends `null`; normalisation cases) and four schema cases in
+`packages/types/src/profile.test.ts`. No live MP write was needed to prove it.

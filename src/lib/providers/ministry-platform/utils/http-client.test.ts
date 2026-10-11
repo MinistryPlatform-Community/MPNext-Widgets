@@ -59,7 +59,21 @@ describe('HttpClient', () => {
       const url = httpClient.buildUrl('/tables/Contacts', {
         $filter: "Last_Name LIKE 'Smith%'",
       });
-      expect(url).toContain("$filter=Last_Name%20LIKE%20'Smith%25'");
+      expect(url).toContain("$filter=Last_Name+LIKE+'Smith%25'");
+    });
+
+    it('encodes a space as + but a literal + as %2B, so neither changes meaning (C50)', () => {
+      const url = httpClient.buildUrl('/tables/Contacts', {
+        $filter: "Mobile_Phone = '+1 555'",
+      });
+      expect(url).toContain("$filter=Mobile_Phone+%3D+'%2B1+555'");
+      const qs = url.slice(url.indexOf('?') + 1);
+      expect(new URLSearchParams(qs).get('$filter')).toBe("Mobile_Phone = '+1 555'");
+    });
+
+    it('leaves the endpoint path encoding to the caller', () => {
+      const url = httpClient.buildUrl('/procs/api_Special%20Procedure', { a: 'x y' });
+      expect(url).toBe('https://api.ministryplatform.com/procs/api_Special%20Procedure?a=x+y');
     });
 
     it('should handle array query parameters', () => {

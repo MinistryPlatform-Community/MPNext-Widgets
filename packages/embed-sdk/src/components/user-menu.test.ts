@@ -307,4 +307,124 @@ describe("<next-user-menu> auth modes", () => {
     expect(localStorage.getItem(SID_KEY)).toBeNull();
     await vi.waitFor(() => expect(shadow(el).querySelector(".nw-login-btn")).not.toBeNull());
   });
+
+  describe("focus (C54)", () => {
+    async function mountSignedIn(): Promise<HTMLElement> {
+      localStorage.setItem(SID_KEY, "S-IN");
+      const token = makeJwt({ sid: "S-IN" });
+      mockFetch({
+        "/api/embed/auth/config": configOk("hardened"),
+        "/api/embed/session": () => jsonResponse({ token, expiresIn: 300, mode: "hardened" }),
+        "/api/embed/auth/me": () =>
+          jsonResponse({ authenticated: true, user: { userGuid: "g", firstName: "Ada", lastName: "Lovelace", email: "ada@example.com" } }),
+      });
+      const el = mount();
+      await vi.waitFor(() => expect(shadow(el).querySelector(".nw-avatar-btn")).not.toBeNull());
+      return el;
+    }
+    const avatar = (el: HTMLElement) => shadow(el).querySelector<HTMLButtonElement>(".nw-avatar-btn")!;
+    const escape = (target: EventTarget = document) =>
+      target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true }));
+
+    afterEach(() => {
+      document.getElementById("nw-user-menu-portal")?.remove();
+      document.body.style.overflow = "";
+    });
+
+    it("opening the dropdown moves focus into it; Escape returns it to the avatar", async () => {
+      const el = await mountSignedIn();
+      avatar(el).focus();
+      avatar(el).click();
+      expect(shadow(el).querySelector(".nw-dropdown")).not.toBeNull();
+      expect(shadow(el).activeElement?.classList.contains("nw-dropdown-item")).toBe(true);
+
+      escape(shadow(el).activeElement!);
+      expect(shadow(el).querySelector(".nw-dropdown")).toBeNull();
+      expect(shadow(el).activeElement?.className).toBe("nw-avatar-btn");
+      expect(avatar(el).getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("an outside click closes the dropdown without stealing focus back", async () => {
+      const el = await mountSignedIn();
+      const outside = document.createElement("button");
+      outside.textContent = "elsewhere";
+      document.body.appendChild(outside);
+
+      avatar(el).click();
+      outside.focus();
+      outside.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
+
+      expect(shadow(el).querySelector(".nw-dropdown")).toBeNull();
+      expect(document.activeElement).toBe(outside);
+      expect(shadow(el).activeElement).toBeNull();
+    });
+
+    it("the account modal takes focus on open, Escape closes it before the dropdown, and focus returns to the avatar", async () => {
+      const el = await mountSignedIn();
+      avatar(el).click();
+      shadow(el).querySelector<HTMLButtonElement>('[data-action="account"]')!.click();
+
+      const portal = document.getElementById("nw-user-menu-portal")!;
+      expect(portal).not.toBeNull();
+      expect(document.activeElement).toBe(portal.querySelector(".nw-modal-close"));
+
+      escape(document.activeElement!);
+      expect(document.getElementById("nw-user-menu-portal")).toBeNull();
+      expect(shadow(el).activeElement?.className).toBe("nw-avatar-btn");
+    });
+
+    it("the modal Close button also returns focus to the avatar", async () => {
+      const el = await mountSignedIn();
+      avatar(el).click();
+      shadow(el).querySelector<HTMLButtonElement>('[data-action="account"]')!.click();
+      document.querySelector<HTMLButtonElement>('#nw-user-menu-portal [data-action="close-modal"]')!.click();
+      expect(document.getElementById("nw-user-menu-portal")).toBeNull();
+      expect(shadow(el).activeElement?.className).toBe("nw-avatar-btn");
+    });
+  });
+
+  describe("custom menu items (C56)", () => {
+    async function mountSignedIn(children: string): Promise<HTMLElement> {
+      localStorage.setItem(SID_KEY, "S-IN");
+      const token = makeJwt({ sid: "S-IN" });
+      mockFetch({
+        "/api/embed/auth/config": configOk("hardened"),
+        "/api/embed/session": () => jsonResponse({ token, expiresIn: 300, mode: "hardened" }),
+        "/api/embed/auth/me": () =>
+          jsonResponse({ authenticated: true, user: { userGuid: "g", firstName: "Ada", lastName: "Lovelace", email: "ada@example.com" } }),
+      });
+      document.body.innerHTML = `<next-user-menu api-host="${HOST}" mp-base-url="https://mp.example.com">${children}</next-user-menu>`;
+      const el = document.body.firstElementChild as HTMLElement;
+      await vi.waitFor(() => expect(shadow(el).querySelector(".nw-avatar-btn")).not.toBeNull());
+      return el;
+    }
+
+    it('projects slot="menu-items" children into the signed-in dropdown, above Sign Out', async () => {
+      const el = await mountSignedIn('<a slot="menu-items" href="/give">Give</a>');
+      const link = el.querySelector("a")!;
+      expect(link.assignedSlot).toBeNull(); // dropdown closed: nothing to show
+
+      shadow(el).querySelector<HTMLButtonElement>(".nw-avatar-btn")!.click();
+      const slot = link.assignedSlot;
+      expect(slot?.getAttribute("name")).toBe("menu-items");
+      const logout = shadow(el).querySelector('[data-action="logout"]')!;
+      expect(slot!.compareDocumentPosition(logout) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('slot="menu-items"'));
+    });
+
+    it("choosing a custom item closes the dropdown", async () => {
+      const el = await mountSignedIn('<button slot="menu-items" type="button">Serve</button>');
+      shadow(el).querySelector<HTMLButtonElement>(".nw-avatar-btn")!.click();
+      el.querySelector("button")!.click();
+      expect(shadow(el).querySelector(".nw-dropdown")).toBeNull();
+    });
+
+    it("warns exactly once about child markup it cannot render when signed in", async () => {
+      const el = await mountSignedIn('<a href="/give">Give</a>');
+      shadow(el).querySelector<HTMLButtonElement>(".nw-avatar-btn")!.click();
+      shadow(el).querySelector<HTMLButtonElement>(".nw-avatar-btn")!.click();
+      const hits = warn.mock.calls.filter((c: unknown[]) => String(c[0]).includes('slot="menu-items"'));
+      expect(hits).toHaveLength(1);
+    });
+  });
 });

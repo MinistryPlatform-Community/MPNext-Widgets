@@ -109,3 +109,27 @@ The name order and the `Edit` / `Edit Household Member` label are judgement call
 for whoever owns the copy; I would keep ours on both (`Display_Name` is what MP
 considers canonical, and `Edit` inside a row that already names the member is
 less redundant) and note the change in the migration guide instead.
+
+## Resolution — 2026-10-11
+
+**Won't change — keep ours** (W6, `ws/w6-people`; decided for the epic on 2026-10-11, see
+`Plans/EPIC/README.md` "Decisions"). No code change.
+
+The member card shows **month and day only**, deliberately: the comment at
+`my-household.ts:395` reads "the card celebrates a birthday, not an age", and
+`Plans/my-household.md` recommends the same. The full date of birth is still editable in the
+member form, where it belongs. Showing the year on a card visible to every adult in the
+household is an age disclosure the card does not need, and it matches the online directory's
+privacy rule (no birth year leaves the server there at all).
+
+The date is formatted through the i18n layer (`this.fmt.date(…, "monthDay")`), so it is
+already localised; `my-household.md` Phase 2's `getMpTimezone()` step is moot.
+
+Pinned by `packages/embed-sdk/src/components/my-household.test.ts` ("renders a member birthday
+as month and day, never the year").
+
+**Migration-guide line (for W9):** *"My Household shows each member's birthday as month and
+day (e.g. "Mar 4"), not the full date of birth. The full date remains editable in the member
+form."*
+
+Reopen only on explicit instruction.

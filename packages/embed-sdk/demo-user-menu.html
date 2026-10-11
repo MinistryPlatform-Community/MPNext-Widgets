@@ -274,7 +274,7 @@
           <next-user-menu
             mp-base-url="__MP_BASE_URL__"
             api-host="__API_HOST__"
-          ></next-user-menu>
+          ><a slot="menu-items" href="#give">Give</a></next-user-menu>
         </div>
 
         <div class="info-box">
@@ -313,6 +313,11 @@
 &lt;!-- When unauthenticated: legacy mode renders &lt;mpp-user-login&gt; (MPWidgets.js); --&gt;
 &lt;!--                      dual / hardened render the widget's own Sign In button --&gt;
 &lt;!-- When authenticated:   renders avatar + dropdown + account modal --&gt;
+&lt;!-- Optional: your own links in the signed-in dropdown, above Sign Out --&gt;
+&lt;next-user-menu mp-base-url="__MP_BASE_URL__"&gt;
+  &lt;a slot="menu-items" href="/give"&gt;Give&lt;/a&gt;
+  &lt;a slot="menu-items" href="/serve"&gt;My Serving Schedule&lt;/a&gt;
+&lt;/next-user-menu&gt;
 &lt;!-- Optional: post-logout-redirect-uri="[YourPageUrl]" -- where to land after --&gt;
 &lt;!--   sign-out. dual/hardened: any page on an allowed origin, defaults to --&gt;
 &lt;!--   this one, and nothing needs registering with MP. legacy: MP must have --&gt;

@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -52,8 +52,31 @@ interface ProfileLookups {
   maritalStatuses: LookupOption[];
 }
 
+/**
+ * Formats a plausible US phone as 999-999-9999 and returns anything else
+ * untouched. Only digits and phone punctuation qualify, with 10 digits (or 11
+ * with a leading country code 1), so "+1 (321) 794-1376" becomes
+ * "321-794-1376" while "ZZTEST-abc" or "321-794-1376 x204" are left for the
+ * validator to reject visibly. Never destroys input (C51).
+ */
+export function normalizePhone(raw: string): string {
+  const value = raw.trim();
+  if (!/^[\d\s().+-]+$/.test(value)) return raw;
+  let digits = value.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) digits = digits.slice(1);
+  if (digits.length !== 10) return raw;
+  return [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6)].join("-");
+}
+
+/** True when the form value differs from the number MP holds. */
+export function phoneChanged(value: string, stored: string | null): boolean {
+  return value.trim() !== (stored ?? "").trim();
+}
+
 export class ProfileWidget extends MPNextWidget {
   private loading = true;
+  /** Signed out: a prompt with Sign In, never the Try Again error state (C53). */
+  private needsAuth = false;
   private saving = false;
   private savingPassword = false;
   private error: string | null = null;
@@ -71,7 +94,8 @@ export class ProfileWidget extends MPNextWidget {
   private uploadingPhoto = false;
 
   connectedCallback() {
-    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
+    // The shared sign-in sheet goes first so this widget's own button classes win.
+    this.injectStyles(SIGN_IN_REQUIRED_STYLES + this.getStyles() + FORM_VALIDATION_STYLES);
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish; the fetch hides inside the loading state
     // this widget paints anyway while it queries the API.
@@ -79,10 +103,25 @@ export class ProfileWidget extends MPNextWidget {
       this.render();
       this.loadProfile();
     });
+    document.addEventListener("bulkEmailChanged", this.onBulkEmailChanged);
   }
+
+  /**
+   * C55: `next-subscriptions` writes the same `Bulk_Email_Opt_Out`. Follow it in
+   * place (no re-render, so an edit in progress elsewhere on the form survives),
+   * and keep the loaded value in step so the next save does not revert it.
+   */
+  private onBulkEmailChanged = (e: Event) => {
+    const value = (e as CustomEvent).detail?.bulkEmailOptOut;
+    if (typeof value !== "boolean" || !this.profile) return;
+    this.profile.Bulk_Email_Opt_Out = value;
+    const box = this.root.querySelector<HTMLInputElement>("#bulk-email-opt-in");
+    if (box) box.checked = !value;
+  };
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    document.removeEventListener("bulkEmailChanged", this.onBulkEmailChanged);
     if (this.successTimer) clearTimeout(this.successTimer);
     if (this.passwordSuccessTimer) clearTimeout(this.passwordSuccessTimer);
     if (this.photoUrl) URL.revokeObjectURL(this.photoUrl);
@@ -90,11 +129,18 @@ export class ProfileWidget extends MPNextWidget {
 
   private async loadProfile() {
     this.loading = true;
+    this.needsAuth = false;
     this.error = null;
     this.render();
 
     try {
       const res = await this.fetch("/api/embed/profile");
+      if (this.isNeedsAuth(res)) {
+        this.loading = false;
+        this.needsAuth = true;
+        this.render();
+        return;
+      }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(this.errorText(body));
@@ -189,6 +235,16 @@ export class ProfileWidget extends MPNextWidget {
           <div class="nw-spinner"></div>
           <p>${this.esc(this.t("profile.loading"))}</p>
         </div>`;
+      if (!this.root.querySelector(".nw-profile")) this.root.appendChild(container);
+      return;
+    }
+
+    if (this.needsAuth) {
+      container.innerHTML = this.renderSignInRequired({
+        subject: "profile",
+        message: this.t("profile.signInPrompt"),
+        buttonClass: "nw-btn nw-btn-primary",
+      });
       if (!this.root.querySelector(".nw-profile")) this.root.appendChild(container);
       return;
     }
@@ -366,8 +422,8 @@ export class ProfileWidget extends MPNextWidget {
                 </div>
               </label>
               <label class="nw-checkbox-label">
-                <input type="checkbox" id="bulk-email-opt-out" ${p.Bulk_Email_Opt_Out ? "checked" : ""} />
-                <span>${this.esc(this.t("profile.bulkEmailOptOut"))}</span>
+                <input type="checkbox" id="bulk-email-opt-in" ${p.Bulk_Email_Opt_Out ? "" : "checked"} />
+                <span>${this.esc(this.t("subscriptions.sendBulkEmail"))}</span>
               </label>
             </div>
           </div>
@@ -450,8 +506,14 @@ export class ProfileWidget extends MPNextWidget {
       photoInput.value = "";
     });
 
+    // Normalise on blur, never on input: rewriting the live value per keystroke
+    // is what turned "ZZTEST-abc" into "" and then into a silent delete (C51).
     this.root.querySelectorAll("[data-phone]").forEach((input) => {
-      input.addEventListener("input", (e) => this.formatPhone(e.target as HTMLInputElement));
+      input.addEventListener("blur", (e) => {
+        const el = e.target as HTMLInputElement;
+        const next = normalizePhone(el.value);
+        if (next !== el.value) el.value = next;
+      });
     });
 
     this.root.querySelectorAll(".nw-eye-btn").forEach((btn) => {
@@ -508,16 +570,24 @@ export class ProfileWidget extends MPNextWidget {
       Middle_Name: getValue("Middle_Name") || null,
       Nickname: getValue("Nickname") || null,
       Email_Address: email,
-      Mobile_Phone: getValue("Mobile_Phone") || null,
-      Company_Phone: getValue("Company_Phone") || null,
       Do_Not_Text: !getChecked("sms-opt-in"),
-      Bulk_Email_Opt_Out: getChecked("bulk-email-opt-out"),
+      // Phrased positively (C55): checked = receives bulk email = not opted out.
+      Bulk_Email_Opt_Out: !getChecked("bulk-email-opt-in"),
       Prefix_ID: prefixId ? Number(prefixId) : null,
       Suffix_ID: suffixId ? Number(suffixId) : null,
       Gender_ID: genderId ? Number(genderId) : null,
       Marital_Status_ID: maritalStatusId ? Number(maritalStatusId) : null,
       Date_of_Birth: dateOfBirth,
     };
+
+    // A phone is sent only when the visitor changed it. An unchanged field is
+    // omitted, so the server leaves the stored number alone even if it is in a
+    // format this form would not accept; a field the visitor emptied on purpose
+    // is the one way to send `null` (C51).
+    for (const id of ["Mobile_Phone", "Company_Phone"] as const) {
+      const value = getValue(id);
+      if (phoneChanged(value, this.profile?.[id] ?? null)) body[id] = value || null;
+    }
 
     this.saving = true;
     this.render();
@@ -613,18 +683,6 @@ export class ProfileWidget extends MPNextWidget {
     }
   }
 
-  private formatPhone(input: HTMLInputElement) {
-    let digits = input.value.replace(/\D/g, "");
-    if (digits.length > 10) digits = digits.slice(0, 10);
-    if (digits.length >= 7) {
-      input.value = `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
-    } else if (digits.length >= 4) {
-      input.value = `${digits.slice(0, 3)}-${digits.slice(3)}`;
-    } else {
-      input.value = digits;
-    }
-  }
-
   /** Shared validation config for the profile form (submit + live-clear). */
   private profileValidationOpts() {
     const phoneRegex = /^\d{3}-\d{3}-\d{4}$/;
@@ -641,10 +699,16 @@ export class ProfileWidget extends MPNextWidget {
           v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
             ? this.t("validation.email")
             : null,
+        // Only a value the visitor changed is checked: a stored number in some
+        // other format must not block saving the rest of the profile.
         Mobile_Phone: (v: string) =>
-          v && !phoneRegex.test(v) ? this.t("profile.phoneFormat") : null,
+          v && phoneChanged(v, this.profile?.Mobile_Phone ?? null) && !phoneRegex.test(v)
+            ? this.t("profile.phoneFormat")
+            : null,
         Company_Phone: (v: string) =>
-          v && !phoneRegex.test(v) ? this.t("profile.phoneFormat") : null,
+          v && phoneChanged(v, this.profile?.Company_Phone ?? null) && !phoneRegex.test(v)
+            ? this.t("profile.phoneFormat")
+            : null,
       },
     };
   }

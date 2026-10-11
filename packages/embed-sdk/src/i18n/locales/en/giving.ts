@@ -226,6 +226,17 @@ export const giving = {
     subscribed: "Subscribed to {title}",
     unsubscribed: "Unsubscribed from {title}",
     updateFailed: "Could not update subscription, please try again.",
+    signInPrompt: "Please sign in to view your subscriptions.",
+    /**
+     * C55. One string for the bulk-email control in both `next-subscriptions` and
+     * `next-profile`, phrased positively (checked = receives email) instead of
+     * legacy's double negative; the widgets invert it onto `Bulk_Email_Opt_Out`.
+     */
+    bulkEmailTitle: "All church email",
+    sendBulkEmail: "Send me general church emails",
+    bulkEmailHint: "Turn this off to stop all bulk email from the church.",
+    bulkEmailOn: "You'll receive general church emails again.",
+    bulkEmailOff: "You won't receive bulk email from the church.",
   },
   /**
    * `next-subscribe-to-publication` (C70) — the anonymous, email-verified

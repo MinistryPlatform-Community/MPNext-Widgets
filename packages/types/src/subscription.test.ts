@@ -269,3 +269,32 @@ describe('SubscriptionUpdateResponseSchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('SubscriptionUpdateSchema bulk email (C55)', () => {
+  it('accepts a bulk-email-only update', () => {
+    expect(SubscriptionUpdateSchema.safeParse({ bulkEmailOptOut: true }).success).toBe(true);
+  });
+
+  it('rejects a non-boolean bulkEmailOptOut', () => {
+    expect(SubscriptionUpdateSchema.safeParse({ bulkEmailOptOut: 'yes' }).success).toBe(false);
+  });
+
+  it('accepts the list response with the flag', () => {
+    expect(
+      SubscriptionListResponseSchema.safeParse({ subscriptions: [], bulkEmailOptOut: false }).success,
+    ).toBe(true);
+  });
+});
+
+describe('SubscriptionUpdateSchema congregationId (C61)', () => {
+  it('accepts a positive integer or null beside subscribedIds', () => {
+    expect(SubscriptionUpdateSchema.safeParse({ subscribedIds: [1], congregationId: 3 }).success).toBe(true);
+    expect(SubscriptionUpdateSchema.safeParse({ subscribedIds: [1], congregationId: null }).success).toBe(true);
+  });
+
+  it('rejects zero, negatives and floats', () => {
+    for (const congregationId of [0, -1, 1.5]) {
+      expect(SubscriptionUpdateSchema.safeParse({ subscribedIds: [1], congregationId }).success).toBe(false);
+    }
+  });
+});

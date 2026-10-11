@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   SubscriptionService,
+  publicationFilter,
   isContactGuid,
   maskEmailForDisplay,
 } from '@/services/subscriptionService';
@@ -1046,6 +1047,81 @@ describe('SubscriptionService', () => {
       await expect(service.subscribeEmailToPublication(args)).rejects.toThrow(
         'MP write rejected'
       );
+    });
+  });
+
+  describe('bulk email opt-out for the signed-in contact (C55)', () => {
+    it('reads Contacts.Bulk_Email_Opt_Out for the contact', async () => {
+      mockGetTableRecords.mockResolvedValueOnce([{ Bulk_Email_Opt_Out: true }]);
+      const service = await SubscriptionService.getInstance();
+      await expect(service.getBulkEmailOptOut(100)).resolves.toBe(true);
+      expect(mockGetTableRecords).toHaveBeenCalledWith({
+        table: 'Contacts',
+        filter: 'Contact_ID = 100',
+        select: 'Bulk_Email_Opt_Out',
+        top: 1,
+      });
+    });
+
+    it('treats a null flag as not opted out', async () => {
+      mockGetTableRecords.mockResolvedValueOnce([{ Bulk_Email_Opt_Out: null }]);
+      const service = await SubscriptionService.getInstance();
+      await expect(service.getBulkEmailOptOut(100)).resolves.toBe(false);
+    });
+
+    it('writes only Contact_ID and the one field', async () => {
+      mockUpdateTableRecords.mockResolvedValueOnce([]);
+      const service = await SubscriptionService.getInstance();
+      await expect(service.setBulkEmailOptOutForContact(100, true)).resolves.toEqual({ success: true });
+      expect(mockUpdateTableRecords).toHaveBeenCalledWith('Contacts', [
+        { Contact_ID: 100, Bulk_Email_Opt_Out: true },
+      ]);
+    });
+
+    it('reports a failed write instead of throwing', async () => {
+      mockUpdateTableRecords.mockRejectedValueOnce(new Error('db down'));
+      const service = await SubscriptionService.getInstance();
+      const result = await service.setBulkEmailOptOutForContact(100, false);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('congregation scope (C61)', () => {
+    it('leaves the unscoped filter exactly as it was', () => {
+      expect(publicationFilter(null)).toBe('Available_Online = 1 OR Available_Online IS NULL');
+      expect(publicationFilter(0)).toBe('Available_Online = 1 OR Available_Online IS NULL');
+    });
+
+    it('narrows, not replaces, the Available_Online clause, keeping church-wide publications', () => {
+      expect(publicationFilter(3)).toBe(
+        '(Available_Online = 1 OR Available_Online IS NULL) AND (Congregation_ID = 3 OR Congregation_ID IS NULL)'
+      );
+    });
+
+    it('reads with the scope', async () => {
+      mockGetTableRecords.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      const service = await SubscriptionService.getInstance();
+      await service.getSubscriptions(100, 3);
+      expect(mockGetTableRecords.mock.calls[0][0].filter).toBe(publicationFilter(3));
+    });
+
+    it('diffs a save against the same scope, so publications the page did not show are untouched', async () => {
+      // Scoped universe: publication 3 only. The contact is also on 9 (another
+      // campus), which a scoped save must not unsubscribe.
+      mockGetTableRecords
+        .mockResolvedValueOnce([{ Publication_ID: 3 }])
+        .mockResolvedValueOnce([
+          { Contact_Publication_ID: 50, Publication_ID: 3, Unsubscribed: false },
+          { Contact_Publication_ID: 51, Publication_ID: 9, Unsubscribed: false },
+        ]);
+      mockUpdateTableRecords.mockResolvedValueOnce([]);
+      const service = await SubscriptionService.getInstance();
+      await service.updateSubscriptions(100, [], 3);
+
+      expect(mockGetTableRecords.mock.calls[0][0].filter).toBe(publicationFilter(3));
+      expect(mockUpdateTableRecords).toHaveBeenCalledWith('dp_Contact_Publications', [
+        { Contact_Publication_ID: 50, Unsubscribed: true },
+      ]);
     });
   });
 });

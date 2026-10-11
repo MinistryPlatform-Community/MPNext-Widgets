@@ -200,6 +200,12 @@ export const esGiving = {
     subscribed: "Se suscribió a {title}",
     unsubscribed: "Canceló la suscripción a {title}",
     updateFailed: "No se pudo actualizar la suscripción. Inténtelo de nuevo.",
+    signInPrompt: "Inicie sesión para ver sus suscripciones.",
+    bulkEmailTitle: "Todo el correo de la iglesia",
+    sendBulkEmail: "Enviarme los correos electrónicos generales de la iglesia",
+    bulkEmailHint: "Desactive esta opción para dejar de recibir todos los correos masivos de la iglesia.",
+    bulkEmailOn: "Volverá a recibir los correos electrónicos generales de la iglesia.",
+    bulkEmailOff: "Ya no recibirá correos masivos de la iglesia.",
   },
   /**
    * `next-subscribe-to-publication` (C70).

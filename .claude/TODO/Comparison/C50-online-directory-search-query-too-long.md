@@ -138,3 +138,38 @@ Worth noting for the fix: computing `ContactImageUrl` server-side after the quer
 service already holds `imageBaseUrl`, and `dp_FileUniqueID` is available as a plain
 column) removes the largest single contributor to the query string without changing the
 response shape.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W6, `ws/w6-people`). Three changes, measured end to end by
+`src/services/onlineDirectoryService.test.ts`, which rebuilds the URL with the real
+`HttpClient.buildUrl` against a deliberately long base URL:
+
+1. **No URL in the `$select`.** `selectFields()` now projects `dp_fileUniqueId AS ImageGuid`
+   (unqualified — MP rejects `Contacts.dp_fileUniqueId` with "Invalid column name", checked
+   live) and `mapMember()` builds `contactImageUrl` from `imageBaseUrl` in JS. The response
+   shape is unchanged; a null GUID still yields `contactImageUrl: null`. The base URL's length
+   no longer affects the query string at all.
+2. **Shorter join paths, same rows.** Columns the base table already carries are read from it
+   (`Contacts.Household_ID`, `Contacts.Contact_Status_ID <> 3`, `Contacts.Household_Position_ID`
+   in the household `ORDER BY`), and `Household_ID_Table.Congregation_ID` / `.Address_ID`
+   replace the two-hop paths. The unused `HouseholdPositionId` column was dropped.
+3. **`http-client.ts` encodes a space as `+`** (new exported `encodeQueryValue`). This is the
+   form-urlencoded spelling, which ASP.NET decodes in a query string; a literal `+` is still
+   `%2B`, so no value changes meaning for any caller. Path segments are untouched
+   (`/procs/api_Special%20Procedure` keeps `%20`). `http-client.test.ts` pins both facts.
+
+Measured query-string lengths after the fix: `Keh` **1866** (was 2305), `Kehayias` 1896,
+`hh 85` 1670, empty 1611. Because the keyword appears up to six times in keyword mode, the
+service also **fits the keyword** to 28 encoded chars (`fitKeyword`, by code point), so 200
+ASCII chars, 80 `é`, or a run of `O'Brien`s still stays under 2048. Truncation only widens a
+`LIKE '%…%'`, so no one who would have matched is lost.
+
+**Verified live (read-only)** against `mpi.ministryplatform.com` with client credentials:
+`Keh`, `Kehayias`, `hh 85`, `Kehayias, Chris`, `Chris Kehayias`, empty and a 34-char keyword
+all return 200. `hh 85` now returns **one** card (Contact 99), not two: Contact 98's
+`Member_Status_ID = 1` has `Show_In_Directory = 0` on this domain today, which the unchanged
+eligibility filter correctly excludes. That is a data change since 2026-09-08, not the fix.
+
+Privacy is unchanged and pinned by a test: unlisted phones/address are nulled server-side, no
+email address and no birth year leave the service.

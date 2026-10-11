@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -88,7 +88,8 @@ export class OnlineDirectoryWidget extends MPNextWidget {
   }
 
   connectedCallback() {
-    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
+    // The shared sign-in sheet goes first so this widget's own button classes win.
+    this.injectStyles(SIGN_IN_REQUIRED_STYLES + this.getStyles() + FORM_VALIDATION_STYLES);
     this.seedFromAttributes();
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish; it hides inside the access check this
@@ -137,7 +138,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
 
     try {
       const res = await this.fetch(`/api/embed/online-directory/access`);
-      if (res.status === 401) {
+      if (this.isNeedsAuth(res)) {
         this.access = "login";
         this.render();
         return;
@@ -263,8 +264,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
   // ── Listeners ──
 
   private attachShellListeners() {
-    const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.requestLogin("online-directory"));
+    // `[data-action="login"]` is delegated by the base class (renderSignInRequired).
     const retry = this.root.querySelector('[data-action="retry"]');
     if (retry) retry.addEventListener("click", () => this.retryLoad());
   }
@@ -389,13 +389,12 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       return;
     }
     if (this.access === "login") {
-      this.root.innerHTML = `
-        <div class="nw-od">
-          <div class="nw-od-panel">
-            <p>${this.escapeHtml(this.t("onlineDirectory.signInRequired"))}</p>
-            <button class="nw-od-btn" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button>
-          </div>
-        </div>`;
+      this.root.innerHTML = `<div class="nw-od">${this.renderSignInRequired({
+        subject: "online-directory",
+        message: this.t("onlineDirectory.signInRequired"),
+        className: "nw-od-panel",
+        buttonClass: "nw-od-btn",
+      })}</div>`;
       this.attachShellListeners();
       return;
     }

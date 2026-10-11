@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -105,6 +105,8 @@ interface AlertMsg {
 export class MyHouseholdWidget extends MPNextWidget {
   private data: HouseholdData | null = null;
   private loading = true;
+  /** Signed out: a prompt with Sign In, never the Try Again error state (C53). */
+  private needsAuth = false;
   private error: string | null = null;
   private view: View = "details";
   private editingMember: HouseholdMember | null = null;
@@ -114,15 +116,34 @@ export class MyHouseholdWidget extends MPNextWidget {
   private photoFile: File | null = null;
   private photoPreviewUrl: string | null = null;
 
+  /** C79: kebab-case name; legacy `hideaddhouseholdmember` is read for one release. */
+  static readonly attributeAliases = {
+    "hide-add-household-member": "hideaddhouseholdmember",
+  };
+
   static get observedAttributes() {
-    return ["hideaddhouseholdmember"];
+    return ["hide-add-household-member", ...Object.values(this.attributeAliases)];
   }
 
   private get hideAddMember(): boolean {
-    return (
-      (this.getAttribute("hideaddhouseholdmember") || "").toLowerCase() ===
-      "true"
-    );
+    return (this.readAttr("hide-add-household-member") || "").toLowerCase() === "true";
+  }
+
+  /**
+   * C39: a late `hide-add-household-member` must take effect. The attribute
+   * only changes what is drawn, so a loaded household is re-rendered rather than
+   * re-fetched; an open edit form is left alone (re-rendering it would discard
+   * what the visitor typed) and the details view picks the change up on return.
+   * With nothing loaded yet (a failed first load), it loads.
+   */
+  protected override reload(): void {
+    if (!this.data) {
+      this.loadHousehold();
+      return;
+    }
+    if (this.view !== "details") return;
+    this.render();
+    this.attachListeners();
   }
 
   /**
@@ -135,12 +156,14 @@ export class MyHouseholdWidget extends MPNextWidget {
   }
 
   connectedCallback() {
-    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
+    // The shared sign-in sheet goes first so this widget's own button classes win.
+    this.injectStyles(SIGN_IN_REQUIRED_STYLES + this.getStyles() + FORM_VALIDATION_STYLES);
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish; the fetch hides inside the loading state
     // this widget paints anyway while it queries the API.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.loadHousehold();
     });
   }
@@ -158,11 +181,18 @@ export class MyHouseholdWidget extends MPNextWidget {
 
   private async loadHousehold() {
     this.loading = true;
+    this.needsAuth = false;
     this.error = null;
     this.render();
 
     try {
       const res = await this.fetch("/api/embed/household");
+      if (this.isNeedsAuth(res)) {
+        this.loading = false;
+        this.needsAuth = true;
+        this.render();
+        return;
+      }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(this.errorText(body));
@@ -267,6 +297,19 @@ export class MyHouseholdWidget extends MPNextWidget {
               <span>${this.escapeHtml(this.t("myHousehold.loading"))}</span>
             </div>
           </div>
+        </div>`;
+      return;
+    }
+
+    if (this.needsAuth) {
+      this.root.innerHTML = `
+        <div class="nw-household">
+          <div class="header"><div class="title">${title}</div></div>
+          <div class="body">${this.renderSignInRequired({
+            subject: "my-household",
+            message: this.t("myHousehold.signInPrompt"),
+            buttonClass: "nw-btn nw-btn-primary",
+          })}</div>
         </div>`;
       return;
     }

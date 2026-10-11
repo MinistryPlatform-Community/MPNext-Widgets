@@ -1,5 +1,20 @@
 import { QueryParams, RequestBody } from "../types/provider.types";
 
+/**
+ * Encodes one query-string value, spending one byte on a space (`+`) rather than
+ * three (`%20`). MP sits behind IIS, whose default `maxQueryString` is 2048; an
+ * MP `$select`/`$filter` is mostly SQL, i.e. mostly spaces, and a request over
+ * the limit is answered with an IIS HTML 404 that never reaches the API (C50).
+ *
+ * `+` is the form-urlencoded spelling of a space, which ASP.NET decodes in query
+ * strings. A literal `+` in a value is still `%2B` (encodeURIComponent escapes
+ * it), so no value changes meaning. Only the query string is affected; path
+ * segments (`/procs/<name>`) are encoded by their callers and keep `%20`.
+ */
+export function encodeQueryValue(value: unknown): string {
+    return encodeURIComponent(String(value)).replace(/%20/g, '+');
+}
+
 export class HttpClient {
     private baseUrl: string;
     private getToken: () => string;
@@ -159,9 +174,9 @@ export class HttpClient {
             .filter(([, value]) => value !== undefined && value !== null)
             .map(([key, value]) => {
                 if (Array.isArray(value)) {
-                    return value.map(v => `${key}=${encodeURIComponent(String(v))}`).join('&');
+                    return value.map(v => `${key}=${encodeQueryValue(v)}`).join('&');
                 }
-                return `${key}=${encodeURIComponent(String(value))}`;
+                return `${key}=${encodeQueryValue(value)}`;
             })
             .join('&');
     }

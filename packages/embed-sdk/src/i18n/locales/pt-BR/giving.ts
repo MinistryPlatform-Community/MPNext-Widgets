@@ -197,6 +197,12 @@ export const ptBRGiving = {
     subscribed: "Você assinou {title}",
     unsubscribed: "Você cancelou a assinatura de {title}",
     updateFailed: "Não foi possível atualizar a assinatura. Tente novamente.",
+    signInPrompt: "Entre para ver suas assinaturas.",
+    bulkEmailTitle: "Todos os e-mails da igreja",
+    sendBulkEmail: "Enviar-me os e-mails gerais da igreja",
+    bulkEmailHint: "Desative esta opção para deixar de receber todos os e-mails em massa da igreja.",
+    bulkEmailOn: "Você voltará a receber os e-mails gerais da igreja.",
+    bulkEmailOff: "Você não receberá mais e-mails em massa da igreja.",
   },
   /**
    * `next-subscribe-to-publication` (C70).

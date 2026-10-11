@@ -115,3 +115,40 @@ Two decisions to make deliberately rather than by accident:
 
 Marking **functional**: nothing breaks, but a control the legacy widget offered
 in this widget is not offered here.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W6, `ws/w6-people`).
+
+- **Server.** `GET /api/embed/subscriptions` now answers `{ subscriptions, bulkEmailOptOut }`.
+  `PUT` takes an optional `bulkEmailOptOut` beside the (now optional) `subscribedIds` — at
+  least one is required (`SubscriptionUpdateSchema` refine) — and echoes the saved flag.
+  `SubscriptionService` gained `getBulkEmailOptOut(contactId)` and
+  `setBulkEmailOptOutForContact(contactId, optOut)`; the write is one private
+  `writeBulkEmailOptOut` that the anonymous `next-unsubscribe` path now shares, so both send
+  `Contact_ID` plus the one column and nothing else.
+- **Widget.** A distinct "All church email" section *below* the publication list, separated by
+  a rule, so it cannot read as another publication. Saved per toggle with the same optimistic
+  flip, success message and revert-on-failure as a publication; still no submit button. Not
+  drawn at all if the server omits the flag (never guessed).
+- **Decision 1 — copy:** the plan's preference, not legacy's double negative. One string,
+  `subscriptions.sendBulkEmail` = "Send me general church emails" (es / pt-BR translated),
+  **checked = receives email**, inverted onto `Bulk_Email_Opt_Out` in code. `next-profile` now
+  uses the identical key with the same inversion (`#bulk-email-opt-in`), and its old
+  `profile.bulkEmailOptOut` ("Do not send me bulk email messages") was removed from all three
+  catalogues. `myHousehold.bulkEmailOptOut` (the per-member household form) is untouched.
+- **Decision 2 — two widgets, one field:** event-driven, not a shared accessor (which would
+  have meant a new `shared/**` module, W0-owned). `next-subscriptions` emits `bulkEmailChanged
+  { bulkEmailOptOut }`; `next-profile` follows it **in place** (no re-render, so an unsaved
+  edit elsewhere on the form survives) and updates its loaded value. `next-subscriptions`
+  follows `profileSaved`'s `Bulk_Email_Opt_Out`. Both listen on `document` and unsubscribe in
+  `disconnectedCallback`. Inside the user-menu modal only one tab exists at a time, so this
+  matters for host pages that carry both widgets.
+
+**Verified live** (contact 98, with teardown): read `false` → wrote `true` → read `true` →
+restored `false` → read `false`.
+
+Tests: `subscriptions.test.ts` (toggle state, PUT body `{ bulkEmailOptOut: true }`, turning it
+back on, revert on failure, absent flag draws nothing, follows `profileSaved`, per-publication
+save unchanged), `profile.test.ts` (shared wording and inversion; follows `bulkEmailChanged`
+without losing typed input), service and schema cases.
