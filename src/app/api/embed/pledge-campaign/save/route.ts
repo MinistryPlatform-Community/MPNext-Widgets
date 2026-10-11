@@ -37,8 +37,7 @@ export async function POST(req: NextRequest) {
         {
           success: false,
           pledgeId: null,
-          error: "invalid_request",
-          message: "Invalid request body.",
+          error: "invalid_request", message: "Invalid request body.",
         },
         { status: 400, headers: getCorsHeaders(origin) }
       );
