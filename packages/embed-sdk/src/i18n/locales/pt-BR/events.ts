@@ -117,6 +117,9 @@ export const ptBREvents = {
     participants: "Participantes",
     registration: "Inscrição",
     openInMinistryPlatform: "Abrir no Ministry Platform",
+    noEventsInMonth: "Nenhum evento em {month}.",
+    noUpcomingEvents: "Nenhum evento programado.",
+    upcomingTitle: "Próximos eventos",
   },
 
   addToCalendar: {

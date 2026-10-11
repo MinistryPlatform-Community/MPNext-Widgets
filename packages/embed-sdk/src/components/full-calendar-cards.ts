@@ -245,6 +245,8 @@ export function filterEvents(
  * @param onShowMore   Callback when the "Show More" button is clicked.
  * @param t            Translator, from `full-calendar.ts`.
  * @param fmt          Locale-aware formatters, likewise.
+ * @param emptyText    Already-translated empty-state sentence ("No events in
+ *                     December"); defaults to `fullCalendar.noEventsFound`.
  */
 export function renderCardsGrid(
   events: CalendarEvent[],
@@ -252,7 +254,8 @@ export function renderCardsGrid(
   onLearnMore: (event: CalendarEvent) => void,
   onShowMore: () => void,
   t: Translator,
-  fmt: Formatters
+  fmt: Formatters,
+  emptyText?: string
 ): HTMLElement {
   const grid = document.createElement("div");
   grid.className = "nw-fc-cards-grid";
@@ -270,7 +273,7 @@ export function renderCardsGrid(
   if (visible.length === 0) {
     const empty = document.createElement("div");
     empty.className = "nw-fc-cards-empty";
-    empty.textContent = t("fullCalendar.noEventsFound");
+    empty.textContent = emptyText ?? t("fullCalendar.noEventsFound");
     grid.appendChild(empty);
     return grid;
   }
