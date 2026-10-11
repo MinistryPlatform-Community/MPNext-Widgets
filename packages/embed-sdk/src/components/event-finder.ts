@@ -1,4 +1,5 @@
 import { MPNextWidget } from "../shared/base-widget";
+import { bindCardSelect, cardLink, CARD_LINK_STYLES } from "../shared/card-link";
 
 interface EventSearchResult {
   id: number;
@@ -212,14 +213,11 @@ export class EventFinderWidget extends MPNextWidget {
       retry.addEventListener("click", () => this.retryLoad());
     }
 
-    // Card navigation / selection.
-    this.root.querySelectorAll<HTMLElement>("[data-event-id]").forEach((el) => {
-      el.addEventListener("click", () => {
-        const id = Number(el.getAttribute("data-event-id"));
-        this.emit("eventSelected", { eventId: id });
-        const url = this.buildDetailUrl(id);
-        if (url) window.location.href = url;
-      });
+    // Selection only: the card is a real `<a href>` when `target-url` is set
+    // (C05), so the browser does the navigating — Enter, Ctrl/Cmd-click,
+    // middle-click, open-in-new-tab and copy-link all work with no script.
+    bindCardSelect(this.root, "[data-event-id]", (card) => {
+      this.emit("eventSelected", { eventId: Number(card.dataset.eventId) });
     });
   }
 
@@ -336,7 +334,8 @@ export class EventFinderWidget extends MPNextWidget {
   }
 
   private renderCard(e: EventSearchResult): string {
-    const hasLink = !!this.getAttribute("target-url");
+    const href = this.buildDetailUrl(e.id);
+    const hasLink = href !== null;
     const img = e.imageUrl
       ? `<img class="nw-ef-card-img" src="${this.escapeAttr(e.imageUrl)}" alt="" loading="lazy">`
       : `<div class="nw-ef-card-img nw-ef-card-img--placeholder">${this.calendarSvg()}</div>`;
@@ -353,8 +352,7 @@ export class EventFinderWidget extends MPNextWidget {
       ? `<div class="nw-ef-card-desc">${this.escapeHtml(this.truncate(e.description, 160))}</div>`
       : "";
 
-    return `
-      <div class="nw-ef-card" data-event-id="${e.id}" role="${hasLink ? "link" : "article"}" ${hasLink ? 'tabindex="0"' : ""}>
+    const body = `
         <div class="nw-ef-card-imgwrap">${img}${badge}</div>
         <div class="nw-ef-card-body">
           <h3 class="nw-ef-card-title">${this.escapeHtml(e.title)}</h3>
@@ -362,8 +360,11 @@ export class EventFinderWidget extends MPNextWidget {
           ${location}
           ${description}
           ${hasLink ? `<span class="nw-ef-card-cta">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
-        </div>
-      </div>`;
+        </div>`;
+
+    // A real anchor when there is somewhere to go; the `role="article"` div
+    // otherwise (C05, W0 `cardLink`).
+    return cardLink({ href, className: "nw-ef-card", body, attrs: { "data-event-id": e.id } });
   }
 
   // ── Date / text helpers ──
@@ -416,9 +417,8 @@ export class EventFinderWidget extends MPNextWidget {
 
       .nw-ef-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
       .nw-ef-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: border-color 0.15s, box-shadow 0.15s; }
-      .nw-ef-card[role="link"] { cursor: pointer; }
-      .nw-ef-card[role="link"]:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
-      .nw-ef-card[role="link"]:focus-visible { outline: 2px solid #004C97; outline-offset: 2px; }
+      a.nw-ef-card { cursor: pointer; }
+      a.nw-ef-card:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
       .nw-ef-card-imgwrap { position: relative; }
       .nw-ef-card-img { width: 100%; height: 160px; object-fit: cover; display: block; }
       .nw-ef-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #9ca3af; }
@@ -440,6 +440,7 @@ export class EventFinderWidget extends MPNextWidget {
         .nw-ef-grid { grid-template-columns: 1fr; }
         .nw-ef-advanced { grid-template-columns: 1fr; }
       }
+      ${CARD_LINK_STYLES}
     `;
   }
 }

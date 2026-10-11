@@ -87,3 +87,31 @@ to `emit("eventSelected", …)` and let the browser do the navigation. When no
 change. If a full anchor is not wanted for layout reasons, the minimum fix is a
 `keydown` handler on the card that treats `Enter` and `Space` as a click — but that
 still leaves no href to copy or open in a new tab.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W2, branch `ws/w2-events`) on the shared W0 `cardLink()` / `bindCardSelect()`
+primitives.
+
+**What changed:**
+
+- `renderCard` renders through
+  `cardLink({ href: buildDetailUrl(e.id), className: "nw-ef-card", body, attrs: { "data-event-id": e.id } })`.
+- With `target-url` set, each card is a real `<a class="nw-card-link nw-ef-card" href="…">`.
+  Enter, Ctrl/Cmd-click, middle-click, open-in-new-tab, copy-link and crawlers all work with no
+  script.
+- With no `target-url`, the card stays the `role="article"` div. `role="link"` and
+  `tabindex="0"` are gone.
+- The click-only listener that set `window.location.href` is removed. `bindCardSelect` now only
+  emits `eventSelected { eventId }`, and it never cancels the click.
+- Card hover styling moved from `[role="link"]` to `a.nw-ef-card`. `CARD_LINK_STYLES` supplies
+  the anchor reset and the `:focus-visible` ring.
+
+**Data:** the query is untouched, so the 34/34 legacy parity is not affected.
+
+**Tests:** new `event-finder.test.ts` covers:
+
+- every card is an anchor whose href carries `id-parameter-name`;
+- no `role="link"` or `tabindex` remains;
+- the no-`target-url` fallback renders the article div;
+- plain and Ctrl clicks both emit `eventSelected` and neither is `preventDefault`ed.
