@@ -20,6 +20,20 @@ export class SubscriptionsWidget extends MPNextWidget {
   private savingIds = new Set<number>();
   private message: { type: "success" | "error"; text: string } | null = null;
   private searchQuery = "";
+  /**
+   * C55: `Contacts.Bulk_Email_Opt_Out`, or null when the server did not send it
+   * (the toggle is then not drawn rather than guessed).
+   */
+  private bulkEmailOptOut: boolean | null = null;
+  private savingBulk = false;
+  /** Keeps a `next-profile` on the same page from showing stale state (C55). */
+  private onProfileSaved = (e: Event) => {
+    const value = (e as CustomEvent).detail?.Bulk_Email_Opt_Out;
+    if (typeof value !== "boolean" || value === this.bulkEmailOptOut || this.loading) return;
+    this.bulkEmailOptOut = value;
+    this.render();
+    this.attachListeners();
+  };
 
   connectedCallback() {
     // The shared sign-in sheet goes first so this widget's own button classes win.
@@ -30,6 +44,12 @@ export class SubscriptionsWidget extends MPNextWidget {
       this.render();
       this.loadSubscriptions();
     });
+    document.addEventListener("profileSaved", this.onProfileSaved);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    document.removeEventListener("profileSaved", this.onProfileSaved);
   }
 
   public retryLoad() {
@@ -53,8 +73,10 @@ export class SubscriptionsWidget extends MPNextWidget {
         const data = await res.json().catch(() => ({}));
         throw new Error(this.errorText(data));
       }
-      const data: { subscriptions: SubscriptionItem[] } = await res.json();
+      const data: { subscriptions: SubscriptionItem[]; bulkEmailOptOut?: boolean } = await res.json();
       this.items = data.subscriptions || [];
+      this.bulkEmailOptOut =
+        typeof data.bulkEmailOptOut === "boolean" ? data.bulkEmailOptOut : null;
       this.emit("subscriptionsLoaded", { count: this.items.length });
     } catch (err) {
       this.error = err instanceof Error ? err.message : this.t("errors.network");
@@ -129,7 +151,52 @@ export class SubscriptionsWidget extends MPNextWidget {
     }
   }
 
+  /**
+   * C55. Saved per toggle like a publication, with no submit button. The
+   * control is phrased positively ("Send me general church emails"), so
+   * checked means *not* opted out.
+   */
+  private async toggleBulkEmail(sendEmail: boolean) {
+    if (this.savingBulk || this.bulkEmailOptOut === null) return;
+    const previous = this.bulkEmailOptOut;
+    const optOut = !sendEmail;
+    this.bulkEmailOptOut = optOut;
+    this.savingBulk = true;
+    this.message = null;
+    this.render();
+    this.attachListeners();
+
+    try {
+      const res = await this.fetch("/api/embed/subscriptions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bulkEmailOptOut: optOut }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(this.errorText(data, "errors.saveFailed"));
+      }
+      this.message = {
+        type: "success",
+        text: this.t(optOut ? "subscriptions.bulkEmailOff" : "subscriptions.bulkEmailOn"),
+      };
+      this.emit("bulkEmailChanged", { bulkEmailOptOut: optOut });
+    } catch (err) {
+      this.bulkEmailOptOut = previous;
+      this.message = { type: "error", text: this.t("subscriptions.updateFailed") };
+      const errText = err instanceof Error ? err.message : this.t("errors.network");
+      this.emit("subscriptionError", { error: errText });
+    } finally {
+      this.savingBulk = false;
+      this.render();
+      this.attachListeners();
+    }
+  }
+
   private attachListeners() {
+    const bulk = this.root.querySelector<HTMLInputElement>("#sub-bulk-email");
+    if (bulk) bulk.addEventListener("change", () => void this.toggleBulkEmail(bulk.checked));
+
     const retryBtn = this.root.querySelector('[data-action="retry"]');
     if (retryBtn) {
       retryBtn.addEventListener("click", () => this.retryLoad());
@@ -236,7 +303,27 @@ export class SubscriptionsWidget extends MPNextWidget {
               </div>`
             : ""}
           ${list}
+          ${this.renderBulkEmail()}
         </div>
+      </div>`;
+  }
+
+  /** Below the list and visually apart: it is global, not another publication. */
+  private renderBulkEmail(): string {
+    if (this.bulkEmailOptOut === null) return "";
+    return `
+      <div class="bulk">
+        <div class="bulk-title">${this.escapeHtml(this.t("subscriptions.bulkEmailTitle"))}</div>
+        <label class="sub-row bulk-row">
+          <input type="checkbox" class="sub-check" id="sub-bulk-email"
+            ${this.bulkEmailOptOut ? "" : "checked"} ${this.savingBulk ? "disabled" : ""}
+            aria-describedby="sub-bulk-hint">
+          <span class="sub-text">
+            <span class="sub-title">${this.escapeHtml(this.t("subscriptions.sendBulkEmail"))}</span>
+            <span class="sub-desc" id="sub-bulk-hint">${this.escapeHtml(this.t("subscriptions.bulkEmailHint"))}</span>
+          </span>
+          ${this.savingBulk ? `<span class="sub-saving">${this.spinnerSvg()}</span>` : ""}
+        </label>
       </div>`;
   }
 
@@ -427,6 +514,24 @@ export class SubscriptionsWidget extends MPNextWidget {
         background: rgba(255, 109, 106, 0.15);
         color: #b91c1c;
         border: 1px solid rgba(255, 109, 106, 0.4);
+      }
+
+      .bulk {
+        margin-top: 24px;
+        padding-top: 16px;
+        border-top: 1px solid #e5e7eb;
+      }
+      .bulk-title {
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #6b7280;
+        margin-bottom: 8px;
+      }
+      .bulk-row {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
       }
 
       .empty-state {

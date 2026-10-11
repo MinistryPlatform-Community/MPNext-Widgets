@@ -170,6 +170,50 @@ describe("<next-profile> phone fields (C51)", () => {
   });
 });
 
+describe("<next-profile> bulk email (C55)", () => {
+  beforeEach(async () => {
+    puts = [];
+    localStorage.clear();
+    sessionStorage.clear();
+    delete (window as unknown as { __nextAuthSession?: unknown }).__nextAuthSession;
+    __resetLocaleSession();
+    window.__nextTokenProvider = {
+      get: () => getAuthSession(HOST).getToken("profile"),
+      refresh: () => getAuthSession(HOST).refreshToken("profile"),
+    };
+    window.__nextSDKReady = Promise.resolve();
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mockFetch();
+    await import("./profile");
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("uses the same positive wording as next-subscriptions and inverts it onto the opt-out", async () => {
+    const el = await mountSettled();
+    const box = input(el, "bulk-email-opt-in");
+    expect(box.checked).toBe(true); // Bulk_Email_Opt_Out: false
+    expect(shadow(el).textContent).toContain("Send me general church emails");
+    box.checked = false;
+    submit(el);
+    await vi.waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0].Bulk_Email_Opt_Out).toBe(true);
+  });
+
+  it("follows a next-subscriptions toggle on the same page without re-rendering", async () => {
+    const el = await mountSettled();
+    const first = input(el, "First_Name");
+    first.value = "Typed but unsaved";
+    document.dispatchEvent(new CustomEvent("bulkEmailChanged", { detail: { bulkEmailOptOut: true } }));
+    expect(input(el, "bulk-email-opt-in").checked).toBe(false);
+    expect(input(el, "First_Name").value).toBe("Typed but unsaved");
+  });
+});
+
 describe("normalizePhone / phoneChanged", () => {
   it("formats 10 digits, or 11 with a leading 1", () => {
     expect(normalizePhone("3217941376")).toBe("321-794-1376");

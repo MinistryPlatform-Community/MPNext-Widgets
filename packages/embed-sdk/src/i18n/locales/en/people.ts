@@ -83,7 +83,6 @@ export const people = {
     orgFallback: "our organization",
     smsRates:
       "Message and data rates may apply. Message frequency varies and you may opt out at any time.",
-    bulkEmailOptOut: "Do not send me bulk email messages",
     saveProfile: "Save Profile",
     saved: "Profile saved successfully.",
     changePassword: "Change Password",

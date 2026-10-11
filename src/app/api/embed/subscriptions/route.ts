@@ -1,7 +1,7 @@
 /**
  * Subscriptions endpoint for embed widgets
  * GET  /api/embed/subscriptions - list publications + user's subscription state
- * PUT  /api/embed/subscriptions - update user's subscriptions
+ * PUT  /api/embed/subscriptions - update user's subscriptions and/or bulk-email opt-out
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -42,9 +42,12 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const subscriptions = await service.getSubscriptions(contactId);
+    const [subscriptions, bulkEmailOptOut] = await Promise.all([
+      service.getSubscriptions(contactId),
+      service.getBulkEmailOptOut(contactId),
+    ]);
 
-    return NextResponse.json({ subscriptions }, { status: 200, headers });
+    return NextResponse.json({ subscriptions, bulkEmailOptOut }, { status: 200, headers });
   } catch (error) {
     console.error("Error loading subscriptions:", error);
     return NextResponse.json(
@@ -94,7 +97,16 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    const result = await service.updateSubscriptions(contactId, parsed.data.subscribedIds);
+    const { subscribedIds, bulkEmailOptOut } = parsed.data;
+    let result: { success: boolean; error?: string; bulkEmailOptOut?: boolean } = { success: true };
+
+    if (subscribedIds !== undefined) {
+      result = await service.updateSubscriptions(contactId, subscribedIds);
+    }
+    if (result.success && bulkEmailOptOut !== undefined) {
+      result = await service.setBulkEmailOptOutForContact(contactId, bulkEmailOptOut);
+      if (result.success) result = { ...result, bulkEmailOptOut };
+    }
 
     return NextResponse.json(result, {
       status: result.success ? 200 : 500,

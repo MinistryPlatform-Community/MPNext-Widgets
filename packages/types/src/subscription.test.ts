@@ -269,3 +269,19 @@ describe('SubscriptionUpdateResponseSchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('SubscriptionUpdateSchema bulk email (C55)', () => {
+  it('accepts a bulk-email-only update', () => {
+    expect(SubscriptionUpdateSchema.safeParse({ bulkEmailOptOut: true }).success).toBe(true);
+  });
+
+  it('rejects a non-boolean bulkEmailOptOut', () => {
+    expect(SubscriptionUpdateSchema.safeParse({ bulkEmailOptOut: 'yes' }).success).toBe(false);
+  });
+
+  it('accepts the list response with the flag', () => {
+    expect(
+      SubscriptionListResponseSchema.safeParse({ subscriptions: [], bulkEmailOptOut: false }).success,
+    ).toBe(true);
+  });
+});

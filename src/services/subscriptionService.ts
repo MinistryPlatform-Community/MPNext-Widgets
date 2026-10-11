@@ -237,6 +237,48 @@ export class SubscriptionService {
   }
 
   /**
+   * The signed-in contact's `Contacts.Bulk_Email_Opt_Out` (C55). `true` means
+   * the contact has opted out of all bulk email.
+   */
+  public async getBulkEmailOptOut(contactId: number): Promise<boolean> {
+    const rows = await this.mp!.getTableRecords<{ Bulk_Email_Opt_Out: boolean | null }>({
+      table: "Contacts",
+      filter: `Contact_ID = ${contactId}`,
+      select: "Bulk_Email_Opt_Out",
+      top: 1,
+    });
+    return rows[0]?.Bulk_Email_Opt_Out === true;
+  }
+
+  /**
+   * Set the signed-in contact's bulk-email opt-out (C55). Shares the one write
+   * with the anonymous `next-unsubscribe` path (`writeBulkEmailOptOut`), so the
+   * two can never disagree about which column or how much of the record is sent.
+   */
+  public async setBulkEmailOptOutForContact(
+    contactId: number,
+    optOut: boolean
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      await this.writeBulkEmailOptOut(contactId, optOut);
+      return { success: true };
+    } catch (error) {
+      console.error("Error updating bulk email opt-out:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to update bulk email opt-out",
+      };
+    }
+  }
+
+  /** `Contact_ID` plus the one field — never a whole-record write. */
+  private async writeBulkEmailOptOut(contactId: number, optOut: boolean): Promise<void> {
+    await this.mp!.updateTableRecords("Contacts", [
+      { Contact_ID: contactId, Bulk_Email_Opt_Out: optOut },
+    ]);
+  }
+
+  /**
    * Update a contact's subscriptions. Takes the full list of Publication_IDs
    * the user wants to be subscribed to. Creates/updates dp_Contact_Publications
    * records accordingly.
@@ -490,9 +532,7 @@ export class SubscriptionService {
     if (needsWrite) {
       // `Contact_ID` plus the one field — never a whole-record write, which
       // would round-trip and re-save every column MP happened to return.
-      await this.mp!.updateTableRecords("Contacts", [
-        { Contact_ID: contact.contactId, Bulk_Email_Opt_Out: unsubscribed },
-      ]);
+      await this.writeBulkEmailOptOut(contact.contactId, unsubscribed);
     }
 
     return {

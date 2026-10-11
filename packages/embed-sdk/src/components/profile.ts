@@ -103,10 +103,25 @@ export class ProfileWidget extends MPNextWidget {
       this.render();
       this.loadProfile();
     });
+    document.addEventListener("bulkEmailChanged", this.onBulkEmailChanged);
   }
+
+  /**
+   * C55: `next-subscriptions` writes the same `Bulk_Email_Opt_Out`. Follow it in
+   * place (no re-render, so an edit in progress elsewhere on the form survives),
+   * and keep the loaded value in step so the next save does not revert it.
+   */
+  private onBulkEmailChanged = (e: Event) => {
+    const value = (e as CustomEvent).detail?.bulkEmailOptOut;
+    if (typeof value !== "boolean" || !this.profile) return;
+    this.profile.Bulk_Email_Opt_Out = value;
+    const box = this.root.querySelector<HTMLInputElement>("#bulk-email-opt-in");
+    if (box) box.checked = !value;
+  };
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    document.removeEventListener("bulkEmailChanged", this.onBulkEmailChanged);
     if (this.successTimer) clearTimeout(this.successTimer);
     if (this.passwordSuccessTimer) clearTimeout(this.passwordSuccessTimer);
     if (this.photoUrl) URL.revokeObjectURL(this.photoUrl);
@@ -407,8 +422,8 @@ export class ProfileWidget extends MPNextWidget {
                 </div>
               </label>
               <label class="nw-checkbox-label">
-                <input type="checkbox" id="bulk-email-opt-out" ${p.Bulk_Email_Opt_Out ? "checked" : ""} />
-                <span>${this.esc(this.t("profile.bulkEmailOptOut"))}</span>
+                <input type="checkbox" id="bulk-email-opt-in" ${p.Bulk_Email_Opt_Out ? "" : "checked"} />
+                <span>${this.esc(this.t("subscriptions.sendBulkEmail"))}</span>
               </label>
             </div>
           </div>
@@ -556,7 +571,8 @@ export class ProfileWidget extends MPNextWidget {
       Nickname: getValue("Nickname") || null,
       Email_Address: email,
       Do_Not_Text: !getChecked("sms-opt-in"),
-      Bulk_Email_Opt_Out: getChecked("bulk-email-opt-out"),
+      // Phrased positively (C55): checked = receives bulk email = not opted out.
+      Bulk_Email_Opt_Out: !getChecked("bulk-email-opt-in"),
       Prefix_ID: prefixId ? Number(prefixId) : null,
       Suffix_ID: suffixId ? Number(suffixId) : null,
       Gender_ID: genderId ? Number(genderId) : null,

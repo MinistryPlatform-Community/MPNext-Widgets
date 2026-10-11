@@ -37,22 +37,32 @@ export type SubscriptionItem = z.infer<typeof SubscriptionItemSchema>;
 
 export const SubscriptionListResponseSchema = z.object({
   subscriptions: z.array(SubscriptionItemSchema),
+  /** `Contacts.Bulk_Email_Opt_Out` for the signed-in contact (C55). */
+  bulkEmailOptOut: z.boolean().optional(),
 });
 
 export type SubscriptionListResponse = z.infer<typeof SubscriptionListResponseSchema>;
 
 // ── Update request ───────────────────────────────────────────
 
-export const SubscriptionUpdateSchema = z.object({
-  /** Publication IDs the user wants to be subscribed to */
-  subscribedIds: z.array(z.number().int()),
-});
+export const SubscriptionUpdateSchema = z
+  .object({
+    /** Publication IDs the user wants to be subscribed to */
+    subscribedIds: z.array(z.number().int()).optional(),
+    /** Set `Contacts.Bulk_Email_Opt_Out` (C55). Saved per toggle, like a publication. */
+    bulkEmailOptOut: z.boolean().optional(),
+  })
+  .refine((d) => d.subscribedIds !== undefined || d.bulkEmailOptOut !== undefined, {
+    message: "Provide subscribedIds or bulkEmailOptOut",
+    path: ["subscribedIds"],
+  });
 
 export type SubscriptionUpdateRequest = z.infer<typeof SubscriptionUpdateSchema>;
 
 export const SubscriptionUpdateResponseSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
+  bulkEmailOptOut: z.boolean().optional(),
 });
 
 export type SubscriptionUpdateResponse = z.infer<typeof SubscriptionUpdateResponseSchema>;

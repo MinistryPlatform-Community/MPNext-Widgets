@@ -70,7 +70,6 @@ export const ptBRPeople = {
     orgFallback: "nossa organização",
     smsRates:
       "Podem ser aplicadas tarifas de mensagens e dados. A frequência das mensagens varia e você pode cancelar o recebimento quando quiser.",
-    bulkEmailOptOut: "Não quero receber e-mails em massa",
     saveProfile: "Salvar o perfil",
     saved: "O perfil foi salvo com sucesso.",
     changePassword: "Alterar a senha",

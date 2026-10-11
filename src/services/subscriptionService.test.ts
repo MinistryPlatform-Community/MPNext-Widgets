@@ -1048,4 +1048,40 @@ describe('SubscriptionService', () => {
       );
     });
   });
+
+  describe('bulk email opt-out for the signed-in contact (C55)', () => {
+    it('reads Contacts.Bulk_Email_Opt_Out for the contact', async () => {
+      mockGetTableRecords.mockResolvedValueOnce([{ Bulk_Email_Opt_Out: true }]);
+      const service = await SubscriptionService.getInstance();
+      await expect(service.getBulkEmailOptOut(100)).resolves.toBe(true);
+      expect(mockGetTableRecords).toHaveBeenCalledWith({
+        table: 'Contacts',
+        filter: 'Contact_ID = 100',
+        select: 'Bulk_Email_Opt_Out',
+        top: 1,
+      });
+    });
+
+    it('treats a null flag as not opted out', async () => {
+      mockGetTableRecords.mockResolvedValueOnce([{ Bulk_Email_Opt_Out: null }]);
+      const service = await SubscriptionService.getInstance();
+      await expect(service.getBulkEmailOptOut(100)).resolves.toBe(false);
+    });
+
+    it('writes only Contact_ID and the one field', async () => {
+      mockUpdateTableRecords.mockResolvedValueOnce([]);
+      const service = await SubscriptionService.getInstance();
+      await expect(service.setBulkEmailOptOutForContact(100, true)).resolves.toEqual({ success: true });
+      expect(mockUpdateTableRecords).toHaveBeenCalledWith('Contacts', [
+        { Contact_ID: 100, Bulk_Email_Opt_Out: true },
+      ]);
+    });
+
+    it('reports a failed write instead of throwing', async () => {
+      mockUpdateTableRecords.mockRejectedValueOnce(new Error('db down'));
+      const service = await SubscriptionService.getInstance();
+      const result = await service.setBulkEmailOptOutForContact(100, false);
+      expect(result.success).toBe(false);
+    });
+  });
 });
