@@ -28,7 +28,6 @@ const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 const LEGACY_SPELLINGS: Record<string, string> = {
   hidesoftcredits: "next-my-giving → hide-soft-credits (W5)",
   hidegrouplife: "next-my-groups → hide-group-life (W3)",
-  hideaddhouseholdmember: "next-my-household → hide-add-household-member (W6)",
   hidecancelbuttonpledge: "next-my-pledges → hide-cancel-button-pledge (W5)",
   cancelpledgeemailtemplate: "next-my-pledges → cancel-pledge-email-template (W5)",
 };

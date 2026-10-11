@@ -1294,7 +1294,7 @@ export class UserMenuWidget extends MPNextWidget {
         </div>`;
       case "family":
         return `<div class="nw-tab-panel" data-panel="family">
-          <next-my-household hideaddhouseholdmember="false" api-host="${this.escapeHtml(this.apiHost)}"></next-my-household>
+          <next-my-household hide-add-household-member="false" api-host="${this.escapeHtml(this.apiHost)}"></next-my-household>
         </div>`;
       case "groups":
         return `<div class="nw-tab-panel" data-panel="groups">

@@ -116,15 +116,34 @@ export class MyHouseholdWidget extends MPNextWidget {
   private photoFile: File | null = null;
   private photoPreviewUrl: string | null = null;
 
+  /** C79: kebab-case name; legacy `hideaddhouseholdmember` is read for one release. */
+  static readonly attributeAliases = {
+    "hide-add-household-member": "hideaddhouseholdmember",
+  };
+
   static get observedAttributes() {
-    return ["hideaddhouseholdmember"];
+    return ["hide-add-household-member", ...Object.values(this.attributeAliases)];
   }
 
   private get hideAddMember(): boolean {
-    return (
-      (this.getAttribute("hideaddhouseholdmember") || "").toLowerCase() ===
-      "true"
-    );
+    return (this.readAttr("hide-add-household-member") || "").toLowerCase() === "true";
+  }
+
+  /**
+   * C39: a late `hide-add-household-member` must take effect. The attribute
+   * only changes what is drawn, so a loaded household is re-rendered rather than
+   * re-fetched; an open edit form is left alone (re-rendering it would discard
+   * what the visitor typed) and the details view picks the change up on return.
+   * With nothing loaded yet (a failed first load), it loads.
+   */
+  protected override reload(): void {
+    if (!this.data) {
+      this.loadHousehold();
+      return;
+    }
+    if (this.view !== "details") return;
+    this.render();
+    this.attachListeners();
   }
 
   /**
@@ -144,6 +163,7 @@ export class MyHouseholdWidget extends MPNextWidget {
     // this widget paints anyway while it queries the API.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.loadHousehold();
     });
   }
