@@ -76,6 +76,8 @@
   "contactAttributes.title": "0bf7f38a",
   "contributionStatement.empty": "46ad1eda",
   "contributionStatement.loading": "dacddc79",
+  "contributionStatement.openStatement": "c1d579b8",
+  "contributionStatement.popupBlocked": "ff367e25",
   "contributionStatement.savePdf": "4cab70e9",
   "contributionStatement.selectYear": "c9de3f55",
   "contributionStatement.signInPrompt": "e7e3b07e",

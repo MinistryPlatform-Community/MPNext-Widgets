@@ -121,6 +121,8 @@ export const ptBRGiving = {
     selectYear: "Selecione o ano do informe",
     savePdf: "Salvar como PDF",
     signInPrompt: "Entre para ver seus informes de doações.",
+    popupBlocked: "Seu navegador bloqueou a abertura do informe.",
+    openStatement: "Abrir o informe",
   },
 
   statementPreferences: {

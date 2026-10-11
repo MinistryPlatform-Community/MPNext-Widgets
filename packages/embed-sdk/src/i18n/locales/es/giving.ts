@@ -123,6 +123,8 @@ export const esGiving = {
     selectYear: "Seleccione el año del estado",
     savePdf: "Guardar como PDF",
     signInPrompt: "Inicie sesión para ver sus estados de contribuciones.",
+    popupBlocked: "Su navegador impidió abrir el estado de contribuciones.",
+    openStatement: "Abrir el estado de contribuciones",
   },
 
   statementPreferences: {

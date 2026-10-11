@@ -1,4 +1,5 @@
 import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { escapeAttr } from "../shared/html";
 import {
   GIVING_SIGNED_OUT_STYLES,
   HEADING_RESET_STYLES,
@@ -27,6 +28,10 @@ export class MyContributionStatementWidget extends MPNextWidget {
   /** Signed out is a state, not an error (C30 / CROSS-1). */
   private signedOut = false;
   private selectedYear: Record<string, number> = {};
+  /** Companies whose statement is being fetched (C34). */
+  private downloading = new Set<string>();
+  /** A statement URL to offer as a link when the browser blocked the new tab (C34). */
+  private fallbackLinks: Record<string, string> = {};
 
   static get observedAttributes() {
     return ["heading-level"];
@@ -132,19 +137,87 @@ export class MyContributionStatementWidget extends MPNextWidget {
     });
   }
 
-  private downloadStatement(company: string) {
+  /**
+   * "Save as PDF" saves a file (C34) rather than opening a tab.
+   *
+   * The statement lives on MP's file host, a different origin, where a plain
+   * `<a download>` is ignored by browsers (they navigate instead — this tab,
+   * away from the church's page). So the file is fetched as a blob and saved
+   * through a same-origin `blob:` URL, which `download` does honour, under the
+   * statement's own `File_Name` rather than a GUID.
+   *
+   * If MP's file host refuses the cross-origin read (no CORS), fall back to
+   * opening the statement in a new tab — legacy-adjacent and still the right
+   * file. That open happens after an `await`, outside the click's user
+   * gesture, so a popup blocker may stop it; when it does, the widget renders
+   * a real link the donor can press themselves instead of failing silently.
+   */
+  private async downloadStatement(company: string) {
     const group = this.groups.find((g) => g.Accounting_Company_Name === company);
     if (!group) return;
     const year = this.selectedYear[company];
     const statement = group.statements.find((s) => s.Statement_Year === year);
-    if (!statement) return;
+    if (!statement || this.downloading.has(company)) return;
 
-    window.open(statement.Download_Url, "_blank", "noopener");
+    this.downloading.add(company);
+    delete this.fallbackLinks[company];
+    this.setDownloadBusy(company, true);
+    let method: "download" | "tab" | "link" = "download";
+    try {
+      const res = await fetch(statement.Download_Url, { credentials: "omit", mode: "cors" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      this.saveBlob(await res.blob(), this.fileName(statement));
+    } catch {
+      const tab = window.open(statement.Download_Url, "_blank");
+      if (tab) {
+        tab.opener = null;
+        method = "tab";
+      } else {
+        method = "link";
+        this.fallbackLinks[company] = statement.Download_Url;
+      }
+    } finally {
+      this.downloading.delete(company);
+      this.render();
+      this.attachListeners();
+    }
+
     this.emit("statementDownloaded", {
       statementId: statement.Statement_ID,
       year: statement.Statement_Year,
       accountingCompany: company,
+      method,
     });
+  }
+
+  /** The statement's own name, with its extension when MP stored it apart. */
+  private fileName(s: ContributionStatement): string {
+    const name = (s.File_Name || "").trim() || `${s.Statement_Year}`;
+    const ext = (s.Extension || "").trim();
+    if (!ext || name.toLowerCase().endsWith(ext.toLowerCase())) return name;
+    return `${name}${ext.startsWith(".") ? "" : "."}${ext}`;
+  }
+
+  private saveBlob(blob: Blob, name: string): void {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.rel = "noopener";
+    a.style.display = "none";
+    this.root.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoke on the next task: some browsers start the save asynchronously.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  private setDownloadBusy(company: string, busy: boolean): void {
+    this.root
+      .querySelectorAll<HTMLButtonElement>('[data-action="download"]')
+      .forEach((btn) => {
+        if (btn.dataset.company === company) btn.disabled = busy;
+      });
   }
 
   render() {
@@ -243,7 +316,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
               (year) => `
             <button
               class="year-btn ${year === selected ? "year-btn--active" : ""}"
-              data-year-company="${this.escapeHtml(company)}"
+              data-year-company="${escapeAttr(company)}"
               data-year="${year}">
               ${year}
             </button>`
@@ -251,11 +324,21 @@ export class MyContributionStatementWidget extends MPNextWidget {
             .join("")}
         </div>
         <div class="download-section">
-          <button class="download-btn" data-action="download" data-company="${this.escapeHtml(company)}">
+          <button class="download-btn" data-action="download" data-company="${escapeAttr(company)}" ${this.downloading.has(company) ? "disabled" : ""}>
             ${this.escapeHtml(this.t("contributionStatement.savePdf"))}
           </button>
+          ${this.renderFallbackLink(group)}
         </div>
       </div>`;
+  }
+
+  /** C34: the manual link, shown only for the selected year's statement. */
+  private renderFallbackLink(group: ContributionStatementGroup): string {
+    const company = group.Accounting_Company_Name;
+    const url = this.fallbackLinks[company];
+    const current = group.statements.find((s) => s.Statement_Year === this.selectedYear[company]);
+    if (!url || !current || current.Download_Url !== url || !/^https?:/i.test(url)) return "";
+    return `<p class="download-fallback" role="status">${this.escapeHtml(this.t("contributionStatement.popupBlocked"))} <a href="${escapeAttr(url)}" target="_blank" rel="noopener">${this.escapeHtml(this.t("contributionStatement.openStatement"))}</a></p>`;
   }
 
   private escapeHtml(text: string): string {
@@ -413,6 +496,19 @@ export class MyContributionStatementWidget extends MPNextWidget {
       }
       .download-btn:hover {
         background: #002855;
+      }
+      .download-btn:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      .download-fallback {
+        margin: 12px 0 0;
+        font-size: 14px;
+        color: #2D2926;
+      }
+      .download-fallback a {
+        color: #004C97;
+        font-weight: 600;
       }
 
       .retry-section {

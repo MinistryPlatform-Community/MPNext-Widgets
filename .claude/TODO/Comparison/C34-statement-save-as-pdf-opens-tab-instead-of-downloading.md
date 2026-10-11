@@ -69,3 +69,32 @@ statement's real name instead of a GUID. Keep the `statementDownloaded` event em
 is. If the intent was deliberately to preview rather than save, rename the button
 ("View statement") so the label matches; but legacy's behaviour is the one migrating
 churches will expect.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W5, branch `ws/w5-giving`). `downloadStatement()` in
+`my-contribution-statement.ts` no longer calls `window.open`.
+
+- **Primary path — a real download.** The statement is fetched (`credentials: "omit"`) as a
+  blob and saved through a same-origin `blob:` URL with `<a download="<File_Name>">`, so the
+  file lands in Downloads under the statement's own name (`Extension` appended only when
+  `File_Name` lacks it). Deviation from the suggested one-liner: a bare
+  `<a href={Download_Url} download>` was **not** used, because browsers ignore `download` on a
+  cross-origin URL and navigate instead — that would take the donor's own tab away from the
+  church's page, worse than the bug. The blob route is what makes `download` honoured.
+- **Fallback when MP's file host refuses the cross-origin read (no CORS):** open the
+  statement in a new tab (`opener` nulled), i.e. the old behaviour, still the right file.
+- **Fallback to the fallback:** that open runs after an `await`, outside the click's user
+  gesture, so a popup blocker (iOS Safari, in-app webviews — the case this item names) may
+  refuse it. Then the widget renders a status line *"Your browser blocked the statement from
+  opening."* with a real **Open the statement** link the donor can press themselves. Nothing
+  fails silently.
+- The button is disabled while the fetch runs. `statementDownloaded` still fires, now with a
+  `method` of `download` / `tab` / `link`.
+- Not verified live: whether `mpi.ministryplatform.com/ministryplatformapi/files/<guid>`
+  sends CORS headers. If it does not, every customer gets the tab fallback — no worse than
+  before — and this should be revisited (e.g. a same-origin proxy route) once checked from a
+  real browser. Recorded, not guessed.
+- The unauthenticated-file-GUID note above stands; it is MP's design and unchanged.
+- Tests (`giving-widgets.test.ts`): blob download with the right name and no tab; the tab
+  fallback on a CORS failure; the link when the tab is blocked.

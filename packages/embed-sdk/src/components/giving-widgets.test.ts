@@ -541,6 +541,77 @@ describe("giving widgets", () => {
     });
   });
 
+  // ── C34: Save as PDF saves a file ──────────────────────────────────────
+
+  describe("next-my-contribution-statement Save as PDF (C34)", () => {
+    const PDF_URL = "https://mp.example.com/ministryplatformapi/files/57625614";
+    let clicked: { href: string; download: string }[];
+
+    beforeEach(() => {
+      clicked = [];
+      (URL as unknown as { createObjectURL: unknown }).createObjectURL = vi.fn(() => "blob:local/1");
+      (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+        clicked.push({ href: this.href, download: this.download });
+      });
+    });
+
+    function statements(pdf: () => Response | Promise<Response>): Handler {
+      return (url) => {
+        if (url.includes("/api/embed/contribution-statements")) return jsonResponse(statementGroups());
+        if (url === PDF_URL) return pdf() as Response;
+        return undefined;
+      };
+    }
+    const pdfResponse = () =>
+      ({ ok: true, status: 200, blob: async () => new Blob(["%PDF"], { type: "application/pdf" }) }) as unknown as Response;
+
+    async function press(el: HTMLElement) {
+      $<HTMLButtonElement>(el, '[data-action="download"]')!.click();
+    }
+
+    it("downloads the statement under its own file name, with no tab", async () => {
+      const open = vi.spyOn(window, "open").mockReturnValue(null);
+      mockFetch(statements(pdfResponse));
+      const el = await settled(mount("next-my-contribution-statement"));
+      const events: unknown[] = [];
+      el.addEventListener("statementDownloaded", (e) => events.push((e as CustomEvent).detail));
+
+      await press(el);
+      await vi.waitFor(() => expect(clicked).toHaveLength(1));
+
+      expect(clicked[0]).toEqual({ href: "blob:local/1", download: "Statement-2025.pdf" });
+      expect(open).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(events).toHaveLength(1));
+      expect(events[0]).toMatchObject({ statementId: 1, year: 2025, method: "download" });
+    });
+
+    it("falls back to a new tab when MP's file host refuses the cross-origin read", async () => {
+      const tab = { opener: window } as unknown as Window;
+      const open = vi.spyOn(window, "open").mockReturnValue(tab);
+      mockFetch(statements(() => Promise.reject(new TypeError("Failed to fetch"))));
+      const el = await settled(mount("next-my-contribution-statement"));
+
+      await press(el);
+      await vi.waitFor(() => expect(open).toHaveBeenCalledWith(PDF_URL, "_blank"));
+      expect(tab.opener).toBeNull();
+      expect($(el, ".download-fallback")).toBeNull();
+    });
+
+    it("offers a real link when the fallback tab is blocked too", async () => {
+      vi.spyOn(window, "open").mockReturnValue(null);
+      mockFetch(statements(() => Promise.reject(new TypeError("Failed to fetch"))));
+      const el = await settled(mount("next-my-contribution-statement"));
+
+      await press(el);
+      await vi.waitFor(() => expect($(el, ".download-fallback a")).not.toBeNull());
+      const link = $(el, ".download-fallback a")!;
+      expect(link).toHaveAttribute("href", PDF_URL);
+      expect(link).toHaveAttribute("rel", "noopener");
+      expect(text(el)).toContain("Your browser blocked the statement from opening.");
+    });
+  });
+
   // ── protect: the money ─────────────────────────────────────────────────
 
   describe("next-my-giving money (regression guard)", () => {

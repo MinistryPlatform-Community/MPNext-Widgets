@@ -159,6 +159,11 @@ export const giving = {
     savePdf: "Save as PDF",
     /** Signed-out prompt (C30); legacy: "Please login to view your contribution statements." */
     signInPrompt: "Please sign in to view your contribution statements.",
+    // ── Save as PDF fallback (C34) ──
+    // Shown only when MP's file host refused the direct download and the
+    // browser then blocked the new tab: a real link the donor can press.
+    popupBlocked: "Your browser blocked the statement from opening.",
+    openStatement: "Open the statement",
   },
 
   statementPreferences: {
