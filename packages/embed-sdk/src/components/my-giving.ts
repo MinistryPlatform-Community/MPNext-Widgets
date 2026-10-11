@@ -19,15 +19,18 @@ interface DonationRecord {
   isOmitAmount: boolean;
 }
 
-// Brand-derived palette cycled across programs in the doughnut chart.
+// Brand-derived palette cycled across programs in the doughnut chart. Theme
+// tokens, not hexes, so a church's --nw-color-* reaches the chart too: both
+// consumers (the ring's inline `stroke` and the legend swatch's `background`)
+// are inline styles inside the shadow root, where the token block is in scope.
 const PROGRAM_COLORS = [
-  "#004C97", // primary blue
-  "#009CDE", // info light blue
-  "#F1BE48", // gold
-  "#86AD3F", // success green
-  "#002855", // navy
-  "#FF6D6A", // coral
-  "#2D2926", // black
+  "var(--_nw-color-primary)",
+  "var(--_nw-color-info)",
+  "var(--_nw-color-accent)",
+  "var(--_nw-color-success)",
+  "var(--_nw-color-secondary)",
+  "var(--_nw-color-error)",
+  "var(--_nw-color-text)",
 ];
 
 const MIN_YEAR_OFFSET = 4; // allow going back this many years from current
@@ -488,7 +491,7 @@ export class MyGivingWidget extends MPNextWidget {
       segments += `<circle
         cx="${cx}" cy="${cy}" r="${ringR}"
         fill="none"
-        stroke="${color}"
+        style="stroke: ${color}"
         stroke-width="${stroke}"
         stroke-dasharray="${dash.toFixed(2)} ${(circumference - dash).toFixed(2)}"
         stroke-dashoffset="${(-offset).toFixed(2)}"
@@ -651,40 +654,40 @@ export class MyGivingWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-giving {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
+        background: var(--_nw-color-surface);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .header {
-        background: #002855;
-        color: white;
-        padding: 24px;
+        background: var(--_nw-color-secondary);
+        color: var(--_nw-color-on-primary);
+        padding: var(--_nw-space-6);
       }
       .title {
         font-size: 24px;
         font-weight: bold;
         text-align: center;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
       }
       .subtitle {
         text-align: center;
         opacity: 0.8;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         margin: 0;
       }
       .loading-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         font-size: 18px;
       }
 
@@ -698,31 +701,31 @@ export class MyGivingWidget extends MPNextWidget {
       }
 
       .body {
-        padding: 20px;
+        padding: var(--_nw-space-5);
       }
 
       .controls-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 16px;
+        gap: var(--_nw-space-3);
+        margin-bottom: var(--_nw-space-4);
       }
       .year-nav-btn {
-        padding: 8px 14px;
-        background: white;
-        color: #004C97;
-        font-size: 14px;
+        padding: var(--_nw-space-2) 14px;
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-primary);
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
         cursor: pointer;
         font-family: inherit;
         white-space: nowrap;
         transition: all 0.15s;
       }
       .year-nav-btn:hover {
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
         background: rgba(0, 76, 151, 0.04);
       }
       .year-nav-btn.disabled {
@@ -730,39 +733,39 @@ export class MyGivingWidget extends MPNextWidget {
         cursor: not-allowed;
       }
       .year-nav-btn.disabled:hover {
-        border-color: #e5e7eb;
-        background: white;
+        border-color: var(--_nw-color-border);
+        background: var(--_nw-color-surface);
       }
       .month-select {
         flex: 1;
-        padding: 9px 12px;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        font-size: 14px;
+        padding: 9px var(--_nw-space-3);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
         font-family: inherit;
-        color: #2D2926;
-        background: white;
+        color: var(--_nw-color-text);
+        background: var(--_nw-color-surface);
         outline: none;
         cursor: pointer;
         transition: border-color 0.15s;
       }
       .month-select:focus {
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
       }
 
       .soft-toggle-row {
         display: flex;
         align-items: center;
-        gap: 8px;
-        font-size: 14px;
-        color: #474747;
-        margin-bottom: 16px;
+        gap: var(--_nw-space-2);
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text-subtle);
+        margin-bottom: var(--_nw-space-4);
         cursor: pointer;
       }
       .soft-toggle-row input {
         width: 16px;
         height: 16px;
-        accent-color: #004C97;
+        accent-color: var(--_nw-color-primary);
         cursor: pointer;
       }
 
@@ -770,42 +773,42 @@ export class MyGivingWidget extends MPNextWidget {
         display: flex;
         align-items: baseline;
         justify-content: space-between;
-        padding: 16px;
+        padding: var(--_nw-space-4);
         background: #f9fafb;
-        border-radius: 8px;
-        border-left: 3px solid #F1BE48;
-        margin-bottom: 24px;
+        border-radius: var(--_nw-radius);
+        border-left: 3px solid var(--_nw-color-accent);
+        margin-bottom: var(--_nw-space-6);
       }
       .total-label {
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
-        color: #002855;
+        color: var(--_nw-color-secondary);
         text-transform: uppercase;
         letter-spacing: 0.03em;
       }
       .total-amount {
         font-size: 28px;
         font-weight: 700;
-        color: #004C97;
+        color: var(--_nw-color-primary);
       }
 
       .graphs-container {
         display: flex;
         flex-wrap: wrap;
-        gap: 16px;
-        margin-bottom: 24px;
+        gap: var(--_nw-space-4);
+        margin-bottom: var(--_nw-space-6);
       }
       .chart-card {
         flex: 1 1 280px;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 16px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
+        padding: var(--_nw-space-4);
       }
       .chart-title {
-        font-size: 14px;
-        font-weight: 700;
-        color: #002855;
-        margin-bottom: 12px;
+        font-size: var(--_nw-font-size-base);
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
+        margin-bottom: var(--_nw-space-3);
         text-transform: uppercase;
         letter-spacing: 0.03em;
       }
@@ -815,17 +818,17 @@ export class MyGivingWidget extends MPNextWidget {
         display: block;
       }
       .chart-bar {
-        fill: #009CDE;
+        fill: var(--_nw-color-info);
         transition: fill 0.15s;
       }
       .chart-month:hover .chart-bar,
       .chart-month--selected .chart-bar {
-        fill: #004C97;
+        fill: var(--_nw-color-primary);
       }
       .chart-value {
         font-size: 8px;
         font-weight: 600;
-        fill: #002855;
+        fill: var(--_nw-color-secondary);
         font-family: ui-sans-serif, system-ui, sans-serif;
       }
       .chart-month--future .chart-axis-label {
@@ -849,7 +852,7 @@ export class MyGivingWidget extends MPNextWidget {
       }
       .chart-empty {
         text-align: center;
-        padding: 24px 8px;
+        padding: var(--_nw-space-6) var(--_nw-space-2);
         color: #9E9E9E;
         font-size: 13px;
       }
@@ -857,7 +860,7 @@ export class MyGivingWidget extends MPNextWidget {
       .doughnut-wrap {
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: var(--_nw-space-4);
         flex-wrap: wrap;
       }
       .doughnut-svg {
@@ -875,9 +878,9 @@ export class MyGivingWidget extends MPNextWidget {
       .legend-item {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         font-size: 13px;
-        color: #474747;
+        color: var(--_nw-color-text-subtle);
       }
       .legend-swatch {
         width: 12px;
@@ -891,34 +894,34 @@ export class MyGivingWidget extends MPNextWidget {
       }
 
       .donations-section {
-        margin-top: 8px;
+        margin-top: var(--_nw-space-2);
       }
       .section-label {
         font-size: 16px;
-        font-weight: 700;
-        color: #002855;
-        margin-bottom: 8px;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
+        margin-bottom: var(--_nw-space-2);
       }
       .list-subtitle {
         font-size: 12px;
         color: rgba(45, 41, 38, 0.6);
-        line-height: 1.5;
-        margin: 0 0 8px;
+        line-height: var(--_nw-line-height);
+        margin: 0 0 var(--_nw-space-2);
       }
       .donation-list {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
         overflow: hidden;
-        margin-top: 8px;
+        margin-top: var(--_nw-space-2);
       }
       .donation-row {
         display: grid;
         grid-template-columns: 110px 1fr 100px;
         align-items: center;
-        gap: 12px;
-        padding: 12px 16px;
-        font-size: 14px;
-        color: #2D2926;
+        gap: var(--_nw-space-3);
+        padding: var(--_nw-space-3) var(--_nw-space-4);
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text);
         border-bottom: 1px solid #f3f4f6;
       }
       .donation-row:last-child {
@@ -939,7 +942,7 @@ export class MyGivingWidget extends MPNextWidget {
       .badge-group {
         display: inline-flex;
         flex-wrap: wrap;
-        gap: 4px;
+        gap: var(--_nw-space-1);
         margin-left: 6px;
         vertical-align: middle;
       }
@@ -951,7 +954,7 @@ export class MyGivingWidget extends MPNextWidget {
       .badge {
         display: inline-flex;
         align-items: center;
-        padding: 2px 8px;
+        padding: 2px var(--_nw-space-2);
         border-radius: 9999px;
         font-size: 10px;
         font-weight: 600;
@@ -969,63 +972,63 @@ export class MyGivingWidget extends MPNextWidget {
       }
       .badge-nondeductible {
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
       }
 
       .empty-state {
         text-align: center;
-        padding: 40px 20px;
+        padding: 40px var(--_nw-space-5);
         color: #9E9E9E;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
       }
 
       .show-more-section {
         text-align: center;
-        margin-top: 16px;
+        margin-top: var(--_nw-space-4);
       }
       .show-more-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: white;
-        color: #004C97;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-primary);
         font-weight: 600;
         font-size: 13px;
         letter-spacing: 0.03em;
-        border: 1px solid #004C97;
-        border-radius: 8px;
+        border: var(--_nw-border-width) solid var(--_nw-color-primary);
+        border-radius: var(--_nw-radius);
         cursor: pointer;
         font-family: inherit;
         transition: all 0.15s;
       }
       .show-more-btn:hover {
-        background: #004C97;
-        color: white;
+        background: var(--_nw-color-primary);
+        color: var(--_nw-color-on-primary);
       }
 
       .retry-section {
-        padding: 20px;
+        padding: var(--_nw-space-5);
         text-align: center;
       }
       .retry-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .retry-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       @media (max-width: 640px) {
         .header, .body {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .controls-row {
           flex-wrap: wrap;
@@ -1039,8 +1042,8 @@ export class MyGivingWidget extends MPNextWidget {
         }
         .donation-row {
           grid-template-columns: 90px 1fr 80px;
-          gap: 8px;
-          padding: 10px 12px;
+          gap: var(--_nw-space-2);
+          padding: 10px var(--_nw-space-3);
           font-size: 13px;
         }
         .total-amount {
