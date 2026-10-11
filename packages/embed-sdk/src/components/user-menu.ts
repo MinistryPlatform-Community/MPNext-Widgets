@@ -1388,10 +1388,15 @@ export class UserMenuWidget extends MPNextWidget {
         return `<div class="nw-tab-panel" data-panel="subscriptions">
           <next-subscriptions api-host="${this.escapeHtml(this.apiHost)}"></next-subscriptions>
         </div>`;
-      case "invoices":
+      case "invoices": {
+        // The Pay link is an anchor to the church's checkout page (C44); without
+        // a checkout-url the invoices tab lists invoices with no Pay affordance.
+        const checkoutUrl = this.getAttribute("invoices-checkout-url");
+        const checkoutAttr = checkoutUrl ? ` checkout-url="${this.escapeHtml(checkoutUrl)}"` : "";
         return `<div class="nw-tab-panel" data-panel="invoices">
-          <next-my-invoices api-host="${this.escapeHtml(this.apiHost)}"></next-my-invoices>
+          <next-my-invoices api-host="${this.escapeHtml(this.apiHost)}"${checkoutAttr}></next-my-invoices>
         </div>`;
+      }
     }
   }
 
