@@ -2,7 +2,7 @@
 
 **Status:** proposed, not started
 **Author:** drafted 2026-09-09
-**Closes:** comparison findings C67 and C73 (see `.claude/TODO/Comparison/README.md`)
+**Closes:** comparison findings C67 and C73
 **Ships:** `en`, `es`, `pt-BR`
 
 Every string in every `next-*` widget is a hardcoded English literal, and all 43
@@ -608,7 +608,7 @@ because both drafts looked plausible:
 - **`{{userLocale}}` is not forwarded to payment vendors.** MP's
   `mpp-smart-link` passed the chosen locale out to the giving vendor; a visitor
   who picks Spanish here still lands on the vendor's default language. Needs the
-  vendor's parameter contract; tracked with C74.
+  vendor's parameter contract. Not planned: smart-link has no `next-*` counterpart.
 - **`user-menu.ts` in `legacy` mode.** It renders MP's own `<mpp-user-login>`,
   whose copy comes from `GetLabels` in *MP's* locale. A Spanish page can show a
   Spanish menu around an English MP login control. `dual`/`hardened` uses our own

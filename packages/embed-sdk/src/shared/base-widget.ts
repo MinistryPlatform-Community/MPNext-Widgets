@@ -300,7 +300,7 @@ export abstract class MPNextWidget extends HTMLElement {
    * Inject the widget's CSS into its Shadow DOM.
    *
    * Uses a constructable stylesheet when available, with a `<style>` tag as the
-   * fallback. **Never assigns over `adoptedStyleSheets`** (C68): the widget's
+   * fallback. **Never assigns over `adoptedStyleSheets`**: the widget's
    * own sheet is added once, placed *before* any sheet already there, and a
    * later call replaces only that sheet. Anything a host page adopted into the
    * open shadow root therefore survives re-injection and re-render, and — being

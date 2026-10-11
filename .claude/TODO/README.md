@@ -41,9 +41,7 @@ match the Node 24 runtime (Vercel runs 24).
 | 48 | `48-comparison-run-test-records-cleanup.md` | clutter; needs a Platform UI user | 10 min |
 
 Items 41–48 are not dependency upgrades: they are the open follow-ups from the
-comparison-remediation epic (2026-10-11). The epic's own still-open findings — C68 (the
-remaining theming channels) and C74 / C75 (smart-link / smart-frame, waiting on an
-auth-design decision) — live in `Comparison/`; see `Comparison/README.md`.
+comparison-remediation epic (2026-10-11).
 
 **Do not redo, from deleted items:**
 - Item 40 (done 2026-10-11, models regenerated): a column MP's table metadata lists as

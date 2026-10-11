@@ -1,5 +1,5 @@
 /**
- * Guard: no widget stylesheet writes a raw brand value (C68, W7).
+ * Guard: no widget stylesheet writes a raw brand value.
  *
  * The `--nw-*` contract (`theme-tokens.ts`) is only worth publishing if every
  * widget actually reads it — a half-converted token set is worse than none,

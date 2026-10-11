@@ -77,7 +77,6 @@ control computes to MP's default blue, not brand `#004C97`. So the build maintai
 plumbing. One trap for the fix in step 2: `window.__nextEmbedCSSUrl` is set only by the
 generated production loader, so a naive fix works in production and silently no-ops under
 `vite dev`. Derive the URL from `api-host` / `import.meta.url` instead, or fall back to it.
-This is distinct from C68, which is about styling *our* widgets rather than MP's.
 
 ## Done when
 

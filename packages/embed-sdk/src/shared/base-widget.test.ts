@@ -341,12 +341,12 @@ describe("MPNextWidget", () => {
       }
     });
 
-    // C68 part 1: the widget's sheet must never clobber one a host page adopted
+    // The widget's sheet must never clobber one a host page adopted
     // into the open shadow root — the previous `adoptedStyleSheets = [sheet]`
     // assignment threw every host override away on the next inject.
     /**
      * jsdom implements neither `adoptedStyleSheets` nor `CSSStyleSheet.replace`,
-     * so without this the C68 tests would silently exercise the `<style>`
+     * so without this the adopted-sheet tests would silently exercise the `<style>`
      * fallback. A WeakMap-backed accessor is all the code under test touches.
      */
     function polyfillAdoptedStyleSheets(): () => void {
@@ -384,7 +384,7 @@ describe("MPNextWidget", () => {
       restorePolyfill = null;
     });
 
-    it("keeps a host-adopted sheet across re-injection and render (C68)", () => {
+    it("keeps a host-adopted sheet across re-injection and render", () => {
       restorePolyfill = polyfillAdoptedStyleSheets();
       const widget = makeWidget();
       document.body.appendChild(widget);

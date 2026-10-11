@@ -31,7 +31,7 @@ are already conclusive without a browser.
 >
 > When re-measuring, use the **current** attribute names:
 > - README, "Migrating from MPWidgets.js";
-> - `.claude/TODO/Comparison/README.md`, the item ledger.
+> - the item ledger, now only in git history (`.claude/TODO/Comparison/README.md`).
 
 ---
 

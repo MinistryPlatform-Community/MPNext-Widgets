@@ -19,8 +19,9 @@ ls src/app/api/embed/ ; ls src/services/*.ts | grep -v '\.test\.'
 Snapshot at 2026-10-11 (re-measured): **33** registered `next-*` elements, 32 demo
 pages, 33 `src/app/api/embed/` route directories, 32 services.
 - These are the same numbers as on 2026-09-11. The comparison-remediation epic
-  (closed 2026-10-11; see `.claude/TODO/Comparison/README.md`) fixed widgets rather than
-  adding them.
+  (closed 2026-10-11) fixed widgets rather than adding them. `C`-numbers in code comments
+  (C79, C81, …) name its findings; their write-ups are in git history
+  (`git log --all -- .claude/TODO/Comparison`).
 - What it added went into `shared/` primitives, base-class conventions, three
   `src/services/_shared/` helpers and guard tests. All of these are covered below.
 
@@ -122,7 +123,7 @@ under, so a fixing commit lowers or deletes its own entry. Never add to a ratche
 |---|---|
 | `src/lib/no-template-concat.test.ts` | two template literals are joined with `+` (see Toolchain) |
 | `packages/embed-sdk/src/components/observed-attributes.test.ts` | an `observedAttributes` entry is not kebab-case. `attributeAliases` values are exempt, and the `LEGACY_SPELLINGS` ratchet is empty (C79). |
-| `packages/embed-sdk/src/shared/theme-tokens.test.ts` | a widget stylesheet writes a raw brand hex or the token font stack instead of a `--_nw-*` token. The ratchet reached zero and is now a plain assertion (C68). |
+| `packages/embed-sdk/src/shared/theme-tokens.test.ts` | a widget stylesheet writes a raw brand hex or the token font stack instead of a `--_nw-*` token. The ratchet reached zero and is now a plain assertion. |
 | `packages/embed-sdk/src/components/no-raw-error-message.test.ts` | a catch block renders a caught `.message`, or a translated message is thrown as a plain `Error` instead of a `WidgetError` |
 | `packages/embed-sdk/src/components/render-binds-listeners.test.ts` | `this.render();` is directly followed by `this.attach…Listeners();`. `render()` must re-bind its own listeners, because a locale switch re-renders through `render()` alone. |
 | `src/lib/no-silent-empty-catch.test.ts` | a `catch` under `src/services/**` returns an empty result (`[]`, `null`, `{}`, a bare `return`, …) without a `console.*` call (C20) |
@@ -351,8 +352,8 @@ one is wrong, fix it in `shared/`.
 
 `shared/theme-tokens.ts` declares 36 public tokens: colour, type, shape, space and
 controls. `injectStyles()` prepends them to every widget sheet. README "Theming" documents
-them as a **supported, versioned API**. C68 is only partly done: `part=`, a `custom-css`
-attribute and a domain stylesheet are still open (`.claude/TODO/Comparison/C68-*`). The
+them as a **supported, versioned API**. `part=` hooks, a `custom-css` attribute and a
+domain stylesheet are not planned. The
 raw-value → token table for converting a stylesheet is in
 `.claude/references/widget-building-blocks.md` §2.
 
@@ -693,7 +694,7 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `packages/embed-sdk/src/shared/form-validation.ts` | Shared widget form validation (no native `reportValidity` popup), plus `field()` / `fieldId()`: a labelled control with `tel` autocomplete and inputmode |
 | `packages/embed-sdk/src/shared/card-link.ts` | `cardLink` / `cardButton` / `bindCardSelect` / `isModifiedClick`: result cards as real anchors (C05/C10/C22/C45) |
 | `packages/embed-sdk/src/shared/dialog-focus.ts` | `dialogFocus(container, trigger, opts)`: Tab trap that descends open shadow roots, Escape, focus return (C08/C54) |
-| `packages/embed-sdk/src/shared/theme-tokens.ts` | The public `--nw-*` token table and the `--_nw-*` resolved block that `injectStyles()` prepends (C68) |
+| `packages/embed-sdk/src/shared/theme-tokens.ts` | The public `--nw-*` token table and the `--_nw-*` resolved block that `injectStyles()` prepends |
 | `packages/embed-sdk/src/shared/html.ts` | `escapeHtml` / `escapeAttr` / `renderAttrs` |
 | `packages/embed-sdk/src/components/checkout-status.ts` | The only payment `status` → tone/copy mapper, shared by `next-checkout` and `next-checkout-complete` (C41) |
 | `packages/embed-sdk/src/components/giving-shared.ts` | Giving-family `givingSignedOut()` skeleton under the sign-in panel; re-exports `headingTag()` from `shared/heading-level.ts` |
@@ -704,7 +705,7 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `playwright.config.ts` | Three e2e projects: `widget` on :5173, plus `widget-legacy` on :5174 and `widget-dual` on :5175, each pinned through the env passed to `next dev` |
 | `e2e/widget/auth-only-widgets-signed-out.spec.ts`, `signed-in-invoice-participants.spec.ts`, `a11y-probe.spec.ts` | W8's class tests: the signed-out panel in both modes (C81), signed-in invoice reads (C80), and an accessibility probe over every demo page |
 | `src/lib/no-silent-empty-catch.test.ts`, `src/services/mp-url-length.test.ts`, `src/services/mp-column-names.test.ts` | Service guards: logged empty catches (C20), the IIS URL limit (C50), and MP column names in writes and selects (C40/C83) |
-| `packages/embed-sdk/src/components/observed-attributes.test.ts`, `render-binds-listeners.test.ts`, `shared/theme-tokens.test.ts` | SDK guards: kebab-case attributes (C79), `render()` owning its listener re-bind, and the brand-value ratchet (C68) |
+| `packages/embed-sdk/src/components/observed-attributes.test.ts`, `render-binds-listeners.test.ts`, `shared/theme-tokens.test.ts` | SDK guards: kebab-case attributes (C79), `render()` owning its listener re-bind, and the brand-value guard |
 | `packages/embed-sdk/src/components/user-menu.ts` | Mode branches: `legacy` (MPWidgets.js `<mpp-user-login>`, REAUTH) vs `dual`/`hardened` (own Sign In, `/auth/me`, `/auth/logout`). `watchMpLoginRegistration()` re-inserts `<mpp-user-login>` until MPWidgets.js registers it -- both `legacy` and `dual` + `prefer-mp-login` bootstrap through that one watch (see MP widget styling below) |
 | `packages/embed-sdk/src/components/full-calendar.ts` | Largest widget; composes the five `full-calendar-*` sub-modules and carries `FC_ASSETS` -- the four pinned FullCalendar 7 URLs and their hashes |
 | `packages/embed-sdk/vite.config.ts` | Vite library mode (ES output only) + the canonical customer setup snippet injected into every demo page |
@@ -713,7 +714,6 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `WIDGET-AUTH-MIGRATION-PLAN.md` | Legacy → hardened migration plan, phases, per-customer cutover runbook |
 | `public/embed-sdk/mp-widget-overrides.css` | Brand CSS for MP Shadow DOM widgets |
 | `.claude/TODO/README.md` | Numbered deferred work + what was already attempted and reverted -- read before a dependency bump |
-| `.claude/TODO/Comparison/README.md` | Closed legacy-vs-next comparison: every `C`-number with its outcome, plus the three still open (C68, C74, C75) |
 | `.claude/references/widget-building-blocks.md` | Signatures and snippets for the shared widget primitives (sign-in panel, `cardLink`, `field`, `dialogFocus`, reconfigure, attribute aliases) and how to convert CSS onto the `--nw-*` tokens |
 | `.claude/references/ministryplatform.query-syntax.md` | MP REST API query syntax reference (`$filter`, `$select`, `_TABLE` traversal) |
 | `.claude/references/ministryplatform.datetimehandling.md` | How to send/receive MP datetimes safely via `DomainTimezoneService`, anti-patterns, Windows↔IANA mapping, test guidance |

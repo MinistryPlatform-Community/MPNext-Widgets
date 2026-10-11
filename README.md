@@ -1038,7 +1038,7 @@ keeps the default look and ignores the tokens. It does not break.
 `next-full-calendar` already takes its brand colours (primary, secondary,
 error, text) from the tokens.
 
-**Not available yet**, and tracked under C68: `::part()` hooks for repositioning
+**Not available, and not planned:** `::part()` hooks for repositioning
 structural elements, a per-element `custom-css` stylesheet attribute, and a
 domain-wide stylesheet applied to every widget automatically (legacy
 `GetCustomStyles`). A stylesheet adopted into a widget's open shadow root does
@@ -1852,8 +1852,7 @@ widgets' own labels are available in Spanish and Portuguese.
 This section covers moving a page from a legacy `mpp-*` widget to its `next-*` counterpart.
 It is about what changes for the widgets themselves. Sign-in is a separate topic: see
 [Cutover Runbook](#cutover-runbook) and the per-widget "Migrating from…" sections above
-(prayer, newsletter, pre-check, about-me, mission trips). The full side-by-side comparison
-behind these notes is indexed in `.claude/TODO/Comparison/README.md` (details in git history).
+(prayer, newsletter, pre-check, about-me, mission trips).
 
 > ### The RSS reader has no replacement
 >
@@ -1871,7 +1870,7 @@ behind these notes is indexed in `.claude/TODO/Comparison/README.md` (details in
 | Legacy | Status | What to do |
 |---|---|---|
 | `mpp-rss-reader` | **Won't port** | See above. |
-| `mpp-smart-link`, `mpp-smart-frame` | **Deferred.** Both would merge a signed-in member's details into a URL handed to a third party. That needs an auth-design decision first. | Keep MPWidgets.js on those pages for now. `/widgets/giving.aspx` is a smart-link, not a payment widget. |
+| `mpp-smart-link`, `mpp-smart-frame` | **Not planned.** Both would merge a signed-in member's details into a URL handed to a third party. | Keep MPWidgets.js on those pages. `/widgets/giving.aspx` is a smart-link, not a payment widget. |
 | `mpp-user-label` | **Won't do** | Write the word on your page yourself. To rename a label across every widget, use [`MPNextEmbed.setMessages()`](#renaming-labels). |
 
 A page that keeps MPWidgets.js for one of these runs both login models side by side. Sign-in

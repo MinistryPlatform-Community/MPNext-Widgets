@@ -1,5 +1,5 @@
 /**
- * The `--nw-*` theming contract (C68, W7a).
+ * The `--nw-*` theming contract.
  *
  * Custom properties inherit across the Shadow DOM boundary; selectors do not.
  * So a documented token set is the supported way for a church to re-brand
