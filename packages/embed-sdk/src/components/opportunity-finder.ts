@@ -1,5 +1,6 @@
 import { MPNextWidget } from "../shared/base-widget";
 import { parseWallClock } from "../i18n";
+import { cardLink, bindCardSelect, CARD_LINK_STYLES } from "../shared/card-link";
 
 interface OpportunitySearchResult {
   id: number;
@@ -89,7 +90,7 @@ export class OpportunityFinderWidget extends MPNextWidget {
   }
 
   connectedCallback() {
-    this.injectStyles(this.getStyles());
+    this.injectStyles(this.getStyles() + CARD_LINK_STYLES);
     this.seedFromAttributes();
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish; the fetch hides inside the loading state
@@ -240,13 +241,9 @@ export class OpportunityFinderWidget extends MPNextWidget {
       retry.addEventListener("click", () => this.retryLoad());
     }
 
-    this.root.querySelectorAll<HTMLElement>("[data-opportunity-id]").forEach((el) => {
-      el.addEventListener("click", () => {
-        const id = Number(el.getAttribute("data-opportunity-id"));
-        this.emit("opportunitySelected", { opportunityId: id });
-        const url = this.buildDetailUrl(id);
-        if (url) window.location.href = url;
-      });
+    // Emit only; the card's own anchor navigates (C22).
+    bindCardSelect(this.root, ".nw-of-card", (card) => {
+      this.emit("opportunitySelected", { opportunityId: Number(card.dataset.opportunityId) });
     });
   }
 
@@ -387,7 +384,7 @@ export class OpportunityFinderWidget extends MPNextWidget {
   }
 
   private renderCard(o: OpportunitySearchResult): string {
-    const hasLink = !!this.getAttribute("target-url");
+    const href = this.buildDetailUrl(o.id);
     const img = o.imageUrl
       ? `<img class="nw-of-card-img" src="${this.escapeAttr(o.imageUrl)}" alt="" loading="lazy">`
       : `<div class="nw-of-card-img nw-of-card-img--placeholder">${this.handsSvg()}</div>`;
@@ -409,17 +406,24 @@ export class OpportunityFinderWidget extends MPNextWidget {
       ? `<div class="nw-of-card-desc">${this.escapeHtml(this.truncate(o.description, 160))}</div>`
       : "";
 
-    return `
-      <div class="nw-of-card" data-opportunity-id="${o.id}" role="${hasLink ? "link" : "article"}" ${hasLink ? 'tabindex="0"' : ""}>
+    // C22: a real `<a href>` when `target-url` is set (Enter, middle-click,
+    // copy-link and the accessible name all come from the browser), else a
+    // plain `role="article"`. Never `role="link"` + `tabindex` on a div again.
+    const body = `
         <div class="nw-of-card-imgwrap">${img}${badge}</div>
         <div class="nw-of-card-body">
           <h3 class="nw-of-card-title">${this.escapeHtml(o.title)}</h3>
           ${subtitleHtml}
           ${pills}
           ${description}
-          ${hasLink ? `<span class="nw-of-card-cta">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
-        </div>
-      </div>`;
+          ${href ? `<span class="nw-of-card-cta">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
+        </div>`;
+    return cardLink({
+      href,
+      className: "nw-of-card",
+      body,
+      attrs: { "data-opportunity-id": o.id },
+    });
   }
 
   /** Compose "Location · Mondays · 9:00 AM" style subtitle. */
@@ -506,9 +510,8 @@ export class OpportunityFinderWidget extends MPNextWidget {
 
       .nw-of-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
       .nw-of-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: border-color 0.15s, box-shadow 0.15s; }
-      .nw-of-card[role="link"] { cursor: pointer; }
-      .nw-of-card[role="link"]:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
-      .nw-of-card[role="link"]:focus-visible { outline: 2px solid #004C97; outline-offset: 2px; }
+      a.nw-of-card { cursor: pointer; }
+      a.nw-of-card:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
       .nw-of-card-imgwrap { position: relative; }
       .nw-of-card-img { width: 100%; height: 160px; object-fit: cover; display: block; }
       .nw-of-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #9ca3af; height: 160px; }
