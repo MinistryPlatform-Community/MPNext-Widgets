@@ -4,6 +4,10 @@
  *
  * Same ownership rule as `checkout/invoice`: anonymous holders of the GUID may
  * pay it; a signed-in payer may pay only an invoice they purchased (C80 / C42).
+ *
+ * The token is single-use (C43): it carries a `jti` recorded open in the KV
+ * store, spent by the first successful `pay/response`. An amount above the
+ * balance due is refused here, before anything reaches a processor.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -17,6 +21,8 @@ import {
 import { errorResponse } from "@/lib/embed/anonymous-write";
 import { InvoiceService, resolveInvoiceOwner } from "@/services/invoiceService";
 import { CheckoutService } from "@/services/checkoutService";
+import { exceedsBalance } from "@/services/paymentService";
+import { getPublicUrl } from "../../auth/_lib/auth-route-helpers";
 import type { PaymentRequestToken } from "@mpnext/types";
 
 export async function GET(req: NextRequest) {
@@ -61,12 +67,26 @@ export async function GET(req: NextRequest) {
         ? amountParam
         : invoice.balanceDue;
 
-    const requestToken: PaymentRequestToken = {
+    // The overpay guard that matters (C43): the form's cap is a courtesy.
+    // 422 is the widget's cue to reload the invoice — the balance most often
+    // moved under it (a payment in another tab) rather than being tampered.
+    if (exceedsBalance(amount, invoice.balanceDue)) {
+      return errorResponse(
+        "invalid_request",
+        "Amount exceeds the invoice balance due",
+        422,
+        cors
+      );
+    }
+
+    const requestToken: Omit<PaymentRequestToken, "jti"> = {
       invoiceId: invoice.invoiceGuid,
       amount,
       payorContactId: invoice.payorContactId,
       returnUrl,
-      paymentNotifyUrl: `${origin}/api/embed/payment/notify`,
+      // The vendor calls *this* host, not the church page that embedded the
+      // widget — the request origin is the latter.
+      paymentNotifyUrl: `${getPublicUrl(req)}/api/embed/payment/notify`,
       firstName: invoice.payor.firstName,
       lastName: invoice.payor.lastName,
       email: invoice.payor.email,
@@ -80,7 +100,7 @@ export async function GET(req: NextRequest) {
       fundId: null,
     };
 
-    const token = CheckoutService.getInstance().buildRequestToken(requestToken);
+    const token = await CheckoutService.getInstance().issueRequestToken(requestToken);
 
     return NextResponse.json({ token }, { status: 200, headers: cors });
   } catch (error) {

@@ -5,12 +5,15 @@
  *   - **C41** — a declined card is coral and keeps the Pay form; an error is
  *     coral, never the amber "processing" banner, and holds the form back
  *     (the card may have been charged); both widgets read one mapper.
+ *   - **C43** — the other-amount cap, and next-pay's designed "already used"
+ *     state (no Try Again: it would fail identically).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { getAuthSession } from "../shared/auth-session";
 import { __resetLocaleSession } from "../i18n";
 import "./checkout";
 import "./checkout-complete";
+import "./pay";
 
 const HOST = "https://widgets.example.com";
 const PAGE = "/checkout";
@@ -191,3 +194,59 @@ describe("<next-checkout-complete> payment outcome (C41)", () => {
     expect(shadow(el).querySelector(".nw-cc-card")).toHaveClass("nw-cc-card--pending");
   });
 });
+
+describe("single-use and overpay (C43)", () => {
+  beforeEach(() => {
+    setup();
+    window.history.replaceState(null, "", PAGE);
+  });
+  afterEach(() => {
+    document.body.innerHTML = "";
+    window.history.replaceState(null, "", PAGE);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("next-checkout caps 'other amount' at the balance and never asks for a token", async () => {
+    const fn = mockFetch((url) =>
+      url.includes("/checkout/invoice") ? jsonResponse({ invoice: invoice() }) : undefined,
+    );
+    const el = await mountCheckout('payment-processor-url="https://pay.example.com/pay"');
+    const other = shadow(el).querySelector<HTMLInputElement>('input[value="other"]')!;
+    other.checked = true;
+    other.dispatchEvent(new Event("change"));
+    const input = shadow(el).querySelector<HTMLInputElement>("#nw-other-amount")!;
+    input.value = "999999";
+    input.dispatchEvent(new Event("input"));
+    shadow(el).querySelector<HTMLFormElement>("#nw-co-pay-form")!.requestSubmit();
+
+    await vi.waitFor(() => expect(text(el)).toContain("cannot be more than the balance due"));
+    expect(fn.mock.calls.some(([u]) => String(u).includes("payment-token"))).toBe(false);
+  });
+
+  it("next-checkout hides a deposit that is not less than the balance", async () => {
+    mockFetch((url) =>
+      url.includes("/checkout/invoice")
+        ? jsonResponse({ invoice: invoice({ depositDue: 50, balanceDue: 40 }) })
+        : undefined,
+    );
+    const el = await mountCheckout();
+    expect(shadow(el).querySelector('input[value="deposit"]')).toBeNull();
+  });
+
+  it("next-pay renders the designed 'already used' state, with no Try Again", async () => {
+    window.history.replaceState(null, "", "/pay?token=spent");
+    mockFetch((url) =>
+      url.includes("/pay/unpack")
+        ? jsonResponse({ error: "verification_used", message: "used" }, 409)
+        : undefined,
+    );
+    document.body.innerHTML = `<next-pay api-host="${HOST}"></next-pay>`;
+    const el = document.body.firstElementChild as HTMLElement;
+    await vi.waitFor(() => expect(shadow(el).querySelector(".nw-pay-link")).not.toBeNull());
+    expect(text(el)).toContain("already been used");
+    expect(shadow(el).querySelector('[data-action="retry"]')).toBeNull();
+    expect(shadow(el).querySelector("#nw-pay-form")).toBeNull();
+  });
+});
+

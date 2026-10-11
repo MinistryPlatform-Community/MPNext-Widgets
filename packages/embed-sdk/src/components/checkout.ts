@@ -249,6 +249,11 @@ export class CheckoutWidget extends MPNextWidget {
           if (isNaN(n) || n <= 0) {
             return this.t("checkout.invalidAmount");
           }
+          // A courtesy cap (C43) — `checkout/payment-token` enforces it.
+          const due = this.invoice?.balanceDue ?? 0;
+          if (Math.round(n * 100) > Math.round(due * 100)) {
+            return this.t("checkout.amountTooHigh", { amount: this.fmt.currency(due) });
+          }
           return null;
         },
       },
@@ -300,6 +305,17 @@ export class CheckoutWidget extends MPNextWidget {
           this.guid,
         )}&amount=${encodeURIComponent(String(amount))}&returnUrl=${returnUrl}`,
       );
+      if (res.status === 422) {
+        // The server refused an amount above the balance due (C43). The form
+        // already caps it, so the balance has most likely moved under us — a
+        // payment from another tab. Reload and say so.
+        this.processing = false;
+        await this.loadInvoice();
+        this.error = this.t("checkout.balanceChanged");
+        this.render();
+        this.attachListeners();
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(this.errorText(data));
@@ -483,7 +499,10 @@ export class CheckoutWidget extends MPNextWidget {
   }
 
   private renderPaySection(inv: CheckoutInvoice): string {
-    const hasDeposit = inv.depositDue != null && inv.depositDue > 0;
+    // A deposit at or above what is left is not a deposit any more — and
+    // offering it would ask for more than the balance (C43).
+    const hasDeposit =
+      inv.depositDue != null && inv.depositDue > 0 && inv.depositDue < inv.balanceDue;
     return `
       <form id="nw-co-pay-form" class="nw-co-pay" novalidate>
         <div class="nw-co-pay-title">${this.escapeHtml(this.t("checkout.paymentAmount"))}</div>

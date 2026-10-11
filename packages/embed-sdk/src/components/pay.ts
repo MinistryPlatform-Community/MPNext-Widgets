@@ -41,6 +41,8 @@ export class PayWidget extends MPNextWidget {
   private error: string | null = null;
   private submitting = false;
   private formError: string | null = null;
+  /** Set when the request token is spent or expired (C43). */
+  private linkState: "used" | "expired" | null = null;
 
   static get observedAttributes() {
     return ["api-host", "token"];
@@ -112,6 +114,7 @@ export class PayWidget extends MPNextWidget {
       );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (this.isLinkState(data)) return;
         throw new Error(this.errorText(data));
       }
       const data: { request: PaymentRequestToken } = await res.json();
@@ -156,6 +159,12 @@ export class PayWidget extends MPNextWidget {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (this.isLinkState(data)) {
+          this.submitting = false;
+          this.render();
+          this.attachListeners();
+          return;
+        }
         throw new Error(this.errorText(data, "errors.payment_declined"));
       }
       const data: { token: string } = await res.json();
@@ -171,6 +180,49 @@ export class PayWidget extends MPNextWidget {
       this.render();
       this.attachListeners();
     }
+  }
+
+  /**
+   * Recognise the single-use outcomes (C43) by their wire code and switch to
+   * the designed "link" state. Returns false for anything else, which stays an
+   * ordinary error.
+   */
+  private isLinkState(body: unknown): boolean {
+    const code = (body as { error?: unknown } | null)?.error;
+    if (code === "verification_used") this.linkState = "used";
+    else if (code === "verification_expired") this.linkState = "expired";
+    else return false;
+    this.emit("paymentLinkUnavailable", { reason: this.linkState });
+    return true;
+  }
+
+  /** The invoice page without any `token`, for the "return to invoice" link. */
+  private invoiceUrl(): string | null {
+    if (!this.request?.returnUrl) return null;
+    try {
+      const url = new URL(this.request.returnUrl, window.location.href);
+      url.searchParams.delete("token");
+      return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private renderLinkState(): string {
+    const used = this.linkState === "used";
+    const href = this.invoiceUrl();
+    return `
+      <div class="nw-pay-state nw-pay-link" role="status">
+        <p class="nw-pay-link-title">${this.escapeHtml(
+          this.t(used ? "pay.linkUsedTitle" : "pay.linkExpiredTitle"),
+        )}</p>
+        <p>${this.escapeHtml(this.t(used ? "pay.linkUsed" : "pay.linkExpired"))}</p>
+        ${
+          href
+            ? `<a class="nw-pay-btn" href="${this.escapeAttr(href)}">${this.escapeHtml(this.t("pay.returnToInvoice"))}</a>`
+            : ""
+        }
+      </div>`;
   }
 
   private buildReturnUrl(returnUrl: string, responseToken: string): string {
@@ -207,6 +259,13 @@ export class PayWidget extends MPNextWidget {
   }
 
   render() {
+    // A spent or expired link is a designed state, not an error: no Try
+    // Again (it would fail identically), and a way back to the invoice.
+    if (this.linkState) {
+      this.root.innerHTML = this.shell(this.renderLinkState());
+      return;
+    }
+
     if (this.loading) {
       this.root.innerHTML = this.shell(`
         <div class="nw-pay-state">
@@ -324,6 +383,9 @@ export class PayWidget extends MPNextWidget {
       .nw-pay-spinner { animation: nw-pay-spin 1s linear infinite; color: #004C97; }
       @keyframes nw-pay-spin { to { transform: rotate(360deg); } }
       .nw-pay-error p { color: #b91c1c; margin: 0 0 12px; }
+      .nw-pay-link p { margin: 0; color: #474747; }
+      .nw-pay-link .nw-pay-link-title { font-size: 17px; font-weight: 700; color: #002855; }
+      .nw-pay-link a.nw-pay-btn { text-decoration: none; margin-top: 8px; }
 
       .nw-pay-summary { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }
       .nw-pay-summary-row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding: 4px 0; color: #474747; }

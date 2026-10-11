@@ -176,6 +176,8 @@ export const giving = {
     paymentUnconfirmedDetail: "We could not confirm your payment: {detail}",
     paymentDeclined: "Your payment was declined and nothing was charged. Please try another card.",
     paymentError: "We could not record your payment. Please contact us before trying again, so you are not charged twice.",
+    amountTooHigh: "The amount cannot be more than the balance due ({amount}).",
+    balanceChanged: "The balance on this invoice has changed. Please review it and try again.",
   },
 
   checkoutComplete: {
@@ -218,6 +220,11 @@ export const giving = {
     enterCard: "Please enter a card number.",
     enterExpiry: "Please enter the expiry date.",
     enterCvv: "Please enter the CVV.",
+    linkUsedTitle: "This payment link has already been used",
+    linkUsed: "Nothing more has been charged. Return to your invoice to see its current balance.",
+    linkExpiredTitle: "This payment link has expired",
+    linkExpired: "Nothing has been charged. Return to your invoice and start the payment again.",
+    returnToInvoice: "Return to invoice",
   },
 
   subscriptions: {

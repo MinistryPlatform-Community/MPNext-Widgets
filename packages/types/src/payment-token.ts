@@ -28,6 +28,11 @@ export const PaymentRequestTokenSchema = z.object({
   addressZip: z.string().nullable(),
   addressCountry: z.string().nullable(),
   fundId: z.number().nullable(),
+  /**
+   * Single-use id (C43). Open in the KV store from issue until the first
+   * successful submit; a spent or unknown `jti` cannot be unpacked or paid.
+   */
+  jti: z.string(),
 });
 export type PaymentRequestToken = z.infer<typeof PaymentRequestTokenSchema>;
 

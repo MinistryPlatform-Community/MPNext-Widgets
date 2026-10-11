@@ -149,6 +149,8 @@ export const ptBRGiving = {
       "Não conseguimos confirmar seu pagamento: {detail}",
     paymentDeclined: "Seu pagamento foi recusado e nada foi cobrado. Tente outro cartão.",
     paymentError: "Não conseguimos registrar seu pagamento. Entre em contato conosco antes de tentar novamente, para não ser cobrado duas vezes.",
+    amountTooHigh: "O valor não pode ser maior que o saldo devedor ({amount}).",
+    balanceChanged: "O saldo desta fatura mudou. Revise-o e tente novamente.",
   },
 
   checkoutComplete: {
@@ -188,6 +190,11 @@ export const ptBRGiving = {
     enterCard: "Informe o número do cartão.",
     enterExpiry: "Informe a data de validade.",
     enterCvv: "Informe o CVV.",
+    linkUsedTitle: "Este link de pagamento já foi usado",
+    linkUsed: "Nada mais foi cobrado. Volte à sua fatura para ver o saldo atual.",
+    linkExpiredTitle: "Este link de pagamento expirou",
+    linkExpired: "Nada foi cobrado. Volte à sua fatura e inicie o pagamento novamente.",
+    returnToInvoice: "Voltar à fatura",
   },
 
   subscriptions: {

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { getSessionStore } from "@/lib/embed/session-store";
 import type { PaymentRequestToken, PaymentResponseToken } from "@mpnext/types";
 
 /**
@@ -11,6 +12,13 @@ import type { PaymentRequestToken, PaymentResponseToken } from "@mpnext/types";
 
 const ISSUER = "ministryplatform.com";
 const TTL_SECONDS = 15 * 60;
+/** The ledger entry outlives the token slightly, so expiry decides first. */
+const REQUEST_KEY_SLACK_SECONDS = 60;
+
+/** `nw:kv:pay:req:<jti>` — present while the request token is unspent. */
+function requestKey(jti: string): string {
+  return `pay:req:${jti}`;
+}
 
 function getSigningKey(): string {
   const key = process.env.PAYMENT_JWT_SIGNING_KEY;
@@ -101,8 +109,46 @@ export class CheckoutService {
     return payload as T;
   }
 
-  public buildRequestToken(payload: PaymentRequestToken): string {
-    return this.encode(payload as unknown as Record<string, unknown>);
+  // ── Single-use request tokens (C43) ──────────────────────────────────────
+  //
+  // A request token used to be good for its whole 15 minutes: Back from the
+  // pay page and Forward again re-unpacked it, and every submit minted a fresh
+  // transaction code, so the `Transaction_Code` guard saw two distinct
+  // payments. Each token now carries a `jti` that is *open* in the KV store
+  // until the first successful submit spends it. A declined submit does not
+  // spend it, so the payer can try another card on the same page.
+
+  /**
+   * Sign a request token with a fresh `jti` and record it as open. Throws if
+   * the store is unreachable: an unrecorded token could never be spent, so it
+   * must not be issued.
+   */
+  public async issueRequestToken(
+    payload: Omit<PaymentRequestToken, "jti">
+  ): Promise<string> {
+    const jti = crypto.randomUUID();
+    await getSessionStore().kvSet(
+      requestKey(jti),
+      "open",
+      TTL_SECONDS + REQUEST_KEY_SLACK_SECONDS
+    );
+    const full: PaymentRequestToken = { ...payload, jti };
+    return this.encode(full as unknown as Record<string, unknown>);
+  }
+
+  /** Whether a request token can still be paid (issued and not yet spent). */
+  public async isRequestOpen(request: Pick<PaymentRequestToken, "jti">): Promise<boolean> {
+    if (!request.jti) return false;
+    return (await getSessionStore().kvGet(requestKey(request.jti))) !== null;
+  }
+
+  /**
+   * Spend a request token, atomically. True for exactly one caller per `jti`;
+   * every later (or concurrent) caller gets false.
+   */
+  public async spendRequest(request: Pick<PaymentRequestToken, "jti">): Promise<boolean> {
+    if (!request.jti) return false;
+    return (await getSessionStore().kvGetDelete(requestKey(request.jti))) !== null;
   }
 
   public buildResponseToken(payload: PaymentResponseToken): string {

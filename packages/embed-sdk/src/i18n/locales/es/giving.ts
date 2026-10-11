@@ -152,6 +152,8 @@ export const esGiving = {
     paymentUnconfirmedDetail: "No pudimos confirmar su pago: {detail}",
     paymentDeclined: "Su pago fue rechazado y no se realizó ningún cargo. Intente con otra tarjeta.",
     paymentError: "No pudimos registrar su pago. Comuníquese con nosotros antes de volver a intentarlo, para que no se le cobre dos veces.",
+    amountTooHigh: "El monto no puede ser mayor que el saldo pendiente ({amount}).",
+    balanceChanged: "El saldo de esta factura cambió. Revíselo e inténtelo de nuevo.",
   },
 
   checkoutComplete: {
@@ -191,6 +193,11 @@ export const esGiving = {
     enterCard: "Ingrese un número de tarjeta.",
     enterExpiry: "Ingrese la fecha de vencimiento.",
     enterCvv: "Ingrese el CVV.",
+    linkUsedTitle: "Este enlace de pago ya se utilizó",
+    linkUsed: "No se realizó ningún cargo adicional. Vuelva a su factura para ver el saldo actual.",
+    linkExpiredTitle: "Este enlace de pago venció",
+    linkExpired: "No se realizó ningún cargo. Vuelva a su factura e inicie el pago de nuevo.",
+    returnToInvoice: "Volver a la factura",
   },
 
   subscriptions: {
