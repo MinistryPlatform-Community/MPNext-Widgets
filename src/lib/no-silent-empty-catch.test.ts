@@ -268,16 +268,6 @@ const ALLOWLIST: Entry[] = [
  */
 const KNOWN_DEFECTS: (Entry & { lineAtWriting: number })[] = [
   {
-    file: "eventDetailsService.ts",
-    fn: "getHouseholdAddress",
-    lineAtWriting: 323,
-    reason:
-      "`catch { return null; }` around two table reads (Households, Addresses). Any MP " +
-      "failure -- including a bad column, the C20 failure mode -- silently becomes 'no " +
-      "household address', so event registration loses its address prefill with no " +
-      "service-level trace. Add console.warn with the error.",
-  },
-  {
     file: "planYourVisitService.ts",
     fn: "getConfigValue",
     lineAtWriting: 627,
