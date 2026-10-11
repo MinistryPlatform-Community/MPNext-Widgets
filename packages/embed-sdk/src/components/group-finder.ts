@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import { parseWallClock } from "../i18n";
 import {
   validateForm,
@@ -63,6 +63,9 @@ export class GroupFinderWidget extends MPNextWidget {
   // Suggest-a-group view state.
   private suggestOpen = false;
   private suggestMessage: { type: string; text: string } | null = null;
+  /** C15: the sign-in check runs when the button is pressed, before any field is drawn. */
+  private suggestChecking = false;
+  private suggestNeedsAuth = false;
 
   // Filter state (seeded from attributes, mutated by the form).
   private keyword = "";
@@ -106,7 +109,9 @@ export class GroupFinderWidget extends MPNextWidget {
   }
 
   connectedCallback() {
-    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES + CARD_LINK_STYLES);
+    this.injectStyles(
+      this.getStyles() + FORM_VALIDATION_STYLES + CARD_LINK_STYLES + SIGN_IN_REQUIRED_STYLES
+    );
     this.seedFromAttributes();
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish. Free in practice: the fetch lands inside
@@ -288,10 +293,7 @@ export class GroupFinderWidget extends MPNextWidget {
     if (suggestBtn) {
       suggestBtn.addEventListener("click", (e) => {
         e.preventDefault();
-        this.suggestOpen = true;
-        this.suggestMessage = null;
-        this.render();
-        this.attachListeners();
+        void this.openSuggest();
       });
     }
 
@@ -351,6 +353,49 @@ export class GroupFinderWidget extends MPNextWidget {
 
   // ── Suggest a group ──
 
+  /**
+   * Open Suggest-a-Group, deciding sign-in **before** the visitor types
+   * (C15). Legacy gated at this click too; ours used to draw the whole form
+   * and only discover the 401 on submit, losing the visitor's work.
+   *
+   * The check is a cheap identity read rather than a guess from local
+   * storage, so it agrees with what the server will decide on submit — and
+   * `isNeedsAuth()` reads the token the request actually carried, so a host
+   * with its own token provider is judged correctly too. A network fault does
+   * not gate: the form opens and the submit-time backstop still applies.
+   */
+  private async openSuggest() {
+    this.suggestOpen = true;
+    this.suggestMessage = null;
+    this.suggestChecking = true;
+    this.suggestNeedsAuth = false;
+    this.render();
+    this.attachListeners(); // "Back to results" works while the check runs
+    try {
+      const res = await this.fetch(`/api/embed/group-details/me`);
+      this.suggestNeedsAuth = this.isNeedsAuth(res);
+    } catch {
+      this.suggestNeedsAuth = false;
+    }
+    this.suggestChecking = false;
+    if (!this.suggestOpen) return; // the visitor went back meanwhile
+    this.render();
+    this.attachListeners();
+  }
+
+  /**
+   * The sign-in panel, mode-aware (W0): a Sign In button where the SDK can
+   * start a sign-in, instructional copy naming the page's own sign-in link in
+   * `legacy`. The base class binds the button.
+   */
+  private suggestSignIn(): string {
+    return this.renderSignInRequired({
+      subject: "group-finder",
+      message: this.t("groupFinder.signInToSuggest"),
+      buttonClass: "nw-gf-btn",
+    });
+  }
+
   private async submitSuggestion(form: HTMLFormElement) {
     if (!validateForm(form).valid) {
       this.setSuggestMessage("danger", this.t("validation.formIncomplete"));
@@ -384,9 +429,16 @@ export class GroupFinderWidget extends MPNextWidget {
         .json()
         .catch(() => ({ success: false }));
 
-      if (res.status === 401) {
-        this.setSuggestMessage("warning", this.t("groupFinder.signInToSuggest"));
-        this.requestLogin("group-finder");
+      if (this.isNeedsAuth(res)) {
+        // Backstop for a session that lapsed while the form was open. Non-
+        // destructive: only the message slot changes, so every typed value
+        // survives and the visitor can submit again once signed in.
+        const el = this.root.querySelector<HTMLElement>("#gf-suggest-message");
+        if (el) {
+          el.className = "gf-message gf-message--warning";
+          el.innerHTML = this.suggestSignIn();
+          el.style.display = "";
+        }
         if (submitBtn) submitBtn.disabled = false;
         return;
       }
@@ -630,6 +682,16 @@ export class GroupFinderWidget extends MPNextWidget {
   }
 
   private renderSuggestForm(): string {
+    const header = `
+      <a href="#" class="nw-gf-advanced-link" data-action="suggest-back">&larr; ${this.escapeHtml(this.t("groupFinder.backToResults"))}</a>
+      <h2 class="nw-gf-suggest-title">${this.escapeHtml(this.t("groupFinder.suggestGroup"))}</h2>`;
+    if (this.suggestChecking) {
+      return `${header}<div class="nw-gf-state">${this.spinnerSvg()}</div>`;
+    }
+    if (this.suggestNeedsAuth) {
+      return `${header}<div class="nw-gf-suggest">${this.suggestSignIn()}</div>`;
+    }
+
     const message = this.suggestMessage
       ? `<div id="gf-suggest-message" class="gf-message gf-message--${this.escapeAttr(this.suggestMessage.type)}">${this.escapeHtml(this.suggestMessage.text)}</div>`
       : `<div id="gf-suggest-message" class="gf-message" style="display:none"></div>`;
@@ -645,8 +707,7 @@ export class GroupFinderWidget extends MPNextWidget {
       .join("");
 
     return `
-      <a href="#" class="nw-gf-advanced-link" data-action="suggest-back">&larr; ${this.escapeHtml(this.t("groupFinder.backToResults"))}</a>
-      <h2 class="nw-gf-suggest-title">${this.escapeHtml(this.t("groupFinder.suggestGroup"))}</h2>
+      ${header}
       ${message}
       <form id="gf-suggest-form" class="nw-gf-suggest" novalidate>
         <div class="nw-gf-field">

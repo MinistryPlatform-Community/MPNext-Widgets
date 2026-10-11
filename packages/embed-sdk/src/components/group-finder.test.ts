@@ -147,4 +147,89 @@ describe("<next-group-finder>", () => {
       expect(shadow(el).querySelector('[role="link"], [tabindex]')).toBeNull();
     });
   });
+
+  describe("Suggest a Group gate (C15)", () => {
+    const ATTRS = 'target-url="/groups/detail" show-suggest-a-group-button="true"';
+
+    function openSuggest(el: HTMLElement) {
+      shadow(el).querySelector<HTMLButtonElement>('[data-action="open-suggest"]')!.click();
+    }
+
+    it("signed out, shows a sign-in prompt instead of the form (legacy: no button)", async () => {
+      const fetchFn = mockFetch();
+      const base = fetchFn.getMockImplementation()!;
+      fetchFn.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) =>
+        String(input).includes("/group-details/me")
+          ? jsonResponse({ error: "auth_required" }, 401)
+          : base(input, init),
+      );
+      const el = await mountSettled(ATTRS);
+      openSuggest(el);
+
+      await vi.waitFor(() => expect(shadow(el).querySelector("[data-nw-signin]")).not.toBeNull());
+      expect(shadow(el).querySelector("#gf-suggest-form")).toBeNull();
+      expect(shadow(el).querySelector('[data-action="login"]')).toBeNull();
+      expect(text(el)).toContain("Please sign in to suggest a group.");
+      expect(text(el)).toContain("Use the sign-in link on this page.");
+    });
+
+    it("signed out in dual mode, offers a Sign In button", async () => {
+      const fetchFn = mockFetch({}, { mode: "dual" });
+      const base = fetchFn.getMockImplementation()!;
+      fetchFn.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) =>
+        String(input).includes("/group-details/me")
+          ? jsonResponse({ error: "auth_required" }, 401)
+          : base(input, init),
+      );
+      const el = await mountSettled(ATTRS);
+      openSuggest(el);
+      await vi.waitFor(() =>
+        expect(shadow(el).querySelector('[data-nw-signin] [data-action="login"]')).not.toBeNull(),
+      );
+    });
+
+    it("signed in, opens the form", async () => {
+      const fetchFn = mockFetch({}, { signedIn: true });
+      const base = fetchFn.getMockImplementation()!;
+      fetchFn.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) =>
+        String(input).includes("/group-details/me")
+          ? jsonResponse({ contact: { contactId: 98, members: [] } })
+          : base(input, init),
+      );
+      const el = await mountSettled(ATTRS);
+      openSuggest(el);
+      await vi.waitFor(() => expect(shadow(el).querySelector("#gf-suggest-form")).not.toBeNull());
+      expect(shadow(el).querySelector("[data-nw-signin]")).toBeNull();
+    });
+
+    it("keeps typed values when the session lapses before submit", async () => {
+      const fetchFn = mockFetch({}, { signedIn: true });
+      const base = fetchFn.getMockImplementation()!;
+      fetchFn.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/group-details/me")) return jsonResponse({ contact: { contactId: 98 } });
+        if (url.includes("/group-finder/suggest")) return jsonResponse({ error: "auth_required" }, 401);
+        if (url.includes("/api/embed/session") && fetchFn.mock.calls.some(([u]) => String(u).includes("/suggest"))) {
+          return jsonResponse({ token: makeJwt("public") });
+        }
+        return base(input, init);
+      });
+      const el = await mountSettled(ATTRS);
+      openSuggest(el);
+      await vi.waitFor(() => expect(shadow(el).querySelector("#gf-suggest-form")).not.toBeNull());
+
+      const root = shadow(el);
+      root.querySelector<HTMLInputElement>('[name="groupName"]')!.value = "Tuesday Men";
+      root.querySelector<HTMLTextAreaElement>('[name="description"]')!.value = "Coffee and Bible";
+      root.querySelector<HTMLSelectElement>('[name="newGroupCongregationId"]')!.value = "1";
+      root.querySelector<HTMLFormElement>("#gf-suggest-form")!.dispatchEvent(
+        new Event("submit", { cancelable: true }),
+      );
+
+      await vi.waitFor(() =>
+        expect(root.querySelector("#gf-suggest-message [data-nw-signin]")).not.toBeNull(),
+      );
+      expect(root.querySelector<HTMLInputElement>('[name="groupName"]')!.value).toBe("Tuesday Men");
+    });
+  });
 });

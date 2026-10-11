@@ -108,3 +108,30 @@ sign in using the sign-in link on this page, then submit again") rather than a b
 "Please sign in to suggest a group." This is the same `legacy`-mode gap that
 `requestLogin()` has everywhere, so it may be worth solving once in
 `shared/base-widget.ts` instead of per widget.
+
+## Resolution — 2026-10-11
+
+**Fixed (W3, `ws/w3-groups`).** The decision now happens at the button, before any field
+is drawn.
+
+- Pressing **Suggest a Group** runs `openSuggest()`: a cheap identity read
+  (`GET /api/embed/group-details/me`, which accepts any widget token) judged by W0's
+  `isNeedsAuth()`. Signed out, the view shows the title, "Back to results" and W0's
+  mode-aware `renderSignInRequired()` panel — a Sign In button in `dual`/`hardened`;
+  in `legacy`, "Please sign in to suggest a group." plus "Use the sign-in link on this
+  page." with no dead button, and the passive `loginRequired` event for hosts that can
+  sign the visitor in. Signed in, the form opens as before.
+- **Decided: a real identity read, not a local guess.** `AuthSession.isAuthenticated()`
+  cannot see a host's custom `MPNextEmbed.init()` token provider, and a stale guess would
+  either gate a signed-in visitor or reopen the dead end. `isNeedsAuth()` reads the token
+  the request actually carried. A network fault does not gate; the submit backstop
+  still applies.
+- **401 backstop kept, and non-destructive.** A session that lapses while the form is
+  open now puts the same sign-in panel in the form's message slot; every typed value
+  survives so the visitor can submit again after signing in. The old bare
+  `requestLogin()` call (a silent no-op in `legacy`) is gone.
+- The `legacy`-mode half is CROSS-1's helper, consumed here rather than re-solved.
+- Not done: the plan's "draft first, sign in at submit" alternative. With the gate stated
+  up front it was not judged worth the extra state.
+- Tests: `group-finder.test.ts` ("Suggest a Group gate (C15)": legacy prompt with no
+  button, dual button, signed-in form, values preserved on a mid-form 401).
