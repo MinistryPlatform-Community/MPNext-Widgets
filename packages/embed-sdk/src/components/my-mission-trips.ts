@@ -159,9 +159,10 @@ export class MyMissionTripsWidget extends MPNextWidget {
 
     try {
       const res = await this.fetch(`/api/embed/mission-trips/mine${query}`);
-      if (res.status === 401) {
-        // Signed out is a state, not an error (C13 / C30 / C46): the widget
-        // offers sign-in rather than "Unable to Load".
+      if (this.isNeedsAuth(res)) {
+        // Signed out is a state, not an error (C81 / CROSS-1): the widget
+        // offers sign-in rather than "Unable to Load". A 401 that reaches a
+        // signed-in visitor is not this state and falls through to the error.
         this.signedOut = true;
         this.trips = [];
         return;
@@ -262,9 +263,7 @@ export class MyMissionTripsWidget extends MPNextWidget {
     this.root
       .querySelector('[data-action="retry"]')
       ?.addEventListener("click", () => this.retryLoad());
-    this.root
-      .querySelector('[data-action="login"]')
-      ?.addEventListener("click", () => this.requestLogin("my-mission-trips"));
+    // The signed-out panel's Sign In button is bound by the base class.
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -282,11 +281,14 @@ export class MyMissionTripsWidget extends MPNextWidget {
       return `<div class="mmt-state">${this.spinnerSvg()}<span>${this.escapeHtml(this.t("myMissionTrips.loading"))}</span></div>`;
     }
     if (this.signedOut) {
-      return `
-        <div class="mmt-state mmt-signin">
-          <p>${this.escapeHtml(this.t("myMissionTrips.signInPrompt"))}</p>
-          <button class="mmt-btn" type="button" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button>
-        </div>`;
+      // Mode-aware: a Sign In button in `dual`/`hardened`, instructional copy
+      // and no button in `legacy`. Never "Try Again".
+      return this.renderSignInRequired({
+        subject: "my-mission-trips",
+        message: this.t("myMissionTrips.signInPrompt"),
+        className: "mmt-state mmt-signin",
+        buttonClass: "mmt-btn",
+      });
     }
     if (this.error) {
       return `

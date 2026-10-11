@@ -42,6 +42,7 @@ export const ptBRCore = {
     getDirections: "Ver rota",
     signInPrompt: "Entre para continuar.",
     dismiss: "Dispensar",
+    signInViaPage: "Use o link de acesso desta página.",
   },
 
   fields: {

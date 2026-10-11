@@ -1,4 +1,5 @@
 import { getAuthSession, type AuthSession } from "./auth-session";
+import { escapeHtml } from "./html";
 import {
   getFormatters,
   getLocaleSession,
@@ -48,6 +49,68 @@ export const WIRE_CODE_KEYS: Record<string, MessageKey> = {
 };
 
 /**
+ * Wire codes that mean "this request carried no usable session". Read by
+ * `isNeedsAuth()` when it is handed a parsed body rather than a `Response`.
+ * Codes only — the state is **never** inferred from a message string.
+ */
+const NEEDS_AUTH_CODES: ReadonlySet<string> = new Set([
+  "auth_required",
+  "session_expired",
+  "invalid_session",
+]);
+
+/** Options for {@link MPNextWidget.renderSignInRequired}. */
+export interface SignInRequiredOptions {
+  /**
+   * The widget id handed to `requestLogin()` and carried in the
+   * `loginRequired` event's `detail.wid`. Defaults to the tag name without its
+   * `next-` prefix (`next-my-giving` → `my-giving`).
+   */
+  subject?: string;
+  /**
+   * Already-translated prompt, e.g. `this.t("myGiving.signInPrompt")`.
+   * Defaults to `common.signInPrompt`.
+   */
+  message?: string;
+  /**
+   * Already-translated sentence for `legacy` mode, where no button is drawn.
+   * When omitted, `message` is followed by `common.signInViaPage`.
+   */
+  legacyMessage?: string;
+  /** Extra classes on the panel wrapper, to keep a widget's own layout. */
+  className?: string;
+  /** Extra classes on the Sign In button, to match the widget's own buttons. */
+  buttonClass?: string;
+}
+
+/**
+ * Minimal styles for the shared signed-out panel. Include in `getStyles()` of
+ * any widget that renders {@link MPNextWidget.renderSignInRequired} without its
+ * own `className` / `buttonClass` styling.
+ */
+export const SIGN_IN_REQUIRED_STYLES = `
+  .nw-signin { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px 16px; text-align: center; }
+  .nw-signin-msg { margin: 0; }
+  .nw-signin-btn { font: inherit; font-weight: 600; cursor: pointer; padding: 8px 20px; border: 0; border-radius: 6px; background: #004C97; color: #fff; }
+  .nw-signin-btn:hover { background: #002855; }
+  .nw-signin-btn:focus-visible { outline: 2px solid #009CDE; outline-offset: 2px; }
+`;
+
+/** Read the `sub` claim of a JWT without verifying it. */
+function decodeJwtSub(token: string): string | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    let payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    while (payload.length % 4) payload += "=";
+    const claims = JSON.parse(atob(payload)) as { sub?: unknown };
+    return typeof claims.sub === "string" ? claims.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Base class for MPNext embeddable widgets
  * Handles Shadow DOM, API communication, token management and localisation
  */
@@ -93,6 +156,11 @@ export abstract class MPNextWidget extends HTMLElement {
       this.getAttribute("api-host") ||
       this.detectApiHostFromScript() ||
       "";
+
+    // The shared signed-out panel's Sign In button. Delegated from the shadow
+    // root so a widget cannot render the panel and forget to bind it — which
+    // is the dead-button failure C81 filed in ten places.
+    this.root.addEventListener("click", (e) => this.onSignInClick(e));
 
     // Token provider — resolved lazily via waitForTokenProvider()
     this.tokenProvider =
@@ -149,6 +217,7 @@ export abstract class MPNextWidget extends HTMLElement {
     if (!token) {
       throw new Error("Authentication token not available.");
     }
+    this.lastTokenSub = decodeJwtSub(token);
 
     const headers: Record<string, string> = {
       ...(init?.headers as Record<string, string>),
@@ -165,6 +234,7 @@ export abstract class MPNextWidget extends HTMLElement {
     // Handle token refresh on 401
     if (res.status === 401 && window.__nextTokenProvider?.refresh) {
       const newToken = await window.__nextTokenProvider.refresh();
+      this.lastTokenSub = decodeJwtSub(newToken);
       return fetch(`${this.apiHost}${path}`, {
         ...init,
         headers: {
@@ -457,6 +527,122 @@ export abstract class MPNextWidget extends HTMLElement {
     if (!handled && mode !== null && mode !== "legacy") {
       this.authSession.login({ wid });
     }
+  }
+
+  // ── Signed-out state (C81 / CROSS-1) ─────────────────────────────────────
+
+  /**
+   * `sub` of the token the last `fetch()` sent, or null when it was not a
+   * decodable JWT (a custom `MPNextEmbed.init()` provider, say).
+   */
+  private lastTokenSub: string | null = null;
+
+  /** `legacy` announces `loginRequired` once per element, not once per render. */
+  private signInAnnounced = false;
+
+  /**
+   * True when a response (or its parsed body) means "the visitor is not signed
+   * in" rather than "something broke".
+   *
+   * - A `Response`-shaped value: `status === 401`.
+   * - A parsed body: `error` is `auth_required`, `session_expired` or
+   *   `invalid_session`.
+   *
+   * …**and** the visitor is in fact signed out: the token the request carried
+   * was public (`sub === "public"`), or — when that token could not be read —
+   * `AuthSession.isAuthenticated()` is false. A 401 that reaches a *signed-in*
+   * visitor is a server fault (C42 is one) and must render as an error, or the
+   * widget offers sign-in to someone already signed in, in a loop.
+   *
+   * Never inferred from message text. `fetch()` has already retried once with a
+   * refreshed token before a 401 gets here.
+   */
+  protected isNeedsAuth(input: unknown): boolean {
+    if (!input || typeof input !== "object") return false;
+    const value = input as { status?: unknown; error?: unknown };
+    if (typeof value.status === "number") {
+      if (value.status !== 401) return false;
+    } else if (typeof value.error !== "string" || !NEEDS_AUTH_CODES.has(value.error)) {
+      return false;
+    }
+    if (this.lastTokenSub !== null) return this.lastTokenSub === "public";
+    return !this.authSession.isAuthenticated();
+  }
+
+  /**
+   * The signed-out panel: one implementation for every auth-only widget.
+   *
+   * **Mode-aware**, which is the point (CROSS-1 Phase 1):
+   * - `dual` / `hardened`: the prompt plus a real **Sign In** button
+   *   (`[data-action="login"]`), which calls `requestLogin(subject)` — a
+   *   cancelable `loginRequired` event, then a top-level redirect to MP.
+   * - `legacy`, or a mode not yet known: instructional copy naming the page's
+   *   own sign-in link and **no button**. `AuthSession.login()` is not the live
+   *   path there, and a button that silently does nothing is worse than none.
+   *   The cancelable `loginRequired` event still fires — once per element,
+   *   with `detail.passive: true` — so a host page that can sign the visitor in
+   *   may intercept it.
+   *
+   * **Never** renders "Try Again": retrying an anonymous request fails
+   * identically. Retry is for 5xx and network faults only.
+   *
+   * The button needs no binding — the base class delegates the click from the
+   * shadow root. **Do not** also bind `[data-action="login"]` inside this panel
+   * yourself, or one press fires two `loginRequired` events.
+   *
+   * Include {@link SIGN_IN_REQUIRED_STYLES} in `getStyles()`, or pass
+   * `className` / `buttonClass` to reuse the widget's own classes.
+   */
+  protected renderSignInRequired(opts: SignInRequiredOptions = {}): string {
+    const subject = opts.subject ?? this.localName.replace(/^next-/, "");
+    const mode = this.authSession.getMode();
+    const canSignIn = mode === "dual" || mode === "hardened";
+    const message = opts.message ?? this.t("common.signInPrompt");
+    const wrapperClass = ["nw-signin", opts.className].filter(Boolean).join(" ");
+
+    let body: string;
+    if (canSignIn) {
+      const buttonClass = ["nw-signin-btn", opts.buttonClass].filter(Boolean).join(" ");
+      body = [
+        `<p class="nw-signin-msg">${escapeHtml(message)}</p>`,
+        `<button type="button" class="${escapeHtml(buttonClass)}" data-action="login">${escapeHtml(this.t("common.signIn"))}</button>`,
+      ].join("");
+    } else {
+      body = opts.legacyMessage
+        ? `<p class="nw-signin-msg">${escapeHtml(opts.legacyMessage)}</p>`
+        : [
+            `<p class="nw-signin-msg">${escapeHtml(message)}</p>`,
+            `<p class="nw-signin-msg">${escapeHtml(this.t("common.signInViaPage"))}</p>`,
+          ].join("");
+      this.announceSignInRequired(subject);
+    }
+
+    return `<div class="${escapeHtml(wrapperClass)}" role="status" data-nw-signin data-subject="${escapeHtml(subject)}">${body}</div>`;
+  }
+
+  /** `legacy`: fire `loginRequired` once, after the panel has been painted. */
+  private announceSignInRequired(subject: string): void {
+    if (this.signInAnnounced) return;
+    this.signInAnnounced = true;
+    queueMicrotask(() => {
+      this.dispatchEvent(
+        new CustomEvent("loginRequired", {
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+          detail: { wid: subject, passive: true },
+        }),
+      );
+    });
+  }
+
+  /** Delegated handler for the signed-out panel's Sign In button. */
+  private onSignInClick(e: Event): void {
+    const target = e.target as Element | null;
+    const button = target?.closest?.('[data-nw-signin] [data-action="login"]');
+    if (!button) return;
+    const panel = button.closest<HTMLElement>("[data-nw-signin]");
+    this.requestLogin(panel?.dataset.subject || this.localName.replace(/^next-/, ""));
   }
 
   /**

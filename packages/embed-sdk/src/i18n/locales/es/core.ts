@@ -42,6 +42,7 @@ export const esCore = {
     getDirections: "Cómo llegar",
     signInPrompt: "Inicie sesión para continuar.",
     dismiss: "Descartar",
+    signInViaPage: "Use el enlace de inicio de sesión de esta página.",
   },
 
   fields: {

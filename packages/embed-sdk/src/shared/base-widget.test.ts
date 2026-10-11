@@ -39,6 +39,14 @@ class TestWidget extends MPNextWidget {
   public callRequestLogin(wid: string): void {
     (this as unknown as { requestLogin: MPNextWidget["requestLogin"] }).requestLogin(wid);
   }
+  public callIsNeedsAuth(input: unknown): boolean {
+    return (this as unknown as { isNeedsAuth: (i: unknown) => boolean }).isNeedsAuth(input);
+  }
+  public callRenderSignInRequired(opts?: Record<string, string>): string {
+    return (
+      this as unknown as { renderSignInRequired: (o?: Record<string, string>) => string }
+    ).renderSignInRequired(opts);
+  }
   public getRoot(): ShadowRoot {
     return (this as unknown as { root: ShadowRoot }).root;
   }
@@ -472,6 +480,146 @@ describe("MPNextWidget", () => {
       stubMode(null);
       widget.callRequestLogin("plan-your-visit");
       expect(nav).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("signed-out state (C81 / CROSS-1)", () => {
+    function jwt(claims: Record<string, unknown>): string {
+      const b64 = (o: unknown) =>
+        btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      return `${b64({ alg: "HS256" })}.${b64(claims)}.sig`;
+    }
+    function stubMode(mode: "legacy" | "dual" | "hardened" | null) {
+      vi.spyOn(AuthSession.prototype, "getMode").mockReturnValue(mode);
+    }
+    async function widgetAfter401(sub: string | null): Promise<TestWidget> {
+      const token = sub === null ? "opaque-token" : jwt({ sub });
+      window.__nextTokenProvider = { get: vi.fn().mockResolvedValue(token) };
+      fetchMock.mockResolvedValue(makeResponse({ error: "auth_required" }, { status: 401 }));
+      const widget = makeWidget();
+      document.body.appendChild(widget);
+      await widget.callFetch("/api/embed/thing");
+      return widget;
+    }
+
+    describe("isNeedsAuth()", () => {
+      it("is true for a 401 carried by a public token", async () => {
+        const widget = await widgetAfter401("public");
+        expect(widget.callIsNeedsAuth({ status: 401, ok: false })).toBe(true);
+      });
+
+      it("is false for a 401 that reaches a signed-in visitor — that is a fault, not a state", async () => {
+        const widget = await widgetAfter401("user-guid-1");
+        expect(widget.callIsNeedsAuth({ status: 401, ok: false })).toBe(false);
+      });
+
+      it("falls back to AuthSession.isAuthenticated() when the token is not a readable JWT", async () => {
+        const signedOut = vi.spyOn(AuthSession.prototype, "isAuthenticated").mockReturnValue(false);
+        const widget = await widgetAfter401(null);
+        expect(widget.callIsNeedsAuth({ status: 401 })).toBe(true);
+        signedOut.mockReturnValue(true);
+        expect(widget.callIsNeedsAuth({ status: 401 })).toBe(false);
+      });
+
+      it("is false for every non-401 status, 403 and 500 included", async () => {
+        const widget = await widgetAfter401("public");
+        for (const status of [200, 400, 403, 404, 500, 503]) {
+          expect(widget.callIsNeedsAuth({ status }), String(status)).toBe(false);
+        }
+      });
+
+      it("reads machine codes from a parsed body, never message text", async () => {
+        const widget = await widgetAfter401("public");
+        expect(widget.callIsNeedsAuth({ error: "auth_required" })).toBe(true);
+        expect(widget.callIsNeedsAuth({ error: "session_expired" })).toBe(true);
+        expect(widget.callIsNeedsAuth({ error: "invalid_session" })).toBe(true);
+        expect(widget.callIsNeedsAuth({ error: "internal_error", message: "Authentication required" })).toBe(false);
+        expect(widget.callIsNeedsAuth(null)).toBe(false);
+        expect(widget.callIsNeedsAuth("auth_required")).toBe(false);
+      });
+    });
+
+    describe("renderSignInRequired()", () => {
+      function mountPanel(widget: TestWidget, opts?: Record<string, string>) {
+        widget.getRoot().innerHTML = widget.callRenderSignInRequired(opts);
+        return widget.getRoot();
+      }
+
+      it("draws a Sign In button in dual and hardened mode, and no retry", () => {
+        for (const mode of ["dual", "hardened"] as const) {
+          vi.restoreAllMocks();
+          stubMode(mode);
+          const widget = makeWidget();
+          const root = mountPanel(widget);
+          expect(root.querySelector('[data-action="login"]'), mode).not.toBeNull();
+          expect(root.querySelector('[data-action="retry"]'), mode).toBeNull();
+          expect(root.textContent).toContain("Please sign in to continue.");
+        }
+      });
+
+      it("draws no button in legacy mode or before the mode is known", () => {
+        for (const mode of ["legacy", null] as const) {
+          vi.restoreAllMocks();
+          stubMode(mode);
+          const root = mountPanel(makeWidget());
+          expect(root.querySelector('[data-action="login"]'), String(mode)).toBeNull();
+          expect(root.querySelector('[data-action="retry"]'), String(mode)).toBeNull();
+          expect(root.textContent).toContain("Use the sign-in link on this page.");
+        }
+      });
+
+      it("uses the caller's legacy sentence in place of the default pair", () => {
+        stubMode("legacy");
+        const root = mountPanel(makeWidget(), {
+          message: "Sign in to see your giving.",
+          legacyMessage: "Use the sign-in link above to see your giving.",
+        });
+        expect(root.textContent).toContain("Use the sign-in link above to see your giving.");
+        expect(root.textContent).not.toContain("Sign in to see your giving.");
+      });
+
+      it("binds the button itself: one click, one loginRequired with the subject", () => {
+        stubMode("dual");
+        vi.spyOn(
+          AuthSession.prototype as unknown as { navigateTo: (u: string) => void },
+          "navigateTo",
+        ).mockImplementation(() => {});
+        const widget = makeWidget();
+        document.body.appendChild(widget);
+        const root = mountPanel(widget, { subject: "my-giving" });
+        const seen: unknown[] = [];
+        widget.addEventListener("loginRequired", (e) => seen.push((e as CustomEvent).detail));
+
+        root.querySelector<HTMLButtonElement>('[data-action="login"]')!.click();
+        expect(seen).toEqual([{ wid: "my-giving" }]);
+      });
+
+      it("defaults the subject to the tag name without its next- prefix", () => {
+        stubMode("dual");
+        const root = mountPanel(makeWidget());
+        expect(root.querySelector<HTMLElement>("[data-nw-signin]")!.dataset.subject).toBe(
+          "test-mpnext-widget",
+        );
+      });
+
+      it("announces loginRequired once in legacy mode, however often it re-renders", async () => {
+        stubMode("legacy");
+        const widget = makeWidget();
+        document.body.appendChild(widget);
+        const seen: unknown[] = [];
+        widget.addEventListener("loginRequired", (e) => seen.push((e as CustomEvent).detail));
+
+        mountPanel(widget, { subject: "my-groups" });
+        mountPanel(widget, { subject: "my-groups" });
+        await Promise.resolve();
+        expect(seen).toEqual([{ wid: "my-groups", passive: true }]);
+      });
+
+      it("escapes caller-supplied copy", () => {
+        stubMode("dual");
+        const root = mountPanel(makeWidget(), { message: "<img src=x onerror=alert(1)>" });
+        expect(root.querySelector("img")).toBeNull();
+      });
     });
   });
 

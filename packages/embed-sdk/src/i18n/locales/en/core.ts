@@ -42,6 +42,13 @@ export const core = {
     getDirections: "Get Directions",
     signInPrompt: "Please sign in to continue.",
     dismiss: "Dismiss",
+    /**
+     * `legacy` auth mode, under the prompt in the shared signed-out panel
+     * (`MPNextWidget.renderSignInRequired`). The SDK cannot start a sign-in in
+     * that mode, so the copy points at the host page's own control rather than
+     * drawing a button that would silently do nothing.
+     */
+    signInViaPage: "Use the sign-in link on this page.",
   },
 
   /**
