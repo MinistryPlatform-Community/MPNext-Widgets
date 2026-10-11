@@ -1,6 +1,7 @@
 import { MPNextWidget } from "../shared/base-widget";
 import type { EmbedAuthMode } from "../shared/auth-session";
 import type { MessageKey } from "../i18n";
+import { dialogFocus, type DialogCloseReason, type DialogFocusHandle } from "../shared/dialog-focus";
 
 interface UserMenuState {
   isDropdownOpen: boolean;
@@ -74,6 +75,17 @@ export class UserMenuWidget extends MPNextWidget {
   private suppressHashChange = false;
   private documentClickHandler = (e: MouseEvent) => this.handleDocumentClick(e);
   private escapeHandler = (e: KeyboardEvent) => this.handleEscape(e);
+  /**
+   * C54: focus handles for the dropdown and the account modal. Escape is not
+   * passed to `dialogFocus` (`onEscape`): the document-level `handleEscape`
+   * already owns it and its modal-before-dropdown precedence, and calls the
+   * close methods with `"escape"`, which release these handles.
+   */
+  private dropdownFocus: DialogFocusHandle | null = null;
+  private modalFocus: DialogFocusHandle | null = null;
+  /** A function, because every render replaces the avatar button. */
+  private avatarTrigger = (): HTMLElement | null =>
+    this.root.querySelector<HTMLElement>(".nw-avatar-btn");
   private storageHandler = () => this.render();
   private hashChangeHandler = () => this.checkHashDeepLink();
 
@@ -1159,15 +1171,29 @@ export class UserMenuWidget extends MPNextWidget {
   }
 
   private toggleDropdown() {
-    this.state.isDropdownOpen = !this.state.isDropdownOpen;
+    if (this.state.isDropdownOpen) {
+      this.closeDropdown("programmatic");
+      return;
+    }
+    this.state.isDropdownOpen = true;
     this.render();
+    const menu = this.root.querySelector<HTMLElement>(".nw-dropdown");
+    // A disclosure, not a `role="menu"`: Tab may leave it, so no trap.
+    if (menu) this.dropdownFocus = dialogFocus(menu, this.avatarTrigger, { trapTab: false });
   }
 
-  private closeDropdown() {
+  /**
+   * `reason` decides where focus goes: back to the avatar after Escape or an
+   * in-widget action, but **not** after an outside click — the visitor clicked
+   * something else, and pulling focus back would fight them (C54).
+   */
+  private closeDropdown(reason: DialogCloseReason = "programmatic") {
     if (this.state.isDropdownOpen) {
       this.state.isDropdownOpen = false;
       this.render();
     }
+    this.dropdownFocus?.release(reason);
+    this.dropdownFocus = null;
   }
 
   private handleDocumentClick(e: MouseEvent) {
@@ -1175,16 +1201,16 @@ export class UserMenuWidget extends MPNextWidget {
 
     const path = e.composedPath();
     if (!path.includes(this)) {
-      this.closeDropdown();
+      this.closeDropdown("outside");
     }
   }
 
   private handleEscape(e: KeyboardEvent) {
     if (e.key === "Escape") {
       if (this.state.isModalOpen) {
-        this.closeModal();
+        this.closeModal("escape");
       } else if (this.state.isDropdownOpen) {
-        this.closeDropdown();
+        this.closeDropdown("escape");
       }
     }
   }
@@ -1202,12 +1228,25 @@ export class UserMenuWidget extends MPNextWidget {
 
     this.createPortal();
 
+    // C54: move focus into the dialog (its Close button) and return it to the
+    // avatar on close. `trapTab` is off on purpose: the shared trap only sees
+    // light-DOM focusables, and the tab panels are widgets with their own
+    // shadow roots, so it would skip every form field in the modal. Reported to
+    // W0 rather than forked here; see C54's resolution.
+    const dialog = this.portalEl?.querySelector<HTMLElement>(".nw-modal-container");
+    this.modalFocus?.release("programmatic");
+    this.modalFocus = dialog
+      ? dialogFocus(dialog, this.avatarTrigger, { initialFocus: ".nw-modal-close", trapTab: false })
+      : null;
+
     this.emit("accountModalOpen", { tab: this.state.activeTab });
   }
 
-  private closeModal() {
+  private closeModal(reason: DialogCloseReason = "programmatic") {
     this.state.isModalOpen = false;
     this.destroyPortal();
+    this.modalFocus?.release(reason);
+    this.modalFocus = null;
 
     // Clean #nw-tab=... from URL without adding a history entry
     if (this.parseTabFromHash()) {

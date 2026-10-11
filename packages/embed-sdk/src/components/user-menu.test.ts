@@ -307,4 +307,79 @@ describe("<next-user-menu> auth modes", () => {
     expect(localStorage.getItem(SID_KEY)).toBeNull();
     await vi.waitFor(() => expect(shadow(el).querySelector(".nw-login-btn")).not.toBeNull());
   });
+
+  describe("focus (C54)", () => {
+    async function mountSignedIn(): Promise<HTMLElement> {
+      localStorage.setItem(SID_KEY, "S-IN");
+      const token = makeJwt({ sid: "S-IN" });
+      mockFetch({
+        "/api/embed/auth/config": configOk("hardened"),
+        "/api/embed/session": () => jsonResponse({ token, expiresIn: 300, mode: "hardened" }),
+        "/api/embed/auth/me": () =>
+          jsonResponse({ authenticated: true, user: { userGuid: "g", firstName: "Ada", lastName: "Lovelace", email: "ada@example.com" } }),
+      });
+      const el = mount();
+      await vi.waitFor(() => expect(shadow(el).querySelector(".nw-avatar-btn")).not.toBeNull());
+      return el;
+    }
+    const avatar = (el: HTMLElement) => shadow(el).querySelector<HTMLButtonElement>(".nw-avatar-btn")!;
+    const escape = (target: EventTarget = document) =>
+      target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true }));
+
+    afterEach(() => {
+      document.getElementById("nw-user-menu-portal")?.remove();
+      document.body.style.overflow = "";
+    });
+
+    it("opening the dropdown moves focus into it; Escape returns it to the avatar", async () => {
+      const el = await mountSignedIn();
+      avatar(el).focus();
+      avatar(el).click();
+      expect(shadow(el).querySelector(".nw-dropdown")).not.toBeNull();
+      expect(shadow(el).activeElement?.classList.contains("nw-dropdown-item")).toBe(true);
+
+      escape(shadow(el).activeElement!);
+      expect(shadow(el).querySelector(".nw-dropdown")).toBeNull();
+      expect(shadow(el).activeElement?.className).toBe("nw-avatar-btn");
+      expect(avatar(el).getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("an outside click closes the dropdown without stealing focus back", async () => {
+      const el = await mountSignedIn();
+      const outside = document.createElement("button");
+      outside.textContent = "elsewhere";
+      document.body.appendChild(outside);
+
+      avatar(el).click();
+      outside.focus();
+      outside.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
+
+      expect(shadow(el).querySelector(".nw-dropdown")).toBeNull();
+      expect(document.activeElement).toBe(outside);
+      expect(shadow(el).activeElement).toBeNull();
+    });
+
+    it("the account modal takes focus on open, Escape closes it before the dropdown, and focus returns to the avatar", async () => {
+      const el = await mountSignedIn();
+      avatar(el).click();
+      shadow(el).querySelector<HTMLButtonElement>('[data-action="account"]')!.click();
+
+      const portal = document.getElementById("nw-user-menu-portal")!;
+      expect(portal).not.toBeNull();
+      expect(document.activeElement).toBe(portal.querySelector(".nw-modal-close"));
+
+      escape(document.activeElement!);
+      expect(document.getElementById("nw-user-menu-portal")).toBeNull();
+      expect(shadow(el).activeElement?.className).toBe("nw-avatar-btn");
+    });
+
+    it("the modal Close button also returns focus to the avatar", async () => {
+      const el = await mountSignedIn();
+      avatar(el).click();
+      shadow(el).querySelector<HTMLButtonElement>('[data-action="account"]')!.click();
+      document.querySelector<HTMLButtonElement>('#nw-user-menu-portal [data-action="close-modal"]')!.click();
+      expect(document.getElementById("nw-user-menu-portal")).toBeNull();
+      expect(shadow(el).activeElement?.className).toBe("nw-avatar-btn");
+    });
+  });
 });

@@ -114,3 +114,35 @@ Two things worth doing in the same pass, since the modal is declared
 A test in `user-menu.test.ts` that asserts
 `shadowRoot.activeElement?.className === "nw-avatar-btn"` after a simulated
 Escape would pin all of it.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W6, `ws/w6-people`) on W0's `dialogFocus()`; no focus code was forked.
+
+- **Dropdown:** `toggleDropdown()` opens it with `dialogFocus(menu, avatarTrigger, { trapTab:
+  false })` — a disclosure of buttons, not a `role="menu"`, so Tab may leave it (the plan's
+  "do not add menu roles without arrow keys" note stands). `closeDropdown(reason)` re-renders
+  and then releases: Escape and in-widget actions return focus to the avatar button; the
+  outside-click handler passes `"outside"`, so a click elsewhere on the page keeps its focus.
+  The trigger is passed as a function because every render replaces the avatar button.
+- **Account modal:** `openModal()` moves focus to the dialog's Close button;
+  `closeModal(reason)` releases after destroying the portal, returning focus to the avatar
+  (Escape, Close button, backdrop click and the logout path alike).
+- **Escape precedence is unchanged.** `onEscape` is deliberately *not* passed to
+  `dialogFocus`; the existing document-level `handleEscape` still closes the modal before the
+  dropdown and now calls the close methods with `"escape"`.
+- `watchMpLoginRegistration()` and the legacy/dual branches are untouched.
+
+**Left open — a W0 primitive gap, reported rather than forked:** the modal does **not trap
+Tab** (`trapTab: false`). `dialogFocus`'s trap builds its cycle from `focusableWithin()`, a
+light-DOM `querySelectorAll`, and the modal's tab panels are other widgets (`next-profile`,
+`next-my-household`, …) whose fields live in their own shadow roots. With the trap on, Tab
+from the last tab button would wrap to Close and skip every form field, and Tab out of the
+last field would leave the dialog anyway — worse than no trap. Fix belongs in
+`shared/dialog-focus.ts` (walk open shadow roots in `focusableWithin`, and compare against
+the deepest `activeElement`); once it lands, flip `trapTab` back on in `openModal()`.
+
+Tests (`user-menu.test.ts`, "focus (C54)"): focus enters the dropdown on open and returns to
+`.nw-avatar-btn` on Escape; an outside click leaves focus where the visitor put it; the
+modal takes focus on open, Escape closes it first and focus returns to the avatar; the Close
+button does the same.
