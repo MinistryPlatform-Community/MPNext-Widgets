@@ -398,3 +398,97 @@ describe('InvoiceService', () => {
     });
   });
 });
+
+describe('getInvoices product summaries are batched (mp-url-length)', () => {
+  // 230 invoices and 150 distinct products: both lists are past the ~75 ids at
+  // which one unbatched `X_ID = n OR ...` filter overflowed IIS's 2048-char
+  // query limit and blanked every Product_Summary.
+  const INVOICES = Array.from({ length: 230 }, (_, i) => 7_000_000 + i);
+  const PRODUCTS = Array.from({ length: 150 }, (_, i) => 8_000_000 + i);
+
+  function idsIn(filter: string): number[] {
+    const list = /IN \(([^)]*)\)/.exec(filter)?.[1] ?? '';
+    return list.split(',').filter(Boolean).map(Number);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (InvoiceService as any).instance = undefined;
+    mockGetTableRecords.mockImplementation(async (q: { table: string; filter?: string }) => {
+      switch (q.table) {
+        case 'Invoices':
+          return INVOICES.map((Invoice_ID) => ({ Invoice_ID, Invoice_Status_ID: 1 }));
+        case 'Invoice_Statuses':
+          return [{ Invoice_Status_ID: 1, Invoice_Status: 'Pending' }];
+        case 'Invoice_Detail':
+          return idsIn(q.filter!).map((Invoice_ID) => ({
+            Invoice_Detail_ID: Invoice_ID,
+            Invoice_ID,
+            Product_ID: PRODUCTS[(Invoice_ID - INVOICES[0]) % PRODUCTS.length],
+            Recipient_Name: null,
+          }));
+        case 'Products':
+          return idsIn(q.filter!).map((Product_ID) => ({
+            Product_ID,
+            Product_Name: `P${Product_ID}`,
+            Description: null,
+          }));
+        default:
+          return [];
+      }
+    });
+  });
+
+  function filtersFor(table: string): string[] {
+    return mockGetTableRecords.mock.calls
+      .filter(([a]) => a.table === table)
+      .map(([a]) => (a as { filter: string }).filter);
+  }
+
+  it('reads Invoice_Detail and Products in IN batches of at most 100 and merges every row', async () => {
+    const service = await InvoiceService.getInstance();
+    const result = await service.getInvoices(100);
+
+    const detailFilters = filtersFor('Invoice_Detail');
+    expect(detailFilters).toHaveLength(3);
+    for (const f of detailFilters) {
+      expect(f).toMatch(/^Invoice_ID IN \(/);
+      expect(f).not.toMatch(/ OR /);
+      expect(idsIn(f).length).toBeLessThanOrEqual(100);
+    }
+    expect(new Set(detailFilters.flatMap(idsIn))).toEqual(new Set(INVOICES));
+
+    const productFilters = filtersFor('Products');
+    expect(productFilters).toHaveLength(2);
+    expect(new Set(productFilters.flatMap(idsIn))).toEqual(new Set(PRODUCTS));
+
+    expect(result).toHaveLength(INVOICES.length);
+    expect(result.every((r) => typeof r.Product_Summary === 'string')).toBe(true);
+  });
+
+  it('batches the user-token Products read the same way', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const filter = new URL(url).searchParams.get('$filter') ?? '';
+      return {
+        ok: true,
+        json: async () =>
+          idsIn(filter).map((Product_ID) => ({ Product_ID, Product_Name: `U${Product_ID}`, Description: null })),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const service = await InvoiceService.getInstance();
+      const result = await service.getInvoices(100, 'user-token');
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      for (const [url] of fetchMock.mock.calls) {
+        expect(new URL(url).search.length).toBeLessThan(2048);
+      }
+      expect(filtersFor('Products')).toHaveLength(0);
+      expect(result.every((r) => r.Product_Summary?.startsWith('U'))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

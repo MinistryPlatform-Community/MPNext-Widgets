@@ -712,21 +712,7 @@ const CASES: UrlCase[] = [
  * Cases that overflow today. Each is a real defect, reported here rather than
  * silenced: fix the service, then delete the entry (the test fails until you do).
  */
-const KNOWN_DEFECTS: Record<string, string> = {
-  // INTEGRATOR: fix invoiceService.getProductSummaries, then delete both entries.
-  "invoice.getInvoices: purchaser with 120 invoices (client credentials)": [
-    "invoiceService.ts getProductSummaries (line 264 at time of writing) builds one",
-    "`Invoice_ID = n OR ...` term (~26 encoded chars) per invoice the purchaser has ever",
-    "had, unbatched, so the Invoice_Detail read overflows at roughly 75 invoices. The",
-    "catch logs a warning and every Product_Summary on next-my-invoices silently becomes",
-    "null. Batch the ids (missionTripService.pledgeHolders does, 100 per IN list) or use",
-    "`Invoice_ID IN (...)`. getProductMap's `Product_ID = n OR ...` list (lines 319/365)",
-    "has the same shape and is at 1600 chars with 60 distinct products.",
-  ].join(" "),
-  "invoice.getInvoices: purchaser with 120 invoices (user token)": [
-    "Same defect as the client-credentials case: the Invoice_Detail read is unbatched.",
-  ].join(" "),
-};
+const KNOWN_DEFECTS: Record<string, string> = {};
 
 // ── tests ───────────────────────────────────────────────────────────────────
 

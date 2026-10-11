@@ -1,5 +1,6 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
+import { inFilter, readByIdBatches } from "@/services/_shared/id-batches";
 import type {
   InvoiceListItem,
   InvoiceLineItem,
@@ -260,13 +261,17 @@ export class InvoiceService {
     if (invoiceIds.length === 0) return summaryMap;
 
     try {
-      // Batch-fetch all Invoice_Detail records for these invoices
-      const filter = invoiceIds.map((id) => `Invoice_ID = ${id}`).join(" OR ");
-      const details = await this.mp!.getTableRecords<InvoiceDetailRecord & { Invoice_ID: number }>({
-        table: "Invoice_Detail",
-        select: "Invoice_Detail_ID,Invoice_ID,Product_ID,Item_Quantity,Line_Total,Item_Note,Recipient_Name",
-        filter,
-      });
+      // Batch-fetch all Invoice_Detail records for these invoices. Batched
+      // because a purchaser's lifetime invoice count is unbounded, and one
+      // unbatched id list overflowed IIS's 2048-char query limit at ~75
+      // invoices -- blanking every Product_Summary (see _shared/id-batches).
+      const details = await readByIdBatches(invoiceIds, (batch) =>
+        this.mp!.getTableRecords<InvoiceDetailRecord & { Invoice_ID: number }>({
+          table: "Invoice_Detail",
+          select: "Invoice_Detail_ID,Invoice_ID,Product_ID,Item_Quantity,Line_Total,Item_Note,Recipient_Name",
+          filter: inFilter("Invoice_ID", batch),
+        })
+      );
 
       // Collect unique Product_IDs
       const productIds = [...new Set(details.map((d) => d.Product_ID))];
@@ -311,15 +316,17 @@ export class InvoiceService {
    * Fetch product info using the user's own MP access token.
    * Client credentials don't have permission to the Products table,
    * but the user's OIDC token (from MP Widget Login) does.
+   *
+   * `productIds` is one batch from `idBatches`: callers go through
+   * `readByIdBatches` so the query string stays under IIS's limit.
    */
   private async fetchProductsWithUserToken(
     productIds: number[],
     mpAccessToken: string
   ): Promise<ProductRecord[]> {
-    const filter = productIds.map((id) => `Product_ID = ${id}`).join(" OR ");
     const params = new URLSearchParams({
       $select: "Product_ID,Product_Name,Description",
-      $filter: filter,
+      $filter: inFilter("Product_ID", productIds),
     });
 
     const url = `${this.mpBaseUrl}/tables/Products?${params}`;
@@ -347,7 +354,9 @@ export class InvoiceService {
     // Strategy 1: Use the user's MP access token (preferred — has table permissions)
     if (mpAccessToken) {
       try {
-        const products = await this.fetchProductsWithUserToken(uncached, mpAccessToken);
+        const products = await readByIdBatches(uncached, (batch) =>
+          this.fetchProductsWithUserToken(batch, mpAccessToken)
+        );
         for (const p of products) {
           this.productCache.set(p.Product_ID, {
             Product_Name: p.Product_Name,
@@ -362,12 +371,13 @@ export class InvoiceService {
 
     // Strategy 2: Fall back to client credentials (may not have Products table access)
     try {
-      const filter = uncached.map((id) => `Product_ID = ${id}`).join(" OR ");
-      const products = await this.mp!.getTableRecords<ProductRecord>({
-        table: "Products",
-        select: "Product_ID,Product_Name,Description",
-        filter,
-      });
+      const products = await readByIdBatches(uncached, (batch) =>
+        this.mp!.getTableRecords<ProductRecord>({
+          table: "Products",
+          select: "Product_ID,Product_Name,Description",
+          filter: inFilter("Product_ID", batch),
+        })
+      );
 
       for (const p of products) {
         this.productCache.set(p.Product_ID, {
