@@ -121,3 +121,58 @@ describe("<next-event-finder> result cards (C05)", () => {
     expect(cancelledByWidget).toEqual([false, false]);
   });
 });
+
+describe("<next-event-finder> Featured filter (C04)", () => {
+  const featuredBox = (el: HTMLElement) =>
+    shadow(el).querySelector<HTMLInputElement>("#ef-featured")!;
+  const submit = (el: HTMLElement) =>
+    shadow(el)
+      .querySelector<HTMLFormElement>("#ef-form")!
+      .dispatchEvent(new Event("submit", { cancelable: true }));
+
+  it("renders a labelled Featured checkbox in the Advanced panel", async () => {
+    const el = mount();
+    await settle();
+    const box = featuredBox(el);
+    expect(box).toBeInTheDocument();
+    expect(box.type).toBe("checkbox");
+    expect(box.checked).toBe(false);
+    expect(shadow(el).querySelector('label[for="ef-featured"]')?.textContent).toContain("Featured");
+    expect(searches[0].searchParams.has("isFeatured")).toBe(false);
+  });
+
+  it("lets a visitor tick it and search featured events only", async () => {
+    const el = mount();
+    await settle();
+    featuredBox(el).checked = true;
+    submit(el);
+    await settle();
+    expect(searches.at(-1)!.searchParams.get("isFeatured")).toBe("true");
+    expect(featuredBox(el).checked).toBe(true);
+  });
+
+  it('treats featured="true" as a default the visitor can undo, and shows it', async () => {
+    const el = mount('featured="true"');
+    await settle();
+    expect(searches[0].searchParams.get("isFeatured")).toBe("true");
+    // The pre-set filter is visible rather than hidden behind "Advanced Search".
+    const panel = shadow(el).querySelector<HTMLElement>(".nw-ef-advanced")!;
+    expect(panel.style.display).toBe("grid");
+    expect(featuredBox(el).checked).toBe(true);
+
+    featuredBox(el).checked = false;
+    submit(el);
+    await settle();
+    expect(searches.at(-1)!.searchParams.has("isFeatured")).toBe(false);
+  });
+
+  it("re-searches when an attribute is set after the first paint (W0 reconfigure)", async () => {
+    const el = mount();
+    await settle();
+    const before = searches.length;
+    el.setAttribute("featured", "true");
+    await settle();
+    expect(searches.length).toBe(before + 1);
+    expect(searches.at(-1)!.searchParams.get("isFeatured")).toBe("true");
+  });
+});

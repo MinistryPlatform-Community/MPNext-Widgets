@@ -45,6 +45,14 @@ export class EventFinderWidget extends MPNextWidget {
   private ministryId = "";
   private monthId = "";
   private signupType = "";
+  /**
+   * "Featured only" (C04). Seeded from the `featured` attribute, then owned by
+   * the Advanced panel's checkbox, so the attribute is a default rather than a
+   * lock: a visitor on a `featured="true"` page can untick it and see the rest.
+   */
+  private featured = false;
+  /** Bumped per search; a response for a superseded search is dropped. */
+  private searchSeq = 0;
 
   static get observedAttributes() {
     return [
@@ -63,25 +71,38 @@ export class EventFinderWidget extends MPNextWidget {
     ];
   }
 
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    // Re-seed and re-search when a filtering attribute changes after first load.
-    if (this.events.length || !this.loading) {
-      this.seedFromAttributes();
-      this.search();
-    }
-  }
+  // No attributeChangedCallback of its own: the base class's default routes
+  // every observed change through `reconfigure()` → `reload()` once painted
+  // (W0 / C39). The old guard (`events.length || !loading`) dropped a change
+  // that arrived while the first search was still in flight.
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
     this.seedFromAttributes();
+    // A filter the page pre-set is shown, not hidden behind "Advanced Search":
+    // otherwise a `featured="true"` page silently narrows the results and the
+    // visitor cannot see why, or how to undo it (C04).
+    this.advancedOpen = this.hasSeededAdvancedFilter();
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish. Free in practice: the fetch lands inside
     // the loading state this widget already paints while it queries the API.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  protected override reload(): void {
+    this.seedFromAttributes();
+    if (this.hasSeededAdvancedFilter()) this.advancedOpen = true;
+    void this.search();
+  }
+
+  private hasSeededAdvancedFilter(): boolean {
+    return Boolean(
+      this.congregationId || this.ministryId || this.monthId || this.signupType || this.featured,
+    );
   }
 
   /** Public hook so demo pages can force a reload. */
@@ -96,6 +117,7 @@ export class EventFinderWidget extends MPNextWidget {
     this.ministryId = this.getAttribute("ministry-id") || "";
     this.monthId = this.getAttribute("month-id") || "";
     this.signupType = this.getAttribute("signup-type") || "";
+    this.featured = this.getAttribute("featured") === "true";
   }
 
   private async init() {
@@ -133,8 +155,7 @@ export class EventFinderWidget extends MPNextWidget {
     if (eventTypeId) params.set("eventTypeId", eventTypeId);
     const programId = this.getAttribute("program-id");
     if (programId) params.set("programId", programId);
-    const featured = this.getAttribute("featured");
-    if (featured === "true") params.set("isFeatured", "true");
+    if (this.featured) params.set("isFeatured", "true");
     const reduceSeriesTo = this.getAttribute("reduce-series-to");
     if (reduceSeriesTo) params.set("reduceSeriesTo", reduceSeriesTo);
 
@@ -143,6 +164,7 @@ export class EventFinderWidget extends MPNextWidget {
   }
 
   private async search() {
+    const seq = ++this.searchSeq;
     this.loading = true;
     this.error = null;
     this.render();
@@ -154,19 +176,20 @@ export class EventFinderWidget extends MPNextWidget {
         throw new Error(this.errorText(data));
       }
       const data: { events: EventSearchResult[] } = await res.json();
+      if (seq !== this.searchSeq) return;
       this.events = data.events || [];
       this.emit("eventsLoaded", { count: this.events.length });
     } catch (err) {
+      if (seq !== this.searchSeq) return;
       // `errorText` has already turned an API machine code into a translated
       // sentence; anything else (a thrown TypeError from a dropped connection)
       // becomes the generic network message rather than leaking English.
       this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.emit("eventFinderError", { error: this.error });
-    } finally {
-      this.loading = false;
-      this.render();
-      this.attachListeners();
     }
+    this.loading = false;
+    this.render();
+    this.attachListeners();
   }
 
   // ── Detail link / selection ──
@@ -232,6 +255,8 @@ export class EventFinderWidget extends MPNextWidget {
     if (month) this.monthId = month.value;
     const signup = this.root.querySelector<HTMLSelectElement>("#ef-signup");
     if (signup) this.signupType = signup.value;
+    const featured = this.root.querySelector<HTMLInputElement>("#ef-featured");
+    if (featured) this.featured = featured.checked;
   }
 
   // ── Render ──
@@ -311,6 +336,12 @@ export class EventFinderWidget extends MPNextWidget {
               <option value="1" ${this.signupType === "1" ? "selected" : ""}>${this.escapeHtml(this.t("eventFinder.signupRegistration"))}</option>
               <option value="2" ${this.signupType === "2" ? "selected" : ""}>${this.escapeHtml(this.t("eventFinder.signupVolunteer"))}</option>
             </select>
+          </div>
+          <div class="nw-ef-field nw-ef-field--check">
+            <label class="nw-ef-check" for="ef-featured">
+              <input id="ef-featured" type="checkbox" ${this.featured ? "checked" : ""}>
+              <span>${this.escapeHtml(this.t("eventFinder.featured"))}</span>
+            </label>
           </div>
         </div>
       </form>`;
@@ -414,6 +445,9 @@ export class EventFinderWidget extends MPNextWidget {
       .nw-ef-field label { font-size: 12px; font-weight: 600; color: #6b7280; }
       .nw-ef-select { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; background: white; outline: none; cursor: pointer; }
       .nw-ef-select:focus { border-color: #004C97; }
+      .nw-ef-field--check { justify-content: flex-end; }
+      .nw-ef-field label.nw-ef-check { display: inline-flex; align-items: center; gap: 8px; padding: 9px 0; font-size: 14px; font-weight: 600; color: #2D2926; cursor: pointer; }
+      .nw-ef-check input { width: 16px; height: 16px; margin: 0; accent-color: #004C97; cursor: pointer; }
 
       .nw-ef-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
       .nw-ef-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: border-color 0.15s, box-shadow 0.15s; }
