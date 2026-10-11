@@ -68,3 +68,20 @@ CONFIG-MAP.md section 2.8: the legacy widget also carries the "go paperless" tog
 (`/Api/ContributionsApi/SetStatementMethod?goPaperless=`), which this repo split out into
 `next-statement-preferences`. That split is not filed as a defect, but it means the two
 new elements should probably cross-link for the same reason this one should.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W5, branch `ws/w5-giving`). `next-my-contribution-statement` observes a new
+**`my-giving-url`** attribute (kebab-case house style; the legacy `mygivingwidgettargeturl`
+spelling is deliberately not accepted, since no `next-*` host has ever used it).
+
+- Set → a **"See my giving →"** link (en / es / pt-BR, `contributionStatement.myGivingLink`)
+  in the card's footer, on both the statement list and the empty state. Absent, empty,
+  `null`/`#`, or not an http(s)/relative URL (e.g. `javascript:`) → nothing renders, so
+  hosts that do not set it see no change.
+- Setting it after mount takes effect (reconfigure convention).
+- Demo page and demo-library entry set it; the copy-paste snippet explains it as legacy's
+  `mygivingwidgettargeturl`.
+- The plan's optional cross-link from `next-statement-preferences` back to the statement page
+  was not added: with C38's `show-paperless-toggle` the two now live on one page when a host
+  wants them together, so the back-link has no clear destination. Revisit on request.

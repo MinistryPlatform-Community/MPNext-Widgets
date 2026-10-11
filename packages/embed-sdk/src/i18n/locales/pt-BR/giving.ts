@@ -123,6 +123,7 @@ export const ptBRGiving = {
     signInPrompt: "Entre para ver seus informes de doações.",
     popupBlocked: "Seu navegador bloqueou a abertura do informe.",
     openStatement: "Abrir o informe",
+    myGivingLink: "Ver minhas doações →",
   },
 
   statementPreferences: {

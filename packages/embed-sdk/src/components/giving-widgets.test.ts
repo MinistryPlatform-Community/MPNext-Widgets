@@ -674,6 +674,44 @@ describe("giving widgets", () => {
     });
   });
 
+  // ── C62: link across to My Giving ──────────────────────────────────────
+
+  describe("next-my-contribution-statement my-giving-url (C62)", () => {
+    const loaded: Handler = (url) =>
+      url.includes("/api/embed/contribution-statements") ? jsonResponse(statementGroups()) : undefined;
+
+    it("renders nothing when the attribute is absent", async () => {
+      mockFetch(loaded);
+      const el = await settled(mount("next-my-contribution-statement"));
+      expect($(el, ".my-giving-link")).toBeNull();
+    });
+
+    it("renders a link to the My Giving page when set", async () => {
+      mockFetch(loaded);
+      const el = await settled(mount("next-my-contribution-statement", 'my-giving-url="/giving/history"'));
+      const link = $(el, ".my-giving-link")!;
+      expect(link).toHaveAttribute("href", "/giving/history");
+      expect(link.textContent).toBe("See my giving →");
+    });
+
+    it("refuses a javascript: URL", async () => {
+      mockFetch(loaded);
+      const el = await settled(
+        mount("next-my-contribution-statement", 'my-giving-url="javascript:alert(1)"'),
+      );
+      expect($(el, ".my-giving-link")).toBeNull();
+    });
+
+    it("also shows on the empty state, and when set after mount", async () => {
+      mockFetch((url) =>
+        url.includes("/api/embed/contribution-statements") ? jsonResponse({ groups: [] }) : undefined,
+      );
+      const el = await settled(mount("next-my-contribution-statement"));
+      el.setAttribute("my-giving-url", "https://church.example.org/giving");
+      expect($(el, ".my-giving-link")).toHaveAttribute("href", "https://church.example.org/giving");
+    });
+  });
+
   // ── protect: the money ─────────────────────────────────────────────────
 
   describe("next-my-giving money (regression guard)", () => {

@@ -164,6 +164,8 @@ export const giving = {
     // browser then blocked the new tab: a real link the donor can press.
     popupBlocked: "Your browser blocked the statement from opening.",
     openStatement: "Open the statement",
+    /** Link across to the page hosting My Giving (C62, `my-giving-url`); legacy: "See My Giving Page >". */
+    myGivingLink: "See my giving →",
   },
 
   statementPreferences: {

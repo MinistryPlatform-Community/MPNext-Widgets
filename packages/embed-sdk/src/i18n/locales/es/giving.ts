@@ -125,6 +125,7 @@ export const esGiving = {
     signInPrompt: "Inicie sesión para ver sus estados de contribuciones.",
     popupBlocked: "Su navegador impidió abrir el estado de contribuciones.",
     openStatement: "Abrir el estado de contribuciones",
+    myGivingLink: "Ver mis donaciones →",
   },
 
   statementPreferences: {

@@ -293,8 +293,9 @@ const extras: Record<string, WidgetExtras> = {
   },
 
   "my-contribution-statement": {
-    attributes: { "show-paperless-toggle": "true" },
+    attributes: { "show-paperless-toggle": "true", "my-giving-url": "/demo/my-giving" },
     controls: [
+      { name: "myGivingUrl", label: "My Giving URL", type: "text", attribute: "my-giving-url", placeholder: "/demo/my-giving" },
       {
         name: "showPaperlessToggle", label: "Go Paperless toggle", type: "select", attribute: "show-paperless-toggle",
         options: [
@@ -306,7 +307,10 @@ const extras: Record<string, WidgetExtras> = {
     ],
     implementationCode: `<!-- Replacing mpp-my-contribution-statement? Legacy carried the
      Go Paperless toggle too; show-paperless-toggle embeds it (C38). -->
-<next-my-contribution-statement show-paperless-toggle="true"></next-my-contribution-statement>`,
+<next-my-contribution-statement
+  show-paperless-toggle="true"
+  my-giving-url="/my-giving"
+></next-my-contribution-statement>`,
   },
 
   "statement-preferences": {

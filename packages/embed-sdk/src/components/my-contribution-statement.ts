@@ -36,7 +36,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
   private fallbackLinks: Record<string, string> = {};
 
   static get observedAttributes() {
-    return ["heading-level", "show-paperless-toggle"];
+    return ["heading-level", "show-paperless-toggle", "my-giving-url"];
   }
 
   connectedCallback() {
@@ -338,6 +338,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
           <div class="list-body">
             <div class="empty-state">${this.escapeHtml(this.t("contributionStatement.empty"))}</div>
           </div>
+          ${this.renderMyGivingLink()}
         </div>`;
     }
 
@@ -356,7 +357,32 @@ export class MyContributionStatementWidget extends MPNextWidget {
             .map((g) => this.renderGroup(g))
             .join("")}
         </div>
+        ${this.renderMyGivingLink()}
       </div>`;
+  }
+
+  /**
+   * `my-giving-url` (C62): where the page hosting `next-my-giving` lives, so a
+   * member reading a per-year statement is one click from the gifts behind it.
+   * Legacy's only option (`mygivingwidgettargeturl`), deliberately not copied
+   * in spelling. Absent, empty, or not an http(s)/relative URL → no link at
+   * all, so nothing changes for hosts that do not set it.
+   */
+  private get myGivingUrl(): string | null {
+    const raw = (this.getAttribute("my-giving-url") || "").trim();
+    if (!raw || ["null", "undefined", "#"].includes(raw.toLowerCase())) return null;
+    try {
+      const resolved = new URL(raw, window.location.href);
+      return resolved.protocol === "http:" || resolved.protocol === "https:" ? raw : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private renderMyGivingLink(): string {
+    const url = this.myGivingUrl;
+    if (!url) return "";
+    return `<div class="footer-links"><a class="my-giving-link" href="${escapeAttr(url)}">${this.escapeHtml(this.t("contributionStatement.myGivingLink"))}</a></div>`;
   }
 
   private renderGroup(group: ContributionStatementGroup): string {
@@ -573,6 +599,24 @@ export class MyContributionStatementWidget extends MPNextWidget {
         margin: 12px 0 0;
         font-size: 14px;
         color: #2D2926;
+      }
+      .footer-links {
+        padding: 0 20px 20px;
+        text-align: right;
+      }
+      .my-giving-link {
+        color: #004C97;
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .my-giving-link:hover {
+        text-decoration: underline;
+      }
+      .my-giving-link:focus-visible {
+        outline: 2px solid #009CDE;
+        outline-offset: 2px;
+        border-radius: 2px;
       }
       .download-fallback a {
         color: #004C97;
