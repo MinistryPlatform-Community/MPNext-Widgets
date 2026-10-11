@@ -3,7 +3,9 @@ import {
   validateForm,
   bindLiveValidation,
   requiredStar,
+  field,
   FORM_VALIDATION_STYLES,
+  type CustomValidator,
 } from "../shared/form-validation";
 
 interface PyvOption {
@@ -18,7 +20,31 @@ interface Config {
   congregations: PyvOption[];
   genders: PyvOption[];
   countries: PyvCountry[];
+  /**
+   * MP's `PhoneMask` (`xxx-xxx-xxxx`). A **display** hint, rendered as the
+   * phone placeholder and never as a `pattern` (C24).
+   */
   phoneMask: string | null;
+}
+
+/** Fewest / most digits a phone number may carry (E.164 caps at 15). */
+const PHONE_MIN_DIGITS = 7;
+const PHONE_MAX_DIGITS = 15;
+
+/**
+ * True when `value` is a plausible phone number: 7-15 digits once separators
+ * (`-`, spaces, parentheses, dots, slashes, a leading `+`) are ignored.
+ *
+ * C24: this widget once used MP's *display* mask `xxx-xxx-xxxx` as an HTML
+ * `pattern` (an anchored regex matching only that literal text), so no real
+ * number validated and the form could not be submitted. Counting digits accepts
+ * every way a person writes their number and still rejects `abc`.
+ */
+export function isPlausiblePhone(value: string): boolean {
+  const v = value.trim();
+  if (!/^\+?[0-9\s().\-/]+$/.test(v)) return false;
+  const digits = v.replace(/\D/g, "").length;
+  return digits >= PHONE_MIN_DIGITS && digits <= PHONE_MAX_DIGITS;
 }
 interface AgeGroup {
   id: number;
@@ -49,7 +75,8 @@ interface ChildState {
  *
  * Simplifications relative to legacy (noted inline):
  *  - Address entry is plain fields (no Google Places autocomplete in v1).
- *  - Phone-mask config is fetched but applied only as an input hint.
+ *  - MP's `PhoneMask` is only the phone placeholder; phones validate by digit
+ *    count (`isPlausiblePhone`), never by a `pattern` built from the mask (C24).
  */
 export class PlanYourVisitWidget extends MPNextWidget {
   private loading = true;
@@ -196,7 +223,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
   // ── Step 1: verification email ──
 
   private async submitVerification(form: HTMLFormElement) {
-    if (!validateForm(form).valid) return;
+    if (!validateForm(form, { t: this.t }).valid) return;
     const fd = new FormData(form);
     const payload = {
       firstName: String(fd.get("firstName") || "").trim(),
@@ -250,8 +277,15 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   // ── Step 2: visit details ──
 
+  /** Digit-count check on both phones; an empty optional phone passes (C24). */
+  private phoneValidators(): Record<string, CustomValidator> {
+    const check: CustomValidator = (value) =>
+      value.trim() && !isPlausiblePhone(value) ? this.t("validation.phone") : null;
+    return { headMobilePhone: check, spousePhone: check };
+  }
+
   private async submitDetails(form: HTMLFormElement) {
-    if (!validateForm(form).valid) {
+    if (!validateForm(form, { t: this.t, customValidators: this.phoneValidators() }).valid) {
       this.setMessage("warning", this.t("validation.formIncomplete"));
       return;
     }
@@ -374,7 +408,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
     const verForm = this.root.querySelector<HTMLFormElement>("#pyv-verify-form");
     if (verForm) {
-      bindLiveValidation(verForm);
+      bindLiveValidation(verForm, { t: this.t });
       verForm.addEventListener("submit", (e) => {
         e.preventDefault();
         this.submitVerification(verForm);
@@ -383,7 +417,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
     const detForm = this.root.querySelector<HTMLFormElement>("#pyv-details-form");
     if (detForm) {
-      bindLiveValidation(detForm);
+      bindLiveValidation(detForm, { t: this.t, customValidators: this.phoneValidators() });
       detForm.addEventListener("submit", (e) => {
         e.preventDefault();
         this.submitDetails(detForm);
@@ -525,7 +559,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
         </div>
         <div class="pyv-grid2">
           <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.email"))}</label><input class="pyv-input pyv-readonly" type="email" value="${this.escapeAttr(v.email || "")}" readonly></div>
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}${requiredStar()}</label><input class="pyv-input" type="tel" name="headMobilePhone" ${this.phonePattern()} required></div>
+          ${this.phoneField("headMobilePhone", true)}
         </div>
         ${this.renderAddress()}
 
@@ -548,7 +582,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
         <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.firstName"))}</label><input class="pyv-input" name="spouseFirstName"></div>
         <div class="pyv-grid2">
           <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.email"))}</label><input class="pyv-input" type="email" name="spouseEmail"></div>
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}</label><input class="pyv-input" type="tel" name="spousePhone" ${this.phonePattern()}></div>
+          ${this.phoneField("spousePhone", false)}
         </div>
       </fieldset>`;
   }
@@ -634,9 +668,22 @@ export class PlanYourVisitWidget extends MPNextWidget {
       <input type="hidden" name="__milestoneProgramId" value="${this.escapeAttr(program)}">`;
   }
 
-  private phonePattern(): string {
-    const mask = this.config.phoneMask;
-    return mask ? `pattern="${this.escapeAttr(mask)}"` : "";
+  /**
+   * A phone control: `type="tel"` (keypad, `autocomplete="tel"`) with MP's
+   * display mask as the placeholder only. **Never a `pattern`**: see
+   * `isPlausiblePhone` and C24.
+   */
+  private phoneField(name: string, required: boolean): string {
+    return field({
+      name,
+      label: this.t("fields.mobilePhone"),
+      type: "tel",
+      required,
+      placeholder: this.config.phoneMask || undefined,
+      idPrefix: this.instanceId,
+      wrapperClass: "pyv-field",
+      inputClass: "pyv-input",
+    });
   }
 
   private stateBlock(icon: string, text: string): string {

@@ -94,6 +94,9 @@ export class PlanYourVisitService {
         orderBy: "Country",
         top: 300,
       }),
+      // MP's *display* mask (`xxx-xxx-xxxx`). The widget renders it as a
+      // placeholder only. It is not a validation rule: used as an HTML
+      // `pattern` it matched nothing but its own literal text (C24).
       this.getConfigValue("PhoneMask"),
     ]);
 
