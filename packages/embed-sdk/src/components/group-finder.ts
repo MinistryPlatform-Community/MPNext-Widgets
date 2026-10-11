@@ -86,6 +86,7 @@ export class GroupFinderWidget extends MPNextWidget {
       "congregation-id",
       "ministry-id",
       "parent-group-id",
+      "city-postal-code",
       "group-focus-id",
       "life-stage-id",
       "group-type-id",
@@ -100,25 +101,31 @@ export class GroupFinderWidget extends MPNextWidget {
     ];
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    if (this.groups.length || !this.loading) {
-      this.seedFromAttributes();
-      this.search();
-    }
+  /**
+   * An observed attribute changed after the first paint (the base class's
+   * `reconfigure()` rule, C39): re-seed the filters and search again. The old
+   * guard (`groups.length || !loading`) dropped a change that landed while the
+   * first search was still in flight.
+   */
+  protected override reload(): void {
+    this.seedFromAttributes();
+    void this.search();
   }
 
   connectedCallback() {
     this.injectStyles(
       this.getStyles() + FORM_VALIDATION_STYLES + CARD_LINK_STYLES + SIGN_IN_REQUIRED_STYLES
     );
-    this.seedFromAttributes();
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish. Free in practice: the fetch lands inside
     // the loading state this widget already paints while it queries the API.
     void this.initLocale().then(() => {
+      // Seeded here, not before the await, so an attribute set while the
+      // catalogue loads is not missed (reconfigure is a no-op until painted).
+      this.seedFromAttributes();
       this.render();
-      this.init();
+      this.painted = true;
+      void this.init();
     });
   }
 
@@ -153,6 +160,9 @@ export class GroupFinderWidget extends MPNextWidget {
     this.keyword = this.getAttribute("keyword") || "";
     this.congregationId = this.getAttribute("congregation-id") || "";
     this.parentGroupId = this.getAttribute("parent-group-id") || "";
+    // C64: legacy's `citypostalcode`. Pre-fills the field and stays editable,
+    // like every other filter attribute here (legacy locked it).
+    this.cityPostalCode = this.getAttribute("city-postal-code") || "";
     this.groupFocusId = this.getAttribute("group-focus-id") || "";
     this.lifeStageId = this.getAttribute("life-stage-id") || "";
     this.meetsOnline = this.getAttribute("meets-online") === "true";

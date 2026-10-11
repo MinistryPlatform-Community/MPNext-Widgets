@@ -232,4 +232,20 @@ describe("<next-group-finder>", () => {
       expect(root.querySelector<HTMLInputElement>('[name="groupName"]')!.value).toBe("Tuesday Men");
     });
   });
+
+  describe("city-postal-code (C64)", () => {
+    it("pre-scopes the first search and pre-fills the field", async () => {
+      const fetchFn = mockFetch();
+      const el = await mountSettled('target-url="/g" city-postal-code="90210"');
+      expect(searchUrls(fetchFn)[0]).toContain("cityPostalCode=90210");
+      expect(shadow(el).querySelector<HTMLInputElement>("#gf-city")!.value).toBe("90210");
+    });
+
+    it("re-searches when set from script after mount", async () => {
+      const fetchFn = mockFetch();
+      const el = await mountSettled();
+      el.setAttribute("city-postal-code", "32801");
+      await vi.waitFor(() => expect(searchUrls(fetchFn).at(-1)).toContain("cityPostalCode=32801"));
+    });
+  });
 });
