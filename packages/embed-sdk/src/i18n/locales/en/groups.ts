@@ -217,5 +217,13 @@ export const groups = {
     /** Empty first option of an MP dropdown field. */
     selectOption: "-- Select --",
     fileUploadUnsupported: "File uploads are not submitted in this version.",
+    /** The household picker (legacy "Complete Form As", C26). */
+    completeAs: "Who is this form for?",
+    /** Last picker option: file the response against nobody. */
+    someoneElse: "Someone else (blank form)",
+    /** Fallback name for a household member MP has no name for. */
+    myInfo: "Me",
+    /** Under the completion message: who the response was filed against. */
+    submittedFor: "Submitted for {name}.",
   },
 } as const;

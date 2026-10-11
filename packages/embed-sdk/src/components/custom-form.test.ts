@@ -79,13 +79,32 @@ const HEADER = {
   googleMapsApiKey: null,
 };
 
-function mockFetch() {
+const SELF = {
+  contactId: 2,
+  firstName: "Chris",
+  lastName: "Kehayias",
+  emailAddress: "chris@example.com",
+  mobilePhoneNumber: "321-555-0100",
+  addressLine1: "1 Main St",
+  city: "Melbourne",
+  stateRegion: "FL",
+  postalCode: "32901",
+};
+const MEMBERS = [
+  { contactId: 5, firstName: "Sarah", lastName: "Kehayias", nickName: null, emailAddress: null, mobilePhoneNumber: "321-555-0101" },
+  { contactId: 2, firstName: "Chris", lastName: "Kehayias", nickName: null, emailAddress: "chris@example.com", mobilePhoneNumber: "321-555-0100" },
+];
+
+function mockFetch(opts: { signedIn?: boolean } = {}) {
   const fn = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     void _init;
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/api/embed/auth/config")) return jsonResponse({ mode: "legacy" });
     if (url.includes("/api/embed/session")) return jsonResponse({ token: makeJwt() });
-    if (url.includes("/event-details/basic-contact")) return jsonResponse({ error: "auth_required" }, 401);
+    if (url.includes("/event-details/basic-contact")) {
+      return opts.signedIn ? jsonResponse({ contact: SELF }) : jsonResponse({ error: "auth_required" }, 401);
+    }
+    if (url.includes("/api/embed/household")) return jsonResponse({ members: MEMBERS });
     if (url.includes("/api/embed/custom-form/submit")) return jsonResponse({ success: true });
     if (url.includes("/api/embed/custom-form")) return jsonResponse({ header: HEADER, fields: ALL_TYPES });
     return jsonResponse({ error: "not_found" }, 404);
@@ -137,6 +156,92 @@ describe("<next-custom-form>", () => {
     document.body.innerHTML = "";
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  describe("Who is this form for? (C26)", () => {
+    const posted = (fn: ReturnType<typeof mockFetch>) =>
+      fn.mock.calls
+        .filter(([u, init]) => String(u).includes("/custom-form/submit") && init?.body)
+        .map(([, init]) => JSON.parse(String(init!.body)) as Record<string, string>);
+    const ctl = (el: HTMLElement, name: string) =>
+      shadow(el).querySelector<HTMLInputElement | HTMLSelectElement>(`#cf-form [name="${name}"]`)!;
+    function answerRequired(el: HTMLElement) {
+      (shadow(el).querySelector('[name="mp_customform_1"]') as HTMLInputElement).value = "x";
+      (shadow(el).querySelector('[name="mp_customform_4"][value="M"]') as HTMLInputElement).checked = true;
+      (shadow(el).querySelector('[name="mp_customform_8"]') as HTMLInputElement).checked = true;
+    }
+
+    it("renders no picker for an anonymous visitor, and posts no ContactId", async () => {
+      const fn = mockFetch();
+      const el = await mount();
+      expect(ctl(el, "ContactId")).toBeNull();
+      answerRequired(el);
+      ctl(el, "FirstName").value = "Ada";
+      ctl(el, "LastName").value = "Lovelace";
+      ctl(el, "EmailAddress").value = "ada@example.com";
+      ["AddressLine1", "City", "StateRegion", "PostalCode"].forEach((n) => (ctl(el, n).value = "x"));
+      shadow(el).querySelector<HTMLButtonElement>(".cf-submit")!.click();
+      await vi.waitFor(() => expect(posted(fn)).toHaveLength(1));
+      expect(posted(fn)[0]).not.toHaveProperty("ContactId");
+    });
+
+    it("lists the signed-in user first, then the household, then Someone else", async () => {
+      mockFetch({ signedIn: true });
+      const el = await mount();
+      await vi.waitFor(() => expect(ctl(el, "ContactId")).not.toBeNull());
+      const select = ctl(el, "ContactId") as HTMLSelectElement;
+      expect(Array.from(select.options).map((o) => [o.value, o.textContent])).toEqual([
+        ["2", "Chris Kehayias"],
+        ["5", "Sarah Kehayias"],
+        ["", "Someone else (blank form)"],
+      ]);
+      expect(select.value).toBe("2");
+      expect(select.labels?.[0]?.textContent).toContain("Who is this form for?");
+    });
+
+    it("fills the contact block from the chosen member and posts their ContactId", async () => {
+      const fn = mockFetch({ signedIn: true });
+      const el = await mount();
+      await vi.waitFor(() => expect(ctl(el, "ContactId")).not.toBeNull());
+      const select = ctl(el, "ContactId") as HTMLSelectElement;
+      select.value = "5";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+
+      expect(ctl(el, "FirstName").value).toBe("Sarah");
+      expect((ctl(el, "FirstName") as HTMLInputElement).readOnly).toBe(true);
+      // Sarah has no email on file: the field stays editable.
+      expect(ctl(el, "EmailAddress").value).toBe("");
+      expect((ctl(el, "EmailAddress") as HTMLInputElement).readOnly).toBe(false);
+      expect(ctl(el, "AddressLine1").value).toBe("1 Main St");
+
+      ctl(el, "EmailAddress").value = "sarah@example.com";
+      answerRequired(el);
+      shadow(el).querySelector<HTMLButtonElement>(".cf-submit")!.click();
+      await vi.waitFor(() => expect(posted(fn)).toHaveLength(1));
+      expect(posted(fn)[0]).toMatchObject({ ContactId: "5", FirstName: "Sarah" });
+      await vi.waitFor(() =>
+        expect(shadow(el).querySelector(".cf-submitted-for")?.textContent).toBe("Submitted for Sarah Kehayias.")
+      );
+    });
+
+    it("clears and unlocks the block for Someone else, posting an empty ContactId", async () => {
+      const fn = mockFetch({ signedIn: true });
+      const el = await mount();
+      await vi.waitFor(() => expect(ctl(el, "ContactId")).not.toBeNull());
+      const select = ctl(el, "ContactId") as HTMLSelectElement;
+      select.value = "";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      expect(ctl(el, "FirstName").value).toBe("");
+      expect((ctl(el, "FirstName") as HTMLInputElement).readOnly).toBe(false);
+
+      ctl(el, "FirstName").value = "Grandma";
+      ctl(el, "LastName").value = "Smith";
+      ctl(el, "EmailAddress").value = "g@example.com";
+      answerRequired(el);
+      shadow(el).querySelector<HTMLButtonElement>(".cf-submit")!.click();
+      await vi.waitFor(() => expect(posted(fn)).toHaveLength(1));
+      expect(posted(fn)[0]).toMatchObject({ ContactId: "", FirstName: "Grandma" });
+    });
   });
 
   describe("accessible names (C28) and tel (C29)", () => {

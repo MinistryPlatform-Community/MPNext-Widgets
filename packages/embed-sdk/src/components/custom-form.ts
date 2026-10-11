@@ -35,6 +35,7 @@ interface CustomFormHeader {
 
 /** Subset of the basic-contact response used to prefill the form for signed-in users. */
 interface PrefillContact {
+  contactId?: number | null;
   firstName: string | null;
   lastName: string | null;
   emailAddress: string | null;
@@ -45,6 +46,19 @@ interface PrefillContact {
   stateRegion?: string | null;
   postalCode?: string | null;
 }
+
+/** One `GET /api/embed/household` member: the "Who is this form for?" roster (C26). */
+interface HouseholdMemberLite {
+  contactId: number;
+  firstName: string;
+  lastName: string;
+  nickName: string | null;
+  emailAddress: string | null;
+  mobilePhoneNumber: string | null;
+}
+
+/** The contact-block inputs a picked member fills, keyed by input `name`. */
+const CONTACT_FIELDS = ["FirstName", "LastName", "EmailAddress", "MobilePhoneNumber"] as const;
 
 /**
  * `next-custom-form` — standalone MinistryPlatform custom form.
@@ -64,6 +78,16 @@ export class CustomFormWidget extends MPNextWidget {
   private submitted = false;
   private isAuthenticated = false;
   private contact: PrefillContact | null = null;
+  /** The signed-in user's household, self included (C26). */
+  private householdMembers: HouseholdMemberLite[] = [];
+  /**
+   * "Who is this form for?": a contact id, or `""` for "Someone else (blank
+   * form)". Defaults to the signed-in user, so a signed-in submit is filed
+   * against them exactly as before the picker existed.
+   */
+  private completeAs = "";
+  /** Display name of the contact the last submit was filed against. */
+  private submittedFor: string | null = null;
 
   static get observedAttributes() {
     return ["api-host", "form-id", "form-guid", "id-parameter-name", "checkout-url"];
@@ -170,6 +194,78 @@ export class CustomFormWidget extends MPNextWidget {
       this.isAuthenticated = false;
       this.contact = null;
     }
+    this.householdMembers = [];
+    this.completeAs = "";
+    if (this.isAuthenticated && this.contact) {
+      await this.loadHousehold();
+      this.completeAs = this.contact.contactId ? String(this.contact.contactId) : "";
+    }
+  }
+
+  /**
+   * The roster for "Who is this form for?" (C26), from the same endpoint
+   * `next-opportunity-details`' "Respond As" uses. The signed-in user is put
+   * first; a failure degrades to "just me", never to an error.
+   */
+  private async loadHousehold() {
+    const self = this.contact;
+    const selfMember: HouseholdMemberLite | null =
+      self && self.contactId
+        ? {
+            contactId: self.contactId,
+            firstName: self.firstName || "",
+            lastName: self.lastName || "",
+            nickName: null,
+            emailAddress: self.emailAddress,
+            mobilePhoneNumber: self.mobilePhoneNumber,
+          }
+        : null;
+    let members: HouseholdMemberLite[] = [];
+    try {
+      const res = await this.fetch(`/api/embed/household`);
+      if (res.ok) {
+        const data: { members?: HouseholdMemberLite[] } = await res.json();
+        members = data.members ?? [];
+      }
+    } catch {
+      members = [];
+    }
+    const others = members.filter((m) => m.contactId !== selfMember?.contactId);
+    const selfFromList = members.find((m) => m.contactId === selfMember?.contactId);
+    const first = selfFromList ?? selfMember;
+    this.householdMembers = first ? [first, ...others] : others;
+  }
+
+  private memberName(m: HouseholdMemberLite): string {
+    return [m.nickName || m.firstName, m.lastName].filter(Boolean).join(" ").trim();
+  }
+
+  private selectedMember(): HouseholdMemberLite | null {
+    return this.householdMembers.find((m) => String(m.contactId) === this.completeAs) ?? null;
+  }
+
+  /**
+   * Fill the contact block from the chosen member (C26). A value the member's
+   * record has is shown read-only, because the server files the response with
+   * the record's value regardless of what is typed; an empty one stays
+   * editable. "Someone else" clears the block and unlocks it.
+   */
+  private applyCompleteAs() {
+    const m = this.selectedMember();
+    const values: Record<(typeof CONTACT_FIELDS)[number], string> = {
+      FirstName: m?.firstName ?? "",
+      LastName: m?.lastName ?? "",
+      EmailAddress: m?.emailAddress ?? "",
+      MobilePhoneNumber: m?.mobilePhoneNumber ?? "",
+    };
+    for (const name of CONTACT_FIELDS) {
+      const input = this.control(name);
+      if (!input) continue;
+      input.value = values[name];
+      input.readOnly = !!m && !!values[name];
+      input.classList.toggle("cf-readonly", input.readOnly);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
   }
 
   /**
@@ -178,11 +274,19 @@ export class CustomFormWidget extends MPNextWidget {
    */
   private prefillContact() {
     if (!this.contact) return;
+    // With the picker (C26) the contact block follows the chosen member; the
+    // address block still prefills from the signed-in household's address.
+    const picker = this.householdMembers.length > 0;
+    if (picker) this.applyCompleteAs();
     const map: Record<string, string | null | undefined> = {
-      FirstName: this.contact.firstName,
-      LastName: this.contact.lastName,
-      EmailAddress: this.contact.emailAddress,
-      MobilePhoneNumber: this.contact.mobilePhoneNumber,
+      ...(picker
+        ? {}
+        : {
+            FirstName: this.contact.firstName,
+            LastName: this.contact.lastName,
+            EmailAddress: this.contact.emailAddress,
+            MobilePhoneNumber: this.contact.mobilePhoneNumber,
+          }),
       AddressLine1: this.contact.addressLine1,
       AddressLine2: this.contact.addressLine2,
       City: this.contact.city,
@@ -229,10 +333,18 @@ export class CustomFormWidget extends MPNextWidget {
         this.setSubmitDisabled(false);
         this.render();
         this.attachListeners();
+        this.prefillContact();
         return;
       }
       this.submitted = true;
-      this.emit("formSubmitted", { formId: this.header.formId });
+      // Say who the response was filed against: silent attribution is how
+      // C26 went unnoticed.
+      const member = this.selectedMember();
+      this.submittedFor = member ? this.memberName(member) : null;
+      this.emit("formSubmitted", {
+        formId: this.header.formId,
+        contactId: member?.contactId ?? null,
+      });
       this.render();
       this.attachListeners();
     } catch (err) {
@@ -263,6 +375,14 @@ export class CustomFormWidget extends MPNextWidget {
       submit.addEventListener("click", (e) => {
         e.preventDefault();
         this.submit();
+      });
+    }
+
+    const completeAs = this.root.querySelector<HTMLSelectElement>('#cf-form [name="ContactId"]');
+    if (completeAs) {
+      completeAs.addEventListener("change", () => {
+        this.completeAs = completeAs.value;
+        this.applyCompleteAs();
       });
     }
 
@@ -337,7 +457,10 @@ export class CustomFormWidget extends MPNextWidget {
       // `completeMessage` is MP-authored copy from the church's own form
       // definition, so it renders as written; only the fallback is translated.
       const msg = h.completeMessage || this.t("customForm.completed");
-      this.root.innerHTML = `<div class="cf"><div class="cf-card"><div class="cf-complete">${this.escapeHtml(msg)}</div></div></div>`;
+      const forWhom = this.submittedFor
+        ? `<p class="cf-submitted-for">${this.escapeHtml(this.t("customForm.submittedFor", { name: this.submittedFor }))}</p>`
+        : "";
+      this.root.innerHTML = `<div class="cf"><div class="cf-card"><div class="cf-complete">${this.escapeHtml(msg)}</div>${forWhom}</div></div>`;
       return;
     }
     if (h.forceLogin && !this.isAuthenticated) {
@@ -367,6 +490,7 @@ export class CustomFormWidget extends MPNextWidget {
           ${instructions}
           ${errorBanner}
           <form id="cf-form" class="cf-form" novalidate>
+            ${this.renderCompleteAs()}
             ${h.getContactInfo ? this.renderContactBlock() : ""}
             ${h.getAddressInfo ? this.renderAddressBlock() : ""}
             ${renderCustomFormFields(this.fields, { formId: h.formId, t: this.t, idPrefix: this.instanceId })}
@@ -376,6 +500,27 @@ export class CustomFormWidget extends MPNextWidget {
           </form>
         </div>
       </div>`;
+  }
+
+  /**
+   * "Who is this form for?" (C26, legacy "Complete Form As"). Signed-in only,
+   * signed-in user first, "Someone else (blank form)" last. The value posts as
+   * `ContactId`; the submit route checks it against the caller's household and
+   * files the response against that contact. Absent when anonymous (legacy
+   * rendered an empty select there, which helped nobody).
+   */
+  private renderCompleteAs(): string {
+    if (!this.householdMembers.length) return "";
+    const options = this.householdMembers
+      .map((m) => ({ value: String(m.contactId), label: this.memberName(m) || this.t("customForm.myInfo") }))
+      .concat([{ value: "", label: this.t("customForm.someoneElse") }]);
+    return this.cf({
+      name: "ContactId",
+      label: this.t("customForm.completeAs"),
+      type: "select",
+      value: this.completeAs,
+      options: options.map((o) => ({ ...o, selected: o.value === this.completeAs })),
+    });
   }
 
   private renderContactBlock(): string {
@@ -477,6 +622,8 @@ export class CustomFormWidget extends MPNextWidget {
       .cf-message { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
       .cf-message--danger { background: #ffe9e9; color: #b91c1c; }
       .cf-complete { font-size: 16px; line-height: 1.6; color: #2D6B1F; }
+      .cf-submitted-for { font-size: 14px; color: #474747; margin: 8px 0 0; }
+      .cf-input.cf-readonly { background: #f3f4f6; color: #6b7280; }
       .cf-expired { color: #8a6d3b; font-size: 15px; margin: 0; }
       .cf-login { text-align: center; }
       .cf-login p { margin: 0 0 12px; }

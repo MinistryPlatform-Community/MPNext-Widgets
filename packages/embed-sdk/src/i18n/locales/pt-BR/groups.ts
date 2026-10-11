@@ -191,5 +191,9 @@ export const ptBRGroups = {
     selectOption: "-- Selecione --",
     fileUploadUnsupported:
       "Nesta versão, os arquivos anexados não são enviados.",
+    completeAs: "Para quem é este formulário?",
+    someoneElse: "Outra pessoa (formulário em branco)",
+    myInfo: "Eu",
+    submittedFor: "Enviado para {name}.",
   },
 } satisfies Partial<Messages>;

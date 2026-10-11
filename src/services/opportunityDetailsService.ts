@@ -349,16 +349,19 @@ export class OpportunityDetailsService {
       const forms = await CustomFormService.getInstance();
       const answers = forms.extractAnswers(payload);
       if (answers.length === 0) return;
+      // Same back-fill as the Responses row (C21/C26): a picked member's own
+      // record, the typed values only where it has none.
+      const basics = contactId ? await getContactBasics(contactId, this.mp!) : null;
       await forms.saveFormResponse({
         formId,
         contactId,
         ipAddress,
         answers,
         contact: {
-          firstName: payload.FirstName,
-          lastName: payload.LastName,
-          email: payload.EmailAddress,
-          phone: payload.MobilePhoneNumber,
+          firstName: basics?.firstName || payload.FirstName,
+          lastName: basics?.lastName || payload.LastName,
+          email: basics?.email || payload.EmailAddress,
+          phone: basics?.phone || payload.MobilePhoneNumber,
         },
       });
     } catch (err) {

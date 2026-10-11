@@ -192,5 +192,9 @@ export const esGroups = {
     selectOption: "-- Seleccione --",
     fileUploadUnsupported:
       "En esta versión no se envían los archivos adjuntos.",
+    completeAs: "¿Para quién es este formulario?",
+    someoneElse: "Otra persona (formulario en blanco)",
+    myInfo: "Yo",
+    submittedFor: "Enviado para {name}.",
   },
 } satisfies Partial<Messages>;
