@@ -1341,26 +1341,26 @@ export class MyHouseholdWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-        color: #2D2926;
-        font-size: 14px;
-        line-height: 1.5;
+        font-family: var(--_nw-font-family);
+        color: var(--_nw-color-text);
+        font-size: var(--_nw-font-size-base);
+        line-height: var(--_nw-line-height);
       }
       *, *::before, *::after { box-sizing: border-box; }
 
       .nw-household {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
+        background: var(--_nw-color-surface);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .header {
-        background: #002855;
-        color: white;
-        padding: 24px;
+        background: var(--_nw-color-secondary);
+        color: var(--_nw-color-on-primary);
+        padding: var(--_nw-space-6);
       }
       .title {
         font-size: 24px;
@@ -1368,21 +1368,21 @@ export class MyHouseholdWidget extends MPNextWidget {
         text-align: center;
       }
 
-      .body { padding: 24px; }
+      .body { padding: var(--_nw-space-6); }
 
       .loading-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         font-size: 16px;
         color: #9E9E9E;
-        padding: 24px;
+        padding: var(--_nw-space-6);
       }
       .spinner {
         width: 22px;
         height: 22px;
-        color: #004C97;
+        color: var(--_nw-color-primary);
         animation: nw-spin 1s linear infinite;
       }
       .nw-spinner-sm {
@@ -1403,14 +1403,14 @@ export class MyHouseholdWidget extends MPNextWidget {
         padding: 32px;
         color: #991b1b;
         background: #fee2e2;
-        border-radius: 8px;
+        border-radius: var(--_nw-radius);
       }
-      .error-box button { margin-top: 12px; }
+      .error-box button { margin-top: var(--_nw-space-3); }
       .empty-state {
         text-align: center;
-        padding: 40px 20px;
+        padding: 40px var(--_nw-space-5);
         color: #9E9E9E;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
       }
 
       .nw-toast {
@@ -1418,22 +1418,22 @@ export class MyHouseholdWidget extends MPNextWidget {
         border-radius: 6px;
         font-size: 13px;
         font-weight: 500;
-        margin-bottom: 16px;
+        margin-bottom: var(--_nw-space-4);
       }
       .nw-toast-success {
         background: #ecfdf5;
         color: #065f46;
-        border: 1px solid #86AD3F;
+        border: var(--_nw-border-width) solid var(--_nw-color-success);
       }
       .nw-toast-error {
         background: #fef2f2;
         color: #991b1b;
-        border: 1px solid #FF6D6A;
+        border: var(--_nw-border-width) solid var(--_nw-color-error);
       }
       .nw-toast-warning {
         background: #fffbeb;
         color: #92700c;
-        border: 1px solid #F1BE48;
+        border: var(--_nw-border-width) solid var(--_nw-color-accent);
       }
 
       .section { margin-bottom: 28px; }
@@ -1441,13 +1441,13 @@ export class MyHouseholdWidget extends MPNextWidget {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 12px;
+        gap: var(--_nw-space-3);
+        margin-bottom: var(--_nw-space-3);
       }
       .household-name {
         font-size: 20px;
-        font-weight: 700;
-        color: #002855;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
         margin: 0;
       }
       .section-label {
@@ -1464,9 +1464,9 @@ export class MyHouseholdWidget extends MPNextWidget {
         width: 32px;
         height: 32px;
         border-radius: 50%;
-        border: 1px solid #004C97;
-        background: white;
-        color: #004C97;
+        border: var(--_nw-border-width) solid var(--_nw-color-primary);
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-primary);
         cursor: pointer;
         transition: background 0.15s;
       }
@@ -1474,27 +1474,27 @@ export class MyHouseholdWidget extends MPNextWidget {
 
       .meta-row {
         display: flex;
-        gap: 8px;
-        font-size: 14px;
-        margin-top: 4px;
+        gap: var(--_nw-space-2);
+        font-size: var(--_nw-font-size-base);
+        margin-top: var(--_nw-space-1);
       }
       .meta-label {
         font-weight: 600;
-        color: #002855;
+        color: var(--_nw-color-secondary);
         min-width: 110px;
       }
-      .meta-value { color: #474747; }
+      .meta-value { color: var(--_nw-color-text-subtle); }
 
       .address-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 16px;
+        gap: var(--_nw-space-4);
         margin-bottom: 28px;
       }
       .address-card {
-        border: 1px solid #e5e7eb;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
         border-radius: 10px;
-        padding: 16px;
+        padding: var(--_nw-space-4);
         background: #f9fafb;
       }
       .address-card-label {
@@ -1502,37 +1502,37 @@ export class MyHouseholdWidget extends MPNextWidget {
         font-weight: 700;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: #004C97;
-        margin-bottom: 8px;
+        color: var(--_nw-color-primary);
+        margin-bottom: var(--_nw-space-2);
       }
-      .addr-lines div { font-size: 14px; color: #2D2926; }
+      .addr-lines div { font-size: var(--_nw-font-size-base); color: var(--_nw-color-text); }
       .addr-empty { font-size: 13px; color: #9E9E9E; }
       .address-daterange {
-        margin-top: 8px;
+        margin-top: var(--_nw-space-2);
         font-size: 12px;
         font-weight: 600;
         color: #92700c;
         background: rgba(241, 190, 72, 0.18);
         border-radius: 6px;
-        padding: 4px 8px;
+        padding: var(--_nw-space-1) var(--_nw-space-2);
         display: inline-block;
       }
 
       .members-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-        gap: 16px;
+        gap: var(--_nw-space-4);
       }
       .member-card {
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 16px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius-lg);
+        padding: var(--_nw-space-4);
         text-align: center;
-        background: white;
+        background: var(--_nw-color-surface);
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 4px;
+        gap: var(--_nw-space-1);
       }
       .member-photo {
         width: 72px;
@@ -1546,28 +1546,28 @@ export class MyHouseholdWidget extends MPNextWidget {
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #f3f4f6;
+        background: var(--_nw-color-surface-muted);
       }
       .member-name {
         font-size: 15px;
-        font-weight: 700;
-        color: #2D2926;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-text);
       }
       .member-position {
         font-size: 12px;
-        color: #004C97;
+        color: var(--_nw-color-primary);
         font-weight: 600;
       }
       .member-dob { font-size: 12px; color: #9E9E9E; }
       .member-edit-btn {
-        margin-top: 8px;
+        margin-top: var(--_nw-space-2);
         background: none;
-        border: 1px solid #004C97;
-        color: #004C97;
+        border: var(--_nw-border-width) solid var(--_nw-color-primary);
+        color: var(--_nw-color-primary);
         border-radius: 6px;
         font-size: 12px;
         font-weight: 600;
-        padding: 4px 14px;
+        padding: var(--_nw-space-1) 14px;
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
@@ -1578,7 +1578,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       .nw-section {
         border: none;
         padding: 0;
-        margin: 0 0 24px 0;
+        margin: 0 0 var(--_nw-space-6) 0;
       }
       .nw-section-label {
         display: block;
@@ -1587,8 +1587,8 @@ export class MyHouseholdWidget extends MPNextWidget {
         letter-spacing: 0.08em;
         text-transform: uppercase;
         color: #9E9E9E;
-        margin-bottom: 12px;
-        padding-bottom: 8px;
+        margin-bottom: var(--_nw-space-3);
+        padding-bottom: var(--_nw-space-2);
         border-bottom: 1px solid #E0E0E0;
       }
       .nw-grid {
@@ -1601,8 +1601,8 @@ export class MyHouseholdWidget extends MPNextWidget {
         display: block;
         font-size: 12px;
         font-weight: 600;
-        color: #474747;
-        margin-bottom: 4px;
+        color: var(--_nw-color-text-subtle);
+        margin-bottom: var(--_nw-space-1);
       }
       .nw-field input[type="text"],
       .nw-field input[type="email"],
@@ -1610,26 +1610,26 @@ export class MyHouseholdWidget extends MPNextWidget {
       .nw-field input[type="date"],
       .nw-field select {
         width: 100%;
-        padding: 8px 10px;
-        border: 1px solid #d1d5db;
+        padding: var(--_nw-space-2) 10px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border-strong);
         border-radius: 6px;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-family: inherit;
-        color: #2D2926;
-        background: white;
+        color: var(--_nw-color-text);
+        background: var(--_nw-color-surface);
         transition: border-color 0.15s;
       }
       .nw-field input:focus,
       .nw-field select:focus {
         outline: none;
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
         box-shadow: 0 0 0 2px rgba(0, 76, 151, 0.15);
       }
 
       .nw-checkrow {
         display: flex;
         flex-wrap: wrap;
-        gap: 16px;
+        gap: var(--_nw-space-4);
         margin-top: 14px;
       }
       .nw-comm-prefs {
@@ -1640,25 +1640,25 @@ export class MyHouseholdWidget extends MPNextWidget {
       .nw-checkbox-label {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         font-weight: 400;
-        font-size: 14px;
-        color: #2D2926;
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text);
         cursor: pointer;
       }
       .nw-checkbox-label input[type="checkbox"] {
         width: 16px;
         height: 16px;
-        accent-color: #004C97;
+        accent-color: var(--_nw-color-primary);
         flex-shrink: 0;
       }
 
       .member-photo-section {
         display: flex;
         align-items: center;
-        gap: 20px;
-        margin-bottom: 24px;
-        padding-bottom: 24px;
+        gap: var(--_nw-space-5);
+        margin-bottom: var(--_nw-space-6);
+        padding-bottom: var(--_nw-space-6);
         border-bottom: 1px solid #E0E0E0;
       }
       .member-photo-wrap { flex-shrink: 0; }
@@ -1675,43 +1675,43 @@ export class MyHouseholdWidget extends MPNextWidget {
       .photo-hint {
         font-size: 11px;
         color: #9E9E9E;
-        margin: 8px 0 0 0;
+        margin: var(--_nw-space-2) 0 0 0;
       }
 
       .nw-actions {
-        padding-top: 8px;
+        padding-top: var(--_nw-space-2);
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
       }
       .nw-btn {
-        padding: 10px 24px;
+        padding: 10px var(--_nw-space-6);
         border: none;
         border-radius: 6px;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
         font-family: inherit;
         cursor: pointer;
         transition: background 0.15s, color 0.15s;
       }
       .nw-btn:disabled { opacity: 0.65; cursor: not-allowed; }
-      .nw-btn-primary { background: #004C97; color: white; }
-      .nw-btn-primary:hover:not(:disabled) { background: #002855; }
+      .nw-btn-primary { background: var(--_nw-button-bg); color: var(--_nw-button-fg); }
+      .nw-btn-primary:hover:not(:disabled) { background: var(--_nw-button-bg-hover); }
       .nw-btn-secondary {
-        background: white;
-        color: #004C97;
-        border: 1px solid #004C97;
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-primary);
+        border: var(--_nw-border-width) solid var(--_nw-color-primary);
       }
       .nw-btn-secondary:hover:not(:disabled) { background: rgba(0,76,151,0.06); }
       .nw-btn-text {
         background: none;
-        color: #474747;
-        padding: 10px 12px;
+        color: var(--_nw-color-text-subtle);
+        padding: 10px var(--_nw-space-3);
       }
-      .nw-btn-text:hover:not(:disabled) { color: #002855; }
+      .nw-btn-text:hover:not(:disabled) { color: var(--_nw-color-secondary); }
 
       @media (max-width: 640px) {
-        .header, .body { padding: 16px; }
+        .header, .body { padding: var(--_nw-space-4); }
         .nw-grid { grid-template-columns: 1fr; }
         .address-grid { grid-template-columns: 1fr; }
         .members-grid {
