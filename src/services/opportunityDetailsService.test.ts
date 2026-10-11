@@ -77,6 +77,55 @@ function writtenResponse(): Record<string, unknown> {
 
 const BLANK = { firstName: "", lastName: "", email: "", phone: "", message: "Happy to help" };
 
+describe("OpportunityDetailsService.getOpportunityById image URLs (C50 pattern)", () => {
+  // The detail `$select` used to inline the deployment's base URL twice as a
+  // SQL string expression, so the query string grew with the host name and
+  // crossed IIS's 2048-char limit at a base URL of ~215 chars. The select now
+  // carries file GUIDs and the URLs are built in JS.
+  beforeEach(() => {
+    mockGetTableRecords.mockReset();
+    mockGetTableRecords.mockImplementation(async (q: { table: string }) =>
+      q.table === "Opportunities"
+        ? [{ ...OPPORTUNITY, ImageGuid: "img-guid", ContactLastName: "Kehayias", ContactFirstName: "Sarah", ContactImageGuid: "contact-guid" }]
+        : []
+    );
+  });
+
+  function selectSent(): string {
+    const call = mockGetTableRecords.mock.calls.find(([q]) => q.table === "Opportunities");
+    return (call![0] as { select: string }).select;
+  }
+
+  it("does not put the base URL in the $select", async () => {
+    const svc = await OpportunityDetailsService.getInstance();
+    await svc.getOpportunityById(5);
+    const select = selectSent();
+    expect(select).not.toContain("test-mp.example.com");
+    expect(select).not.toMatch(/\/files\//);
+    expect(select).toContain("dp_FileUniqueID AS ImageGuid");
+    expect(select).toContain("Contact_Person_Table.dp_FileUniqueID AS ContactImageGuid");
+  });
+
+  it("builds both image URLs from the GUIDs", async () => {
+    const svc = await OpportunityDetailsService.getInstance();
+    const op = await svc.getOpportunityById(5);
+    expect(op.imageUrl).toBe("https://test-mp.example.com/files/img-guid");
+    expect(op.contacts[0].imageUrl).toBe("https://test-mp.example.com/files/contact-guid");
+  });
+
+  it("returns null image URLs when there is no file", async () => {
+    mockGetTableRecords.mockImplementation(async (q: { table: string }) =>
+      q.table === "Opportunities"
+        ? [{ ...OPPORTUNITY, ImageGuid: null, ContactLastName: "Kehayias", ContactFirstName: "Sarah", ContactImageGuid: "" }]
+        : []
+    );
+    const svc = await OpportunityDetailsService.getInstance();
+    const op = await svc.getOpportunityById(5);
+    expect(op.imageUrl).toBeNull();
+    expect(op.contacts[0].imageUrl).toBeNull();
+  });
+});
+
 describe("OpportunityDetailsService.getOpportunityById address (C65)", () => {
   const ADDRESS = {
     Address_ID: 31,
