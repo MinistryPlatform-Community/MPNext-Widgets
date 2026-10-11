@@ -41,6 +41,21 @@ export interface ProfileGetResponse {
   lookups: ProfileLookups;
 }
 
+/**
+ * A phone in a profile update. `undefined` (key absent) means "leave the stored
+ * number alone"; `null` or an empty string is an explicit clear. Anything with
+ * letters is refused with a 400 rather than stored or, worse, turned into a
+ * clear (C51: a client-side mask once emptied "ZZTEST-abc" and saved `null`).
+ */
+export const ProfilePhoneSchema = z
+  .string()
+  .trim()
+  .max(25, "Phone number is too long")
+  .regex(/^[0-9()+.\-\s]*$/, "Invalid phone number")
+  .transform((v) => (v === "" ? null : v))
+  .nullable()
+  .optional();
+
 export const ProfileUpdateSchema = z.object({
   Prefix_ID: z.number().nullable().optional(),
   First_Name: z.string().min(1, "First name is required").optional(),
@@ -51,8 +66,8 @@ export const ProfileUpdateSchema = z.object({
   Gender_ID: z.number().nullable().optional(),
   Date_of_Birth: z.string().nullable().optional(),
   Marital_Status_ID: z.number().nullable().optional(),
-  Mobile_Phone: z.string().nullable().optional(),
-  Company_Phone: z.string().nullable().optional(),
+  Mobile_Phone: ProfilePhoneSchema,
+  Company_Phone: ProfilePhoneSchema,
   Email_Address: z.string().email("Invalid email address").optional(),
   Do_Not_Text: z.boolean().optional(),
   Bulk_Email_Opt_Out: z.boolean().optional(),

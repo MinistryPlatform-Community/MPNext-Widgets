@@ -52,6 +52,27 @@ interface ProfileLookups {
   maritalStatuses: LookupOption[];
 }
 
+/**
+ * Formats a plausible US phone as 999-999-9999 and returns anything else
+ * untouched. Only digits and phone punctuation qualify, with 10 digits (or 11
+ * with a leading country code 1), so "+1 (321) 794-1376" becomes
+ * "321-794-1376" while "ZZTEST-abc" or "321-794-1376 x204" are left for the
+ * validator to reject visibly. Never destroys input (C51).
+ */
+export function normalizePhone(raw: string): string {
+  const value = raw.trim();
+  if (!/^[\d\s().+-]+$/.test(value)) return raw;
+  let digits = value.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) digits = digits.slice(1);
+  if (digits.length !== 10) return raw;
+  return [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6)].join("-");
+}
+
+/** True when the form value differs from the number MP holds. */
+export function phoneChanged(value: string, stored: string | null): boolean {
+  return value.trim() !== (stored ?? "").trim();
+}
+
 export class ProfileWidget extends MPNextWidget {
   private loading = true;
   private saving = false;
@@ -450,8 +471,14 @@ export class ProfileWidget extends MPNextWidget {
       photoInput.value = "";
     });
 
+    // Normalise on blur, never on input: rewriting the live value per keystroke
+    // is what turned "ZZTEST-abc" into "" and then into a silent delete (C51).
     this.root.querySelectorAll("[data-phone]").forEach((input) => {
-      input.addEventListener("input", (e) => this.formatPhone(e.target as HTMLInputElement));
+      input.addEventListener("blur", (e) => {
+        const el = e.target as HTMLInputElement;
+        const next = normalizePhone(el.value);
+        if (next !== el.value) el.value = next;
+      });
     });
 
     this.root.querySelectorAll(".nw-eye-btn").forEach((btn) => {
@@ -508,8 +535,6 @@ export class ProfileWidget extends MPNextWidget {
       Middle_Name: getValue("Middle_Name") || null,
       Nickname: getValue("Nickname") || null,
       Email_Address: email,
-      Mobile_Phone: getValue("Mobile_Phone") || null,
-      Company_Phone: getValue("Company_Phone") || null,
       Do_Not_Text: !getChecked("sms-opt-in"),
       Bulk_Email_Opt_Out: getChecked("bulk-email-opt-out"),
       Prefix_ID: prefixId ? Number(prefixId) : null,
@@ -518,6 +543,15 @@ export class ProfileWidget extends MPNextWidget {
       Marital_Status_ID: maritalStatusId ? Number(maritalStatusId) : null,
       Date_of_Birth: dateOfBirth,
     };
+
+    // A phone is sent only when the visitor changed it. An unchanged field is
+    // omitted, so the server leaves the stored number alone even if it is in a
+    // format this form would not accept; a field the visitor emptied on purpose
+    // is the one way to send `null` (C51).
+    for (const id of ["Mobile_Phone", "Company_Phone"] as const) {
+      const value = getValue(id);
+      if (phoneChanged(value, this.profile?.[id] ?? null)) body[id] = value || null;
+    }
 
     this.saving = true;
     this.render();
@@ -613,18 +647,6 @@ export class ProfileWidget extends MPNextWidget {
     }
   }
 
-  private formatPhone(input: HTMLInputElement) {
-    let digits = input.value.replace(/\D/g, "");
-    if (digits.length > 10) digits = digits.slice(0, 10);
-    if (digits.length >= 7) {
-      input.value = `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
-    } else if (digits.length >= 4) {
-      input.value = `${digits.slice(0, 3)}-${digits.slice(3)}`;
-    } else {
-      input.value = digits;
-    }
-  }
-
   /** Shared validation config for the profile form (submit + live-clear). */
   private profileValidationOpts() {
     const phoneRegex = /^\d{3}-\d{3}-\d{4}$/;
@@ -641,10 +663,16 @@ export class ProfileWidget extends MPNextWidget {
           v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
             ? this.t("validation.email")
             : null,
+        // Only a value the visitor changed is checked: a stored number in some
+        // other format must not block saving the rest of the profile.
         Mobile_Phone: (v: string) =>
-          v && !phoneRegex.test(v) ? this.t("profile.phoneFormat") : null,
+          v && phoneChanged(v, this.profile?.Mobile_Phone ?? null) && !phoneRegex.test(v)
+            ? this.t("profile.phoneFormat")
+            : null,
         Company_Phone: (v: string) =>
-          v && !phoneRegex.test(v) ? this.t("profile.phoneFormat") : null,
+          v && phoneChanged(v, this.profile?.Company_Phone ?? null) && !phoneRegex.test(v)
+            ? this.t("profile.phoneFormat")
+            : null,
       },
     };
   }
