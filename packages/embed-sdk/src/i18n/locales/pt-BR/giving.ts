@@ -24,7 +24,7 @@ export const ptBRGiving = {
     disclaimer:
       "A lista de doações a seguir é informativa e não deve ser usada para fins fiscais.",
     softCreditDisclaimer:
-      "As doações com crédito indireto estão incluídas abaixo e refletem doações creditadas a você, mas que você não fez pessoalmente.",
+      "As doações com crédito indireto são doações creditadas a você, mas que você não fez pessoalmente. Os valores delas ficam fora do seu Total doado e não aparecerão no seu informe de doações para fins fiscais.",
     donations: "Doações",
     empty: "Nenhuma doação",
     showMore: "VER MAIS DOAÇÕES",

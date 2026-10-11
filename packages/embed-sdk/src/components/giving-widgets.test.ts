@@ -483,6 +483,64 @@ describe("giving widgets", () => {
     });
   });
 
+  // ── C37: month labels and the soft-credit note ─────────────────────────
+
+  describe("next-my-giving copy (C37)", () => {
+    const withSoft: Handler = (url) =>
+      url.includes("/api/embed/my-giving")
+        ? jsonResponse({
+            donations: [donation({ amount: 100 }), donation({ amount: 44.44, isSoftCredit: true })],
+          })
+        : undefined;
+    const NOTE = "excluded from your Total Giving";
+
+    it("puts the year on every month option", async () => {
+      mockFetch(withSoft);
+      const el = await settled(mount("next-my-giving"));
+      const options = [...shadow(el).querySelectorAll("#giving-month-select option")].map(
+        (o) => o.textContent,
+      );
+      expect(options[0]).toBe(`All Months ${YEAR}`);
+      expect(options[1]).toBe(`January ${YEAR}`);
+      expect(options[12]).toBe(`December ${YEAR}`);
+    });
+
+    it("explains soft credits whenever they exist, ticked or not, and says they are excluded", async () => {
+      mockFetch(withSoft);
+      const el = await settled(mount("next-my-giving"));
+      expect(text(el)).toContain(NOTE);
+      expect($(el, ".total-amount")?.textContent).toBe("$100.00");
+
+      const toggle = $<HTMLInputElement>(el, "#giving-soft-toggle")!;
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event("change"));
+      expect(text(el)).toContain(NOTE);
+      // Listed, and still excluded from the headline total.
+      expect(shadow(el).querySelectorAll(".donation-row")).toHaveLength(2);
+      expect($(el, ".total-amount")?.textContent).toBe("$100.00");
+    });
+
+    it("says nothing about soft credits when there are none, or they are hidden", async () => {
+      mockFetch((url) =>
+        url.includes("/api/embed/my-giving") ? jsonResponse({ donations: [donation()] }) : undefined,
+      );
+      const el = await settled(mount("next-my-giving"));
+      expect(text(el)).not.toContain(NOTE);
+
+      mockFetch(withSoft);
+      const hidden = await settled(mount("next-my-giving", 'hide-soft-credits="true"'));
+      expect(text(hidden)).not.toContain(NOTE);
+    });
+
+    it("renders the Spanish month option with its year", async () => {
+      document.documentElement.setAttribute("lang", "es");
+      mockFetch(withSoft);
+      const el = await settled(mount("next-my-giving"));
+      const first = shadow(el).querySelectorAll("#giving-month-select option")[1];
+      expect(first.textContent).toBe(`enero de ${YEAR}`);
+    });
+  });
+
   // ── protect: the money ─────────────────────────────────────────────────
 
   describe("next-my-giving money (regression guard)", () => {

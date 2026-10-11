@@ -24,7 +24,7 @@ export const esGiving = {
     disclaimer:
       "La siguiente lista de donaciones es informativa y no debe utilizarse para fines fiscales.",
     softCreditDisclaimer:
-      "A continuación se incluyen las donaciones con crédito indirecto, que reflejan donativos que se le acreditan a usted pero que no realizó personalmente.",
+      "Las donaciones con crédito indirecto son donativos que se le acreditan a usted pero que no realizó personalmente. Sus montos se excluyen de su Total donado y no aparecerán en su estado de contribuciones para fines fiscales.",
     donations: "Donaciones",
     empty: "Sin donaciones",
     showMore: "VER MÁS DONACIONES",

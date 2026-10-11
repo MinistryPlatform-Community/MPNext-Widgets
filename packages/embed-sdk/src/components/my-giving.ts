@@ -272,7 +272,7 @@ export class MyGivingWidget extends MPNextWidget {
     for (let m = 1; m <= 12; m++) {
       const futureInCurrentYear = this.selectedYear === currentYear && m > currentMonth;
       monthOptions.push(
-        `<option value="${m}" ${this.selectedMonth === m ? "selected" : ""} ${futureInCurrentYear ? "disabled" : ""}>${this.escapeHtml(monthNames[m - 1])}</option>`
+        `<option value="${m}" ${this.selectedMonth === m ? "selected" : ""} ${futureInCurrentYear ? "disabled" : ""}>${this.escapeHtml(this.t("myGiving.monthYear", { month: monthNames[m - 1], year: this.selectedYear }))}</option>`
       );
     }
 
@@ -508,7 +508,12 @@ export class MyGivingWidget extends MPNextWidget {
   }
 
   private renderDonationsList(filtered: DonationRecord[]): string {
-    const showSoftDisclaimer = this.includeSoftCredits && filtered.some((d) => d.isSoftCredit);
+    // C37: shown whenever the toggle is available (the data holds a soft
+    // credit), ticked or not — a donor who never ticks it should still learn
+    // soft credits exist, and one who does needs the gap between the list and
+    // Total Giving explained. Legacy showed it unconditionally.
+    const showSoftDisclaimer =
+      !this.hideSoftCredits && this.donations.some((d) => d.isSoftCredit);
 
     const subtitle = `
       <p class="list-subtitle">${this.escapeHtml(this.t("myGiving.disclaimer"))}</p>

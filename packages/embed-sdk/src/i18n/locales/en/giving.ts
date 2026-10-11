@@ -29,7 +29,7 @@ export const giving = {
     disclaimer:
       "The following list of Donations is informational and should not be used for tax purposes.",
     softCreditDisclaimer:
-      "Soft credit donations are included below and reflect gifts you are credited with but did not personally contribute.",
+      "Soft credit donations are gifts you are credited with but did not personally contribute. Their amounts are excluded from your Total Giving and will not appear on your tax statement.",
     donations: "Donations",
     empty: "No donations",
     showMore: "SHOW MORE DONATIONS",
