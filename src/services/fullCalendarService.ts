@@ -122,7 +122,14 @@ export class FullCalendarService {
     const startDate = await tz.toMpSqlDatetime(start);
     const endDate = await tz.toMpSqlDatetime(end);
 
-    const filter = publicEventFilter(`Event_Start_Date >= '${startDate}' AND Event_End_Date <= '${endDate}'`);
+    // Overlap, not containment (C03). An event belongs to [start, end) when it
+    // starts before the window ends and has not finished before it begins, so a
+    // retreat running Oct 30 -> Nov 2 appears in both October and November, and
+    // a long event appears in every month it passes through. The end side is
+    // inclusive (`>=`) so a zero-length event stamped exactly at the window
+    // start (Event_End_Date = Event_Start_Date = start) is not lost; the start
+    // side stays exclusive to match FullCalendar's exclusive `end`.
+    const filter = publicEventFilter(`Event_Start_Date < '${endDate}' AND Event_End_Date >= '${startDate}'`);
 
     const events = await this.mp!.getTableRecords<EventRecord>({
       table: "Events",

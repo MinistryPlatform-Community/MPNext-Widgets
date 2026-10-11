@@ -91,3 +91,45 @@ exclusive-`end` convention expects. Worth a unit test in
 the current test suite cannot catch this because the live dataset has no multi-day
 events. `next-add-to-calendar`, `next-event-details` and `next-event-finder` all
 address single events by id and are unaffected.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W2, branch `ws/w2-events`).
+
+`FullCalendarService.getEvents` now filters by **overlap**:
+
+```ts
+publicEventFilter(`Event_Start_Date < '${endDate}' AND Event_End_Date >= '${startDate}'`)
+```
+
+Both bounds still go through `DomainTimezoneService.toMpSqlDatetime`, and the public
+predicate comes from the shared `publicEventFilter()` (C06).
+
+**Decided:** the end side is inclusive (`>=`, per the W2 epic file) rather than the strictly
+half-open `>` this item suggested. The only row the two forms disagree on is an event that
+ends exactly at the window start. With `>`, a zero-length event (start = end) stamped exactly
+at the window start (a midnight all-day marker on the 1st, say) would be in no window at all.
+With `>=`, the worst case is that FullCalendar receives an event that ended at the instant its
+range began and renders nothing for it. The start side stays exclusive, to match FullCalendar's
+exclusive `end`.
+
+The filter syntax was verified read-only against MPI. The November 2026 grid range
+(`2026-11-01` to `2026-12-13`) returns 12 rows. The `ZZTEST-Multi-Day Retreat` fixture from
+this item is no longer on the domain. No live writes were made, so there is no teardown.
+
+**Tests** (`fullCalendarService.test.ts`, "range predicate (C03)"): the suite parses both
+bounds out of the filter that `getEvents` actually sends and applies them to fixtures. It
+covers:
+
+- the Oct 30 → Nov 2 retreat in November;
+- an event that starts inside the window and ends after it;
+- an event that spans the whole window;
+- a contained event;
+- two events wholly outside the window (rejected);
+- the zero-length event at the window start.
+
+It also asserts that the containment operators are gone. The existing Recipe-E wall-clock
+assertions were rewritten to the new operator positions.
+
+The client side of the same rule (cards and list scoping by overlap, not by start date) is
+handled in C02.
