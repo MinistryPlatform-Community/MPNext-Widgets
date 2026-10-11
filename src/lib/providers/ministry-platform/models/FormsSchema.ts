@@ -16,6 +16,8 @@ export const FormsSchema = z.object({
   Months_Till_Expires: z.number().int().nullable(),
   Expiring_Soon_Days: z.number().int().nullable(),
   Force_Login: z.boolean(),
+  Product_ID: z.number().int().nullable(),
+  Program_ID: z.number().int().nullable(),
 });
 
 export type FormsInput = z.infer<typeof FormsSchema>;

@@ -73,7 +73,6 @@ const HEADER = {
   getAddressInfo: true,
   forceLogin: false,
   productId: null,
-  standaloneOnly: false,
   isExpired: false,
   imageUrl: null,
   googleMapsApiKey: null,

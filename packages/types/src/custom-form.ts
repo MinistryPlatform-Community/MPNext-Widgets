@@ -42,7 +42,6 @@ export const CustomFormHeaderSchema = z.object({
   getAddressInfo: z.boolean(),
   forceLogin: z.boolean(),
   productId: z.number().nullable(),
-  standaloneOnly: z.boolean(),
   isExpired: z.boolean(),
   imageUrl: z.string().nullable(),
   /** Tenant Google Maps JS API key for address autocomplete; null when unset. */

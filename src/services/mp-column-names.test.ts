@@ -402,23 +402,16 @@ interface PhantomSelect {
 const SELECT_KNOWN_DEFECTS: PhantomSelect[] = [];
 
 /**
- * Columns MP *does* have that the generated model lacks (the models date from
- * the initial commit). Not defects -- each entry cites the evidence that the
- * select succeeds live. Regenerating the models should let these be deleted;
- * a stale entry fails the run.
+ * Columns MP *does* have that the generated model lacks. Not defects -- each
+ * entry cites the evidence that the select succeeds live. Regenerate the models
+ * (`pnpm mp:generate:models`) before adding one; a stale entry fails the run.
+ *
+ * Note the generator skips `DataType: "Separator"` columns on purpose: those are
+ * field-group headings in MP's edit screen, not data, and always read `null`.
+ * `Forms.Standalone_Form_Use_Only` was one; it sat here until the 2026-10-11
+ * regeneration showed why the model lacked it, and the select dropped it.
  */
-const MODEL_GAPS: PhantomSelect[] = [
-  {
-    file: "customFormService.ts",
-    table: "Forms",
-    column: "Standalone_Form_Use_Only",
-    lineAtWriting: 95,
-    reason:
-      "c6f6f2e removed the genuinely missing Forms.Product_ID after it 500'd this exact " +
-      "select, kept this column, and was verified end to end against MP (form 7). The " +
-      "Forms model is from the initial commit and predates the column.",
-  },
-];
+const MODEL_GAPS: PhantomSelect[] = [];
 
 interface PhantomHit {
   file: string;

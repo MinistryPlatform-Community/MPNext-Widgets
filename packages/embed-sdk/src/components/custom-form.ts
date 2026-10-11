@@ -27,7 +27,6 @@ interface CustomFormHeader {
   getAddressInfo: boolean;
   forceLogin: boolean;
   productId: number | null;
-  standaloneOnly: boolean;
   isExpired: boolean;
   imageUrl: string | null;
   googleMapsApiKey: string | null;

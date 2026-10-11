@@ -31,7 +31,6 @@ match the Node 24 runtime (Vercel runs 24).
 | 17 | `17-better-auth-vitest5-peer.md` | **suppressed 2026-09-08** — warning gone; remove the rule when upstream widens | 5 min to retire |
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire. **Now the sole gate on a warning-free `pnpm install`** | 15 min |
 | 38 | `38-mp-widget-overrides-css-never-injected.md` | either MP widgets render unbranded in prod, or the build maintains dead plumbing — read the file, it is one browser check | 30 min to triage |
-| 40 | `40-regenerate-mp-models.md` | low — `mp-column-names.test.ts` carries a `MODEL_GAPS` entry for `Forms.Standalone_Form_Use_Only` | 30 min |
 | 41 | `41-plan-your-visit-config-application-code.md` | a config key under two applications is read ambiguously | small |
 | 42 | `42-overpay-refuse-or-record-with-real-vendor.md` | C43 follow-up; waits on the real payment vendor | decision + small |
 | 43 | `43-payor-billing-data-source-for-vendor.md` | C48 follow-up; waits on the real payment vendor | decision + M |
@@ -41,12 +40,16 @@ match the Node 24 runtime (Vercel runs 24).
 | 47 | `47-rate-limiter-log-noise.md` | log flood while the session store is down | small |
 | 48 | `48-comparison-run-test-records-cleanup.md` | clutter; needs a Platform UI user | 10 min |
 
-Items 40–48 are not dependency upgrades: they are the open follow-ups from the
+Items 41–48 are not dependency upgrades: they are the open follow-ups from the
 comparison-remediation epic (2026-10-11). The epic's own still-open findings — C68 (the
 remaining theming channels) and C74 / C75 (smart-link / smart-frame, waiting on an
 auth-design decision) — live in `Comparison/`; see `Comparison/README.md`.
 
 **Do not redo, from deleted items:**
+- Item 40 (done 2026-10-11, models regenerated): a column MP's table metadata lists as
+  `DataType: "Separator"` is a field-group heading in MP's edit screen, not data. The
+  generator skips it on purpose and it always reads `null`. Do not add one to `MODEL_GAPS`
+  or `$select` it (`Forms.Standalone_Form_Use_Only` was one).
 - Item 37: do **not** add the `--disable-features=LocalNetworkAccess...` Playwright launch
   flag. Loopback → loopback is not blocked; the flag fixes nothing and would blind the
   harness to a real class of browser-policy bug.

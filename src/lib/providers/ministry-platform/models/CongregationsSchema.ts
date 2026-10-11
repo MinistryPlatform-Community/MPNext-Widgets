@@ -34,7 +34,6 @@ export const CongregationsSchema = z.object({
   Event_Registration_Handoff_URL: z.url().nullable(),
   Vanco_Tenant: z.string().max(50).nullable(),
   Vanco_Giving_PCCT: z.string().max(50).nullable(),
-  Vanco_Signing_Key: z.string().max(50).nullable(),
   Organization_Code: z.string().max(16).nullable(),
   Sacrament_Place_ID: z.number().int().nullable(),
   Dark_Mode_Logo_URL: z.string().max(500).nullable(),

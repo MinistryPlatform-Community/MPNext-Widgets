@@ -12,6 +12,7 @@ export const InvoicesSchema = z.object({
   Invoice_GUID: z.guid(),
   Invoice_Source: z.number().int().nullable(),
   Cancel_Reason: z.string().max(255).nullable(),
+  Form_Response_ID: z.number().int().nullable(),
 });
 
 export type InvoicesInput = z.infer<typeof InvoicesSchema>;

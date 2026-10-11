@@ -24,7 +24,6 @@ interface FormRow {
   Get_Contact_Info: boolean | number | null;
   Get_Address_Info: boolean | number | null;
   Force_Login: boolean | number | null;
-  Standalone_Form_Use_Only: boolean | number | null;
   End_Date: string | null;
 }
 
@@ -64,7 +63,7 @@ export interface SaveFormResponseArgs {
 }
 
 const FORM_SELECT =
-  "Form_ID,Form_GUID,Form_Title,Instructions,Complete_Message,Get_Contact_Info,Get_Address_Info,Force_Login,Standalone_Form_Use_Only,End_Date";
+  "Form_ID,Form_GUID,Form_Title,Instructions,Complete_Message,Get_Contact_Info,Get_Address_Info,Force_Login,End_Date";
 
 export class CustomFormService {
   private static instance: CustomFormService;
@@ -128,10 +127,9 @@ export class CustomFormService {
       getContactInfo: Boolean(row.Get_Contact_Info),
       getAddressInfo: Boolean(row.Get_Address_Info),
       forceLogin: Boolean(row.Force_Login),
-      // Forms has no Product_ID column in MP (no FK link between Forms and
-      // Products); paid-form → product association is not available here.
+      // MP has since added Forms.Product_ID (absent when c6f6f2e dropped it),
+      // but no paid-form flow consumes it yet, so it is not selected.
       productId: null,
-      standaloneOnly: Boolean(row.Standalone_Form_Use_Only),
       isExpired,
       imageUrl,
       googleMapsApiKey,
