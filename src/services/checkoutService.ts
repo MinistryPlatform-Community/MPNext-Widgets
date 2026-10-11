@@ -39,6 +39,18 @@ function sign(data: string, key: string): string {
   return base64url(crypto.createHmac("sha256", key).update(data).digest());
 }
 
+/**
+ * A payment hand-off token that failed verification. Routes branch on
+ * `reason` (never on the message): `expired` and `invalid` map to the
+ * `verification_expired` / `verification_invalid` wire codes.
+ */
+export class PaymentTokenError extends Error {
+  constructor(public readonly reason: "expired" | "invalid", message: string) {
+    super(message);
+    this.name = "PaymentTokenError";
+  }
+}
+
 export class CheckoutService {
   private static instance: CheckoutService;
 
@@ -65,21 +77,26 @@ export class CheckoutService {
   public decode<T = Record<string, unknown>>(token: string): T {
     const key = getSigningKey();
     const parts = token.split(".");
-    if (parts.length !== 3) throw new Error("Invalid token format");
+    if (parts.length !== 3) throw new PaymentTokenError("invalid", "Invalid token format");
     const [encodedHeader, encodedPayload, signature] = parts;
 
     const expected = sign(`${encodedHeader}.${encodedPayload}`, key);
     const a = Buffer.from(signature);
     const b = Buffer.from(expected);
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-      throw new Error("Invalid token signature");
+      throw new PaymentTokenError("invalid", "Invalid token signature");
     }
 
-    const payload = JSON.parse(
-      Buffer.from(encodedPayload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString()
-    ) as { exp?: number };
+    let payload: { exp?: number };
+    try {
+      payload = JSON.parse(
+        Buffer.from(encodedPayload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString()
+      ) as { exp?: number };
+    } catch {
+      throw new PaymentTokenError("invalid", "Invalid token payload");
+    }
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      throw new Error("Token expired");
+      throw new PaymentTokenError("expired", "Token expired");
     }
     return payload as T;
   }

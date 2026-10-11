@@ -174,6 +174,8 @@ export const giving = {
       "Your payment is being processed. This invoice will update once the payment clears.",
     paymentUnconfirmed: "We could not confirm your payment.",
     paymentUnconfirmedDetail: "We could not confirm your payment: {detail}",
+    paymentDeclined: "Your payment was declined and nothing was charged. Please try another card.",
+    paymentError: "We could not record your payment. Please contact us before trying again, so you are not charged twice.",
   },
 
   checkoutComplete: {
@@ -185,8 +187,10 @@ export const giving = {
     received: "Thank you! Your payment was received.",
     processing:
       "Thank you! Your payment is being processed and will be confirmed shortly.",
-    failed: "We were unable to confirm your payment. Please try again or contact us.",
     unconfirmed: "We were unable to confirm your payment.",
+    titleDeclined: "Payment Declined",
+    declined: "Your payment was declined and nothing was charged. Please return to your invoice and try another card.",
+    error: "We could not record your payment. Please contact us before trying again, so you are not charged twice.",
   },
 
   pay: {

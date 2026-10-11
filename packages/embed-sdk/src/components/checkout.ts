@@ -6,6 +6,7 @@ import {
   FORM_VALIDATION_STYLES,
   type ValidateOptions,
 } from "../shared/form-validation";
+import { paymentOutcomeView, type PaymentTone } from "./checkout-status";
 
 interface CheckoutLineItem {
   invoiceDetailId: number;
@@ -62,7 +63,13 @@ export class CheckoutWidget extends MPNextWidget {
   private otherAmount = "";
   private processing = false;
 
-  private confirmation: { kind: "success" | "pending"; message: string } | null = null;
+  private confirmation: { tone: PaymentTone; message: string } | null = null;
+  /**
+   * True after a payment response we could not record (`error`) or could not
+   * read: the card may have been charged, so the Pay form is not offered again
+   * until the payer reloads. A decline does not set it.
+   */
+  private holdPayForm = false;
 
   static get observedAttributes() {
     return [
@@ -157,30 +164,24 @@ export class CheckoutWidget extends MPNextWidget {
         const data = await res.json().catch(() => ({}));
         throw new Error(this.errorText(data));
       }
-      const data: {
-        invoiceId: number | null;
-        success: boolean;
-        paymentReceived: boolean;
-      } = await res.json();
+      const data: { invoiceId?: number | null; status?: unknown } = await res.json();
 
-      if (data.paymentReceived) {
-        this.confirmation = {
-          kind: "success",
-          message: this.t("checkout.paymentReceived"),
-        };
-      } else {
-        this.confirmation = {
-          kind: "pending",
-          message: this.t("checkout.paymentPending"),
-        };
-      }
+      // One mapper for both payment widgets (C41): a decline is coral and
+      // keeps the Pay form; an error is coral and holds it back.
+      const view = paymentOutcomeView(data);
+      this.confirmation = { tone: view.tone, message: this.t(view.bannerKey) };
+      this.holdPayForm = view.status === "error";
       this.emit("paymentComplete", {
-        invoiceId: data.invoiceId,
-        paymentReceived: data.paymentReceived,
+        invoiceId: data.invoiceId ?? null,
+        status: view.status,
+        paymentReceived: view.status === "received",
       });
     } catch (err) {
+      // We do not know whether it was recorded, so this is never the amber
+      // "processing" banner (C41), and the form is held back.
+      this.holdPayForm = true;
       this.confirmation = {
-        kind: "pending",
+        tone: "failed",
         // `err.message` is itself already a translated sentence from
         // `errorText`, so it is safe to quote inside this one.
         message:
@@ -406,9 +407,11 @@ export class CheckoutWidget extends MPNextWidget {
 
   private renderConfirmation(): string {
     if (!this.confirmation) return "";
-    const cls = this.confirmation.kind === "success" ? "nw-co-confirm--success" : "nw-co-confirm--pending";
+    const { tone } = this.confirmation;
+    // A failure is announced assertively; success and pending politely.
+    const role = tone === "failed" ? "alert" : "status";
     return `
-      <div class="nw-co-confirm ${cls}">
+      <div class="nw-co-confirm nw-co-confirm--${tone}" role="${role}">
         ${this.escapeHtml(this.confirmation.message)}
       </div>`;
   }
@@ -453,7 +456,7 @@ export class CheckoutWidget extends MPNextWidget {
         </div>
       </div>
 
-      ${inv.canPay ? this.renderPaySection(inv) : this.renderStatusSection(inv)}
+      ${inv.canPay ? (this.holdPayForm ? "" : this.renderPaySection(inv)) : this.renderStatusSection(inv)}
     `;
   }
 
@@ -594,6 +597,7 @@ export class CheckoutWidget extends MPNextWidget {
       .nw-co-confirm { border-radius: 10px; padding: 14px 16px; font-size: 14px; font-weight: 600; margin-bottom: 20px; }
       .nw-co-confirm--success { background: rgba(134,173,63,0.15); color: #4d6a14; border: 1px solid rgba(134,173,63,0.4); }
       .nw-co-confirm--pending { background: rgba(241,190,72,0.18); color: #8a6d10; border: 1px solid rgba(241,190,72,0.5); }
+      .nw-co-confirm--failed { background: rgba(255,109,106,0.15); color: #b91c1c; border: 1px solid rgba(255,109,106,0.5); }
 
       .nw-co-meta { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb; margin-bottom: 16px; }
       .nw-co-meta-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #9ca3af; font-weight: 600; }

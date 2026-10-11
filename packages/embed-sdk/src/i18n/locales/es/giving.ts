@@ -150,6 +150,8 @@ export const esGiving = {
       "Su pago se está procesando. Esta factura se actualizará cuando el pago se acredite.",
     paymentUnconfirmed: "No pudimos confirmar su pago.",
     paymentUnconfirmedDetail: "No pudimos confirmar su pago: {detail}",
+    paymentDeclined: "Su pago fue rechazado y no se realizó ningún cargo. Intente con otra tarjeta.",
+    paymentError: "No pudimos registrar su pago. Comuníquese con nosotros antes de volver a intentarlo, para que no se le cobre dos veces.",
   },
 
   checkoutComplete: {
@@ -161,9 +163,10 @@ export const esGiving = {
     received: "¡Gracias! Recibimos su pago.",
     processing:
       "¡Gracias! Su pago se está procesando y se confirmará en breve.",
-    failed:
-      "No pudimos confirmar su pago. Inténtelo de nuevo o comuníquese con nosotros.",
     unconfirmed: "No pudimos confirmar su pago.",
+    titleDeclined: "Pago rechazado",
+    declined: "Su pago fue rechazado y no se realizó ningún cargo. Vuelva a su factura e intente con otra tarjeta.",
+    error: "No pudimos registrar su pago. Comuníquese con nosotros antes de volver a intentarlo, para que no se le cobre dos veces.",
   },
 
   pay: {

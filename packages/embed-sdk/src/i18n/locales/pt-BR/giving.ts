@@ -147,6 +147,8 @@ export const ptBRGiving = {
     paymentUnconfirmed: "Não conseguimos confirmar seu pagamento.",
     paymentUnconfirmedDetail:
       "Não conseguimos confirmar seu pagamento: {detail}",
+    paymentDeclined: "Seu pagamento foi recusado e nada foi cobrado. Tente outro cartão.",
+    paymentError: "Não conseguimos registrar seu pagamento. Entre em contato conosco antes de tentar novamente, para não ser cobrado duas vezes.",
   },
 
   checkoutComplete: {
@@ -158,9 +160,10 @@ export const ptBRGiving = {
     received: "Obrigado! Seu pagamento foi recebido.",
     processing:
       "Obrigado! Seu pagamento está sendo processado e será confirmado em breve.",
-    failed:
-      "Não conseguimos confirmar seu pagamento. Tente novamente ou entre em contato conosco.",
     unconfirmed: "Não conseguimos confirmar seu pagamento.",
+    titleDeclined: "Pagamento recusado",
+    declined: "Seu pagamento foi recusado e nada foi cobrado. Volte à sua fatura e tente outro cartão.",
+    error: "Não conseguimos registrar seu pagamento. Entre em contato conosco antes de tentar novamente, para não ser cobrado duas vezes.",
   },
 
   pay: {

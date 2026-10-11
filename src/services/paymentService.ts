@@ -3,7 +3,7 @@ import { getEnv } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { InvoiceService } from "@/services/invoiceService";
 import { sqlLiteral } from "@/services/_shared/mp-lookup";
-import type { PaymentResponseToken } from "@mpnext/types";
+import type { PaymentOutcome, PaymentResponseToken } from "@mpnext/types";
 
 /**
  * Payment write orchestration for the checkout flow, migrated from the legacy
@@ -17,8 +17,10 @@ import type { PaymentResponseToken } from "@mpnext/types";
  *      invoice's unpaid detail lines (greedy fill, summing to token.amount).
  *   4. Bump Invoice_Status_ID to PaidInFull / SomePaid.
  *
- * Writes are wrapped defensively: on failure we return success:false with a
- * message rather than throwing, so the webhook/response endpoints stay 200.
+ * The answer is one `status` discriminant (C41): `received` | `pending` |
+ * `declined` | `error`. Failures are returned rather than thrown so the
+ * webhook endpoint stays 200 (a vendor retrying on 5xx would double-post), but
+ * every one is logged at `error` level — the silent catch is what hid C40.
  */
 
 // Invoice status ids (mirror the legacy InvoiceStatus enum).
@@ -55,11 +57,12 @@ function toNumber(
   return n === null ? fallback : n;
 }
 
-export interface PaymentResult {
-  invoiceId: number | null;
-  success: boolean;
-  paymentReceived: boolean;
-  message?: string;
+/**
+ * The wire `PaymentOutcome` plus a diagnostic `detail` for the server log.
+ * Routes return `{ invoiceId, status }` only — `detail` never reaches a payer.
+ */
+export interface PaymentResult extends PaymentOutcome {
+  detail?: string;
 }
 
 export class PaymentService {
@@ -100,12 +103,11 @@ export class PaymentService {
         token.invoiceId ?? ""
       );
       if (!invoice) {
-        return {
-          invoiceId: null,
-          success: false,
-          paymentReceived: false,
-          message: "Invoice not found",
-        };
+        console.error(
+          "PaymentService: no invoice for response token",
+          token.transactionCode
+        );
+        return { invoiceId: null, status: "error", detail: "Invoice not found" };
       }
 
       const invoiceId = invoice.invoiceId;
@@ -119,18 +121,13 @@ export class PaymentService {
           top: 1,
         });
         if (existing[0]) {
-          return { invoiceId, success: true, paymentReceived: true };
+          return { invoiceId, status: "received" };
         }
       }
 
       // A declined/failed transaction records nothing.
       if (!token.transactionSuccess) {
-        return {
-          invoiceId,
-          success: false,
-          paymentReceived: false,
-          message: "Transaction failed",
-        };
+        return { invoiceId, status: "declined", detail: "Transaction declined" };
       }
 
       const amount = Number(token.amount) || 0;
@@ -162,12 +159,11 @@ export class PaymentService {
       ])) as Array<{ Payment_ID?: number }>;
       const paymentId = createdPayments[0]?.Payment_ID;
       if (!paymentId) {
-        return {
-          invoiceId,
-          success: false,
-          paymentReceived: false,
-          message: "Failed to create payment",
-        };
+        console.error(
+          "PaymentService: MP returned no Payment_ID for",
+          token.transactionCode
+        );
+        return { invoiceId, status: "error", detail: "Failed to create payment" };
       }
 
       // Allocate the payment across the invoice's unpaid detail lines.
@@ -189,17 +185,12 @@ export class PaymentService {
         console.error("PaymentService: invoice status update failed:", err);
       }
 
-      return { invoiceId, success: true, paymentReceived: true };
+      return { invoiceId, status: "received" };
     } catch (error) {
       // Keep the 200 for webhooks (a vendor retrying on 5xx would double-post),
       // but never quietly: this catch is what hid C40 for the widget's life.
       console.error("PaymentService: createPaymentFromResponse failed:", error);
-      return {
-        invoiceId: null,
-        success: false,
-        paymentReceived: false,
-        message: "Payment processing failed",
-      };
+      return { invoiceId: null, status: "error", detail: "Payment processing failed" };
     }
   }
 

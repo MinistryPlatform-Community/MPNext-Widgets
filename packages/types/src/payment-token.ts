@@ -51,6 +51,36 @@ export const PaymentResponseTokenSchema = z.object({
 });
 export type PaymentResponseToken = z.infer<typeof PaymentResponseTokenSchema>;
 
+// ── Payment outcome (C41) ───────────────────────────────────────────────
+
+/**
+ * The single discriminant every payment-recording endpoint answers with
+ * (`checkout/payment-response`, `payment/notify`). It replaced a pair of
+ * booleans (`success`, `paymentReceived`) that invited each widget to invent
+ * its own branch — and one of them reported a declined card as "processing".
+ *
+ * - `received` — recorded in MP (or already recorded: an idempotent replay).
+ * - `pending`  — the processor accepted it but has not settled it. Reserved
+ *   for a vendor that reports that state; the sandbox never does.
+ * - `declined` — the processor refused the transaction. Nothing was recorded;
+ *   the payer can retry with another card.
+ * - `error`    — an infrastructure fault on our side or MP's. Must never be
+ *   rendered as pending: the payer needs to know it did not go through.
+ */
+export const PaymentOutcomeStatusSchema = z.enum([
+  "received",
+  "pending",
+  "declined",
+  "error",
+]);
+export type PaymentOutcomeStatus = z.infer<typeof PaymentOutcomeStatusSchema>;
+
+export const PaymentOutcomeSchema = z.object({
+  invoiceId: z.number().nullable(),
+  status: PaymentOutcomeStatusSchema,
+});
+export type PaymentOutcome = z.infer<typeof PaymentOutcomeSchema>;
+
 // ── Checkout invoice display ────────────────────────────────────────────
 
 export const CheckoutLineItemSchema = z.object({

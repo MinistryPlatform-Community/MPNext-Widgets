@@ -1,6 +1,8 @@
 import { MPNextWidget } from "../shared/base-widget";
+import type { MessageKey } from "../i18n";
+import { paymentOutcomeView, type PaymentTone } from "./checkout-status";
 
-type Status = "loading" | "success" | "pending" | "failed";
+type Status = "loading" | PaymentTone;
 
 /**
  * `next-checkout-complete` — a minimal landing page for the gateway return
@@ -10,6 +12,13 @@ type Status = "loading" | "success" | "pending" | "failed";
 export class CheckoutCompleteWidget extends MPNextWidget {
   private status: Status = "loading";
   private message = "";
+  private titleKey: MessageKey = "checkoutComplete.titleFailed";
+  /**
+   * Try Again re-posts the same response token. Offered only when the request
+   * itself failed (no answer); a processed `declined` / `error` answer would
+   * just come back the same.
+   */
+  private canRetry = false;
   private token: string | null = null;
 
   static get observedAttributes() {
@@ -63,29 +72,26 @@ export class CheckoutCompleteWidget extends MPNextWidget {
         const data = await res.json().catch(() => ({}));
         throw new Error(this.errorText(data));
       }
-      const data: {
-        invoiceId: number | null;
-        success: boolean;
-        paymentReceived: boolean;
-      } = await res.json();
+      const data: { invoiceId?: number | null; status?: unknown } = await res.json();
 
-      if (data.paymentReceived) {
-        this.status = "success";
-        this.message = this.t("checkoutComplete.received");
-      } else if (data.success) {
-        this.status = "pending";
-        this.message = this.t("checkoutComplete.processing");
-      } else {
-        this.status = "failed";
-        this.message = this.t("checkoutComplete.failed");
-      }
+      // The shared mapper (C41) — the same table `next-checkout` reads.
+      const view = paymentOutcomeView(data);
+      this.status = view.tone;
+      this.titleKey = view.titleKey;
+      this.message = this.t(view.messageKey);
+      this.canRetry = false;
 
       this.emit("paymentComplete", {
-        invoiceId: data.invoiceId,
-        paymentReceived: data.paymentReceived,
+        invoiceId: data.invoiceId ?? null,
+        status: view.status,
+        paymentReceived: view.status === "received",
       });
     } catch (err) {
       this.status = "failed";
+      this.titleKey = "checkoutComplete.titleFailed";
+      // A transport fault: the response was never processed, so asking again
+      // is safe — the server de-duplicates on the transaction code.
+      this.canRetry = true;
       this.message =
         err instanceof Error
           ? err.message
@@ -133,13 +139,7 @@ export class CheckoutCompleteWidget extends MPNextWidget {
           ? "nw-cc-card--pending"
           : "nw-cc-card--failed";
 
-    const title = this.t(
-      this.status === "success"
-        ? "checkoutComplete.titleSuccess"
-        : this.status === "pending"
-          ? "checkoutComplete.titlePending"
-          : "checkoutComplete.titleFailed",
-    );
+    const title = this.t(this.titleKey);
 
     this.root.innerHTML = `
       <div class="nw-cc">
@@ -148,7 +148,7 @@ export class CheckoutCompleteWidget extends MPNextWidget {
           <h2 class="nw-cc-title">${this.escapeHtml(title)}</h2>
           <p class="nw-cc-msg">${this.escapeHtml(this.message)}</p>
           ${
-            this.status === "failed" && this.token
+            this.status === "failed" && this.token && this.canRetry
               ? `<button class="nw-cc-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>`
               : ""
           }

@@ -78,3 +78,42 @@ Give `checkout.ts` the same three states, adding a `"failed"` kind to
 
 The two widgets should share one response-to-state mapper rather than each carrying
 its own branch — that divergence is how one of them ended up wrong.
+
+## Resolution — 2026-10-11
+
+**Fixed (epic W1, branch `ws/w1-payments`).**
+
+- **One discriminant on the wire.** `PaymentOutcome = { invoiceId, status }` with
+  `status: "received" | "pending" | "declined" | "error"` (`PaymentOutcomeSchema` in
+  `packages/types/src/payment-token.ts`). `PaymentService.createPaymentFromResponse` returns
+  it, and `checkout/payment-response` and `payment/notify` answer exactly that. The
+  `success` / `paymentReceived` booleans are gone, and the service's diagnostic `detail` is
+  logged rather than returned.
+- **One mapper.** `packages/embed-sdk/src/components/checkout-status.ts`
+  (`paymentOutcomeView`) is the only place a status becomes a tone (`success` / `pending` /
+  `failed`), the `next-checkout` banner key, the `next-checkout-complete` title and message
+  keys, and whether the Pay form may be offered again. Both widgets read it. **Anything
+  unrecognised maps to `error`, never `pending`.**
+- `next-checkout` states:
+  - `declined` → coral banner (`role="alert"`), "declined and nothing was charged", **Pay
+    form stays on screen**.
+  - `error` → coral, "we could not record your payment — contact us before trying again so you
+    are not charged twice". The Pay form is **held back**: an `error` arrives *after* the
+    processor reported success, so the card may have been charged.
+  - A response we could not read at all is also coral (never the amber banner), with the form
+    held back.
+- `next-checkout-complete` keeps its decline branch (the reference behaviour) and gains a
+  distinct `Payment Declined` title. Try Again is now offered only when the request itself
+  failed, because a processed `declined` / `error` answer would only come back the same.
+- **Decision on `pending`.** It stays in the contract for a vendor that reports
+  accepted-but-unsettled, but no current path emits it. The sandbox settles synchronously, and
+  ACH is recorded as a payment immediately, exactly as legacy does.
+- Token failures are typed: `CheckoutService.decode` throws `PaymentTokenError` with
+  `reason: "expired" | "invalid"`. The routes map that to the existing `verification_expired` /
+  `verification_invalid` codes instead of string-matching `"Token"` into a 403.
+- Copy is in en / es / pt-BR (`checkout.paymentDeclined`, `checkout.paymentError`,
+  `checkoutComplete.titleDeclined` / `declined` / `error`). The now-unused
+  `checkoutComplete.failed` was removed.
+- **Tests:** `packages/embed-sdk/src/components/checkout.test.ts` (new) covers both widgets
+  with each status, plus the unrecognised-body case. `src/services/paymentService.test.ts`
+  covers received, declined (nothing written), error, and an idempotent replay.

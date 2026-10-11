@@ -158,12 +158,36 @@ describe('PaymentService.createPaymentFromResponse (C40)', () => {
     expect((paymentsRead?.[0] as { filter: string }).filter).toBe("Transaction_Code = 'a''b'");
   });
 
-  it('logs an MP fault at error level and does not throw', async () => {
+  it('logs an MP fault at error level and answers status "error" (C41)', async () => {
     mp.executeProcedure.mockRejectedValue(new Error('GET /procs failed: 500'));
     const svc = await PaymentService.getInstance();
     const result = await svc.createPaymentFromResponse(token());
-    expect(result.invoiceId).toBeNull();
+    expect(result).toMatchObject({ invoiceId: null, status: 'error' });
     expect(console.error).toHaveBeenCalled();
+    expect(mp.createTableRecords).not.toHaveBeenCalled();
+  });
+
+  it('a recorded payment is status "received" (C41)', async () => {
+    const svc = await PaymentService.getInstance();
+    expect(await svc.createPaymentFromResponse(token())).toEqual({
+      invoiceId: 6,
+      status: 'received',
+    });
+  });
+
+  it('a declined transaction is status "declined" and records nothing (C41)', async () => {
+    const svc = await PaymentService.getInstance();
+    const result = await svc.createPaymentFromResponse(token({ transactionSuccess: false }));
+    expect(result).toMatchObject({ invoiceId: 6, status: 'declined' });
+    expect(mp.createTableRecords).not.toHaveBeenCalled();
+  });
+
+  it('a re-posted transaction code is "received" without a second row', async () => {
+    mp.getTableRecords.mockImplementation((args: { table: string }) =>
+      args.table === 'Payments' ? Promise.resolve([{ Payment_ID: 900 }]) : tables(args)
+    );
+    const svc = await PaymentService.getInstance();
+    expect((await svc.createPaymentFromResponse(token())).status).toBe('received');
     expect(mp.createTableRecords).not.toHaveBeenCalled();
   });
 });
