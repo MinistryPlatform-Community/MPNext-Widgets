@@ -49,7 +49,6 @@ export class SubscriptionsWidget extends MPNextWidget {
     if (typeof value !== "boolean" || value === this.bulkEmailOptOut || this.loading) return;
     this.bulkEmailOptOut = value;
     this.render();
-    this.attachListeners();
   };
 
   connectedCallback() {
@@ -115,7 +114,6 @@ export class SubscriptionsWidget extends MPNextWidget {
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -131,7 +129,6 @@ export class SubscriptionsWidget extends MPNextWidget {
     this.savingIds.add(pubId);
     this.message = null;
     this.render();
-    this.attachListeners();
 
     try {
       // The endpoint is idempotent and diffs against existing state, so we send
@@ -180,7 +177,6 @@ export class SubscriptionsWidget extends MPNextWidget {
     } finally {
       this.savingIds.delete(pubId);
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -197,7 +193,6 @@ export class SubscriptionsWidget extends MPNextWidget {
     this.savingBulk = true;
     this.message = null;
     this.render();
-    this.attachListeners();
 
     try {
       const res = await this.fetch("/api/embed/subscriptions", {
@@ -222,7 +217,6 @@ export class SubscriptionsWidget extends MPNextWidget {
     } finally {
       this.savingBulk = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -240,7 +234,6 @@ export class SubscriptionsWidget extends MPNextWidget {
       searchInput.addEventListener("input", () => {
         this.searchQuery = searchInput.value;
         this.render();
-        this.attachListeners();
         const newInput = this.root.querySelector<HTMLInputElement>("#sub-search");
         if (newInput) {
           newInput.focus();
@@ -258,7 +251,18 @@ export class SubscriptionsWidget extends MPNextWidget {
     });
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `
         <div class="nw-subscriptions">

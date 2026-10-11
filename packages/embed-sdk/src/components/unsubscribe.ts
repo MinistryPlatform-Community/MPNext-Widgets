@@ -242,7 +242,6 @@ export class UnsubscribeWidget extends MPNextWidget {
       this.busy = false;
       if (!this.detached) {
         this.render();
-        this.attachListeners();
       }
     }
   }
@@ -305,7 +304,18 @@ export class UnsubscribeWidget extends MPNextWidget {
     return (this.getAttribute("show-email") ?? "true") !== "false";
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     const manage = this.manageUrl();
     const manageMarkup = manage
       ? `<a class="manage" href="${this.escapeAttr(manage)}">${this.escapeHtml(

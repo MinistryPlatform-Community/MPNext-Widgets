@@ -201,7 +201,6 @@ export class OpportunityFinderWidget extends MPNextWidget {
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -240,7 +239,6 @@ export class OpportunityFinderWidget extends MPNextWidget {
         this.readFormState();
         this.advancedOpen = !this.advancedOpen;
         this.render();
-        this.attachListeners();
       });
     }
 
@@ -278,7 +276,18 @@ export class OpportunityFinderWidget extends MPNextWidget {
 
   // ── Render ──
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     this.root.innerHTML = `
       <div class="nw-of">
         ${this.renderSearchForm()}

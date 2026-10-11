@@ -44,7 +44,6 @@ export class StatementPreferencesWidget extends MPNextWidget {
   protected override reload(): void {
     if (this.loading) return;
     this.render();
-    this.attachListeners();
   }
 
   public retryLoad() {
@@ -91,7 +90,6 @@ export class StatementPreferencesWidget extends MPNextWidget {
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -102,7 +100,6 @@ export class StatementPreferencesWidget extends MPNextWidget {
     // Optimistically reflect the new value while saving.
     this.paperless = newValue;
     this.render();
-    this.attachListeners();
 
     try {
       const res = await this.fetch("/api/embed/statement-preferences", {
@@ -132,7 +129,6 @@ export class StatementPreferencesWidget extends MPNextWidget {
     } finally {
       this.saving = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -151,7 +147,18 @@ export class StatementPreferencesWidget extends MPNextWidget {
     }
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `
         <div class="nw-statement">

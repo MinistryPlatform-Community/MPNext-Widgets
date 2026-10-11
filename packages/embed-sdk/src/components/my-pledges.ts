@@ -103,7 +103,6 @@ export class MyPledgesWidget extends MPNextWidget {
   protected override reload(): void {
     if (this.loading) return;
     this.render();
-    this.attachListeners();
   }
 
   public retryLoad() {
@@ -141,7 +140,6 @@ export class MyPledgesWidget extends MPNextWidget {
       this.loading = false;
       this.confirmingCancelId = null;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -149,7 +147,6 @@ export class MyPledgesWidget extends MPNextWidget {
     this.cancelingId = pledgeId;
     this.message = null;
     this.render();
-    this.attachListeners();
 
     try {
       const body: {
@@ -186,7 +183,6 @@ export class MyPledgesWidget extends MPNextWidget {
       this.cancelingId = null;
       this.confirmingCancelId = null;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -204,7 +200,6 @@ export class MyPledgesWidget extends MPNextWidget {
           this.confirmingCancelId = id;
           this.message = null;
           this.render();
-          this.attachListeners();
         }
       });
     });
@@ -214,7 +209,6 @@ export class MyPledgesWidget extends MPNextWidget {
       btn.addEventListener("click", () => {
         this.confirmingCancelId = null;
         this.render();
-        this.attachListeners();
       });
     });
 
@@ -228,7 +222,18 @@ export class MyPledgesWidget extends MPNextWidget {
     });
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `
         <div class="nw-pledges">

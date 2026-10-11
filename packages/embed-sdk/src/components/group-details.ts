@@ -189,7 +189,6 @@ export class GroupDetailsWidget extends MPNextWidget {
       this.error = this.t("groupDetails.noGroupSpecified");
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.emit("groupDetailError", { error: this.error });
       return;
     }
@@ -234,7 +233,6 @@ export class GroupDetailsWidget extends MPNextWidget {
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -463,7 +461,6 @@ export class GroupDetailsWidget extends MPNextWidget {
       container.scrollIntoView({ behavior: "smooth", block: "center" });
     } else {
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -530,7 +527,6 @@ export class GroupDetailsWidget extends MPNextWidget {
       this.activeTab = tab;
       this.message = null;
       this.render();
-      this.attachListeners();
     }
     if (focus) {
       this.root.querySelector<HTMLElement>(`[role="tab"][data-tab="${tab}"]`)?.focus();
@@ -558,7 +554,18 @@ export class GroupDetailsWidget extends MPNextWidget {
 
   // ── Render ──
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `<div class="gd">${this.renderState(this.spinnerSvg(), this.t("groupDetails.loading"))}</div>`;
       return;

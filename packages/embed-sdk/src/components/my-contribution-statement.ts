@@ -58,7 +58,6 @@ export class MyContributionStatementWidget extends MPNextWidget {
   protected override reload(): void {
     if (this.loading) return;
     this.render();
-    this.attachListeners();
   }
 
   public retryLoad() {
@@ -107,7 +106,6 @@ export class MyContributionStatementWidget extends MPNextWidget {
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -125,7 +123,6 @@ export class MyContributionStatementWidget extends MPNextWidget {
         if (company && year) {
           this.selectedYear[company] = year;
           this.render();
-          this.attachListeners();
         }
       });
     });
@@ -181,7 +178,6 @@ export class MyContributionStatementWidget extends MPNextWidget {
     } finally {
       this.downloading.delete(company);
       this.render();
-      this.attachListeners();
     }
 
     this.emit("statementDownloaded", {
@@ -229,7 +225,18 @@ export class MyContributionStatementWidget extends MPNextWidget {
    * element out of the re-rendered region means a year click does not destroy
    * it, refetch the preference, or drop its "updated" message.
    */
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     this.ensureLayout();
     this.mainEl!.innerHTML = this.renderMainHtml();
     this.syncPaperless();

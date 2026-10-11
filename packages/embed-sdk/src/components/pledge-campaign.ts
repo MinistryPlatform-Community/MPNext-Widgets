@@ -202,7 +202,6 @@ export class PledgeCampaignWidget extends MPNextWidget {
       this.error = this.t("pledgeCampaign.notSpecified");
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.emit("pledgeCampaignError", { error: this.error });
       return;
     }
@@ -246,13 +245,11 @@ export class PledgeCampaignWidget extends MPNextWidget {
       this.campaign = null;
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.emit("pledgeCampaignError", { error: this.error });
       return;
     }
 
     this.render();
-    this.attachListeners();
   }
 
   private async loadBasicContact() {
@@ -466,7 +463,6 @@ export class PledgeCampaignWidget extends MPNextWidget {
       this.submitted = true;
       this.emit("pledgeSaved", { pledgeId: data.pledgeId });
       this.render();
-      this.attachListeners();
       this.setMessage("success", thankYou);
     } catch (err) {
       const msg =
@@ -663,7 +659,6 @@ export class PledgeCampaignWidget extends MPNextWidget {
       container.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } else {
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -804,12 +799,22 @@ export class PledgeCampaignWidget extends MPNextWidget {
     this.submitted = false;
     this.message = null;
     this.render();
-    this.attachListeners();
   }
 
   // ── Render ────────────────────────────────────────────────────────────
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `<div class="pc">${this.renderState(this.spinnerSvg(), this.t("pledgeCampaign.loading"))}</div>`;
       return;
