@@ -847,45 +847,45 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .pyv { max-width: 640px; margin: 0 auto; }
-      .pyv-title { font-size: 24px; font-weight: 800; color: #002855; margin: 0 0 6px; }
-      .pyv-lead { font-size: 15px; color: #474747; margin: 0 0 18px; line-height: 1.5; }
-      .pyv-section { font-size: 15px; font-weight: 700; color: #002855; margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #e5e7eb; }
+      .pyv-title { font-size: 24px; font-weight: 800; color: var(--_nw-color-secondary); margin: 0 0 6px; }
+      .pyv-lead { font-size: 15px; color: var(--_nw-color-text-subtle); margin: 0 0 18px; line-height: var(--_nw-line-height); }
+      .pyv-section { font-size: 15px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: var(--_nw-space-5) 0 10px; padding-bottom: 6px; border-bottom: var(--_nw-border-width) solid var(--_nw-color-border); }
 
-      .pyv-message { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
+      .pyv-message { padding: var(--_nw-space-3) var(--_nw-space-4); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); margin-bottom: var(--_nw-space-4); }
       .pyv-message--success { background: #ecf6e0; color: #4d6b1f; }
       .pyv-message--warning { background: #fdf6e3; color: #8a6d3b; }
       .pyv-message--info { background: #e6f6fc; color: #015a7a; }
-      .pyv-message--danger { background: #ffe9e9; color: #b91c1c; }
+      .pyv-message--danger { background: #ffe9e9; color: var(--_nw-color-error-text); }
 
-      .pyv-form { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      .pyv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-      .pyv-field label { font-size: 13px; font-weight: 600; color: #6b7280; }
-      .pyv-input { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; background: white; outline: none; }
-      .pyv-input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
-      .pyv-readonly { background: #f3f4f6; color: #6b7280; }
-      .pyv-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .pyv-form { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-5); box-shadow: var(--_nw-shadow); }
+      .pyv-field { display: flex; flex-direction: column; gap: var(--_nw-space-1); margin-bottom: var(--_nw-space-3); }
+      .pyv-field label { font-size: 13px; font-weight: 600; color: var(--_nw-color-muted); }
+      .pyv-input { padding: 9px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); background: var(--_nw-color-surface); outline: none; }
+      .pyv-input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
+      .pyv-readonly { background: var(--_nw-color-surface-muted); color: var(--_nw-color-muted); }
+      .pyv-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--_nw-space-3); }
 
-      .pyv-fieldset { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px 4px; margin: 0 0 12px; }
-      .pyv-fieldset legend { font-size: 13px; font-weight: 700; color: #002855; padding: 0 6px; display: flex; align-items: center; gap: 8px; }
-      .pyv-remove { background: none; border: none; color: #FF6D6A; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px; }
+      .pyv-fieldset { border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius); padding: var(--_nw-space-3) var(--_nw-space-4) var(--_nw-space-1); margin: 0 0 var(--_nw-space-3); }
+      .pyv-fieldset legend { font-size: 13px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); padding: 0 6px; display: flex; align-items: center; gap: var(--_nw-space-2); }
+      .pyv-remove { background: none; border: none; color: var(--_nw-color-error); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 var(--_nw-space-1); }
 
-      .pyv-add-child { margin-bottom: 12px; }
-      .pyv-link { background: none; border: none; color: #004C97; font-weight: 600; font-size: 14px; cursor: pointer; font-family: inherit; padding: 0; }
+      .pyv-add-child { margin-bottom: var(--_nw-space-3); }
+      .pyv-link { background: none; border: none; color: var(--_nw-color-primary); font-weight: 600; font-size: var(--_nw-font-size-base); cursor: pointer; font-family: inherit; padding: 0; }
       .pyv-link:hover { text-decoration: underline; }
 
-      .pyv-actions { margin-top: 8px; }
-      .pyv-signin { margin-top: 12px; }
-      .pyv-btn { padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
-      .pyv-btn--primary { background: #004C97; color: white; }
-      .pyv-btn--primary:hover { background: #002855; }
-      .pyv-btn--ghost { background: white; color: #004C97; border: 1px solid #004C97; }
+      .pyv-actions { margin-top: var(--_nw-space-2); }
+      .pyv-signin { margin-top: var(--_nw-space-3); }
+      .pyv-btn { padding: 10px 18px; border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
+      .pyv-btn--primary { background: var(--_nw-button-bg); color: var(--_nw-button-fg); border-radius: var(--_nw-button-radius); }
+      .pyv-btn--primary:hover { background: var(--_nw-button-bg-hover); }
+      .pyv-btn--ghost { background: var(--_nw-color-surface); color: var(--_nw-color-primary); border: var(--_nw-border-width) solid var(--_nw-color-primary); }
       .pyv-btn--ghost:hover { background: #f0f6fc; }
       .pyv-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-      .pyv-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; font-size: 15px; }
-      .pyv-spinner { animation: pyv-spin 1s linear infinite; color: #004C97; }
+      .pyv-state { display: flex; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 48px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; }
+      .pyv-spinner { animation: pyv-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes pyv-spin { to { transform: rotate(360deg); } }
 
       @media (max-width: 640px) { .pyv-grid2 { grid-template-columns: 1fr; } }

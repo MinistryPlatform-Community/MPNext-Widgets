@@ -516,45 +516,45 @@ export class OpportunityFinderWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .nw-of { max-width: 1024px; margin: 0 auto; }
 
-      .nw-of-form { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      .nw-of-search-row { display: flex; gap: 8px; }
-      .nw-of-input { flex: 1; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; outline: none; }
-      .nw-of-input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
-      .nw-of-btn { padding: 10px 20px; background: #004C97; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
-      .nw-of-btn:hover { background: #002855; }
-      .nw-of-advanced-link { display: inline-block; margin-top: 12px; font-size: 13px; color: #004C97; text-decoration: none; cursor: pointer; font-weight: 600; }
+      .nw-of-form { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-4); margin-bottom: var(--_nw-space-5); box-shadow: var(--_nw-shadow); }
+      .nw-of-search-row { display: flex; gap: var(--_nw-space-2); }
+      .nw-of-input { flex: 1; padding: 10px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); outline: none; }
+      .nw-of-input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
+      .nw-of-btn { padding: 10px var(--_nw-space-5); background: var(--_nw-button-bg); color: var(--_nw-button-fg); border: none; border-radius: var(--_nw-button-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+      .nw-of-btn:hover { background: var(--_nw-button-bg-hover); }
+      .nw-of-advanced-link { display: inline-block; margin-top: var(--_nw-space-3); font-size: 13px; color: var(--_nw-color-primary); text-decoration: none; cursor: pointer; font-weight: 600; }
       .nw-of-advanced-link:hover { text-decoration: underline; }
-      .nw-of-advanced { margin-top: 16px; gap: 12px; grid-template-columns: repeat(2, 1fr); }
-      .nw-of-field { display: flex; flex-direction: column; gap: 4px; }
+      .nw-of-advanced { margin-top: var(--_nw-space-4); gap: var(--_nw-space-3); grid-template-columns: repeat(2, 1fr); }
+      .nw-of-field { display: flex; flex-direction: column; gap: var(--_nw-space-1); }
       .nw-of-field--wide { grid-column: 1 / -1; }
-      .nw-of-field label { font-size: 12px; font-weight: 600; color: #6b7280; }
-      .nw-of-select { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; background: white; outline: none; cursor: pointer; }
-      .nw-of-select:focus { border-color: #004C97; }
+      .nw-of-field label { font-size: 12px; font-weight: 600; color: var(--_nw-color-muted); }
+      .nw-of-select { padding: 9px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); background: var(--_nw-color-surface); outline: none; cursor: pointer; }
+      .nw-of-select:focus { border-color: var(--_nw-color-primary); }
       select[multiple].nw-of-select { padding: 6px; cursor: default; }
 
-      .nw-of-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-      .nw-of-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: border-color 0.15s, box-shadow 0.15s; }
+      .nw-of-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--_nw-space-4); }
+      .nw-of-card { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--_nw-shadow); transition: border-color 0.15s, box-shadow 0.15s; }
       a.nw-of-card { cursor: pointer; }
-      a.nw-of-card:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+      a.nw-of-card:hover { border-color: var(--_nw-color-primary); box-shadow: var(--_nw-shadow-hover); }
       .nw-of-card-imgwrap { position: relative; }
       .nw-of-card-img { width: 100%; height: 160px; object-fit: cover; display: block; }
-      .nw-of-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #9ca3af; height: 160px; }
-      .nw-of-badge { position: absolute; top: 10px; left: 10px; background: #F1BE48; color: #2D2926; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.03em; }
-      .nw-of-card-body { padding: 16px; display: flex; flex-direction: column; flex: 1; }
-      .nw-of-card-title { font-size: 16px; font-weight: 700; color: #002855; margin: 0 0 6px; }
-      .nw-of-card-sub { font-size: 13px; color: #004C97; font-weight: 600; margin-bottom: 8px; }
-      .nw-of-pills { list-style: none; padding: 0; margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 6px; }
-      .nw-of-pills li { background: #eef2f7; color: #002855; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 9999px; }
-      .nw-of-card-desc { font-size: 13px; color: #474747; line-height: 1.5; flex: 1; }
-      .nw-of-card-cta { margin-top: 12px; font-size: 13px; font-weight: 600; color: #004C97; }
+      .nw-of-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: var(--_nw-color-surface-muted); color: #9ca3af; height: 160px; }
+      .nw-of-badge { position: absolute; top: 10px; left: 10px; background: var(--_nw-color-accent); color: var(--_nw-color-text); font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.03em; }
+      .nw-of-card-body { padding: var(--_nw-space-4); display: flex; flex-direction: column; flex: 1; }
+      .nw-of-card-title { font-size: 16px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: 0 0 6px; }
+      .nw-of-card-sub { font-size: 13px; color: var(--_nw-color-primary); font-weight: 600; margin-bottom: var(--_nw-space-2); }
+      .nw-of-pills { list-style: none; padding: 0; margin: 0 0 var(--_nw-space-2); display: flex; flex-wrap: wrap; gap: 6px; }
+      .nw-of-pills li { background: #eef2f7; color: var(--_nw-color-secondary); font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 9999px; }
+      .nw-of-card-desc { font-size: 13px; color: var(--_nw-color-text-subtle); line-height: var(--_nw-line-height); flex: 1; }
+      .nw-of-card-cta { margin-top: var(--_nw-space-3); font-size: 13px; font-weight: 600; color: var(--_nw-color-primary); }
 
-      .nw-of-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; font-size: 15px; flex-direction: column; text-align: center; }
-      .nw-of-spinner { animation: nw-of-spin 1s linear infinite; color: #004C97; }
+      .nw-of-state { display: flex; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 48px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; flex-direction: column; text-align: center; }
+      .nw-of-spinner { animation: nw-of-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes nw-of-spin { to { transform: rotate(360deg); } }
-      .nw-of-error p { color: #b91c1c; margin: 0; }
+      .nw-of-error p { color: var(--_nw-color-error-text); margin: 0; }
 
       @media (max-width: 1024px) { .nw-of-grid { grid-template-columns: repeat(2, 1fr); } }
       @media (max-width: 640px) {

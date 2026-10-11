@@ -622,33 +622,33 @@ export class CustomFormWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .cf { max-width: 720px; margin: 0 auto; }
-      .cf-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      .cf-image { width: 100%; height: 200px; background-size: cover; background-position: center; border-radius: 12px; margin-bottom: 16px; }
-      .cf-title { font-size: 24px; font-weight: 800; color: #002855; margin: 0 0 12px; }
-      .cf-instructions-block { font-size: 15px; line-height: 1.6; color: #474747; margin-bottom: 16px; }
+      .cf-card { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-6); box-shadow: var(--_nw-shadow); }
+      .cf-image { width: 100%; height: 200px; background-size: cover; background-position: center; border-radius: var(--_nw-radius-lg); margin-bottom: var(--_nw-space-4); }
+      .cf-title { font-size: 24px; font-weight: 800; color: var(--_nw-color-secondary); margin: 0 0 var(--_nw-space-3); }
+      .cf-instructions-block { font-size: 15px; line-height: 1.6; color: var(--_nw-color-text-subtle); margin-bottom: var(--_nw-space-4); }
       .cf-form { display: block; }
-      .cf-fieldset { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px 4px; margin: 0 0 16px; }
-      .cf-fieldset legend { font-size: 13px; font-weight: 700; color: #002855; padding: 0 6px; }
-      .cf-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-      .cf-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-      .cf-actions { margin-top: 16px; }
-      .cf-btn { padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
-      .cf-btn--primary { background: #004C97; color: white; }
-      .cf-btn--primary:hover { background: #002855; }
+      .cf-fieldset { border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius); padding: var(--_nw-space-3) var(--_nw-space-4) var(--_nw-space-1); margin: 0 0 var(--_nw-space-4); }
+      .cf-fieldset legend { font-size: 13px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); padding: 0 6px; }
+      .cf-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--_nw-space-3); }
+      .cf-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--_nw-space-3); }
+      .cf-actions { margin-top: var(--_nw-space-4); }
+      .cf-btn { padding: 10px var(--_nw-space-5); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
+      .cf-btn--primary { background: var(--_nw-button-bg); color: var(--_nw-button-fg); border-radius: var(--_nw-button-radius); }
+      .cf-btn--primary:hover { background: var(--_nw-button-bg-hover); }
       .cf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-      .cf-message { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
-      .cf-message--danger { background: #ffe9e9; color: #b91c1c; }
+      .cf-message { padding: var(--_nw-space-3) var(--_nw-space-4); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); margin-bottom: var(--_nw-space-4); }
+      .cf-message--danger { background: #ffe9e9; color: var(--_nw-color-error-text); }
       .cf-complete { font-size: 16px; line-height: 1.6; color: #2D6B1F; }
-      .cf-submitted-for { font-size: 14px; color: #474747; margin: 8px 0 0; }
-      .cf-input.cf-readonly { background: #f3f4f6; color: #6b7280; }
+      .cf-submitted-for { font-size: var(--_nw-font-size-base); color: var(--_nw-color-text-subtle); margin: var(--_nw-space-2) 0 0; }
+      .cf-input.cf-readonly { background: var(--_nw-color-surface-muted); color: var(--_nw-color-muted); }
       .cf-expired { color: #8a6d3b; font-size: 15px; margin: 0; }
       .cf-login { text-align: center; }
-      .cf-login p { margin: 0 0 12px; }
-      .cf-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; flex-direction: column; }
-      .cf-error p { color: #b91c1c; }
-      .cf-spinner { animation: cf-spin 1s linear infinite; color: #004C97; }
+      .cf-login p { margin: 0 0 var(--_nw-space-3); }
+      .cf-state { display: flex; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 48px var(--_nw-space-4); color: var(--_nw-color-muted); flex-direction: column; }
+      .cf-error p { color: var(--_nw-color-error-text); }
+      .cf-spinner { animation: cf-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes cf-spin { to { transform: rotate(360deg); } }
       @media (max-width: 640px) { .cf-grid2, .cf-grid3 { grid-template-columns: 1fr; } }
     `;
