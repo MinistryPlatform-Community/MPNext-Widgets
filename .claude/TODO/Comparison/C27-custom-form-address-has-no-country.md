@@ -78,3 +78,29 @@ One caution found while verifying: MP's own `Countries.Country` value for `CW` i
 stored double-UTF-8-encoded (verified against the raw bytes via the client-credentials
 API — it is MP's stored data, not a client bug), so both widgets show the same mangled
 name. Do not try to fix that in the client.
+
+## Resolution — 2026-10-11
+
+**Won't port** (W4, branch `ws/w4-serving-forms`). It is decided under the epic's C27 rule:
+"add Country only if MP's custom-form address block writes back to `Addresses`;
+otherwise record it as won't port."
+
+- **No column to store it in.** `Form_Responses` was checked live (MinistryPlatform MCP
+  `mp_lookup`, 2026-10-11) and against `FormResponsesSchema.ts`. It has `Address_Line_1`,
+  `Address_Line_2`, `Address_City`, `Address_State` and `Address_Zip`, and **no country
+  column**. A Country select here would collect a value the submit route can only throw
+  away. That is worse than not asking, because it implies the church has it. This item's
+  "persist it in the submit route" was impossible as written (the epic's stale-plan
+  corrections say so).
+- **No write-back to `Addresses`.** `custom-form/submit/route.ts` creates only
+  `Form_Responses` and `Form_Response_Answers`. It never touches `Contacts`, `Households`
+  or `Addresses`, and C26 decided **not** to port legacy's `SaveAddressInfo` /
+  `updateMyInfo` write-back. So no country path exists. Legacy's Country select fed that
+  write-back, which this stack deliberately does not have.
+- **If write-back is ever added** (as an explicit, opt-in checkbox, per C26), Country
+  should return with it, taking its values from MP `Countries` the way
+  `planYourVisitService.getConfigurations()` reads them. Until then, the address data a
+  custom form captures is the five columns above, exactly as on `Form_Responses` today.
+- For W9's migration notes: *custom forms no longer ask for Country; MP's
+  `Form_Responses` has no country column, and the form does not update the contact's
+  address record.*
