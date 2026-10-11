@@ -105,6 +105,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
       "return-url",
       "verification-email-template-id",
       "church-notification-email-template-id",
+      "user-notification-email-template-id",
       "collect-address",
       "milestone-to-assign-id",
       "milestone-program-id",
@@ -334,6 +335,10 @@ export class PlanYourVisitWidget extends MPNextWidget {
       milestoneProgramId: numOrNull("__milestoneProgramId"),
       churchNotificationEmailTemplate:
         this.getAttribute("church-notification-email-template-id") || null,
+      // C63: the visitor's own confirmation. Absent, the server falls back to
+      // the congregation's Plan_A_Visit_Template.
+      userNotificationEmailTemplate:
+        this.getAttribute("user-notification-email-template-id") || null,
     };
 
     if (this.collectAddress) {

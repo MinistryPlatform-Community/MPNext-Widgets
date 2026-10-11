@@ -99,3 +99,18 @@ Three lines in the widget plus a schema field, if `PyvRegisterRequest` already d
 via `model.userNotificationEmailTemplate` and Zod would strip an undeclared key before it
 ever reached there. Keep the existing congregation fallback: the `??` chain in the service
 is the right precedence (explicit attribute wins, congregation default otherwise).
+
+## Resolution — 2026-10-11
+
+**Fixed** (W4, branch `ws/w4-serving-forms`). The change is widget-only, as the epic file
+predicted.
+
+- `next-plan-your-visit` observes `user-notification-email-template-id`, and the register
+  payload sends it as `userNotificationEmailTemplate` (`null` when absent).
+- No schema or route change was needed. `PyvRegisterRequestSchema` already declared the
+  field, and the register route passes the JSON body through without a Zod `parse`, so
+  nothing strips it. The service's `??` chain is unchanged: an explicit attribute wins,
+  and otherwise the congregation's `Plan_A_Visit_Template` applies.
+- The demo page's code sample shows the attribute.
+- Tests (`plan-your-visit.test.ts`, "notification templates (C63)"): the attribute reaches
+  the payload, and it is `null` without the attribute.

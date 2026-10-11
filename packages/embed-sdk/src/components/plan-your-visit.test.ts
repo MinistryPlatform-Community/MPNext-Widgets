@@ -194,6 +194,31 @@ describe("<next-plan-your-visit>", () => {
     });
   });
 
+  describe("notification templates (C63)", () => {
+    it("sends the user-notification template from its attribute", async () => {
+      const fetchFn = mockFetch();
+      const el = await mountDetails(
+        'user-notification-email-template-id="131" church-notification-email-template-id="132"'
+      );
+      fillRequired(el, "321-555-0100");
+      submit(el);
+      await vi.waitFor(() => expect(posted(fetchFn, "/plan-your-visit/register")).toHaveLength(1));
+      expect(posted(fetchFn, "/plan-your-visit/register")[0]).toMatchObject({
+        userNotificationEmailTemplate: "131",
+        churchNotificationEmailTemplate: "132",
+      });
+    });
+
+    it("sends null without it, so the congregation default applies", async () => {
+      const fetchFn = mockFetch();
+      const el = await mountDetails();
+      fillRequired(el, "321-555-0100");
+      submit(el);
+      await vi.waitFor(() => expect(posted(fetchFn, "/plan-your-visit/register")).toHaveLength(1));
+      expect(posted(fetchFn, "/plan-your-visit/register")[0].userNotificationEmailTemplate).toBeNull();
+    });
+  });
+
   describe("accessible names (C28)", () => {
     const unnamed = (root: ParentNode) =>
       Array.from(
