@@ -58,11 +58,7 @@ export async function POST(req: NextRequest) {
     // household). Never trust the picker's value on its own.
     if (contactId != null && !(await canActAsContact(claims.sub, contactId))) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "not_household_member",
-          message: "ContactId is not the caller or a member of the caller's household",
-        },
+        { success: false, error: "not_household_member", message: "ContactId is not the caller or their household" },
         { status: 403, headers: getCorsHeaders(origin) }
       );
     }
