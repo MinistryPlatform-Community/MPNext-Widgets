@@ -232,6 +232,13 @@ export const core = {
     // household), so the number stays in the server's English `message` for the
     // log and the rendered sentence is limit-free rather than sometimes wrong.
     file_too_large: "That file is too large. Please choose a smaller image.",
+    // Generic "MinistryPlatform did not answer" (C42 remainder): a timeout,
+    // a 5xx or a refused connection upstream. Emitted first by the payment and
+    // checkout routes (W1), available to any route. Unlike the `*_unavailable`
+    // codes above it is transient, so the sentence does invite a retry —
+    // later, not immediately.
+    mp_unavailable:
+      "This service is temporarily unavailable. Please try again in a few minutes.",
   },
 
   localeSelector: {

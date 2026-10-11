@@ -114,6 +114,7 @@
   "errors.invoice_not_payable": "4e08f3a5",
   "errors.link_expired": "ee4d71c0",
   "errors.mission_trips_unavailable": "e4e75f02",
+  "errors.mp_unavailable": "8067ed63",
   "errors.network": "d3fc48be",
   "errors.no_file": "e3015d12",
   "errors.not_a_participant": "23b488fc",
