@@ -596,40 +596,40 @@ export class MyInvoicesWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-invoices {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
+        background: var(--_nw-color-surface);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .header {
-        background: #002855;
-        color: white;
-        padding: 24px;
+        background: var(--_nw-color-secondary);
+        color: var(--_nw-color-on-primary);
+        padding: var(--_nw-space-6);
       }
       .title {
         font-size: 24px;
-        font-weight: bold;
+        font-weight: var(--_nw-font-weight-heading);
         text-align: center;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
       }
       .subtitle {
         text-align: center;
         opacity: 0.8;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         margin: 0;
       }
       .loading-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         font-size: 18px;
       }
 
@@ -643,44 +643,44 @@ export class MyInvoicesWidget extends MPNextWidget {
       }
 
       .list-body {
-        padding: 20px;
+        padding: var(--_nw-space-5);
       }
 
       .search-bar {
-        margin-bottom: 16px;
+        margin-bottom: var(--_nw-space-4);
       }
       .search-bar input {
         width: 100%;
         padding: 10px 14px;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        font-size: 14px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
         font-family: inherit;
         outline: none;
         transition: border-color 0.15s;
       }
       .search-bar input:focus {
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
       }
 
       .empty-state {
         text-align: center;
-        padding: 40px 20px;
+        padding: 40px var(--_nw-space-5);
         color: #9E9E9E;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
       }
 
       .invoice-table {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
         overflow: hidden;
       }
       .table-header, .table-row {
         display: grid;
         grid-template-columns: 120px 1fr 110px 90px;
         align-items: center;
-        padding: 12px 16px;
-        gap: 12px;
+        padding: var(--_nw-space-3) var(--_nw-space-4);
+        gap: var(--_nw-space-3);
       }
       .table-header {
         background: #f9fafb;
@@ -689,25 +689,25 @@ export class MyInvoicesWidget extends MPNextWidget {
         color: rgba(45, 41, 38, 0.7);
         text-transform: uppercase;
         letter-spacing: 0.03em;
-        border-bottom: 1px solid #e5e7eb;
+        border-bottom: var(--_nw-border-width) solid var(--_nw-color-border);
       }
       .row-item {
         display: flex;
         align-items: center;
-        border-bottom: 1px solid #f3f4f6;
+        border-bottom: var(--_nw-border-width) solid var(--_nw-color-surface-muted);
         border-left: 3px solid transparent;
       }
       .row-item:last-child {
         border-bottom: none;
       }
       .row-item--payable {
-        border-left-color: #F1BE48;
+        border-left-color: var(--_nw-color-accent);
       }
       .table-row {
         flex: 1;
         min-width: 0;
-        font-size: 14px;
-        color: #2D2926;
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text);
         cursor: pointer;
         transition: background 0.15s;
       }
@@ -717,19 +717,19 @@ export class MyInvoicesWidget extends MPNextWidget {
       .row-pay {
         flex: 0 0 64px;
         box-sizing: border-box;
-        padding: 12px 8px;
+        padding: var(--_nw-space-3) var(--_nw-space-2);
         text-align: center;
         font-size: 12px;
         font-weight: 600;
-        color: #004C97;
+        color: var(--_nw-color-primary);
         text-decoration: none;
       }
       a.row-pay:hover {
-        color: #002855;
+        color: var(--_nw-color-secondary);
         text-decoration: underline;
       }
       a.row-pay:focus-visible, a.pay-btn:focus-visible {
-        outline: 2px solid #009CDE;
+        outline: var(--_nw-focus-ring);
         outline-offset: 2px;
       }
       .invoice-table--pay .table-header {
@@ -738,14 +738,14 @@ export class MyInvoicesWidget extends MPNextWidget {
       .free-toggle {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         margin-top: 10px;
         font-size: 13px;
-        color: #474747;
+        color: var(--_nw-color-text-subtle);
         cursor: pointer;
       }
       .free-toggle input {
-        accent-color: #004C97;
+        accent-color: var(--_nw-color-primary);
         width: 16px;
         height: 16px;
       }
@@ -784,58 +784,58 @@ export class MyInvoicesWidget extends MPNextWidget {
       }
       .badge-cancelled {
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
       }
       .badge-default {
-        background: #f3f4f6;
-        color: #474747;
+        background: var(--_nw-color-surface-muted);
+        color: var(--_nw-color-text-subtle);
       }
       .badge-free {
         background: rgba(0, 156, 222, 0.12);
-        color: #004C97;
+        color: var(--_nw-color-primary);
       }
 
       .detail-body {
-        padding: 20px;
+        padding: var(--_nw-space-5);
       }
       .back-btn {
         background: none;
         border: none;
-        color: #004C97;
-        font-size: 14px;
+        color: var(--_nw-color-primary);
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
         cursor: pointer;
-        padding: 8px 0;
-        margin-bottom: 16px;
+        padding: var(--_nw-space-2) 0;
+        margin-bottom: var(--_nw-space-4);
         font-family: inherit;
       }
       .back-btn:hover {
-        color: #002855;
+        color: var(--_nw-color-secondary);
       }
 
       .detail-header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        padding: 16px 0;
-        border-bottom: 1px solid #e5e7eb;
-        margin-bottom: 24px;
+        padding: var(--_nw-space-4) 0;
+        border-bottom: var(--_nw-border-width) solid var(--_nw-color-border);
+        margin-bottom: var(--_nw-space-6);
       }
       .detail-meta {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: var(--_nw-space-2);
       }
       .detail-field {
-        font-size: 14px;
-        color: #474747;
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text-subtle);
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
       }
       .detail-label {
         font-weight: 600;
-        color: #002855;
+        color: var(--_nw-color-secondary);
       }
       .detail-total {
         text-align: right;
@@ -848,30 +848,30 @@ export class MyInvoicesWidget extends MPNextWidget {
       .detail-total-amount {
         font-size: 28px;
         font-weight: 700;
-        color: #004C97;
+        color: var(--_nw-color-primary);
       }
 
       .section-label {
         font-size: 16px;
-        font-weight: 700;
-        color: #002855;
-        margin-bottom: 12px;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
+        margin-bottom: var(--_nw-space-3);
       }
 
       .line-items-section {
-        margin-bottom: 24px;
+        margin-bottom: var(--_nw-space-6);
       }
       .line-items-table {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
         overflow: hidden;
       }
       .li-header, .li-row {
         display: grid;
         grid-template-columns: 1fr 1fr 60px 90px 90px;
         align-items: center;
-        padding: 10px 16px;
-        gap: 12px;
+        padding: 10px var(--_nw-space-4);
+        gap: var(--_nw-space-3);
       }
       .li-header {
         background: #f9fafb;
@@ -880,12 +880,12 @@ export class MyInvoicesWidget extends MPNextWidget {
         color: rgba(45, 41, 38, 0.7);
         text-transform: uppercase;
         letter-spacing: 0.03em;
-        border-bottom: 1px solid #e5e7eb;
+        border-bottom: var(--_nw-border-width) solid var(--_nw-color-border);
       }
       .li-row {
-        font-size: 14px;
-        color: #2D2926;
-        border-bottom: 1px solid #f3f4f6;
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text);
+        border-bottom: var(--_nw-border-width) solid var(--_nw-color-surface-muted);
       }
       .li-row:last-child {
         border-bottom: none;
@@ -898,21 +898,21 @@ export class MyInvoicesWidget extends MPNextWidget {
       }
 
       .notes-section {
-        margin-bottom: 24px;
+        margin-bottom: var(--_nw-space-6);
       }
       .notes-content {
-        font-size: 14px;
-        color: #474747;
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text-subtle);
         line-height: 1.6;
         white-space: pre-line;
         background: #f9fafb;
-        padding: 16px;
-        border-radius: 8px;
+        padding: var(--_nw-space-4);
+        border-radius: var(--_nw-radius);
       }
 
       .pay-section {
-        padding: 20px 0 0;
-        border-top: 1px solid #e5e7eb;
+        padding: var(--_nw-space-5) 0 0;
+        border-top: var(--_nw-border-width) solid var(--_nw-color-border);
       }
       .pay-btn {
         display: block;
@@ -923,54 +923,54 @@ export class MyInvoicesWidget extends MPNextWidget {
         max-width: 320px;
         margin: 0 auto;
         padding: 14px 32px;
-        background: #004C97;
-        color: white;
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: bold;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .pay-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       .retry-section {
-        padding: 20px;
+        padding: var(--_nw-space-5);
         text-align: center;
       }
       .retry-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .retry-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       @media (max-width: 640px) {
         .header, .list-body, .detail-body {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .table-header, .table-row {
           grid-template-columns: 80px 1fr 80px 70px;
-          gap: 8px;
-          padding: 10px 12px;
+          gap: var(--_nw-space-2);
+          padding: 10px var(--_nw-space-3);
           font-size: 13px;
         }
         .detail-header {
           flex-direction: column;
-          gap: 16px;
+          gap: var(--_nw-space-4);
         }
         .detail-total {
           text-align: left;
