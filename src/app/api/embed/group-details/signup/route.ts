@@ -2,9 +2,10 @@
  * Group sign-up submission for the next-group-details widget.
  * POST /api/embed/group-details/signup
  *
- * Requires authentication. Resolves the selected contact's participant record
- * (creating one when missing) and adds a pending Group_Participant using the
- * group type's default role.
+ * Requires authentication. Resolves the selected household contact — or, for
+ * "Someone else…" (C14), finds or creates the typed person — then their
+ * participant record (creating one when missing), and adds a Group_Participant
+ * using the group type's default role.
  *
  * `signup-email-template` sends a confirmation to the person signed up, and
  * `leader-signup-email-template` notifies the group's leaders (C11). Both are
@@ -20,7 +21,11 @@ import {
   buildOptionsResponse,
   buildFallbackCorsHeaders,
 } from "@/lib/embed/auth";
-import { GroupsService, NotHouseholdMemberError } from "@/services/groupsService";
+import {
+  GroupsService,
+  IncompleteIdentityError,
+  NotHouseholdMemberError,
+} from "@/services/groupsService";
 import type { GroupInquiryRequest } from "@mpnext/types";
 
 function templateId(value: unknown): number | null {
@@ -69,8 +74,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Default the sign-up to the signed-in contact when the form omits one.
-    if (!payload.contactId || payload.contactId <= 0) {
+    // Default the sign-up to the signed-in contact when the form names no one —
+    // neither a picked contact nor a typed "Someone else…" identity (C14).
+    const typedSomeoneElse = Boolean(payload.firstName || payload.lastName || payload.emailAddress);
+    if ((!payload.contactId || payload.contactId <= 0) && !typedSomeoneElse) {
       payload.contactId = user.Contact_ID;
     }
 
@@ -89,6 +96,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           { success: false, error: "not_household_member", message: err.message },
           { status: 403, headers: getCorsHeaders(origin) }
+        );
+      }
+      if (err instanceof IncompleteIdentityError) {
+        return NextResponse.json(
+          { success: false, error: "validation_failed", message: err.message },
+          { status: 422, headers: getCorsHeaders(origin) }
         );
       }
       throw err;

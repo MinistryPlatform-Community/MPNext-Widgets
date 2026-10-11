@@ -73,9 +73,9 @@ type Tab = "inquire" | "signup";
  * ids, posted with the write. The server sends after the insert; a template
  * fault still reports success, with a sentence saying the email did not go.
  *
- * Simplifications relative to legacy (noted inline):
- *  - Sign-up uses a household-member contact (no anonymous "Blank Form" sign-up,
- *    which the backend cannot attribute to a participant).
+ * Sign-up offers the household plus "Someone else…" (C14), which finds or
+ * creates the typed person server-side. Sign-up itself still requires sign-in,
+ * exactly as legacy did, so no anonymous request can create a contact.
  */
 export class GroupDetailsWidget extends MPNextWidget {
   private group: GroupDetail | null = null;
@@ -269,11 +269,6 @@ export class GroupDetailsWidget extends MPNextWidget {
     const contactRaw = String(fd.get("contactId") || "").trim();
     const contactId = contactRaw && contactRaw !== "blank" ? Number(contactRaw) : null;
 
-    if (tab === "signup" && (contactId == null || contactId <= 0)) {
-      this.setMessage("danger", this.t("groupDetails.chooseSignup"));
-      return;
-    }
-
     const payload = {
       targetId: this.group.id,
       contactId,
@@ -462,7 +457,8 @@ export class GroupDetailsWidget extends MPNextWidget {
     if (signupAs) {
       signupAs.addEventListener("change", () => {
         this.signupContactId = signupAs.value;
-        const id = signupAs.value ? Number(signupAs.value) : null;
+        this.toggleBlankFields("signup");
+        const id = signupAs.value && signupAs.value !== "blank" ? Number(signupAs.value) : null;
         void this.checkPriorActivity("signup", id);
       });
     }
@@ -714,12 +710,16 @@ export class GroupDetailsWidget extends MPNextWidget {
           <button class="gd-btn gd-btn--primary" type="button" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button>
         </div>`;
     }
+    const showBlank = this.signupContactId === "blank";
     return `
       <div id="gd-signup-warning" class="gd-message gd-message--info" style="display:${this.signupWarning ? "" : "none"}">
         ${this.escapeHtml(this.t("groupDetails.alreadySignedUp"))}
       </div>
       <form id="gd-signup-form" class="gd-form" novalidate>
         ${this.renderAsPicker("signup")}
+        <div id="gd-signup-blank" style="display:${showBlank ? "" : "none"}">
+          ${this.renderBlankFields(showBlank)}
+        </div>
         <div class="gd-field">
           <label for="gd-signup-message">${this.escapeHtml(this.t("fields.message"))} <span class="gd-optional">(${this.escapeHtml(this.t("common.optional"))})</span></label>
           <textarea id="gd-signup-message" class="gd-input" name="message" maxlength="500" rows="3"></textarea>
@@ -751,11 +751,9 @@ export class GroupDetailsWidget extends MPNextWidget {
           `<option value="${m.contactId}" ${String(m.contactId) === selected ? "selected" : ""}>${this.escapeHtml(m.displayName)}</option>`
       )
       .join("");
-    // Inquiry permits an anonymous "Blank Form"; sign-up always needs a contact.
-    const blankOpt =
-      tab === "inquire"
-        ? `<option value="blank" ${selected === "blank" ? "selected" : ""}>${this.escapeHtml(this.t("groupDetails.someoneElse"))}</option>`
-        : "";
+    // "Someone else…" on both tabs (C14). Listed last, so the default stays
+    // the signed-in contact — legacy listed "Blank Form" first (C19 row 7).
+    const blankOpt = `<option value="blank" ${selected === "blank" ? "selected" : ""}>${this.escapeHtml(this.t("groupDetails.someoneElse"))}</option>`;
     const id = tab === "inquire" ? "gd-inquire-as" : "gd-signup-as";
     const label = this.t(
       tab === "inquire" ? "groupDetails.contactAs" : "groupDetails.signUpAs"

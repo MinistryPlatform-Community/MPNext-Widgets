@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { GroupsService, NotHouseholdMemberError } from "@/services/groupsService";
+import {
+  GroupsService,
+  IncompleteIdentityError,
+  NotHouseholdMemberError,
+} from "@/services/groupsService";
 
 /**
  * `GroupsService` — the inquiry / sign-up write paths (C11, C12, C14).
@@ -324,5 +328,85 @@ describe("GroupsService notification emails (C11)", () => {
     await expect(
       svc.sendSignupEmails(49, sarah, null, { leaderSignup: 664 }),
     ).resolves.toBe(false);
+  });
+});
+
+describe("GroupsService.signUp — Someone else (C14)", () => {
+  function installSomeoneElse(match: ContactFixture | null) {
+    installMp((opts) => {
+      if (opts.table === "Contacts" && /Last_Name = /.test(opts.filter ?? "")) {
+        return match ? [{ Contact_ID: match.Contact_ID }] : [];
+      }
+      if (opts.table === "Contacts" && /Contact_ID = 900\b/.test(opts.filter ?? "")) {
+        return [{ Participant_Record: null }];
+      }
+      if (opts.table === "Contact_Statuses") return [{ Id: 1 }];
+      if (opts.table === "dp_Configuration_Settings") return [{ Value: "1" }];
+      return undefined;
+    });
+    mockCreateTableRecords.mockImplementation(async (table: string, records: Record<string, unknown>[]) => {
+      if (table === "Contacts") return [{ ...records[0], Contact_ID: 900 }];
+      if (table === "Participants") return [{ ...records[0], Participant_ID: 901 }];
+      return records;
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("creates a contact and participant for a person not yet in MP", async () => {
+    installSomeoneElse(null);
+    const svc = await service();
+    const who = await svc.signUp(
+      {
+        targetId: 49,
+        contactId: null,
+        firstName: "Grace",
+        lastName: "O'Hopper",
+        emailAddress: "grace@example.com",
+        mobilePhoneNumber: "555-0101",
+      },
+      { userId: 7, contactId: 98 },
+    );
+
+    expect(createdRecords("Contacts")[0]).toMatchObject({
+      Company: false,
+      Display_Name: "O'Hopper, Grace",
+      First_Name: "Grace",
+      Last_Name: "O'Hopper",
+      Email_Address: "grace@example.com",
+      Mobile_Phone: "555-0101",
+      Contact_Status_ID: 1,
+    });
+    expect(createdRecords("Participants")[0]).toMatchObject({ Contact_ID: 900 });
+    expect(createdRecords("Group_Participants")[0]).toMatchObject({ Participant_ID: 901 });
+    expect(who).toMatchObject({ contactId: 900, emailAddress: "grace@example.com" });
+
+    // The quote in the surname reached MP escaped, not as a broken filter.
+    const matchFilter = mockGetTableRecords.mock.calls
+      .map(([o]) => (o as { filter?: string }).filter ?? "")
+      .find((f) => f.includes("Last_Name ="));
+    expect(matchFilter).toContain("Last_Name = 'O''Hopper'");
+  });
+
+  it("reuses an existing contact matched on name and email", async () => {
+    installSomeoneElse(STRANGER);
+    const svc = await service();
+    await svc.signUp(
+      { targetId: 49, firstName: "Ada", lastName: "Lovelace", emailAddress: "ada@example.com" },
+      { userId: 7, contactId: 98 },
+    );
+    expect(createdRecords("Contacts")).toEqual([]);
+    expect(createdRecords("Group_Participants")[0]).toMatchObject({ Participant_ID: 50 });
+  });
+
+  it("refuses an incomplete identity before writing anything", async () => {
+    installSomeoneElse(null);
+    const svc = await service();
+    await expect(
+      svc.signUp({ targetId: 49, firstName: "Grace" }, { userId: 7, contactId: 98 }),
+    ).rejects.toBeInstanceOf(IncompleteIdentityError);
+    expect(mockCreateTableRecords).not.toHaveBeenCalled();
   });
 });

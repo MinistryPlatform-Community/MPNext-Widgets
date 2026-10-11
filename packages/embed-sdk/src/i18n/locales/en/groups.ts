@@ -92,7 +92,6 @@ export const groups = {
     someoneElse: "Someone else…",
     /** Fallback name for the signed-in contact when MP has no display name. */
     myInfo: "My Info",
-    chooseSignup: "Please choose who is signing up.",
     inquirySent: "Thanks! Your message has been sent to the group.",
     inquirySentNamed: "Thanks, {name}! Your message has been sent to the group.",
     signedUp: "You're signed up! The group leader will be in touch.",

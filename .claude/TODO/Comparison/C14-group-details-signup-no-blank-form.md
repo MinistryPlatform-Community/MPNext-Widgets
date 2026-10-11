@@ -110,3 +110,27 @@ anonymous (not signed-in) blank-form sign-up should be allowed — legacy shows 
 prompt for the sign-up tab too, so keeping sign-in required and only widening *who* can be
 signed up matches legacy exactly and avoids opening an unauthenticated contact-creation
 endpoint.
+
+## Resolution — 2026-10-11
+
+**Fixed (W3, `ws/w3-groups`).**
+
+- The sign-up picker now ends with **Someone else…**, which reveals the same
+  first/last/email/phone block the inquiry tab uses (required via the shared validator).
+  The `contactId`-required guard and its now-dead `groupDetails.chooseSignup` key are gone
+  from all three locales.
+- Server: `GroupsService.signUp` takes either a picked household contact (household rule,
+  C12) or, with no `contactId`, runs `findOrCreateContact` **before** `resolveParticipantId`:
+  match `Contacts` on last name + first name/nickname + email (all three, so a shared
+  family address cannot select the wrong family member); otherwise create a minimal contact
+  (`Company = 0`, `Display_Name` "Last, First", `Contact_Status_ID` resolved by name via
+  `getIdByValue`, never hard-coded). The existing participant-creation path then runs.
+  A missing name or email answers `422 validation_failed` with no MP write.
+- The throw at the old `groupsService.ts:467-470` is replaced by that branch; the route's
+  "default to the signed-in contact" now applies only when the form names nobody at all.
+- **Decided: sign-in stays required for sign-up.** Exactly legacy's rule, and it means no
+  unauthenticated request can create a contact. Only *who* can be signed up widened.
+- Tests: `src/services/groupsService.test.ts` ("Someone else (C14)": create, reuse, refuse
+  incomplete; quote-escaping in the match filter) and
+  `packages/embed-sdk/src/components/group-details.test.ts` (option present, fields
+  revealed and required, payload shape, empty submit blocked).

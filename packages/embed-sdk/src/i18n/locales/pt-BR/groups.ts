@@ -80,7 +80,6 @@ export const ptBRGroups = {
     signUpAs: "Inscrever",
     someoneElse: "Outra pessoa…",
     myInfo: "Minhas informações",
-    chooseSignup: "Escolha quem vai se inscrever.",
     inquirySent: "Obrigado! Sua mensagem foi enviada ao grupo.",
     inquirySentNamed: "Obrigado, {name}! Sua mensagem foi enviada ao grupo.",
     signedUp: "Você está inscrito! O líder do grupo entrará em contato.",

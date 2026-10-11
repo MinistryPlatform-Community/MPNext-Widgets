@@ -1,7 +1,7 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
-import { cap, clean } from "@/services/_shared/mp-lookup";
+import { cap, clean, getIdByValue, sqlLiteral } from "@/services/_shared/mp-lookup";
 import {
   MessageTemplateService,
   type TemplateMergeData,
@@ -153,6 +153,18 @@ export interface GroupEmailTemplates {
 }
 
 /**
+ * A "Someone else…" sign-up arrived without the first name, last name and
+ * email it needs to find or create a contact. Routes answer
+ * `validation_failed` (422).
+ */
+export class IncompleteIdentityError extends Error {
+  constructor() {
+    super("A first name, last name and email are required to sign up someone else.");
+    this.name = "IncompleteIdentityError";
+  }
+}
+
+/**
  * The request named a contact the caller may not act for: an anonymous caller
  * naming any contact, or a signed-in one naming a contact outside their own
  * household. Routes answer `not_household_member` (403).
@@ -168,6 +180,7 @@ export class GroupsService {
   private static instance: GroupsService;
   private mp: MPHelper | null = null;
   private imageBaseUrl = "";
+  private idCache = new Map<string, number | null>();
 
   private constructor() {
     const raw = getEnv("MINISTRY_PLATFORM_BASE_URL").replace(/\/$/, "");
@@ -614,12 +627,15 @@ export class GroupsService {
   ): Promise<InquirerDetails> {
     const userId = actor.userId;
     const selectedId = form.contactId && form.contactId > 0 ? form.contactId : null;
-    if (selectedId == null) {
-      throw new Error("A contact is required to sign up for a group.");
-    }
-    // The same household rule as an inquiry: a caller may sign up themselves
-    // or a member of their own household, never an arbitrary Contact_ID.
-    const person = await this.resolveActingContact(selectedId, actor.contactId);
+    // A picked contact follows the household rule: a caller may sign up
+    // themselves or a member of their own household, never an arbitrary
+    // Contact_ID. "Someone else…" (C14) finds or creates the typed person.
+    // Both paths sit behind sign-in — the route refuses a public token — so
+    // this is never an unauthenticated contact-creation endpoint.
+    const person =
+      selectedId != null
+        ? await this.resolveActingContact(selectedId, actor.contactId)
+        : await this.findOrCreateContact(form, userId);
     const contactId = person.contactId;
 
     const participantId = await this.resolveParticipantId(contactId, userId);
@@ -821,6 +837,79 @@ export class GroupsService {
       console.warn(`GroupsService: email template ${templateId} could not be sent:`, err);
       return false;
     }
+  }
+
+  /**
+   * The "Someone else…" sign-up (C14): match an existing contact on last name,
+   * first name (or nickname) **and** email, else create a minimal one. Same
+   * shape as legacy's `ContactManager.FindContact`, and as
+   * `pledgeCampaignService.resolveContactId`. The match needs all three so a
+   * shared family address does not sign up the wrong family member.
+   */
+  private async findOrCreateContact(
+    form: GroupInquiryRequest,
+    userId: number | null
+  ): Promise<ContactIdentity> {
+    const first = clean(form.firstName);
+    const last = clean(form.lastName);
+    const email = clean(form.emailAddress);
+    const phone = clean(form.mobilePhoneNumber);
+    if (!first || !last || !email) throw new IncompleteIdentityError();
+
+    const matches = await this.mp!.getTableRecords<{ Contact_ID: number | string }>({
+      table: "Contacts",
+      select: "Contact_ID",
+      filter: [
+        `Last_Name = '${sqlLiteral(last)}'`,
+        `(First_Name = '${sqlLiteral(first)}' OR Nickname = '${sqlLiteral(first)}')`,
+        `Email_Address = '${sqlLiteral(email)}'`,
+      ].join(" AND "),
+      orderBy: "Contact_ID",
+      top: 1,
+    });
+    const matchedId = toNumberOrNull(matches[0]?.Contact_ID ?? null);
+    if (matchedId != null) {
+      const existing = await this.getContactIdentity(matchedId);
+      if (existing) return existing;
+    }
+
+    const activeStatusId = await getIdByValue(
+      { mp: this.mp!, cache: this.idCache, label: "GroupsService" },
+      "Contact_Statuses",
+      "Contact_Status",
+      "Active",
+      "Contact_Status_ID"
+    );
+    const record: Record<string, unknown> = {
+      Company: false,
+      Display_Name: cap(`${last}, ${first}`, 125),
+      First_Name: cap(first, 50),
+      Nickname: cap(first, 50),
+      Last_Name: cap(last, 50),
+      Email_Address: cap(email, 254),
+      Mobile_Phone: phone,
+    };
+    // Omitted rather than guessed when the lookup misses: MP's column default
+    // is a better answer than a hard-coded id on a renumbered domain.
+    if (activeStatusId != null) record.Contact_Status_ID = activeStatusId;
+
+    const created = await this.mp!.createTableRecords("Contacts", [record], {
+      ...(userId != null ? { $userId: userId } : {}),
+    });
+    const contactId = toNumberOrNull(
+      (created[0] as { Contact_ID?: number | string } | undefined)?.Contact_ID ?? null
+    );
+    if (contactId == null) throw new Error("Failed to create contact.");
+    return {
+      contactId,
+      firstName: first,
+      nickname: first,
+      lastName: last,
+      displayName: `${last}, ${first}`,
+      emailAddress: email,
+      mobilePhoneNumber: phone,
+      householdId: null,
+    };
   }
 
   /** Resolve the contact's Participant_Record, creating one when missing. */

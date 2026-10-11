@@ -80,7 +80,6 @@ export const esGroups = {
     signUpAs: "Inscribir a",
     someoneElse: "Otra persona…",
     myInfo: "Mi información",
-    chooseSignup: "Elija quién se va a inscribir.",
     inquirySent: "¡Gracias! Su mensaje ha sido enviado al grupo.",
     inquirySentNamed: "¡Gracias, {name}! Su mensaje ha sido enviado al grupo.",
     signedUp:
