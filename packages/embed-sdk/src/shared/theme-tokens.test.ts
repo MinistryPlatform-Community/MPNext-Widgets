@@ -102,7 +102,6 @@ const BUDGET: Record<string, Partial<Record<ValueClass, number>>> = {
   "components/subscriptions.ts": { brandHex: 7, fontStack: 1 },
   "components/unsubscribe.ts": { brandHex: 10, fontStack: 1 },
   "components/user-menu.ts": { brandHex: 7, fontStack: 2 },
-  "shared/form-validation.ts": { brandHex: 3 },
 };
 
 function stripComments(text: string): string {
