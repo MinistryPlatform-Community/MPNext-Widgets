@@ -71,12 +71,12 @@ interface Routes {
   put?: (body: Record<string, unknown>) => Response;
 }
 
-function mockFetch(routes: Routes = {}) {
+function mockFetch(routes: Routes = {}, mode: "legacy" | "dual" | "hardened" = "legacy") {
   const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
 
-    if (url.includes("/api/embed/auth/config")) return jsonResponse({ mode: "legacy" });
+    if (url.includes("/api/embed/auth/config")) return jsonResponse({ mode });
     if (url.includes("/api/embed/session")) return jsonResponse({ token: makeJwt() });
     if (url.includes("/api/embed/contact-attributes")) {
       if ((init?.method ?? "GET") === "PUT") {
@@ -189,8 +189,10 @@ describe("<next-contact-attributes>", () => {
   });
 
   describe("signed out", () => {
-    it("renders the sign-in prompt, not an error", async () => {
-      mockFetch({ get: jsonResponse({ error: "auth_required" }, 401) });
+    // On the shared `renderSignInRequired()` (W0 / C81), which is mode-aware:
+    // the button exists only where the SDK can start a sign-in itself.
+    it("renders the sign-in prompt, not an error (dual)", async () => {
+      mockFetch({ get: jsonResponse({ error: "auth_required" }, 401) }, "dual");
       const el = await mountSettled();
 
       expect(text(el)).toContain("Please sign in to view your skills and talents.");
@@ -199,15 +201,35 @@ describe("<next-contact-attributes>", () => {
       expect(text(el)).not.toContain("Something went wrong");
     });
 
-    it("asks the SDK for a login when the button is used", async () => {
-      mockFetch({ get: jsonResponse({ error: "auth_required" }, 401) });
+    it("asks the SDK for a login when the button is used (dual)", async () => {
+      mockFetch({ get: jsonResponse({ error: "auth_required" }, 401) }, "dual");
       const el = await mountSettled();
 
       const seen: unknown[] = [];
-      el.addEventListener("loginRequired", (e) => seen.push((e as CustomEvent).detail));
+      el.addEventListener("loginRequired", (e) => {
+        e.preventDefault(); // jsdom cannot navigate
+        seen.push((e as CustomEvent).detail);
+      });
       button(el, "login")!.click();
 
       expect(seen).toEqual([{ wid: "contact-attributes" }]);
+    });
+
+    it("draws no button in legacy mode, names the page's link, and announces loginRequired", async () => {
+      mockFetch({ get: jsonResponse({ error: "auth_required" }, 401) }, "legacy");
+      const seen: unknown[] = [];
+      document.addEventListener("loginRequired", (e) => seen.push((e as CustomEvent).detail), {
+        once: true,
+      });
+      const el = await mountSettled();
+
+      expect(text(el)).toContain("Please sign in to view your skills and talents.");
+      expect(text(el)).toContain("Use the sign-in link on this page.");
+      expect(button(el, "login")).toBeNull();
+      expect(button(el, "retry")).toBeNull();
+      await vi.waitFor(() =>
+        expect(seen).toEqual([{ wid: "contact-attributes", passive: true }])
+      );
     });
   });
 

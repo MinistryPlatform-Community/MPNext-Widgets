@@ -197,6 +197,7 @@ export const ptBRGiving = {
     subscribed: "Você assinou {title}",
     unsubscribed: "Você cancelou a assinatura de {title}",
     updateFailed: "Não foi possível atualizar a assinatura. Tente novamente.",
+    signInPrompt: "Entre para ver suas assinaturas.",
   },
   /**
    * `next-subscribe-to-publication` (C70).

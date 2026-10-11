@@ -53,6 +53,7 @@ export const esPeople = {
     fixHighlighted: "Corrija los campos marcados.",
     householdSaved: "El hogar se guardó correctamente.",
     memberSaved: "El miembro se guardó correctamente.",
+    signInPrompt: "Inicie sesión para ver los datos de su familia.",
   },
 
   profile: {
@@ -85,6 +86,7 @@ export const esPeople = {
     // an attribute-adjacent context by the validation layer.
     firstNameOnly: "Escriba solo su primer nombre (sin «&» ni «and»)",
     phoneFormat: "Use el formato: 999-999-9999",
+    signInPrompt: "Inicie sesión para ver su perfil.",
   },
 
   onlineDirectory: {

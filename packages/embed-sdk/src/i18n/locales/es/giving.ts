@@ -200,6 +200,7 @@ export const esGiving = {
     subscribed: "Se suscribió a {title}",
     unsubscribed: "Canceló la suscripción a {title}",
     updateFailed: "No se pudo actualizar la suscripción. Inténtelo de nuevo.",
+    signInPrompt: "Inicie sesión para ver sus suscripciones.",
   },
   /**
    * `next-subscribe-to-publication` (C70).

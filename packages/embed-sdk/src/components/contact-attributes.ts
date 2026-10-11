@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 
 /**
  * `<next-contact-attributes>` (C52) — the congregant's own attributes.
@@ -55,7 +55,8 @@ export class ContactAttributesWidget extends MPNextWidget {
   private noticeTimer: ReturnType<typeof setTimeout> | null = null;
 
   connectedCallback() {
-    this.injectStyles(this.getStyles());
+    // The shared sign-in sheet goes first so this widget's own button classes win.
+    this.injectStyles(SIGN_IN_REQUIRED_STYLES + this.getStyles());
     // Catalogue before the first paint, so a Spanish visitor never watches
     // English swap to Spanish.
     void this.initLocale().then(() => {
@@ -86,9 +87,9 @@ export class ContactAttributesWidget extends MPNextWidget {
     try {
       const res = await this.fetch("/api/embed/contact-attributes");
 
-      if (res.status === 401) {
+      if (this.isNeedsAuth(res)) {
         // Signed out is an ordinary state for this widget, not an error: it is
-        // signed-in-only by design, so the answer is a Sign In button.
+        // signed-in-only by design, so the answer is the shared sign-in panel.
         this.phase = "signedOut";
         this.paint();
         return;
@@ -155,7 +156,7 @@ export class ContactAttributesWidget extends MPNextWidget {
         body: JSON.stringify({ attributeIds: [...this.draft] }),
       });
 
-      if (res.status === 401) {
+      if (this.isNeedsAuth(res)) {
         this.phase = "signedOut";
         return;
       }
@@ -241,9 +242,7 @@ export class ContactAttributesWidget extends MPNextWidget {
   }
 
   private attachListeners() {
-    const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.requestLogin("contact-attributes"));
-
+    // `[data-action="login"]` is delegated by the base class (renderSignInRequired).
     const retry = this.root.querySelector('[data-action="retry"]');
     if (retry) retry.addEventListener("click", () => this.retryLoad());
 
@@ -306,13 +305,14 @@ export class ContactAttributesWidget extends MPNextWidget {
     }
 
     if (this.phase === "signedOut") {
-      this.root.innerHTML = this.shell(`
-        <p class="ca-intro">${this.escapeHtml(this.t("contactAttributes.signedOut"))}</p>
-        <div class="ca-actions">
-          <button type="button" class="ca-btn ca-btn--primary" data-action="login">
-            ${this.escapeHtml(this.t("common.signIn"))}
-          </button>
-        </div>`);
+      this.root.innerHTML = this.shell(
+        this.renderSignInRequired({
+          subject: "contact-attributes",
+          message: this.t("contactAttributes.signedOut"),
+          className: "ca-signin",
+          buttonClass: "ca-btn ca-btn--primary",
+        })
+      );
       return;
     }
 

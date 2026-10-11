@@ -226,6 +226,7 @@ export const giving = {
     subscribed: "Subscribed to {title}",
     unsubscribed: "Unsubscribed from {title}",
     updateFailed: "Could not update subscription, please try again.",
+    signInPrompt: "Please sign in to view your subscriptions.",
   },
   /**
    * `next-subscribe-to-publication` (C70) — the anonymous, email-verified

@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -75,6 +75,8 @@ export function phoneChanged(value: string, stored: string | null): boolean {
 
 export class ProfileWidget extends MPNextWidget {
   private loading = true;
+  /** Signed out: a prompt with Sign In, never the Try Again error state (C53). */
+  private needsAuth = false;
   private saving = false;
   private savingPassword = false;
   private error: string | null = null;
@@ -92,7 +94,8 @@ export class ProfileWidget extends MPNextWidget {
   private uploadingPhoto = false;
 
   connectedCallback() {
-    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
+    // The shared sign-in sheet goes first so this widget's own button classes win.
+    this.injectStyles(SIGN_IN_REQUIRED_STYLES + this.getStyles() + FORM_VALIDATION_STYLES);
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish; the fetch hides inside the loading state
     // this widget paints anyway while it queries the API.
@@ -111,11 +114,18 @@ export class ProfileWidget extends MPNextWidget {
 
   private async loadProfile() {
     this.loading = true;
+    this.needsAuth = false;
     this.error = null;
     this.render();
 
     try {
       const res = await this.fetch("/api/embed/profile");
+      if (this.isNeedsAuth(res)) {
+        this.loading = false;
+        this.needsAuth = true;
+        this.render();
+        return;
+      }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(this.errorText(body));
@@ -210,6 +220,16 @@ export class ProfileWidget extends MPNextWidget {
           <div class="nw-spinner"></div>
           <p>${this.esc(this.t("profile.loading"))}</p>
         </div>`;
+      if (!this.root.querySelector(".nw-profile")) this.root.appendChild(container);
+      return;
+    }
+
+    if (this.needsAuth) {
+      container.innerHTML = this.renderSignInRequired({
+        subject: "profile",
+        message: this.t("profile.signInPrompt"),
+        buttonClass: "nw-btn nw-btn-primary",
+      });
       if (!this.root.querySelector(".nw-profile")) this.root.appendChild(container);
       return;
     }

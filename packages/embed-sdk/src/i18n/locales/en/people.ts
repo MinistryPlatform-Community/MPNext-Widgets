@@ -63,6 +63,7 @@ export const people = {
     fixHighlighted: "Please fix the highlighted fields.",
     householdSaved: "Household saved successfully.",
     memberSaved: "Member saved successfully.",
+    signInPrompt: "Please sign in to see your household details.",
   },
 
   profile: {
@@ -99,6 +100,7 @@ export const people = {
      */
     firstNameOnly: 'Please enter only your first name (no "&" or "and")',
     phoneFormat: "Use format: 999-999-9999",
+    signInPrompt: "Please sign in to view your profile.",
   },
 
   onlineDirectory: {

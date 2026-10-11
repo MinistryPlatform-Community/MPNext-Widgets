@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 
 interface SubscriptionItem {
   Publication_ID: number;
@@ -14,13 +14,16 @@ const SEARCH_THRESHOLD = 6;
 export class SubscriptionsWidget extends MPNextWidget {
   private items: SubscriptionItem[] = [];
   private loading = true;
+  /** Signed out: a prompt with Sign In, never "Unable to Load" + Try Again (C53). */
+  private needsAuth = false;
   private error: string | null = null;
   private savingIds = new Set<number>();
   private message: { type: "success" | "error"; text: string } | null = null;
   private searchQuery = "";
 
   connectedCallback() {
-    this.injectStyles(this.getStyles());
+    // The shared sign-in sheet goes first so this widget's own button classes win.
+    this.injectStyles(SIGN_IN_REQUIRED_STYLES + this.getStyles());
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish.
     void this.initLocale().then(() => {
@@ -36,11 +39,16 @@ export class SubscriptionsWidget extends MPNextWidget {
 
   private async loadSubscriptions() {
     this.loading = true;
+    this.needsAuth = false;
     this.error = null;
     this.render();
 
     try {
       const res = await this.fetch("/api/embed/subscriptions");
+      if (this.isNeedsAuth(res)) {
+        this.needsAuth = true;
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(this.errorText(data));
@@ -160,6 +168,21 @@ export class SubscriptionsWidget extends MPNextWidget {
               <span>${this.escapeHtml(this.t("subscriptions.loading"))}</span>
             </div>
           </div>
+        </div>`;
+      return;
+    }
+
+    if (this.needsAuth) {
+      this.root.innerHTML = `
+        <div class="nw-subscriptions">
+          <div class="header">
+            <div class="title">${this.escapeHtml(this.t("subscriptions.title"))}</div>
+          </div>
+          <div class="body">${this.renderSignInRequired({
+            subject: "subscriptions",
+            message: this.t("subscriptions.signInPrompt"),
+            buttonClass: "retry-btn",
+          })}</div>
         </div>`;
       return;
     }
