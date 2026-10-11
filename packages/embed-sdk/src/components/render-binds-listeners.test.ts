@@ -15,18 +15,14 @@
  * worse than the bug, because the elements are then bound twice and a submit
  * fires twice.
  *
- * `PENDING` is a ratchet for files another workstream owns (W1 payments). It
- * fails when an entry stops matching, so the fixing commit deletes its entry.
- * Never add to it.
+ * `PENDING` was a ratchet for files another workstream owned (W1 payments:
+ * checkout, checkout-complete, my-invoices, pay); all four are fixed and it is
+ * empty. It fails when an entry stops matching, so a fixing commit deletes its
+ * entry. Never add to it.
  */
 import { describe, it, expect } from "vitest";
 
-const PENDING = new Set<string>([
-  "./checkout.ts",
-  "./checkout-complete.ts",
-  "./my-invoices.ts",
-  "./pay.ts",
-]);
+const PENDING = new Set<string>([]);
 
 const sources = import.meta.glob(["./*.ts", "!./*.test.ts"], {
   eager: true,

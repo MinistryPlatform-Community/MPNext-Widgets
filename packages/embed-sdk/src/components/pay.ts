@@ -162,7 +162,6 @@ export class PayWidget extends MPNextWidget {
       this.loading = false;
       this.error = this.t("pay.noRequest");
       this.render();
-      this.attachListeners();
       return;
     }
 
@@ -187,11 +186,14 @@ export class PayWidget extends MPNextWidget {
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
   private async submit() {
+    // Double-submit guard. The in-flight paint disables the Pay button, but
+    // since `render()` now re-binds, that paint's form carries a live submit
+    // listener (a scripted `requestSubmit()`, say) — so refuse here as well.
+    if (this.submitting) return;
     if (!this.request || !this.token) return;
 
     const form = this.root.querySelector<HTMLFormElement>("#nw-pay-form");
@@ -224,7 +226,6 @@ export class PayWidget extends MPNextWidget {
         if (this.isLinkState(data)) {
           this.submitting = false;
           this.render();
-          this.attachListeners();
           return;
         }
         throw new Error(this.errorText(data, "errors.payment_declined"));
@@ -240,7 +241,6 @@ export class PayWidget extends MPNextWidget {
       this.formError =
         err instanceof Error ? err.message : this.t("pay.submitFailed");
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -320,7 +320,18 @@ export class PayWidget extends MPNextWidget {
     }
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     // A spent or expired link is a designed state, not an error: no Try
     // Again (it would fail identically), and a way back to the invoice.
     if (this.linkState) {

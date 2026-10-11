@@ -191,7 +191,6 @@ export class MyInvoicesWidget extends MPNextWidget {
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -202,7 +201,6 @@ export class MyInvoicesWidget extends MPNextWidget {
     this.selectedDetail = null;
     this.error = null;
     this.render();
-    this.attachListeners();
 
     try {
       const res = await this.fetch(`/api/embed/invoices/${invoiceId}`);
@@ -224,7 +222,6 @@ export class MyInvoicesWidget extends MPNextWidget {
     } finally {
       this.detailLoading = false;
       this.render();
-      this.attachListeners();
       // Keyboard users land on the view they asked for, not on <body>.
       this.root.querySelector<HTMLElement>('[data-action="back"]')?.focus();
     }
@@ -236,7 +233,6 @@ export class MyInvoicesWidget extends MPNextWidget {
       searchInput.addEventListener("input", () => {
         this.searchQuery = searchInput.value;
         this.render();
-        this.attachListeners();
         const newInput = this.root.querySelector<HTMLInputElement>("#invoice-search");
         if (newInput) {
           newInput.focus();
@@ -250,7 +246,6 @@ export class MyInvoicesWidget extends MPNextWidget {
       freeToggle.addEventListener("change", () => {
         this.showFree = freeToggle.checked;
         this.render();
-        this.attachListeners();
         this.root.querySelector<HTMLInputElement>("#invoice-show-free")?.focus();
       });
     }
@@ -277,7 +272,6 @@ export class MyInvoicesWidget extends MPNextWidget {
         this.selectedDetail = null;
         this.error = null;
         this.render();
-        this.attachListeners();
         if (this.lastRowId !== null) {
           this.root
             .querySelector<HTMLElement>(`button[data-invoice-id="${this.lastRowId}"]`)
@@ -294,7 +288,18 @@ export class MyInvoicesWidget extends MPNextWidget {
 
   // ── Rendering ──
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `
         <div class="nw-invoices">

@@ -58,7 +58,6 @@ export class CheckoutCompleteWidget extends MPNextWidget {
       this.status = "failed";
       this.message = this.t("checkoutComplete.noPaymentInfo");
       this.render();
-      this.attachListeners();
       return;
     }
 
@@ -102,7 +101,6 @@ export class CheckoutCompleteWidget extends MPNextWidget {
       });
     } finally {
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -113,7 +111,18 @@ export class CheckoutCompleteWidget extends MPNextWidget {
     }
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.status === "loading") {
       this.root.innerHTML = `
         <div class="nw-cc">
