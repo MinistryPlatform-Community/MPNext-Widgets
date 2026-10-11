@@ -73,3 +73,29 @@ while an unfiltered query also yields *Group Tags*, *Persona (Synthetic)* and
 that column exists before using it) is the likely intent of the original code.
 Separately, the bare `catch { return []; }` should log — it hid this for the whole
 life of the widget.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W4, branch `ws/w4-serving-forms`).
+
+- **Schema verified live** (MinistryPlatform MCP, read-only, 2026-10-11).
+  `Attribute_Types.Available_Online` exists. It is the type-level flag C52 established.
+  Reading `Attributes` with `Attribute_Type_ID_TABLE.Available_Online` returned:
+
+  | Online | Types |
+  |---|---|
+  | `true` | 2 *Occupation*, 3 *Spiritual Gifts* |
+  | `false` | 1 *Personal Characteristics* (Allergies & Special Needs), 4 *Group Tags*, 5 *Persona (Synthetic)* |
+
+  So the type flag reproduces legacy's option set exactly. It needs no hard-coded type IDs.
+  (Legacy's list above names 18 attributes, 7 + 11, and that is what the domain holds; the
+  "19" in the heading is a miscount.)
+- `getAttributeTypes()` now filters on `Attribute_Type_ID_Table.Available_Online = 1`.
+  The widget already renders `<optgroup>` per type, so the grouped control appears as soon
+  as the list is non-empty.
+- **The bare catch now logs.** `getAttributeTypes()` logs `console.error` with MP's
+  message before degrading to `[]`. The congregation, ministry and gender lookups
+  (`.catch(() => [])`) and the response-count read do the same. W8 owns the repo-wide
+  "a catch that returns empty must log" guard.
+- Test: `src/services/opportunityFinderService.test.ts` checks the exact filter, the
+  grouped shape, and that a failed read logs the MP message.
