@@ -1433,7 +1433,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       .nw-toast-warning {
         background: #fffbeb;
         color: #92700c;
-        border: var(--_nw-border-width) solid var(--_nw-color-accent);
+        border: var(--_nw-border-width) solid var(--_nw-color-warning);
       }
 
       .section { margin-bottom: 28px; }

@@ -701,7 +701,7 @@ export class MyInvoicesWidget extends MPNextWidget {
         border-bottom: none;
       }
       .row-item--payable {
-        border-left-color: var(--_nw-color-accent);
+        border-left-color: var(--_nw-color-warning);
       }
       .table-row {
         flex: 1;

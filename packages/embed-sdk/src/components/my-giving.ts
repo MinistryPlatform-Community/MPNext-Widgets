@@ -829,7 +829,7 @@ export class MyGivingWidget extends MPNextWidget {
         font-size: 8px;
         font-weight: 600;
         fill: var(--_nw-color-secondary);
-        font-family: ui-sans-serif, system-ui, sans-serif;
+        font-family: var(--_nw-font-family);
       }
       .chart-month--future .chart-axis-label {
         opacity: 0.4;
@@ -848,7 +848,7 @@ export class MyGivingWidget extends MPNextWidget {
       .chart-axis-label {
         font-size: 9px;
         fill: rgba(45, 41, 38, 0.6);
-        font-family: ui-sans-serif, system-ui, sans-serif;
+        font-family: var(--_nw-font-family);
       }
       .chart-empty {
         text-align: center;

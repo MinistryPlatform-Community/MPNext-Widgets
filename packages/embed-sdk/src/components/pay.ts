@@ -478,7 +478,7 @@ export class PayWidget extends MPNextWidget {
       :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .nw-pay { max-width: 480px; margin: 0 auto; background: var(--_nw-color-surface); border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
       .nw-pay-header { background: var(--_nw-color-secondary); color: var(--_nw-color-on-primary); padding: var(--_nw-space-6); font-size: 22px; font-weight: var(--_nw-font-weight-heading); text-align: center; }
-      .nw-pay-sandbox { background: var(--_nw-color-accent); color: var(--_nw-color-text); padding: 10px var(--_nw-space-4); font-size: 13px; font-weight: 700; text-align: center; }
+      .nw-pay-sandbox { background: var(--_nw-color-warning); color: var(--_nw-color-text); padding: 10px var(--_nw-space-4); font-size: 13px; font-weight: 700; text-align: center; }
       .nw-pay-body { padding: var(--_nw-space-6); }
 
       .nw-pay-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 40px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; text-align: center; }

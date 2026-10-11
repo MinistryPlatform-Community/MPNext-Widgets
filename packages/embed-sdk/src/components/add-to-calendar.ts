@@ -550,7 +550,7 @@ export class AddToCalendarWidget extends MPNextWidget {
     return `
       :host {
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: var(--_nw-font-family);
         color: var(--_nw-color-text);
         box-sizing: border-box;
       }
