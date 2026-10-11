@@ -86,3 +86,27 @@ worse than no bare mode.
 
 Lowest priority of the eleven missing widgets. If C67 is judged out of scope, close this as
 "won't do" alongside it rather than leaving it open.
+
+## Resolution — WON'T DO, decided 2026-10-11 (comparison-remediation epic)
+
+Closed under this item's own fallback clause above. `next-user-label` was designed as the
+first consumer of an **MP Application Labels endpoint** (C67's original proposal), and that
+endpoint was rejected: C67 shipped instead as a TypeScript catalogue in this repo plus
+`MPNextEmbed.setMessages(scope, map)` for church renames, and no church-authored copy is read
+from MP (see CLAUDE.md "Widget Localisation"). With no labels endpoint there is nothing for a
+label element to read.
+
+What the element was for is covered without it:
+
+- **The surrounding page** can simply write the word in its own markup — the workaround this
+  item already acknowledged, and the reason it was filed at `ux` rather than `functional`.
+- **The widgets** pick up a church's vocabulary through `MPNextEmbed.setMessages`, which
+  renames a label across every `next-*` widget on the page at once, so "Life Groups" is one
+  call rather than one attribute per widget.
+
+What is lost is single-sourcing between the page and the widgets: a rename in
+`setMessages` does not reach static page text. Accepted. Should a church need it, the cheap
+path is a page-side helper over `setMessages`' own map, not a new element or an MP read.
+
+The dependency lines in `Plans/ROADMAP-missing-widgets.md` (Tier 4) and
+`Plans/CROSS-5-theming-labels-locale.md` (§5) are struck through with a pointer here.

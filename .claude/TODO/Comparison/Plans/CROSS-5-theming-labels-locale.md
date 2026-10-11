@@ -169,9 +169,12 @@ rest.
 
 ## 5. `next-user-label` — C77
 
-Blocked on step 3 and worth building immediately after it: attributes `name` (required) and
+**Won't do (decided 2026-10-11) — see C77's resolution section.** The MP labels endpoint this
+element was designed to read was rejected; the host page can write the word itself, and
+`MPNextEmbed.setMessages` renames a label across every widget. Original text, struck:
+~~Blocked on step 3 and worth building immediately after it: attributes `name` (required) and
 `bare`, one lookup, one text node. It is the cheapest possible consumer of the label pipeline
-and therefore its best end-to-end test before 25 widgets are converted onto it.
+and therefore its best end-to-end test before 25 widgets are converted onto it.~~
 
 One deliberate decision: `bare="true"` exists so the string can sit inline in the host page's
 own sentence, but a Shadow DOM element cannot inherit host typography. If `bare` means
