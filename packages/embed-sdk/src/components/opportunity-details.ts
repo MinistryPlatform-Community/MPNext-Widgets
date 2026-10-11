@@ -112,13 +112,6 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     return this.getAttribute("show-full-address") === "true";
   }
 
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    if (name === "opportunity-id" && this.opportunity) {
-      this.init();
-    }
-  }
-
   connectedCallback() {
     this.injectStyles(this.getStyles() + CUSTOM_FORM_STYLES + FORM_VALIDATION_STYLES);
     // Await the catalogue before the first paint so a Spanish visitor never
@@ -126,8 +119,27 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     // this widget already paints while it queries the API.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  /**
+   * C39: any observed attribute change after first paint reloads, through the
+   * base `attributeChangedCallback` → `reconfigure()`. The old guard
+   * (`opportunity-id && this.opportunity`) ignored every attribute but one,
+   * and that one only once an opportunity had loaded, so a widget whose
+   * first load failed (no id yet) could never be pointed at one.
+   */
+  protected override reload(): void {
+    this.error = null;
+    this.init();
+  }
+
+  /** `response-email-template` is read at submit time, so it needs no reload. */
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
+    if (oldValue === newValue || name === "response-email-template") return;
+    this.reconfigure();
   }
 
   /** Public hook so demo pages can force a reload (e.g. after sign-in). */
@@ -311,6 +323,10 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     }
 
     const payload = this.gatherFormData(form);
+    // Read at submit time, not baked into a hidden input at render (C39). The
+    // respond route now sends this dp_Communications template to the
+    // responder (W4 bonus; it used to be posted and ignored).
+    payload.UseEmailTemplate = (this.getAttribute("response-email-template") || "").trim();
 
     this.setSubmitDisabled(true);
     try {
@@ -609,10 +625,8 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
   private renderHiddenInputs(): string {
     const op = this.opportunity!;
-    const template = this.getAttribute("response-email-template") || "";
     return `
       <input type="hidden" name="OpportunityId" value="${op.id}">
-      <input type="hidden" name="UseEmailTemplate" value="${this.escapeAttr(template)}">
       <input type="hidden" id="od-contact-id" name="ContactId" value="${this.escapeAttr(this.blankForm ? "" : this.respondAs)}">`;
   }
 

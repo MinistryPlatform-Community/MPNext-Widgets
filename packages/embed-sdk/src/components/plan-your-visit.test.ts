@@ -234,6 +234,38 @@ describe("<next-plan-your-visit>", () => {
     });
   });
 
+  describe("reconfigure (C39)", () => {
+    it("shows the address block when collect-address is set after first paint", async () => {
+      mockFetch();
+      const el = await mountDetails();
+      expect(shadow(el).querySelector('[name="addressLine1"]')).toBeNull();
+      el.setAttribute("collect-address", "true");
+      await vi.waitFor(() => expect(shadow(el).querySelector('[name="addressLine1"]')).not.toBeNull());
+    });
+
+    it("reads milestone ids at submit time, so a late set still reaches the payload", async () => {
+      const fetchFn = mockFetch();
+      const el = await mountDetails();
+      el.setAttribute("milestone-to-assign-id", "2");
+      el.setAttribute("milestone-program-id", "3");
+      fillRequired(el, "321-555-0100");
+      submit(el);
+      await vi.waitFor(() => expect(posted(fetchFn, "/plan-your-visit/register")).toHaveLength(1));
+      expect(posted(fetchFn, "/plan-your-visit/register")[0]).toMatchObject({
+        milestoneToAssignId: 2,
+        milestoneProgramId: 3,
+      });
+    });
+
+    it("does not wipe typed values when a submit-time attribute changes", async () => {
+      mockFetch();
+      const el = await mountDetails();
+      set(el, "whenCanWeExpectYou", "Easter");
+      el.setAttribute("user-notification-email-template-id", "131");
+      expect(input(el, "whenCanWeExpectYou").value).toBe("Easter");
+    });
+  });
+
   describe("notification templates (C63)", () => {
     it("sends the user-notification template from its attribute", async () => {
       const fetchFn = mockFetch();

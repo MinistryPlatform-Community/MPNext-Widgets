@@ -131,8 +131,33 @@ export class PlanYourVisitWidget extends MPNextWidget {
     // this widget already paints while it verifies the token.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  /**
+   * Attributes that change what is *rendered or loaded*. C39: this widget had
+   * no `attributeChangedCallback` at all, so a host that set
+   * `collect-address` after insertion never saw the address block. The rest
+   * (`return-url`, the three template ids, the two milestone ids,
+   * `api-host`) are read when used, at submit time, so changing them needs
+   * no reload and costs a visitor nothing they typed.
+   */
+  private static readonly RELOAD_ATTRIBUTES = new Set([
+    "collect-address",
+    "verify-param-name",
+    "google-maps-api-key",
+  ]);
+
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
+    if (oldValue === newValue) return;
+    if (PlanYourVisitWidget.RELOAD_ATTRIBUTES.has(name)) this.reconfigure();
+  }
+
+  protected override reload(): void {
+    this.message = null;
+    void this.init();
   }
 
   // ── Attribute helpers ──
@@ -317,6 +342,10 @@ export class PlanYourVisitWidget extends MPNextWidget {
       const v = str(k);
       return v ? Number(v) : null;
     };
+    const attrNum = (name: string): number | null => {
+      const n = Number((this.getAttribute(name) || "").trim());
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
 
     const spouseFirst = str("spouseFirstName");
     const payload: Record<string, unknown> = {
@@ -343,8 +372,9 @@ export class PlanYourVisitWidget extends MPNextWidget {
         genderId: numOrNull(`child-${c.key}-gender`),
         ageAndGradeGroup: numOrNull(`child-${c.key}-ageGroup`),
       })),
-      milestoneToAssignId: numOrNull("__milestoneToAssignId"),
-      milestoneProgramId: numOrNull("__milestoneProgramId"),
+      // Read at submit time (C39), not baked into hidden inputs at render.
+      milestoneToAssignId: attrNum("milestone-to-assign-id"),
+      milestoneProgramId: attrNum("milestone-program-id"),
       churchNotificationEmailTemplate:
         this.getAttribute("church-notification-email-template-id") || null,
       // C63: the visitor's own confirmation. Absent, the server falls back to
@@ -618,7 +648,6 @@ export class PlanYourVisitWidget extends MPNextWidget {
         <div id="pyv-children">${this.childRows.map((c) => this.renderChild(c)).join("")}</div>
         <div class="pyv-add-child"><button type="button" class="pyv-link" data-action="add-child">+ ${this.escapeHtml(this.t("planYourVisit.addChild"))}</button></div>
 
-        ${this.hiddenMilestones()}
         <div class="pyv-actions">
           <button type="submit" class="pyv-btn pyv-btn--primary pyv-submit">${this.escapeHtml(this.t("common.submit"))}</button>
         </div>
@@ -767,13 +796,6 @@ export class PlanYourVisitWidget extends MPNextWidget {
     return field({ idPrefix: this.instanceId, wrapperClass: "pyv-field", inputClass: "pyv-input", ...opts });
   }
 
-  private hiddenMilestones(): string {
-    const milestone = this.getAttribute("milestone-to-assign-id") || "";
-    const program = this.getAttribute("milestone-program-id") || "";
-    return `
-      <input type="hidden" name="__milestoneToAssignId" value="${this.escapeAttr(milestone)}">
-      <input type="hidden" name="__milestoneProgramId" value="${this.escapeAttr(program)}">`;
-  }
 
   /**
    * A phone control: `type="tel"` (keypad, `autocomplete="tel"`) with MP's

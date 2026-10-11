@@ -158,6 +158,29 @@ describe("<next-custom-form>", () => {
     vi.restoreAllMocks();
   });
 
+  describe("reconfigure (C39)", () => {
+    it("loads the form when form-id is set after a first load that had none", async () => {
+      mockFetch();
+      document.body.innerHTML = `<next-custom-form api-host="${HOST}"></next-custom-form>`;
+      const el = document.body.firstElementChild as HTMLElement;
+      await vi.waitFor(() => expect(shadow(el).textContent).toContain("No form specified."));
+      el.setAttribute("form-id", "6");
+      await vi.waitFor(() => expect(form(el)).not.toBeNull());
+    });
+
+    it("honours a form-id set while the first load is still in flight", async () => {
+      const fn = mockFetch();
+      document.body.innerHTML = `<next-custom-form api-host="${HOST}" form-guid="nope"></next-custom-form>`;
+      const el = document.body.firstElementChild as HTMLElement;
+      await vi.waitFor(() => expect(fn.mock.calls.some(([u]) => String(u).includes("formGuid=nope"))).toBe(true));
+      el.setAttribute("form-id", "6");
+      await vi.waitFor(() =>
+        expect(fn.mock.calls.some(([u]) => String(u).includes("custom-form?formId=6"))).toBe(true)
+      );
+      await vi.waitFor(() => expect(form(el)).not.toBeNull());
+    });
+  });
+
   describe("Who is this form for? (C26)", () => {
     const posted = (fn: ReturnType<typeof mockFetch>) =>
       fn.mock.calls

@@ -105,3 +105,36 @@ my-giving.ts   my-groups.ts   my-pledges.ts
 elements are unaffected and this is not a base-class defect. `my-groups.ts` is outside the
 filing agent's territory and was not covered by its testing — fix all three together, and
 note that a fix to the shared base class would be the wrong shape here.
+
+## Resolution — 2026-10-11 (W4: opportunity-details, custom-form, plan-your-visit, opportunity-finder)
+
+W4's slice is **fixed** on W0's `painted` / `reconfigure()` / `reload()` (branch
+`ws/w4-serving-forms`). Each widget sets `this.painted = true` after its first render
+and implements `reload()`. None of them guards on `oldValue !== null` or on whether an
+entity has loaded.
+
+- **`next-opportunity-details`** (was `opportunity-id && this.opportunity`): every
+  observed attribute change after first paint reloads, so a widget whose first load had
+  no id can now be pointed at one. The exception is `response-email-template`, which is
+  read at submit time and no longer baked into a hidden input at render.
+- **`next-custom-form`** (was `&& !this.loading`, which dropped a `form-id` set mid-load):
+  `form-id`, `form-guid` and `id-parameter-name` call `reconfigure()`. `checkout-url` and
+  `api-host` are read when used.
+- **`next-plan-your-visit`** (no callback at all):
+  - `collect-address`, `verify-param-name` and `google-maps-api-key` reload.
+  - The template ids, `return-url` and the two milestone ids need no reload, so changing
+    them never wipes what a visitor typed. Milestones are now read from the attributes
+    at submit time instead of render-time hidden inputs.
+- **`next-opportunity-finder`** (W4-owned, not in the epic list, but the same bug:
+  `opportunities.length || !loading` dropped a change made during the first search):
+  `reload()` re-seeds the filters from the attributes and searches again.
+- Tests, all under `packages/embed-sdk/src/components/`, each in a "reconfigure (C39)"
+  block:
+  - `plan-your-visit.test.ts`: a late `collect-address` shows the address block; late
+    milestone ids reach the payload; a submit-time attribute change keeps typed values.
+  - `custom-form.test.ts`: `form-id` set after a no-form first load; `form-id` set
+    mid-load.
+  - `opportunity-finder.test.ts`: a late `keyword` searches again.
+- Known limit, left as is: overlapping loads are not sequence-guarded, so a reload fired
+  mid-load paints whichever response lands last. Attribute changes are rare; a
+  `loadSeq` guard is the fix if it ever matters.

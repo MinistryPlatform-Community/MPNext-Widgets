@@ -101,6 +101,17 @@ describe("<next-opportunity-finder>", () => {
     vi.restoreAllMocks();
   });
 
+  describe("reconfigure (C39)", () => {
+    it("searches again when a filter attribute changes after first paint", async () => {
+      const fn = vi.mocked(fetch);
+      const el = await mount();
+      el.setAttribute("keyword", "greeter");
+      await vi.waitFor(() =>
+        expect(fn.mock.calls.some(([u]) => String(u).includes("opportunity-finder?keyword=greeter"))).toBe(true)
+      );
+    });
+  });
+
   describe("when (C25)", () => {
     const sub = (el: HTMLElement, i: number) =>
       cards(el)[i].querySelector(".nw-of-card-sub")?.textContent ?? "";

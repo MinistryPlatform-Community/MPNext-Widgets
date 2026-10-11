@@ -85,14 +85,6 @@ export class OpportunityFinderWidget extends MPNextWidget {
     ];
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    if (this.opportunities.length || !this.loading) {
-      this.seedFromAttributes();
-      this.search();
-    }
-  }
-
   connectedCallback() {
     this.injectStyles(this.getStyles() + CARD_LINK_STYLES);
     this.seedFromAttributes();
@@ -101,8 +93,20 @@ export class OpportunityFinderWidget extends MPNextWidget {
     // this widget already paints while it queries the API.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  /**
+   * C39: an attribute change after first paint re-seeds the filters and
+   * searches again (base `attributeChangedCallback` → `reconfigure()`). The
+   * old guard (`opportunities.length || !loading`) dropped a change made while
+   * the first search was in flight.
+   */
+  protected override reload(): void {
+    this.seedFromAttributes();
+    void this.search();
   }
 
   /** Public hook so demo pages can force a reload. */

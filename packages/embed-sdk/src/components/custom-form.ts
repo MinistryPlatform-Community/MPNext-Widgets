@@ -93,13 +93,6 @@ export class CustomFormWidget extends MPNextWidget {
     return ["api-host", "form-id", "form-guid", "id-parameter-name", "checkout-url"];
   }
 
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    if ((name === "form-id" || name === "form-guid") && !this.loading) {
-      this.init();
-    }
-  }
-
   connectedCallback() {
     this.injectStyles(this.getStyles() + CUSTOM_FORM_STYLES + FORM_VALIDATION_STYLES);
     // Await the catalogue before the first paint so a Spanish visitor never
@@ -107,8 +100,27 @@ export class CustomFormWidget extends MPNextWidget {
     // this widget already paints while it fetches the form definition.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  /**
+   * C39: only the attributes that pick *which form* reload it; `checkout-url`
+   * and `api-host` are read when used. The old guard (`&& !this.loading`)
+   * dropped a `form-id` set while the first load was still in flight, which
+   * is exactly when a framework host sets it.
+   */
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
+    if (oldValue === newValue) return;
+    if (name === "form-id" || name === "form-guid" || name === "id-parameter-name") {
+      this.reconfigure();
+    }
+  }
+
+  protected override reload(): void {
+    this.error = null;
+    this.init();
   }
 
   public retryLoad() {
