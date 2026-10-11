@@ -302,4 +302,53 @@ describe("<next-group-details>", () => {
       await vi.waitFor(() => expect(text(el)).toContain("You're signed up, Sarah!"));
     });
   });
+
+  describe("layout and tab semantics (C19)", () => {
+    it("exposes tablist / tab / tabpanel with aria-selected and a roving tabindex", async () => {
+      const el = await mountSettled();
+      const list = shadow(el).querySelector('[role="tablist"]')!;
+      const tabs = Array.from(list.querySelectorAll<HTMLElement>('[role="tab"]'));
+      expect(tabs.map((t) => t.getAttribute("aria-selected"))).toEqual(["true", "false"]);
+      expect(tabs.map((t) => t.getAttribute("tabindex"))).toEqual(["0", "-1"]);
+
+      const panel = shadow(el).querySelector('[role="tabpanel"]')!;
+      expect(tabs[0].getAttribute("aria-controls")).toBe(panel.id);
+      expect(panel.getAttribute("aria-labelledby")).toBe(tabs[0].id);
+    });
+
+    it("moves between tabs with the arrow keys and keeps focus on the tab", async () => {
+      const el = await mountSettled();
+      const first = shadow(el).querySelector<HTMLElement>('[role="tab"][data-tab="inquire"]')!;
+      first.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+
+      const signup = shadow(el).querySelector<HTMLElement>('[role="tab"][data-tab="signup"]')!;
+      expect(signup.getAttribute("aria-selected")).toBe("true");
+      expect(shadow(el).activeElement).toBe(signup);
+      expect(shadow(el).querySelector("#gd-signup-form")).not.toBeNull();
+
+      signup.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      expect(
+        shadow(el).querySelector('[role="tab"][data-tab="inquire"]')!.getAttribute("aria-selected"),
+      ).toBe("true");
+    });
+
+    it("renders the form-level message beside the submit button, not above the group", async () => {
+      mockFetch({}, { signedIn: false });
+      const el = await mountSettled();
+      submit(el, "inquire");
+      const msg = shadow(el).querySelector<HTMLElement>("#gd-message")!;
+      await vi.waitFor(() => expect(msg.textContent).not.toBe(""));
+      expect(msg.closest("form")?.id).toBe("gd-inquire-form");
+      expect(msg.nextElementSibling?.classList.contains("gd-actions")).toBe(true);
+    });
+
+    it("names the field in each required message", async () => {
+      mockFetch({}, { signedIn: false });
+      const el = await mountSettled();
+      submit(el, "inquire");
+      await vi.waitFor(() => expect(text(el)).toContain("First Name is required."));
+      expect(text(el)).toContain("Last Name is required.");
+      expect(text(el)).not.toContain("This field is required.");
+    });
+  });
 });

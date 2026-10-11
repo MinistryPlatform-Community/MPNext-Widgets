@@ -268,7 +268,7 @@ export class GroupDetailsWidget extends MPNextWidget {
     );
     if (!form || !this.group) return;
 
-    if (!validateForm(form).valid) {
+    if (!validateForm(form, { t: this.t }).valid) {
       this.setMessage("danger", this.t("validation.formIncomplete"));
       return;
     }
@@ -454,16 +454,20 @@ export class GroupDetailsWidget extends MPNextWidget {
     const login = this.root.querySelector('[data-action="login"]');
     if (login) login.addEventListener("click", () => this.requestLogin("group-details"));
 
-    // Tab switching.
-    this.root.querySelectorAll<HTMLElement>("[data-tab]").forEach((el) => {
-      el.addEventListener("click", () => {
-        const tab = el.getAttribute("data-tab") as Tab;
-        if (tab && tab !== this.activeTab) {
-          this.activeTab = tab;
-          this.message = null;
-          this.render();
-          this.attachListeners();
-        }
+    // Tab switching (C19): click, plus the ARIA tabs keyboard pattern —
+    // Left/Right wrap between tabs, Home/End jump, activation follows focus.
+    const tabs = Array.from(this.root.querySelectorAll<HTMLElement>('[role="tab"]'));
+    tabs.forEach((el, index) => {
+      el.addEventListener("click", () => this.selectTab(el.getAttribute("data-tab") as Tab));
+      el.addEventListener("keydown", (e) => {
+        let next = -1;
+        if (e.key === "ArrowRight") next = (index + 1) % tabs.length;
+        else if (e.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+        else if (e.key === "Home") next = 0;
+        else if (e.key === "End") next = tabs.length - 1;
+        if (next < 0) return;
+        e.preventDefault();
+        this.selectTab(tabs[next].getAttribute("data-tab") as Tab, true);
       });
     });
 
@@ -505,6 +509,18 @@ export class GroupDetailsWidget extends MPNextWidget {
     if (signupForm) bindLiveValidation(signupForm);
   }
 
+  private selectTab(tab: Tab, focus = false) {
+    if (tab && tab !== this.activeTab) {
+      this.activeTab = tab;
+      this.message = null;
+      this.render();
+      this.attachListeners();
+    }
+    if (focus) {
+      this.root.querySelector<HTMLElement>(`[role="tab"][data-tab="${tab}"]`)?.focus();
+    }
+  }
+
   /** Show/hide the blank-form fields for the inquiry form based on the dropdown. */
   private toggleBlankFields(tab: Tab) {
     const blank = this.root.querySelector<HTMLElement>(
@@ -543,7 +559,6 @@ export class GroupDetailsWidget extends MPNextWidget {
     this.root.innerHTML = `
       <div class="gd">
         ${this.renderBackLink()}
-        ${this.renderMessage()}
         ${this.renderDetails()}
         ${this.renderForms()}
       </div>`;
@@ -554,9 +569,18 @@ export class GroupDetailsWidget extends MPNextWidget {
     return `<div class="gd-back"><a href="${this.escapeAttr(this.returnUrl)}">&larr; ${this.escapeHtml(this.t("groupDetails.backToGroups"))}</a></div>`;
   }
 
+  /**
+   * The form-level message, rendered **inside the form, directly above the
+   * submit row** (C19 row 10). At the top of the shadow root it sat above the
+   * group's title and image — off-screen on a phone, so a press of Send Message
+   * with a field missing looked like the button did nothing. `aria-live` so
+   * the outcome is announced, not only painted.
+   */
   private renderMessage(): string {
-    if (!this.message) return `<div id="gd-message" class="gd-message" style="display:none"></div>`;
-    return `<div id="gd-message" class="gd-message gd-message--${this.escapeAttr(this.message.type)}">${this.escapeHtml(this.message.text)}</div>`;
+    if (!this.message) {
+      return `<div id="gd-message" class="gd-message" aria-live="polite" style="display:none"></div>`;
+    }
+    return `<div id="gd-message" class="gd-message gd-message--${this.escapeAttr(this.message.type)}" aria-live="polite">${this.escapeHtml(this.message.text)}</div>`;
   }
 
   private renderDetails(): string {
@@ -691,24 +715,25 @@ export class GroupDetailsWidget extends MPNextWidget {
     if (this.activeTab === "inquire" && !showInquire) this.activeTab = "signup";
     if (this.activeTab === "signup" && !showSignup) this.activeTab = "inquire";
 
+    // Real tab semantics (C19 row 13): tablist / tab / tabpanel, with
+    // aria-selected and a roving tabindex so Tab enters the strip once and
+    // the arrow keys move within it.
+    const panelId = `${this.instanceId}-gd-panel`;
+    const tabId = (t: Tab) => `${this.instanceId}-gd-tab-${t}`;
+    const tab = (t: Tab, labelKey: "groupDetails.contactTab" | "groupDetails.signupTab") => {
+      const active = this.activeTab === t;
+      return `<button type="button" role="tab" id="${tabId(t)}" class="gd-tab ${active ? "gd-tab--active" : ""}" data-tab="${t}" aria-selected="${active}" aria-controls="${panelId}" tabindex="${active ? "0" : "-1"}">${this.escapeHtml(this.t(labelKey))}</button>`;
+    };
     const tabs: string[] = [];
-    if (showInquire) {
-      tabs.push(
-        `<button type="button" class="gd-tab ${this.activeTab === "inquire" ? "gd-tab--active" : ""}" data-tab="inquire">${this.escapeHtml(this.t("groupDetails.contactTab"))}</button>`
-      );
-    }
-    if (showSignup) {
-      tabs.push(
-        `<button type="button" class="gd-tab ${this.activeTab === "signup" ? "gd-tab--active" : ""}" data-tab="signup">${this.escapeHtml(this.t("groupDetails.signupTab"))}</button>`
-      );
-    }
+    if (showInquire) tabs.push(tab("inquire", "groupDetails.contactTab"));
+    if (showSignup) tabs.push(tab("signup", "groupDetails.signupTab"));
 
     const body = this.activeTab === "inquire" ? this.renderInquireForm() : this.renderSignupForm();
 
     return `
       <div class="gd-form-wrap">
-        <div class="gd-tabs">${tabs.join("")}</div>
-        <div class="gd-tab-body">${body}</div>
+        <div class="gd-tabs" role="tablist">${tabs.join("")}</div>
+        <div class="gd-tab-body" role="tabpanel" id="${panelId}" aria-labelledby="${tabId(this.activeTab)}">${body}</div>
       </div>`;
   }
 
@@ -728,6 +753,7 @@ export class GroupDetailsWidget extends MPNextWidget {
           <label for="gd-inquire-message">${this.escapeHtml(this.t("fields.message"))}</label>
           <textarea id="gd-inquire-message" class="gd-input" name="message" maxlength="500" rows="4"></textarea>
         </div>
+        ${this.renderMessage()}
         <div class="gd-actions">
           <button type="button" class="gd-btn gd-btn--primary gd-submit" data-tab="inquire">${this.escapeHtml(this.t("groupDetails.sendMessage"))}</button>
         </div>
@@ -756,6 +782,7 @@ export class GroupDetailsWidget extends MPNextWidget {
           <label for="gd-signup-message">${this.escapeHtml(this.t("fields.message"))} <span class="gd-optional">(${this.escapeHtml(this.t("common.optional"))})</span></label>
           <textarea id="gd-signup-message" class="gd-input" name="message" maxlength="500" rows="3"></textarea>
         </div>
+        ${this.renderMessage()}
         <div class="gd-actions">
           <button type="button" class="gd-btn gd-btn--primary gd-submit" data-tab="signup">${this.escapeHtml(this.t("groupDetails.signUp"))}</button>
         </div>
@@ -952,6 +979,8 @@ export class GroupDetailsWidget extends MPNextWidget {
       .gd-tabs { display: flex; gap: 4px; border-bottom: 1px solid #e5e7eb; margin-bottom: 16px; }
       .gd-tab { background: none; border: none; border-bottom: 3px solid transparent; padding: 10px 14px; font-size: 14px; font-weight: 600; color: #6b7280; cursor: pointer; font-family: inherit; margin-bottom: -1px; }
       .gd-tab--active { color: #004C97; border-bottom-color: #004C97; }
+      .gd-tab:focus-visible { outline: 2px solid #009CDE; outline-offset: 2px; }
+      .gd-form .gd-message { margin: 4px 0 12px; }
 
       .gd-form { display: block; }
       .gd-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
