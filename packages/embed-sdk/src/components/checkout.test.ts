@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { getAuthSession } from "../shared/auth-session";
-import { __resetLocaleSession } from "../i18n";
+import { __resetLocaleSession, getLocaleSession } from "../i18n";
 import "./checkout";
 import "./checkout-complete";
 import "./pay";
@@ -335,3 +335,138 @@ describe("<next-checkout> nothing-to-pay wording (C47)", () => {
   });
 });
 
+
+// ── A page-wide language change must not leave the buttons dead ───────────
+//
+// The base class re-renders through `render()` alone on a locale change.
+// These widgets used to bind their listeners in a separate call after each
+// internal render, so the switch repainted the markup with nothing bound —
+// and, the other way round, a bind left at a call site after the fix would
+// bind twice and fire the payment request twice.
+
+describe("payment widgets: locale switch keeps listeners bound, once", () => {
+  beforeEach(() => {
+    setup();
+    window.history.replaceState(null, "", PAGE);
+  });
+  afterEach(() => {
+    document.body.innerHTML = "";
+    window.history.replaceState(null, "", PAGE);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  async function switchTo(el: HTMLElement, code: string) {
+    await getLocaleSession().setLocale(code);
+    await vi.waitFor(() => expect(el).toHaveAttribute("lang", code));
+  }
+
+  const count = (fn: ReturnType<typeof mockFetch>, part: string) =>
+    fn.mock.calls.filter(([u]) => String(u).includes(part)).length;
+
+  it("next-checkout: Pay still requests exactly one payment token after a switch to Spanish and back", async () => {
+    const fn = mockFetch((url) => {
+      if (url.includes("/checkout/invoice")) return jsonResponse({ invoice: invoice() });
+      if (url.includes("/checkout/payment-token")) return jsonResponse({ token: "req-token" });
+      return undefined;
+    });
+    const el = await mountCheckout('payment-processor-url="https://pay.example.com/pay"');
+    await switchTo(el, "es");
+    await switchTo(el, "en");
+
+    shadow(el).querySelector<HTMLButtonElement>('[data-action="pay"]')!.click();
+    await vi.waitFor(() => expect(count(fn, "/checkout/payment-token")).toBe(1));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(count(fn, "/checkout/payment-token")).toBe(1);
+  });
+
+  it("next-checkout: the pay-choice radios still repaint after a switch", async () => {
+    mockFetch((url) =>
+      url.includes("/checkout/invoice") ? jsonResponse({ invoice: invoice() }) : undefined,
+    );
+    const el = await mountCheckout();
+    await switchTo(el, "es");
+
+    const other = shadow(el).querySelector<HTMLInputElement>('input[value="other"]')!;
+    other.checked = true;
+    other.dispatchEvent(new Event("change"));
+    expect(shadow(el).querySelector("#nw-other-amount")).not.toBeNull();
+  });
+
+  it("next-checkout-complete: Try Again still re-asks once after a switch", async () => {
+    window.history.replaceState(null, "", "/complete?token=resp-token");
+    let first = true;
+    const fn = mockFetch((url) => {
+      if (!url.includes("/checkout/payment-response")) return undefined;
+      if (first) {
+        first = false;
+        throw new TypeError("network down");
+      }
+      return jsonResponse({ invoiceId: 6, status: "received" });
+    });
+    document.body.innerHTML = `<next-checkout-complete api-host="${HOST}"></next-checkout-complete>`;
+    const el = document.body.firstElementChild as HTMLElement;
+    await vi.waitFor(() => expect(shadow(el).querySelector('[data-action="retry"]')).not.toBeNull());
+    await switchTo(el, "es");
+
+    shadow(el).querySelector<HTMLButtonElement>('[data-action="retry"]')!.click();
+    await vi.waitFor(() => expect(count(fn, "/checkout/payment-response")).toBe(2));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(count(fn, "/checkout/payment-response")).toBe(2);
+  });
+
+  describe("next-pay", () => {
+    async function mountPay() {
+      window.history.replaceState(null, "", "/pay?token=req");
+      const fn = mockFetch((url) => {
+        if (url.includes("/pay/unpack")) {
+          return jsonResponse({
+            request: { invoiceId: "inv", amount: 10, returnUrl: "/checkout", firstName: "Pat", lastName: "Payer", email: null },
+          });
+        }
+        if (url.includes("/pay/response")) return jsonResponse({ token: "resp" });
+        return undefined;
+      });
+      document.body.innerHTML = `<next-pay api-host="${HOST}"></next-pay>`;
+      const el = document.body.firstElementChild as HTMLElement;
+      await vi.waitFor(() => expect(shadow(el).querySelector("#nw-pay-form")).not.toBeNull());
+      return { el, fn };
+    }
+
+    function fillCard(el: HTMLElement) {
+      const set = (name: string, value: string) => {
+        shadow(el).querySelector<HTMLInputElement>(`[name="${name}"]`)!.value = value;
+      };
+      set("card-number", "4111 1111 1111 1111");
+      set("expiry", "12/99");
+      set("cvv", "123");
+    }
+
+    it("the Pay form still submits exactly once after a switch to Spanish", async () => {
+      const { el, fn } = await mountPay();
+      await switchTo(el, "es");
+      fillCard(el);
+
+      shadow(el).querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
+      await vi.waitFor(() => expect(count(fn, "/pay/response")).toBe(1));
+      await new Promise((r) => setTimeout(r, 10));
+      expect(count(fn, "/pay/response")).toBe(1);
+    });
+
+    it("keeps its double-submit guard: a second submit while in flight sends nothing", async () => {
+      const { el, fn } = await mountPay();
+      fillCard(el);
+
+      shadow(el).querySelector<HTMLFormElement>("#nw-pay-form")!.requestSubmit();
+      // The in-flight paint: button disabled, and its form bound again. Refill
+      // it, so validation alone cannot be what stops the second submit.
+      expect(shadow(el).querySelector('button[type="submit"]')).toBeDisabled();
+      fillCard(el);
+      shadow(el).querySelector<HTMLFormElement>("#nw-pay-form")!.requestSubmit();
+
+      await vi.waitFor(() => expect(count(fn, "/pay/response")).toBe(1));
+      await new Promise((r) => setTimeout(r, 10));
+      expect(count(fn, "/pay/response")).toBe(1);
+    });
+  });
+});

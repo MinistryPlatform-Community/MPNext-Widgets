@@ -208,7 +208,6 @@ export class CheckoutWidget extends MPNextWidget {
       this.loading = false;
       this.error = this.t("checkout.noInvoiceSpecified");
       this.render();
-      this.attachListeners();
       this.emit("checkoutError", { error: this.error });
       return;
     }
@@ -238,7 +237,6 @@ export class CheckoutWidget extends MPNextWidget {
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -287,7 +285,6 @@ export class CheckoutWidget extends MPNextWidget {
     if (amount <= 0) {
       this.error = this.t("checkout.invalidAmount");
       this.render();
-      this.attachListeners();
       return;
     }
 
@@ -295,7 +292,6 @@ export class CheckoutWidget extends MPNextWidget {
     if (!processorUrl) {
       this.error = this.t("checkout.processorMissing");
       this.render();
-      this.attachListeners();
       this.emit("checkoutError", { error: this.error });
       return;
     }
@@ -322,7 +318,6 @@ export class CheckoutWidget extends MPNextWidget {
         await this.loadInvoice();
         this.error = this.t("checkout.balanceChanged");
         this.render();
-        this.attachListeners();
         return;
       }
       if (!res.ok) {
@@ -338,7 +333,6 @@ export class CheckoutWidget extends MPNextWidget {
       this.processing = false;
       this.error = err instanceof Error ? err.message : this.t("errors.network");
       this.render();
-      this.attachListeners();
       this.emit("checkoutError", { error: this.error });
     }
   }
@@ -364,7 +358,6 @@ export class CheckoutWidget extends MPNextWidget {
         radio.addEventListener("change", () => {
           this.payChoice = radio.value as PayChoice;
           this.render();
-          this.attachListeners();
           if (this.payChoice === "other") {
             const input = this.root.querySelector<HTMLInputElement>("#nw-other-amount");
             input?.focus();
@@ -382,7 +375,18 @@ export class CheckoutWidget extends MPNextWidget {
     }
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.processing && !this.loading) {
       this.root.innerHTML = this.shell(`
         <div class="nw-co-state">

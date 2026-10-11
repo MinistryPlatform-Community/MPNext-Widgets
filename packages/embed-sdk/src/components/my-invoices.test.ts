@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { getAuthSession } from "../shared/auth-session";
-import { __resetLocaleSession } from "../i18n";
+import { __resetLocaleSession, getLocaleSession } from "../i18n";
 import "./my-invoices";
 
 const HOST = "https://widgets.example.com";
@@ -175,5 +175,78 @@ describe("<next-my-invoices>", () => {
       expect(calls.length).toBe(before + 1);
       expect(calls.at(-1)).toContain("invoiceStatusId=2");
     });
+  });
+});
+
+// ── A page-wide language change must not leave the buttons dead ───────────
+//
+// The base class re-renders through `render()` alone on a locale change. This
+// widget used to bind its listeners in a separate call after each internal
+// render, so the switch repainted the rows with nothing bound — and a bind
+// left at a call site after the fix would open the detail twice per click.
+
+describe("<next-my-invoices> locale switch keeps listeners bound, once", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    delete (window as unknown as { __nextAuthSession?: unknown }).__nextAuthSession;
+    __resetLocaleSession();
+    document.documentElement.removeAttribute("lang");
+    window.__nextTokenProvider = {
+      get: () => getAuthSession(HOST).getToken("my-invoices"),
+      refresh: () => getAuthSession(HOST).refreshToken("my-invoices"),
+    };
+    window.__nextSDKReady = Promise.resolve();
+  });
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  async function switchTo(el: HTMLElement, code: string) {
+    await getLocaleSession().setLocale(code);
+    await vi.waitFor(() => expect(el).toHaveAttribute("lang", code));
+  }
+
+  const detailCalls = (fn: ReturnType<typeof mockFetch>) =>
+    fn.mock.calls.filter(([u]) => /\/api\/embed\/invoices\/\d+/.test(String(u))).length;
+
+  it("a row button still opens the detail, with one request, after a switch to Spanish and back", async () => {
+    const fn = mockFetch();
+    const el = await mount('checkout-url="/checkout"');
+    await switchTo(el, "es");
+    await switchTo(el, "en");
+
+    shadow(el).querySelector<HTMLButtonElement>('button[data-invoice-id="3"]')!.click();
+    await vi.waitFor(() => expect(shadow(el).querySelector("a.pay-btn")).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 10));
+    expect(detailCalls(fn)).toBe(1);
+  });
+
+  it("Back still returns to the list after a switch on the detail view", async () => {
+    mockFetch();
+    const el = await mount('checkout-url="/checkout"');
+    shadow(el).querySelector<HTMLButtonElement>('button[data-invoice-id="3"]')!.click();
+    await vi.waitFor(() => expect(shadow(el).querySelector('[data-action="back"]')).not.toBeNull());
+    await switchTo(el, "es");
+
+    shadow(el).querySelector<HTMLButtonElement>('[data-action="back"]')!.click();
+    expect(shadow(el).querySelectorAll("button[data-invoice-id]")).toHaveLength(2);
+  });
+
+  it("a row's Pay link still announces invoicePay exactly once after a switch", async () => {
+    mockFetch();
+    const el = await mount('checkout-url="https://church.example/checkout"');
+    await switchTo(el, "es");
+
+    const announced = vi.fn();
+    el.addEventListener("invoicePay", announced);
+    // jsdom cannot navigate; the widget's own listener still runs first.
+    shadow(el).addEventListener("click", (e) => e.preventDefault());
+    const pay = shadow(el).querySelector<HTMLAnchorElement>("a.row-pay")!;
+    expect(new URL(pay.href).searchParams.get("id")).toBe(INVOICES[0].Invoice_GUID);
+    pay.click();
+    expect(announced).toHaveBeenCalledTimes(1);
+    expect(announced.mock.calls[0][0].detail).toEqual({ invoiceGuid: INVOICES[0].Invoice_GUID });
   });
 });
