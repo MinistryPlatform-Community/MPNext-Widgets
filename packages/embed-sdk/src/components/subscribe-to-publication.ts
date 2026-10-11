@@ -638,35 +638,35 @@ export class SubscribeToPublicationWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .sp {
         max-width: 560px;
         margin: 0 auto;
-        padding: 28px 24px;
-        background: white;
-        border: 1px solid #e5e7eb;
+        padding: 28px var(--_nw-space-6);
+        background: var(--_nw-color-surface);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
         border-radius: 16px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.06);
-        color: #2D2926;
+        color: var(--_nw-color-text);
       }
 
       .sp-title {
         margin: 0 0 6px;
         font-size: 22px;
-        font-weight: 700;
-        color: #004C97;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-primary);
       }
       .sp-description {
         margin: 0 0 10px;
         font-size: 15px;
         line-height: 1.55;
-        color: #2D2926;
+        color: var(--_nw-color-text);
       }
       .sp-lead {
         margin: 0 0 18px;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         line-height: 1.55;
         color: #4b5563;
       }
@@ -681,7 +681,7 @@ export class SubscribeToPublicationWidget extends MPNextWidget {
       .sp-spinner {
         width: 20px;
         height: 20px;
-        color: #004C97;
+        color: var(--_nw-color-primary);
         animation: sp-spin 1s linear infinite;
       }
       @keyframes sp-spin { to { transform: rotate(360deg); } }
@@ -691,11 +691,11 @@ export class SubscribeToPublicationWidget extends MPNextWidget {
         font-size: 18px;
         font-weight: 600;
         line-height: 1.45;
-        color: #002855;
+        color: var(--_nw-color-secondary);
       }
-      .sp-headline--warn { color: #2D2926; font-weight: 500; }
+      .sp-headline--warn { color: var(--_nw-color-text); font-weight: 500; }
       .sp-body {
-        margin: 8px 0 0;
+        margin: var(--_nw-space-2) 0 0;
         font-size: 15px;
         line-height: 1.55;
         color: #4b5563;
@@ -703,80 +703,80 @@ export class SubscribeToPublicationWidget extends MPNextWidget {
 
       .sp-form { display: block; }
       .sp-form-message {
-        margin: 0 0 16px;
+        margin: 0 0 var(--_nw-space-4);
         padding: 10px 14px;
-        border-radius: 8px;
-        font-size: 14px;
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
         border: 1px solid rgba(255, 109, 106, 0.4);
       }
 
       .sp-row {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 16px;
+        gap: var(--_nw-space-4);
       }
-      .sp-field { margin-bottom: 16px; }
+      .sp-field { margin-bottom: var(--_nw-space-4); }
       .sp-label {
         display: block;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
         font-size: 13px;
         font-weight: 600;
-        color: #2D2926;
+        color: var(--_nw-color-text);
       }
       .sp-input {
         display: block;
         width: 100%;
         box-sizing: border-box;
-        padding: 9px 12px;
-        border: 1px solid #d1d5db;
-        border-radius: 8px;
+        padding: 9px var(--_nw-space-3);
+        border: var(--_nw-border-width) solid var(--_nw-color-border-strong);
+        border-radius: var(--_nw-radius);
         font-family: inherit;
-        font-size: 14px;
-        color: #2D2926;
-        background: white;
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text);
+        background: var(--_nw-color-surface);
       }
       .sp-input:focus {
         outline: none;
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
         box-shadow: 0 0 0 2px rgba(0, 76, 151, 0.2);
       }
 
-      .sp-actions { margin-top: 20px; }
+      .sp-actions { margin-top: var(--_nw-space-5); }
       .sp-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
-      .sp-btn:hover { background: #002855; }
+      .sp-btn:hover { background: var(--_nw-button-bg-hover); }
       .sp-btn:focus-visible { outline: 3px solid rgba(0, 156, 222, 0.6); outline-offset: 2px; }
       .sp-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
       .sp-privacy {
         margin: 14px 0 0;
         font-size: 12px;
-        line-height: 1.5;
-        color: #6b7280;
+        line-height: var(--_nw-line-height);
+        color: var(--_nw-color-muted);
       }
-      .sp-manage { margin: 16px 0 0; font-size: 14px; }
+      .sp-manage { margin: var(--_nw-space-4) 0 0; font-size: var(--_nw-font-size-base); }
       .sp-link {
-        color: #004C97;
+        color: var(--_nw-color-primary);
         font-weight: 600;
         text-decoration: underline;
       }
-      .sp-link:hover { color: #002855; }
+      .sp-link:hover { color: var(--_nw-color-secondary); }
 
       @media (max-width: 560px) {
-        .sp { padding: 20px 16px; }
+        .sp { padding: var(--_nw-space-5) var(--_nw-space-4); }
         .sp-row { grid-template-columns: 1fr; gap: 0; }
         .sp-title { font-size: 19px; }
       }

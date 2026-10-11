@@ -414,40 +414,40 @@ export class SubscriptionsWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-subscriptions {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
+        background: var(--_nw-color-surface);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .header {
-        background: #002855;
-        color: white;
-        padding: 24px;
+        background: var(--_nw-color-secondary);
+        color: var(--_nw-color-on-primary);
+        padding: var(--_nw-space-6);
       }
       .title {
         font-size: 24px;
         font-weight: bold;
         text-align: center;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
       }
       .subtitle {
         text-align: center;
         opacity: 0.8;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         margin: 0;
       }
       .loading-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         font-size: 18px;
       }
 
@@ -461,36 +461,36 @@ export class SubscriptionsWidget extends MPNextWidget {
       }
 
       .body {
-        padding: 20px;
+        padding: var(--_nw-space-5);
       }
 
       .search-bar {
-        margin-bottom: 16px;
+        margin-bottom: var(--_nw-space-4);
       }
       .search-bar input {
         width: 100%;
         padding: 10px 14px;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        font-size: 14px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
         font-family: inherit;
         outline: none;
         transition: border-color 0.15s;
       }
       .search-bar input:focus {
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
       }
 
       .sub-list {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
         overflow: hidden;
       }
       .sub-row {
         display: flex;
         align-items: center;
         gap: 14px;
-        padding: 16px;
+        padding: var(--_nw-space-4);
         border-bottom: 1px solid #f3f4f6;
         cursor: pointer;
         transition: background 0.15s;
@@ -505,7 +505,7 @@ export class SubscriptionsWidget extends MPNextWidget {
         width: 24px;
         height: 24px;
         flex-shrink: 0;
-        accent-color: #004C97;
+        accent-color: var(--_nw-color-primary);
         cursor: pointer;
         margin: 0;
       }
@@ -523,24 +523,24 @@ export class SubscriptionsWidget extends MPNextWidget {
       .sub-title {
         font-size: 15px;
         font-weight: 600;
-        color: #2D2926;
+        color: var(--_nw-color-text);
       }
       .sub-desc {
         font-size: 13px;
-        color: #6b7280;
+        color: var(--_nw-color-muted);
         line-height: 1.4;
       }
       .sub-saving {
         flex-shrink: 0;
-        color: #004C97;
+        color: var(--_nw-color-primary);
         display: inline-flex;
       }
 
       .message {
-        margin-bottom: 16px;
+        margin-bottom: var(--_nw-space-4);
         padding: 10px 14px;
-        border-radius: 8px;
-        font-size: 14px;
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
       }
       .message--success {
         background: rgba(134, 173, 63, 0.15);
@@ -549,62 +549,62 @@ export class SubscriptionsWidget extends MPNextWidget {
       }
       .message--error {
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
         border: 1px solid rgba(255, 109, 106, 0.4);
       }
 
       .bulk {
-        margin-top: 24px;
-        padding-top: 16px;
-        border-top: 1px solid #e5e7eb;
+        margin-top: var(--_nw-space-6);
+        padding-top: var(--_nw-space-4);
+        border-top: var(--_nw-border-width) solid var(--_nw-color-border);
       }
       .bulk-title {
         font-size: 13px;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        color: #6b7280;
-        margin-bottom: 8px;
+        color: var(--_nw-color-muted);
+        margin-bottom: var(--_nw-space-2);
       }
       .bulk-row {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
       }
 
       .empty-state {
         text-align: center;
-        padding: 40px 20px;
+        padding: 40px var(--_nw-space-5);
         color: #9E9E9E;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
       }
 
       .retry-section {
-        padding: 20px;
+        padding: var(--_nw-space-5);
         text-align: center;
       }
       .retry-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .retry-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       @media (max-width: 640px) {
         .header, .body {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .sub-row {
-          padding: 14px 12px;
+          padding: 14px var(--_nw-space-3);
         }
       }
     `;

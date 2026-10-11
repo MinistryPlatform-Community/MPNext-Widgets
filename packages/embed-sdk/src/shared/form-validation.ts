@@ -424,18 +424,18 @@ export function bindLiveValidation(
 }
 
 export const FORM_VALIDATION_STYLES = `
-  .mpx-req { color: #FF6D6A; font-weight: 700; }
+  .mpx-req { color: var(--_nw-color-error); font-weight: 700; }
   input.mpx-invalid,
   select.mpx-invalid,
   textarea.mpx-invalid {
-    border-color: #FF6D6A !important;
+    border-color: var(--_nw-color-error) !important;
     box-shadow: 0 0 0 2px rgba(255, 109, 106, 0.2) !important;
   }
   .mpx-field-error {
     display: block;
     font-size: 12px;
     line-height: 1.4;
-    color: #FF6D6A;
-    margin-top: 4px;
+    color: var(--_nw-color-error);
+    margin-top: var(--_nw-space-1);
   }
 `;

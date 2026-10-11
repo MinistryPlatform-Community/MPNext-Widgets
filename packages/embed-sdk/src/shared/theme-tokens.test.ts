@@ -73,19 +73,7 @@ const BUDGET: Record<string, Partial<Record<ValueClass, number>>> = {
   // but it means "pending", not "highlight"; tying it to --nw-color-accent would
   // let a re-brand recolour a payment status. No warning token exists. Permanent.
   "components/checkout-complete.ts": { brandHex: 1 },
-  "components/contact-attributes.ts": { brandHex: 9, fontStack: 1 },
-  "components/locale-selector.ts": { brandHex: 9, fontStack: 1 },
   "components/my-giving.ts": { fontStack: 2 },
-  "components/my-household.ts": { brandHex: 9 },
-  "components/online-directory.ts": { brandHex: 16, fontStack: 1 },
-  "components/profile.ts": { brandHex: 16, fontStack: 1 },
-  "components/subscribe-to-publication.ts": { brandHex: 13, fontStack: 1 },
-  "components/subscriptions.ts": { brandHex: 7, fontStack: 1 },
-  "components/unsubscribe.ts": { brandHex: 10, fontStack: 1 },
-  "components/user-menu.ts": { brandHex: 7, fontStack: 2 },
-  "shared/base-widget.ts": { brandHex: 3 },
-  "shared/custom-form.ts": { brandHex: 4 },
-  "shared/form-validation.ts": { brandHex: 3 },
 };
 
 function stripComments(text: string): string {

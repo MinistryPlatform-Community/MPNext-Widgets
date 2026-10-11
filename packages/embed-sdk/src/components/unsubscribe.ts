@@ -450,19 +450,19 @@ export class UnsubscribeWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-unsub {
         max-width: 560px;
         margin: 0 auto;
-        padding: 28px 24px;
-        background: white;
-        border: 1px solid #e5e7eb;
+        padding: 28px var(--_nw-space-6);
+        background: var(--_nw-color-surface);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
         border-radius: 16px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.06);
         text-align: center;
-        color: #2D2926;
+        color: var(--_nw-color-text);
       }
 
       .working {
@@ -470,12 +470,12 @@ export class UnsubscribeWidget extends MPNextWidget {
         align-items: center;
         gap: 10px;
         font-size: 16px;
-        color: #2D2926;
+        color: var(--_nw-color-text);
       }
       .spinner {
         width: 20px;
         height: 20px;
-        color: #004C97;
+        color: var(--_nw-color-primary);
         animation: spin 1s linear infinite;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
@@ -485,25 +485,25 @@ export class UnsubscribeWidget extends MPNextWidget {
         font-size: 18px;
         font-weight: 600;
         line-height: 1.45;
-        color: #002855;
+        color: var(--_nw-color-secondary);
       }
-      .headline--warn { color: #2D2926; font-weight: 500; }
+      .headline--warn { color: var(--_nw-color-text); font-weight: 500; }
 
       .email {
         margin: 14px 0 0;
-        font-size: 14px;
-        color: #6b7280;
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-muted);
       }
-      .email-label { font-weight: 600; color: #2D2926; }
+      .email-label { font-weight: 600; color: var(--_nw-color-text); }
       .email-value { font-variant-numeric: tabular-nums; }
 
       .inline-error {
         margin: 14px 0 0;
         padding: 10px 14px;
-        border-radius: 8px;
-        font-size: 14px;
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
         border: 1px solid rgba(255, 109, 106, 0.4);
       }
 
@@ -512,40 +512,40 @@ export class UnsubscribeWidget extends MPNextWidget {
         flex-direction: column;
         align-items: center;
         gap: 14px;
-        margin-top: 20px;
+        margin-top: var(--_nw-space-5);
       }
 
       .btn {
         display: inline-block;
-        margin-top: 20px;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        margin-top: var(--_nw-space-5);
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .actions .btn { margin-top: 0; }
-      .btn:hover { background: #002855; }
+      .btn:hover { background: var(--_nw-button-bg-hover); }
       .btn:focus-visible { outline: 3px solid rgba(0, 156, 222, 0.6); outline-offset: 2px; }
       .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
       .manage {
         display: inline-block;
         margin-top: 18px;
-        color: #004C97;
-        font-size: 14px;
+        color: var(--_nw-color-primary);
+        font-size: var(--_nw-font-size-base);
         text-decoration: underline;
       }
       .actions .manage { margin-top: 0; }
-      .manage:hover { color: #002855; }
+      .manage:hover { color: var(--_nw-color-secondary); }
 
       @media (max-width: 480px) {
-        .nw-unsub { padding: 20px 16px; }
+        .nw-unsub { padding: var(--_nw-space-5) var(--_nw-space-4); }
         .headline { font-size: 16px; }
       }
     `;

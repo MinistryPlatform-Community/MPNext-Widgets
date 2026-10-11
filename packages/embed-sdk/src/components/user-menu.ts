@@ -1129,7 +1129,7 @@ export class UserMenuWidget extends MPNextWidget {
           ${this.escapeHtml(this.t("userMenu.myAccount"))}
         </button>
         ${this.isTaxSeason() ? `<button class="nw-dropdown-item" data-action="giving">
-          <svg class="nw-icon" style="stroke: #F1BE48;" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <svg class="nw-icon" style="stroke: var(--_nw-color-accent);" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           ${this.escapeHtml(this.t("userMenu.contributionStatement"))}
         </button>` : ""}
         <slot name="menu-items"></slot>
@@ -1556,7 +1556,7 @@ export class UserMenuWidget extends MPNextWidget {
       :host {
         all: initial;
         display: inline-block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-user-menu {
@@ -1572,8 +1572,8 @@ export class UserMenuWidget extends MPNextWidget {
         border: none;
         padding: 0;
         cursor: pointer;
-        background: #004C97;
-        color: white;
+        background: var(--_nw-color-primary);
+        color: var(--_nw-color-on-primary);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1583,7 +1583,7 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-avatar-btn:focus-visible {
-        box-shadow: 0 0 0 2px white, 0 0 0 4px #004C97;
+        box-shadow: 0 0 0 2px white, 0 0 0 4px var(--_nw-color-primary);
       }
 
       .nw-avatar-btn:hover {
@@ -1598,7 +1598,7 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-avatar-initials {
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
         line-height: 1;
         user-select: none;
@@ -1610,9 +1610,9 @@ export class UserMenuWidget extends MPNextWidget {
         top: calc(100% + 6px);
         right: 0;
         width: 224px;
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
+        background: var(--_nw-color-surface);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
         box-shadow: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1);
         z-index: 50;
         overflow: hidden;
@@ -1625,35 +1625,35 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-dropdown-header {
-        padding: 12px 16px;
+        padding: var(--_nw-space-3) var(--_nw-space-4);
       }
 
       .nw-dropdown-name {
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 500;
         color: #1f2937;
       }
 
       .nw-dropdown-email {
         font-size: 12px;
-        color: #6b7280;
+        color: var(--_nw-color-muted);
         margin-top: 2px;
       }
 
       .nw-dropdown-divider {
         height: 1px;
-        background: #e5e7eb;
+        background: var(--_nw-color-border);
       }
 
       .nw-dropdown-item {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         width: 100%;
-        padding: 10px 16px;
+        padding: 10px var(--_nw-space-4);
         border: none;
         background: none;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         color: #1f2937;
         cursor: pointer;
         text-align: left;
@@ -1661,7 +1661,7 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-dropdown-item:hover {
-        background: #f3f4f6;
+        background: var(--_nw-color-surface-muted);
       }
 
       /* C56: host-authored items (slot="menu-items") look like built-in ones. */
@@ -1669,13 +1669,13 @@ export class UserMenuWidget extends MPNextWidget {
       ::slotted(button) {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         box-sizing: border-box;
         width: 100%;
-        padding: 10px 16px;
+        padding: 10px var(--_nw-space-4);
         border: none;
         background: none;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         color: #1f2937;
         text-decoration: none;
         cursor: pointer;
@@ -1685,7 +1685,7 @@ export class UserMenuWidget extends MPNextWidget {
 
       ::slotted(a:hover),
       ::slotted(button:hover) {
-        background: #f3f4f6;
+        background: var(--_nw-color-surface-muted);
       }
 
       .nw-icon {
@@ -1707,15 +1707,15 @@ export class UserMenuWidget extends MPNextWidget {
       .nw-login-btn {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         height: 36px;
         padding: 0 14px;
         border: none;
         border-radius: 6px;
-        background: #004C97;
-        color: white;
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-family: inherit;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 500;
         line-height: 1;
         cursor: pointer;
@@ -1728,7 +1728,7 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-login-btn:focus-visible {
-        box-shadow: 0 0 0 2px white, 0 0 0 4px #004C97;
+        box-shadow: 0 0 0 2px white, 0 0 0 4px var(--_nw-color-primary);
       }
     `;
   }
@@ -1758,8 +1758,8 @@ export class UserMenuWidget extends MPNextWidget {
 
       .nw-modal-container {
         position: relative;
-        background: white;
-        border-radius: 12px;
+        background: var(--nw-color-surface, #ffffff);
+        border-radius: var(--nw-radius-lg, 12px);
         box-shadow: 0 25px 50px -12px rgba(0,0,0,.25);
         width: 90vw;
         max-width: 900px;
@@ -1767,7 +1767,7 @@ export class UserMenuWidget extends MPNextWidget {
         display: flex;
         flex-direction: column;
         animation: nw-modal-in 0.2s ease-out;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--nw-font-family, ui-sans-serif, system-ui, -apple-system, sans-serif);
       }
 
       @keyframes nw-modal-in {
@@ -1779,8 +1779,8 @@ export class UserMenuWidget extends MPNextWidget {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        padding: 24px 24px 16px;
-        border-bottom: 1px solid #e5e7eb;
+        padding: var(--nw-space-6, 24px) var(--nw-space-6, 24px) var(--nw-space-4, 16px);
+        border-bottom: var(--nw-border-width, 1px) solid var(--nw-color-border, #e5e7eb);
       }
 
       .nw-modal-title {
@@ -1792,9 +1792,9 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-modal-description {
-        font-size: 14px;
-        color: #6b7280;
-        margin: 4px 0 0;
+        font-size: var(--nw-font-size-base, 14px);
+        color: var(--nw-color-muted, #6b7280);
+        margin: var(--nw-space-1, 4px) 0 0;
       }
 
       .nw-modal-close {
@@ -1807,13 +1807,13 @@ export class UserMenuWidget extends MPNextWidget {
         background: none;
         border-radius: 6px;
         cursor: pointer;
-        color: #6b7280;
+        color: var(--nw-color-muted, #6b7280);
         padding: 0;
         flex-shrink: 0;
       }
 
       .nw-modal-close:hover {
-        background: #f3f4f6;
+        background: var(--nw-color-surface-muted, #f3f4f6);
         color: #1f2937;
       }
 
@@ -1825,19 +1825,19 @@ export class UserMenuWidget extends MPNextWidget {
       /* Tabs */
       .nw-modal-tabs {
         display: flex;
-        padding: 0 24px;
-        border-bottom: 1px solid #e5e7eb;
+        padding: 0 var(--nw-space-6, 24px);
+        border-bottom: var(--nw-border-width, 1px) solid var(--nw-color-border, #e5e7eb);
         gap: 0;
       }
 
       .nw-tab {
         flex: 1;
-        padding: 12px 16px;
+        padding: var(--nw-space-3, 12px) var(--nw-space-4, 16px);
         border: none;
         background: none;
-        font-size: 14px;
+        font-size: var(--nw-font-size-base, 14px);
         font-weight: 500;
-        color: #6b7280;
+        color: var(--nw-color-muted, #6b7280);
         cursor: pointer;
         border-bottom: 2px solid transparent;
         transition: color 0.15s, border-color 0.15s;
@@ -1849,13 +1849,13 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-tab.active {
-        color: #004C97;
-        border-bottom-color: #004C97;
+        color: var(--nw-color-primary, #004C97);
+        border-bottom-color: var(--nw-color-primary, #004C97);
       }
 
       /* Modal body */
       .nw-modal-body {
-        padding: 24px;
+        padding: var(--nw-space-6, 24px);
         overflow-y: auto;
         flex: 1;
         min-height: 200px;
@@ -1868,7 +1868,7 @@ export class UserMenuWidget extends MPNextWidget {
       .nw-tab-empty {
         text-align: center;
         color: #9ca3af;
-        font-size: 14px;
+        font-size: var(--nw-font-size-base, 14px);
         padding: 48px 0;
       }
 
@@ -1879,20 +1879,20 @@ export class UserMenuWidget extends MPNextWidget {
         }
 
         .nw-modal-header {
-          padding: 16px 16px 12px;
+          padding: var(--nw-space-4, 16px) var(--nw-space-4, 16px) var(--nw-space-3, 12px);
         }
 
         .nw-modal-tabs {
-          padding: 0 16px;
+          padding: 0 var(--nw-space-4, 16px);
         }
 
         .nw-tab {
-          padding: 10px 8px;
+          padding: 10px var(--nw-space-2, 8px);
           font-size: 13px;
         }
 
         .nw-modal-body {
-          padding: 16px;
+          padding: var(--nw-space-4, 16px);
         }
       }
     `;

@@ -209,16 +209,16 @@ export function applyDependsOn(root: ParentNode, fields: CustomFormField[]): voi
 }
 
 export const CUSTOM_FORM_STYLES = `
-  .cf-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-  .cf-field > label, .cf-field > .cf-group-label { font-size: 13px; font-weight: 600; color: #6b7280; }
-  .cf-input { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; background: white; outline: none; }
-  .cf-input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
+  .cf-field { display: flex; flex-direction: column; gap: var(--_nw-space-1); margin-bottom: var(--_nw-space-3); }
+  .cf-field > label, .cf-field > .cf-group-label { font-size: 13px; font-weight: 600; color: var(--_nw-color-muted); }
+  .cf-input { padding: 9px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); background: var(--_nw-color-surface); outline: none; }
+  .cf-input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
   textarea.cf-input { min-height: 80px; resize: vertical; }
-  .cf-checkbox { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .cf-checkbox { display: flex; align-items: center; gap: var(--_nw-space-2); font-size: var(--_nw-font-size-base); }
   .cf-checkbox input, .cf-radio input { width: auto; }
   .cf-radio-v { display: flex; flex-direction: column; gap: 6px; }
-  .cf-radio-h { display: flex; flex-wrap: wrap; gap: 16px; }
-  .cf-radio { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 400; color: #2D2926; }
-  .cf-instructions { font-size: 14px; color: #474747; margin: 0; }
-  .cf-note { color: #6b7280; font-size: 12px; }
+  .cf-radio-h { display: flex; flex-wrap: wrap; gap: var(--_nw-space-4); }
+  .cf-radio { display: inline-flex; align-items: center; gap: 6px; font-size: var(--_nw-font-size-base); font-weight: 400; color: var(--_nw-color-text); }
+  .cf-instructions { font-size: var(--_nw-font-size-base); color: var(--_nw-color-text-subtle); margin: 0; }
+  .cf-note { color: var(--_nw-color-muted); font-size: 12px; }
 `;

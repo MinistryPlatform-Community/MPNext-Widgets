@@ -466,54 +466,54 @@ export class ContactAttributesWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-        color: #2D2926;
+        font-family: var(--_nw-font-family);
+        color: var(--_nw-color-text);
       }
 
       .ca {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
-        border: 1px solid #e5e7eb;
+        background: var(--_nw-color-surface);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
         border-radius: 16px;
-        padding: 24px;
+        padding: var(--_nw-space-6);
         box-sizing: border-box;
       }
 
       .ca-title {
-        margin: 0 0 8px;
+        margin: 0 0 var(--_nw-space-2);
         font-size: 22px;
-        font-weight: 700;
-        color: #004C97;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-primary);
       }
 
       .ca-intro {
-        margin: 0 0 20px;
-        font-size: 14px;
-        line-height: 1.5;
-        color: #6b7280;
+        margin: 0 0 var(--_nw-space-5);
+        font-size: var(--_nw-font-size-base);
+        line-height: var(--_nw-line-height);
+        color: var(--_nw-color-muted);
       }
 
       .ca-loading {
         display: flex;
         align-items: center;
         gap: 10px;
-        color: #6b7280;
+        color: var(--_nw-color-muted);
         font-size: 15px;
       }
       .ca-spinner {
         width: 20px;
         height: 20px;
         animation: ca-spin 1s linear infinite;
-        color: #004C97;
+        color: var(--_nw-color-primary);
       }
       @keyframes ca-spin { to { transform: rotate(360deg); } }
 
       .ca-notice {
-        margin: 0 0 16px;
+        margin: 0 0 var(--_nw-space-4);
         padding: 10px 14px;
-        border-radius: 8px;
-        font-size: 14px;
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
         line-height: 1.4;
       }
       .ca-notice--success {
@@ -524,36 +524,36 @@ export class ContactAttributesWidget extends MPNextWidget {
       .ca-notice--error {
         background: rgba(255, 109, 106, 0.15);
         border: 1px solid rgba(255, 109, 106, 0.4);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
       }
 
       .ca-group {
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 16px;
-        margin: 0 0 16px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius-lg);
+        padding: var(--_nw-space-4);
+        margin: 0 0 var(--_nw-space-4);
       }
       .ca-group-title {
-        margin: 0 0 12px;
-        padding: 0 4px;
+        margin: 0 0 var(--_nw-space-3);
+        padding: 0 var(--_nw-space-1);
         font-size: 15px;
         font-weight: 600;
-        color: #002855;
+        color: var(--_nw-color-secondary);
       }
 
       .ca-list {
         margin: 0;
-        padding: 0 0 0 20px;
+        padding: 0 0 0 var(--_nw-space-5);
       }
       .ca-item {
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         line-height: 1.6;
       }
 
       .ca-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: 8px 16px;
+        gap: var(--_nw-space-2) var(--_nw-space-4);
       }
       .ca-choice {
         display: flex;
@@ -564,13 +564,13 @@ export class ContactAttributesWidget extends MPNextWidget {
         width: 18px;
         height: 18px;
         flex-shrink: 0;
-        accent-color: #004C97;
+        accent-color: var(--_nw-color-primary);
         margin: 0;
         cursor: pointer;
       }
       .ca-check:disabled { cursor: not-allowed; opacity: 0.6; }
       .ca-choice label {
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         line-height: 1.4;
         cursor: pointer;
       }
@@ -578,27 +578,27 @@ export class ContactAttributesWidget extends MPNextWidget {
       .ca-actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 12px;
-        margin-top: 20px;
+        gap: var(--_nw-space-3);
+        margin-top: var(--_nw-space-5);
       }
       .ca-btn {
         padding: 10px 22px;
-        border-radius: 8px;
+        border-radius: var(--_nw-radius);
         border: 1px solid transparent;
         font-family: inherit;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
         cursor: pointer;
       }
       .ca-btn--primary {
-        background: #004C97;
-        color: white;
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
       }
-      .ca-btn--primary:hover:not(:disabled) { background: #002855; }
+      .ca-btn--primary:hover:not(:disabled) { background: var(--_nw-button-bg-hover); }
       .ca-btn--ghost {
-        background: white;
-        color: #004C97;
-        border-color: #004C97;
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-primary);
+        border-color: var(--_nw-color-primary);
       }
       .ca-btn--ghost:hover:not(:disabled) { background: rgba(0, 76, 151, 0.06); }
       .ca-btn:disabled {
@@ -607,7 +607,7 @@ export class ContactAttributesWidget extends MPNextWidget {
       }
 
       @media (max-width: 640px) {
-        .ca { padding: 16px; }
+        .ca { padding: var(--_nw-space-4); }
         .ca-grid { grid-template-columns: 1fr; }
       }
     `;
