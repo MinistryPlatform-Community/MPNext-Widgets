@@ -121,7 +121,8 @@ under, so a fixing commit lowers or deletes its own entry. Never add to a ratche
 |---|---|
 | `src/lib/no-template-concat.test.ts` | two template literals are joined with `+` (see Toolchain) |
 | `packages/embed-sdk/src/components/observed-attributes.test.ts` | an `observedAttributes` entry is not kebab-case. `attributeAliases` values are exempt, and the `LEGACY_SPELLINGS` ratchet is empty (C79). |
-| `packages/embed-sdk/src/shared/theme-tokens.test.ts` | a widget stylesheet writes a raw brand hex or font stack where a `--_nw-*` token exists. It is a per-file ratchet (C68). |
+| `packages/embed-sdk/src/shared/theme-tokens.test.ts` | a widget stylesheet writes a raw brand hex or the token font stack instead of a `--_nw-*` token. The ratchet reached zero and is now a plain assertion (C68). |
+| `packages/embed-sdk/src/components/no-raw-error-message.test.ts` | a catch block renders a caught `.message`, or a translated message is thrown as a plain `Error` instead of a `WidgetError` |
 | `packages/embed-sdk/src/components/render-binds-listeners.test.ts` | `this.render();` is directly followed by `this.attach…Listeners();`. `render()` must re-bind its own listeners, because a locale switch re-renders through `render()` alone. |
 | `src/lib/no-silent-empty-catch.test.ts` | a `catch` under `src/services/**` returns an empty result (`[]`, `null`, `{}`, a bare `return`, …) without a `console.*` call (C20) |
 | `src/services/mp-url-length.test.ts` | a service's real read path builds an MP query string over IIS's 2048 limit. It drives the real `MPHelper` with `fetch` stubbed and a ≥120-char base URL (C50). |
@@ -307,6 +308,19 @@ one is wrong, fix it in `shared/`.
 - Pass `trapTab: false` for a `role="menu"`.
 - Pass the trigger as a function if `render()` replaces it.
 
+**Errors are thrown translated, rendered through `caughtText`** (`MPNextWidget`).
+- A message the widget has already translated is thrown as `new WidgetError(this.errorText(...))`
+  or `new WidgetError(this.t(...))`.
+- A catch renders `this.caughtText(err, "errors.network")`. That shows a `WidgetError`'s text
+  and sends anything else (the browser's "Failed to fetch", a `TypeError`) to `console.error`
+  behind the catalogue fallback.
+- Never interpolate a caught `.message` into markup. `no-raw-error-message.test.ts` enforces it.
+
+**Headings honour `heading-level`** (`shared/heading-level.ts`).
+- `headingTag(this.getAttribute("heading-level"), offset)` returns `h2` by default, or the level the page sets. Pair it with
+  `HEADING_RESET_STYLES` so the swap from a `<div>` changes nothing visually.
+- Every widget emits at least one heading in every state; the a11y probe checks.
+
 **Late attribute changes reconfigure the widget** (`MPNextWidget`, C39).
 - Set `this.painted = true` after the first paint, and override `protected reload()`.
 - The base `attributeChangedCallback` → `reconfigure()` calls `reload()` once the widget is
@@ -335,7 +349,7 @@ one is wrong, fix it in `shared/`.
 
 ## Theming Tokens (`--nw-*`)
 
-`shared/theme-tokens.ts` declares about 35 public tokens: colour, type, shape, space and
+`shared/theme-tokens.ts` declares 36 public tokens: colour, type, shape, space and
 controls. `injectStyles()` prepends them to every widget sheet. README "Theming" documents
 them as a **supported, versioned API**. C68 is only partly done: `part=`, a `custom-css`
 attribute and a domain stylesheet are still open.
@@ -348,15 +362,15 @@ attribute and a domain stylesheet are still open.
   - Declaring the public name on `:host` would make the default beat an inherited `:root`
     override, so only rules aimed at the element itself would reach the widget.
 - **Light-DOM portal styles use the public name with a fallback.** Some styles are appended
-  to `document.head`, for example `my-invoices` `injectCheckoutPortalStyles()` and
-  `user-menu` `injectPortalStyles()`. No `--_nw-*` is defined there, so write
-  `var(--nw-color-primary, #004C97)`. The ratchet ignores fallback hexes.
+  to `document.head`, for example `user-menu` `getPortalStyles()`. No `--_nw-*` is defined there, so write
+  `var(--nw-color-primary, #004C97)`. The guard ignores fallback hexes.
 - **`full-calendar-styles.ts`** maps its brand `--fc-classic-*` defaults onto the tokens,
   keeping the old hex as the `var()` fallback. The `:host` contract described under
   Toolchain must stay complete.
 - **A new colour role is a new token.** Add it to `theme-tokens.ts` and to README
-  "Theming", rather than writing a raw hex. `theme-tokens.test.ts` is a ratchet whose
-  finish line is zero.
+  "Theming", rather than writing a raw hex. `theme-tokens.test.ts` allows no raw brand
+  value at all. `--nw-color-warning` (pending/warning amber) exists separately from
+  `--nw-color-accent` so a re-brand never recolours a payment status.
 - **`injectStyles()` keeps host-adopted sheets.** The widget's own sheet goes first and is
   replaced in place, so a sheet a host adopts into the open shadow root survives
   re-render and wins on equal specificity.
@@ -680,7 +694,7 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `packages/embed-sdk/src/shared/theme-tokens.ts` | The public `--nw-*` token table and the `--_nw-*` resolved block that `injectStyles()` prepends (C68) |
 | `packages/embed-sdk/src/shared/html.ts` | `escapeHtml` / `escapeAttr` / `renderAttrs` |
 | `packages/embed-sdk/src/components/checkout-status.ts` | The only payment `status` → tone/copy mapper, shared by `next-checkout` and `next-checkout-complete` (C41) |
-| `packages/embed-sdk/src/components/giving-shared.ts` | Giving-family layout helpers: the `givingSignedOut()` skeleton under the sign-in panel, and `headingTag()` for `heading-level` |
+| `packages/embed-sdk/src/components/giving-shared.ts` | Giving-family `givingSignedOut()` skeleton under the sign-in panel; re-exports `headingTag()` from `shared/heading-level.ts` |
 | `src/services/_shared/public-events.ts` | `publicEventFilter` / `publicEventPredicate`: the one "public, not cancelled" event predicate (C06) |
 | `src/services/_shared/id-batches.ts` | `idBatches` / `inFilter` / `readByIdBatches`: id-list reads kept under IIS's 2048-char query limit |
 | `src/services/_shared/household-contact.ts` | `canActAsContact` / `getContactBasics`: the server-side "act as a household member" check and contact back-fill (C21/C26) |
