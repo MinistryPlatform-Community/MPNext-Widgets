@@ -1,5 +1,10 @@
 import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
-import { GIVING_SIGNED_OUT_STYLES, givingSignedOut } from "./giving-shared";
+import {
+  GIVING_SIGNED_OUT_STYLES,
+  HEADING_RESET_STYLES,
+  givingSignedOut,
+  headingTag,
+} from "./giving-shared";
 
 interface Pledge {
   pledgeId: number;
@@ -37,6 +42,7 @@ export class MyPledgesWidget extends MPNextWidget {
     return [
       "hide-cancel-button-pledge",
       "cancel-pledge-email-template",
+      "heading-level",
       ...Object.values(this.attributeAliases),
     ];
   }
@@ -240,7 +246,7 @@ export class MyPledgesWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-pledges">
           <div class="header">
-            <div class="title">${this.escapeHtml(this.t("myPledges.title"))}</div>
+            <${this.h(0)} class="title">${this.escapeHtml(this.t("myPledges.title"))}</${this.h(0)}>
           </div>
           <div class="body">
             ${givingSignedOut(
@@ -282,7 +288,7 @@ export class MyPledgesWidget extends MPNextWidget {
     return `
       <div class="nw-pledges">
         <div class="header">
-          <div class="title">${this.escapeHtml(this.t("myPledges.title"))}</div>
+          <${this.h(0)} class="title">${this.escapeHtml(this.t("myPledges.title"))}</${this.h(0)}>
         </div>
         <div class="body">
           ${this.message
@@ -347,12 +353,14 @@ export class MyPledgesWidget extends MPNextWidget {
           ${media}
           <div class="pledge-card-head">
             <span class="badge ${statusClass}">${this.escapeHtml(statusLabel)}</span>
-            <div class="pledge-name">${this.escapeHtml(p.campaignName)}</div>
-            ${showOwner ? `<div class="pledge-owner">${this.escapeHtml(owner)}</div>` : ""}
+            <${this.h(1)} class="pledge-name">${this.escapeHtml(p.campaignName)}</${this.h(1)}>
+            ${showOwner ? `<${this.h(2)} class="pledge-owner">${this.escapeHtml(owner)}</${this.h(2)}>` : ""}
           </div>
         </div>
         <div class="progress-section">
-          <div class="progress-track">
+          <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+            aria-valuenow="${pct}" aria-valuetext="${this.escapeAttr(barText)}"
+            aria-label="${this.escapeAttr(p.campaignName)}">
             <div class="progress-fill" style="width:${pct}%"></div>
           </div>
           <div class="progress-text">${this.escapeHtml(barText)}</div>
@@ -426,8 +434,13 @@ export class MyPledgesWidget extends MPNextWidget {
     </svg>`;
   }
 
+  /** Heading tag `offset` levels below this widget's `heading-level` (C35). */
+  private h(offset = 0): string {
+    return headingTag(this.getAttribute("heading-level"), offset);
+  }
+
   private getStyles(): string {
-    return `${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
+    return `${HEADING_RESET_STYLES}${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
       :host {
         all: initial;
         display: block;

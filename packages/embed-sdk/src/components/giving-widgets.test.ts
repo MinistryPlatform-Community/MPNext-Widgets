@@ -361,6 +361,72 @@ describe("giving widgets", () => {
     });
   });
 
+  // ── C35: a heading outline ─────────────────────────────────────────────
+
+  describe("headings (C35)", () => {
+    const loaded: Handler = (url) => {
+      if (url.includes("/api/embed/my-giving")) return jsonResponse({ donations: [donation()] });
+      if (url.includes("/api/embed/my-pledges")) return jsonResponse({ pledges: [pledge()] });
+      if (url.includes("/api/embed/contribution-statements")) return jsonResponse(statementGroups());
+      if (url.includes("/api/embed/statement-preferences")) {
+        return jsonResponse({ donorId: 6, statementMethodId: 2, paperless: true });
+      }
+      return undefined;
+    };
+    const outline = (el: HTMLElement) =>
+      [...shadow(el).querySelectorAll("h1,h2,h3,h4,h5,h6")].map(
+        (h) => `${h.tagName}:${h.textContent?.trim()}`,
+      );
+
+    it.each(Object.keys(ROUTES))("%s titles itself with an h2 by default", async (tag) => {
+      mockFetch(loaded);
+      const el = await settled(mount(tag));
+      expect(outline(el)[0]).toBe(`H2:${TITLES[tag]}`);
+    });
+
+    it("next-my-giving: title, then By Month / By Program / Donations one level down", async () => {
+      mockFetch(loaded);
+      const el = await settled(mount("next-my-giving", 'heading-level="3"'));
+      expect(outline(el)).toEqual(["H3:My Giving", "H4:By Month", "H4:By Program", "H4:Donations"]);
+    });
+
+    it("next-my-pledges: campaign as h3, owner as h4, and a real progressbar", async () => {
+      mockFetch(loaded);
+      const el = await settled(mount("next-my-pledges"));
+      expect(outline(el)).toEqual(["H2:My Pledges", "H3:Building Fund", "H4:Ada Lovelace"]);
+
+      const bar = $(el, '[role="progressbar"]')!;
+      expect(bar).toHaveAttribute("aria-valuenow", "25");
+      expect(bar).toHaveAttribute("aria-valuemin", "0");
+      expect(bar).toHaveAttribute("aria-valuemax", "100");
+      expect(bar).toHaveAttribute("aria-valuetext", "$300.00 of $1,200.00 (25%)");
+      expect(bar).toHaveAttribute("aria-label", "Building Fund");
+    });
+
+    it("next-my-contribution-statement: the accounting company is a sub-heading", async () => {
+      mockFetch(loaded);
+      const el = await settled(mount("next-my-contribution-statement"));
+      expect(outline(el)).toEqual(["H2:My Contribution Statements", "H3:Your Church Name"]);
+    });
+
+    it("heading-level set after mount re-renders, and nonsense falls back to 2", async () => {
+      mockFetch(loaded);
+      const el = await settled(mount("next-statement-preferences"));
+      el.setAttribute("heading-level", "1");
+      expect(outline(el)).toEqual(["H1:Contribution Statements"]);
+      el.setAttribute("heading-level", "nine");
+      expect(outline(el)).toEqual(["H2:Contribution Statements"]);
+    });
+
+    it("the signed-out state keeps the heading", async () => {
+      mockFetch((url) =>
+        url.includes("/api/embed/my-giving") ? jsonResponse({ error: "auth_required" }, 401) : undefined,
+      );
+      const el = await settled(mount("next-my-giving"));
+      expect(outline(el)).toEqual(["H2:My Giving"]);
+    });
+  });
+
   // ── protect: the money ─────────────────────────────────────────────────
 
   describe("next-my-giving money (regression guard)", () => {

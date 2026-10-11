@@ -1,5 +1,10 @@
 import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
-import { GIVING_SIGNED_OUT_STYLES, givingSignedOut } from "./giving-shared";
+import {
+  GIVING_SIGNED_OUT_STYLES,
+  HEADING_RESET_STYLES,
+  givingSignedOut,
+  headingTag,
+} from "./giving-shared";
 
 interface DonationRecord {
   donationDate: string;
@@ -42,7 +47,7 @@ export class MyGivingWidget extends MPNextWidget {
   static readonly attributeAliases = { "hide-soft-credits": "hidesoftcredits" };
 
   static get observedAttributes() {
-    return ["hide-soft-credits", ...Object.values(this.attributeAliases)];
+    return ["hide-soft-credits", "heading-level", ...Object.values(this.attributeAliases)];
   }
 
   private get hideSoftCredits(): boolean {
@@ -193,7 +198,7 @@ export class MyGivingWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-giving">
           <div class="header">
-            <div class="title">${this.escapeHtml(this.t("myGiving.title"))}</div>
+            <${this.h(0)} class="title">${this.escapeHtml(this.t("myGiving.title"))}</${this.h(0)}>
           </div>
           <div class="body">
             ${givingSignedOut(
@@ -237,7 +242,7 @@ export class MyGivingWidget extends MPNextWidget {
     return `
       <div class="nw-giving">
         <div class="header">
-          <div class="title">${this.escapeHtml(this.t("myGiving.title"))}</div>
+          <${this.h(0)} class="title">${this.escapeHtml(this.t("myGiving.title"))}</${this.h(0)}>
         </div>
         <div class="body">
           ${this.renderControls()}
@@ -332,7 +337,7 @@ export class MyGivingWidget extends MPNextWidget {
     if (max <= 0) {
       return `
         <div class="chart-card">
-          <div class="chart-title">${this.escapeHtml(this.t("myGiving.byMonth"))}</div>
+          <${this.h(1)} class="chart-title">${this.escapeHtml(this.t("myGiving.byMonth"))}</${this.h(1)}>
           <div class="chart-empty">${this.escapeHtml(this.t("myGiving.chartEmpty"))}</div>
         </div>`;
     }
@@ -362,7 +367,7 @@ export class MyGivingWidget extends MPNextWidget {
 
     return `
       <div class="chart-card">
-        <div class="chart-title">${this.escapeHtml(this.t("myGiving.byMonth"))}</div>
+        <${this.h(1)} class="chart-title">${this.escapeHtml(this.t("myGiving.byMonth"))}</${this.h(1)}>
         <svg viewBox="0 0 ${chartW} ${chartH}" class="chart-svg" role="img" aria-label="${this.escapeAttr(this.t("myGiving.byMonthChartLabel"))}">
           ${bars}
         </svg>
@@ -387,7 +392,7 @@ export class MyGivingWidget extends MPNextWidget {
     if (grandTotal <= 0) {
       return `
         <div class="chart-card">
-          <div class="chart-title">${this.escapeHtml(this.t("myGiving.byProgram"))}</div>
+          <${this.h(1)} class="chart-title">${this.escapeHtml(this.t("myGiving.byProgram"))}</${this.h(1)}>
           <div class="chart-empty">${this.escapeHtml(this.t("myGiving.chartEmpty"))}</div>
         </div>`;
     }
@@ -427,7 +432,7 @@ export class MyGivingWidget extends MPNextWidget {
 
     return `
       <div class="chart-card">
-        <div class="chart-title">${this.escapeHtml(this.t("myGiving.byProgram"))}</div>
+        <${this.h(1)} class="chart-title">${this.escapeHtml(this.t("myGiving.byProgram"))}</${this.h(1)}>
         <div class="doughnut-wrap">
           <svg viewBox="0 0 ${size} ${size}" class="doughnut-svg" role="img" aria-label="${this.escapeAttr(this.t("myGiving.byProgramChartLabel"))}">
             ${segments}
@@ -449,7 +454,7 @@ export class MyGivingWidget extends MPNextWidget {
     if (filtered.length === 0) {
       return `
         <div class="donations-section">
-          <div class="section-label">${this.escapeHtml(this.t("myGiving.donations"))}</div>
+          <${this.h(1)} class="section-label">${this.escapeHtml(this.t("myGiving.donations"))}</${this.h(1)}>
           ${subtitle}
           <div class="empty-state">${this.escapeHtml(this.t("myGiving.empty"))}</div>
         </div>`;
@@ -462,7 +467,7 @@ export class MyGivingWidget extends MPNextWidget {
 
     return `
       <div class="donations-section">
-        <div class="section-label">${this.escapeHtml(this.t("myGiving.donations"))}</div>
+        <${this.h(1)} class="section-label">${this.escapeHtml(this.t("myGiving.donations"))}</${this.h(1)}>
         ${subtitle}
         <div class="donation-list">
           ${rows}
@@ -559,8 +564,13 @@ export class MyGivingWidget extends MPNextWidget {
     </svg>`;
   }
 
+  /** Heading tag `offset` levels below this widget's `heading-level` (C35). */
+  private h(offset = 0): string {
+    return headingTag(this.getAttribute("heading-level"), offset);
+  }
+
   private getStyles(): string {
-    return `${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
+    return `${HEADING_RESET_STYLES}${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
       :host {
         all: initial;
         display: block;

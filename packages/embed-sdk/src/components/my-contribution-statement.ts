@@ -1,5 +1,10 @@
 import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
-import { GIVING_SIGNED_OUT_STYLES, givingSignedOut } from "./giving-shared";
+import {
+  GIVING_SIGNED_OUT_STYLES,
+  HEADING_RESET_STYLES,
+  givingSignedOut,
+  headingTag,
+} from "./giving-shared";
 
 interface ContributionStatement {
   Statement_ID: number;
@@ -23,14 +28,30 @@ export class MyContributionStatementWidget extends MPNextWidget {
   private signedOut = false;
   private selectedYear: Record<string, number> = {};
 
+  static get observedAttributes() {
+    return ["heading-level"];
+  }
+
   connectedCallback() {
     this.injectStyles(this.getStyles());
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.loadStatements();
     });
+  }
+
+  /**
+   * An observed attribute changed after the first paint (C39 convention). Every
+   * attribute this widget reads only changes how loaded data is drawn, so a
+   * re-render is enough; a load still in flight reads them when it lands.
+   */
+  protected override reload(): void {
+    if (this.loading) return;
+    this.render();
+    this.attachListeners();
   }
 
   public retryLoad() {
@@ -144,7 +165,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-statements">
           <div class="header">
-            <div class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</div>
+            <${this.h(0)} class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</${this.h(0)}>
           </div>
           <div class="list-body">
             ${givingSignedOut(
@@ -178,7 +199,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-statements">
           <div class="header">
-            <div class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</div>
+            <${this.h(0)} class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</${this.h(0)}>
           </div>
           <div class="list-body">
             <div class="empty-state">${this.escapeHtml(this.t("contributionStatement.empty"))}</div>
@@ -194,7 +215,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
     return `
       <div class="nw-statements">
         <div class="header">
-          <div class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</div>
+          <${this.h(0)} class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</${this.h(0)}>
         </div>
         <div class="list-body">
           ${this.groups
@@ -214,7 +235,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
 
     return `
       <div class="company-section">
-        <div class="company-name">${this.escapeHtml(company)}</div>
+        <${this.h(1)} class="company-name">${this.escapeHtml(company)}</${this.h(1)}>
         <div class="year-label">${this.escapeHtml(this.t("contributionStatement.selectYear"))}</div>
         <div class="year-row">
           ${years
@@ -250,8 +271,13 @@ export class MyContributionStatementWidget extends MPNextWidget {
     </svg>`;
   }
 
+  /** Heading tag `offset` levels below this widget's `heading-level` (C35). */
+  private h(offset = 0): string {
+    return headingTag(this.getAttribute("heading-level"), offset);
+  }
+
   private getStyles(): string {
-    return `${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
+    return `${HEADING_RESET_STYLES}${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
       :host {
         all: initial;
         display: block;
