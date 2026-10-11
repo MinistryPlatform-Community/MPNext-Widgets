@@ -305,6 +305,62 @@ describe("giving widgets", () => {
     });
   });
 
+  // ── C31: cancel is on by default ───────────────────────────────────────
+
+  describe("next-my-pledges cancel default (C31)", () => {
+    const pledges: Handler = (url) =>
+      url.includes("/api/embed/my-pledges")
+        ? jsonResponse({
+            pledges: [pledge(), pledge({ pledgeId: 41, pledgeStatus: "Completed" })],
+          })
+        : undefined;
+
+    it("a bare element shows Cancel Pledge on every Active pledge, and only those", async () => {
+      mockFetch(pledges);
+      const el = await settled(mount("next-my-pledges"));
+      const buttons = shadow(el).querySelectorAll<HTMLElement>('[data-action="request-cancel"]');
+      expect(buttons).toHaveLength(1);
+      expect(buttons[0].dataset.id).toBe("40");
+    });
+
+    it('hide-cancel-button-pledge="true" hides it, and so does the legacy spelling', async () => {
+      for (const attr of ["hide-cancel-button-pledge", "hidecancelbuttonpledge"]) {
+        mockFetch(pledges);
+        const el = await settled(mount("next-my-pledges", `${attr}="true"`));
+        expect($(el, '[data-action="request-cancel"]')).toBeNull();
+      }
+    });
+
+    it("warns once when cancel is offered with no confirmation-email template", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      mockFetch(pledges);
+      const el = await settled(mount("next-my-pledges"));
+      $<HTMLButtonElement>(el, '[data-action="request-cancel"]')!.click();
+
+      const hits = warn.mock.calls.filter(([m]) => String(m).includes("cancel-pledge-email-template"));
+      expect(hits).toHaveLength(1);
+    });
+
+    it("cancel still runs end to end: confirm → POST → success message", async () => {
+      const posts: unknown[] = [];
+      mockFetch((url, init) => {
+        if (!url.includes("/api/embed/my-pledges")) return undefined;
+        if (init?.method === "POST") {
+          posts.push(JSON.parse(String(init.body)));
+          return jsonResponse({ pledges: [pledge({ pledgeStatus: "Discontinued" })] });
+        }
+        return jsonResponse({ pledges: [pledge()] });
+      });
+      const el = await settled(mount("next-my-pledges", 'cancel-pledge-email-template="9"'));
+      $<HTMLButtonElement>(el, '[data-action="request-cancel"]')!.click();
+      $<HTMLButtonElement>(el, '[data-action="confirm-cancel"]')!.click();
+
+      await vi.waitFor(() => expect(text(el)).toContain("Pledge canceled"));
+      expect(posts).toEqual([{ pledgeId: 40, cancelEmailTemplateId: 9 }]);
+      expect($(el, '[data-action="request-cancel"]')).toBeNull();
+    });
+  });
+
   // ── protect: the money ─────────────────────────────────────────────────
 
   describe("next-my-giving money (regression guard)", () => {

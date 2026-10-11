@@ -41,8 +41,33 @@ export class MyPledgesWidget extends MPNextWidget {
     ];
   }
 
+  /**
+   * C31: hidden **only** when explicitly `"true"`, matching legacy
+   * (`getAttribute("hidecancelbuttonpledge") || false`). The old default hid
+   * the feature on every bare `<next-my-pledges>` embed — the exact shape of
+   * the copy-paste snippet — so every migrated site silently lost self-service
+   * cancel.
+   */
   private get hideCancelButton(): boolean {
-    return (this.readAttr("hide-cancel-button-pledge") || "true").toLowerCase() !== "false";
+    return (this.readAttr("hide-cancel-button-pledge") || "false").toLowerCase() === "true";
+  }
+
+  /** The no-template warning is a host-developer signal: once per element. */
+  private warnedNoCancelTemplate = false;
+
+  /**
+   * Cancel is offered with no `cancel-pledge-email-template` configured, so the
+   * cancellation goes through with no confirmation email (legacy sent none at
+   * all). Say so once in the console so the host notices, rather than silently.
+   */
+  private warnIfNoCancelTemplate(): void {
+    if (this.warnedNoCancelTemplate || this.hideCancelButton) return;
+    if (this.cancelEmailTemplateId !== undefined) return;
+    if (!this.pledges.some((p) => p.pledgeStatus === "Active")) return;
+    this.warnedNoCancelTemplate = true;
+    console.warn(
+      "[mpnext] <next-my-pledges> offers Cancel Pledge but has no cancel-pledge-email-template; cancellations will send no confirmation email.",
+    );
   }
 
   private get cancelEmailTemplateId(): number | undefined {
@@ -245,6 +270,7 @@ export class MyPledgesWidget extends MPNextWidget {
     }
 
     this.root.innerHTML = this.renderMain();
+    this.warnIfNoCancelTemplate();
   }
 
   private renderMain(): string {

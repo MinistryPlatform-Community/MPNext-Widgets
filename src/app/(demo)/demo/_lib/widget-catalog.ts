@@ -319,13 +319,16 @@ const extras: Record<string, WidgetExtras> = {
       {
         name: "hideCancelButton", label: "Cancel Button", type: "select", attribute: "hide-cancel-button-pledge",
         options: [
-          { label: "Hidden", value: "true" },
           { label: "Shown", value: "false" },
+          { label: "Hidden", value: "true" },
         ],
-        defaultValue: "true",
+        defaultValue: "false",
       },
     ],
-    implementationCode: `<next-my-pledges hide-cancel-button-pledge="true"></next-my-pledges>`,
+    implementationCode: `<!-- Cancel Pledge shows on Active pledges by default (legacy parity, C31).
+     hide-cancel-button-pledge="true" hides it; cancel-pledge-email-template
+     is the dp_Communications ID of the cancellation confirmation email. -->
+<next-my-pledges></next-my-pledges>`,
   },
 
   "pledge-campaign": {
