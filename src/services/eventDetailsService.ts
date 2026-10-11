@@ -320,7 +320,15 @@ export class EventDetailsService {
         stateRegion: a["State/Region"] ?? null,
         postalCode: a.Postal_Code ?? null,
       };
-    } catch {
+    } catch (err) {
+      // Still best-effort (registration proceeds without the prefill), but a
+      // failed read must leave a trace: without it a bad column (C20) reads
+      // as "this household has no address". The message only -- no household
+      // id, no address fields, nothing token-bearing.
+      console.error(
+        "EventDetailsService: household address read failed; registration will not prefill an address:",
+        err instanceof Error ? err.message : String(err)
+      );
       return null;
     }
   }

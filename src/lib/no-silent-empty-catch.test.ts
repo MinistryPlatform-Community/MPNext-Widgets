@@ -266,27 +266,7 @@ const ALLOWLIST: Entry[] = [
  * service code in the same change. INTEGRATOR: add the log line, then delete
  * the entry -- the stale-entry check fails the run until you do.
  */
-const KNOWN_DEFECTS: (Entry & { lineAtWriting: number })[] = [
-  {
-    file: "eventDetailsService.ts",
-    fn: "getHouseholdAddress",
-    lineAtWriting: 323,
-    reason:
-      "`catch { return null; }` around two table reads (Households, Addresses). Any MP " +
-      "failure -- including a bad column, the C20 failure mode -- silently becomes 'no " +
-      "household address', so event registration loses its address prefill with no " +
-      "service-level trace. Add console.warn with the error.",
-  },
-  {
-    file: "planYourVisitService.ts",
-    fn: "getConfigValue",
-    lineAtWriting: 627,
-    reason:
-      "`.catch(() => [])` on the dp_Configuration_Settings read: a failed read is " +
-      "indistinguishable from an unset setting. ConfigSettingsService.getSetting does " +
-      "the same read and console.warns on failure -- match it (or call it).",
-  },
-];
+const KNOWN_DEFECTS: (Entry & { lineAtWriting: number })[] = [];
 
 // ── scan ────────────────────────────────────────────────────────────────────
 

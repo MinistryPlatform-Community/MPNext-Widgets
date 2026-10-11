@@ -205,10 +205,12 @@ function withIdentity(inner?: Responder): Responder {
 }
 
 /**
- * A busy six-week grid at a large multi-site church: 400 events across 60
- * programs (30 ministries), 40 locations, 12 campuses and 25 event types.
+ * A busy six-week grid at a large multi-site church: 400 events across 120
+ * programs (30 ministries), 120 locations, 12 campuses and 25 event types.
+ * Programs and locations are past the ~75 distinct ids at which an unbatched
+ * `X_ID = n OR ...` lookup overflowed, so this case proves the batching.
  */
-const CALENDAR = { events: 400, programs: 60, ministries: 30, locations: 40, campuses: 12, types: 25 };
+const CALENDAR = { events: 400, programs: 120, ministries: 30, locations: 120, campuses: 12, types: 25 };
 
 function calendarEvents() {
   const programs = ids(CALENDAR.programs, 2_000_000);
@@ -712,21 +714,7 @@ const CASES: UrlCase[] = [
  * Cases that overflow today. Each is a real defect, reported here rather than
  * silenced: fix the service, then delete the entry (the test fails until you do).
  */
-const KNOWN_DEFECTS: Record<string, string> = {
-  // INTEGRATOR: fix invoiceService.getProductSummaries, then delete both entries.
-  "invoice.getInvoices: purchaser with 120 invoices (client credentials)": [
-    "invoiceService.ts getProductSummaries (line 264 at time of writing) builds one",
-    "`Invoice_ID = n OR ...` term (~26 encoded chars) per invoice the purchaser has ever",
-    "had, unbatched, so the Invoice_Detail read overflows at roughly 75 invoices. The",
-    "catch logs a warning and every Product_Summary on next-my-invoices silently becomes",
-    "null. Batch the ids (missionTripService.pledgeHolders does, 100 per IN list) or use",
-    "`Invoice_ID IN (...)`. getProductMap's `Product_ID = n OR ...` list (lines 319/365)",
-    "has the same shape and is at 1600 chars with 60 distinct products.",
-  ].join(" "),
-  "invoice.getInvoices: purchaser with 120 invoices (user token)": [
-    "Same defect as the client-credentials case: the Invoice_Detail read is unbatched.",
-  ].join(" "),
-};
+const KNOWN_DEFECTS: Record<string, string> = {};
 
 // ── tests ───────────────────────────────────────────────────────────────────
 

@@ -616,6 +616,21 @@ export class PlanYourVisitService {
     );
   }
 
+  /**
+   * One `dp_Configuration_Settings` value, or null when unset **or unreadable**.
+   *
+   * A failed read is logged and then treated like an unset setting, rather
+   * than thrown. Decided per caller:
+   *  - `PhoneMask` is a placeholder only; the form works without it.
+   *  - `GlobalCongregationID` falls back to 0, so the age/grade list shows the
+   *    visitor's own campus groups without the global ones -- degraded, not
+   *    broken, and throwing would empty the whole list instead.
+   *  - `defaultParticipantType` has no fallback, and `createParticipant`
+   *    already throws on null, so the submission fails loudly either way.
+   * No caller needs "failed" distinguished from "unset" to behave correctly;
+   * what was missing was the evidence, so the log line is the fix (C20 class)
+   * and is what tells "not configured" apart from "MP read failed".
+   */
   private async getConfigValue(keyName: string): Promise<string | null> {
     const rows = await this.mp!
       .getTableRecords<{ Value: string | null }>({
@@ -624,7 +639,13 @@ export class PlanYourVisitService {
         filter: `Key_Name = '${sqlLiteral(keyName)}'`,
         top: 1,
       })
-      .catch(() => [] as { Value: string | null }[]);
+      .catch((err: unknown) => {
+        console.warn(
+          `PlanYourVisitService: dp_Configuration_Settings read for ${keyName} failed; treating it as unset:`,
+          err instanceof Error ? err.message : String(err)
+        );
+        return [] as { Value: string | null }[];
+      });
     return clean(rows[0]?.Value ?? null);
   }
 

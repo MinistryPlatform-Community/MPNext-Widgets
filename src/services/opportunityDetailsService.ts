@@ -25,7 +25,7 @@ import type { OpportunityDetail, OpportunityContact } from "@mpnext/types";
 
 interface OpportunityRow {
   Id: number | string | null;
-  ImageUrl: string | null;
+  ImageGuid: string | null;
   NoImageText: string | null;
   Title: string | null;
   Description: string | null;
@@ -37,7 +37,7 @@ interface OpportunityRow {
   ContactLastName: string | null;
   ContactEmail: string | null;
   ContactPhone: string | null;
-  ContactImageUrl: string | null;
+  ContactImageGuid: string | null;
   MeetingDay: string | null;
   StartDate: string | null;
   RequiredGender: string | null;
@@ -115,7 +115,12 @@ export class OpportunityDetailsService {
     // avoid ambiguous-column errors.
     return [
       "Opportunities.Opportunity_ID AS Id",
-      `'${this.imageBaseUrl}' + CONVERT(varchar(40), dp_FileUniqueID) AS ImageUrl`,
+      // File GUIDs, not URLs: the absolute image URLs are built in JS
+      // (imageUrl()). Inlining the base URL here as a SQL string expression,
+      // twice, put the query string past IIS's 2048-char maxQueryString once
+      // the base URL reached ~215 chars, which MP answers with an HTML 404
+      // (the C50 pattern; onlineDirectoryService made the same change).
+      "dp_FileUniqueID AS ImageGuid",
       "Group_Role_ID_Table.Role_Title AS NoImageText",
       "Opportunity_Title AS Title",
       "Opportunities.Description AS Description",
@@ -127,7 +132,7 @@ export class OpportunityDetailsService {
       "Contact_Person_Table.Last_Name AS ContactLastName",
       "Contact_Person_Table.Email_Address AS ContactEmail",
       "Contact_Person_Table.Company_Phone AS ContactPhone",
-      `CASE WHEN Contact_Person_Table.dp_FileUniqueID IS NULL THEN '' ELSE '${this.imageBaseUrl}' + CONVERT(varchar(40), Contact_Person_Table.dp_FileUniqueID) END AS ContactImageUrl`,
+      "Contact_Person_Table.dp_FileUniqueID AS ContactImageGuid",
       "ISNULL(DATENAME(dw, Opportunity_Date), 'Ongoing') AS MeetingDay",
       "Opportunity_Date AS StartDate",
       "Required_Gender_Table.Gender AS RequiredGender",
@@ -185,7 +190,7 @@ export class OpportunityDetailsService {
       id: Number(row.Id),
       title: String(row.Title ?? ""),
       description: row.Description ?? null,
-      imageUrl: row.ImageUrl || null,
+      imageUrl: this.imageUrl(row.ImageGuid),
       location: row.Location ?? null,
       address,
       // MP returns wall-clock datetimes; pass through verbatim (no Z-shift).
@@ -218,10 +223,16 @@ export class OpportunityDetailsService {
     return [
       {
         displayName,
-        imageUrl: row.ContactImageUrl || null,
+        imageUrl: this.imageUrl(row.ContactImageGuid),
         emailAddress: row.ContactEmail ?? null,
       },
     ];
+  }
+
+  /** `<base>/files/<guid>` for an MP file GUID, or null when there is no file. */
+  private imageUrl(guid: string | null): string | null {
+    const id = (guid ?? "").trim();
+    return id ? `${this.imageBaseUrl}${id}` : null;
   }
 
   private async getResponseCount(opportunityId: number): Promise<number> {
