@@ -854,25 +854,25 @@ export class PrayerFeedbackWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .pf {
         max-width: 640px;
         margin: 0 auto;
-        padding: 28px 24px;
-        background: white;
-        border: 1px solid #e5e7eb;
+        padding: 28px var(--_nw-space-6);
+        background: var(--_nw-color-surface);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
         border-radius: 16px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.06);
-        color: #2D2926;
+        color: var(--_nw-color-text);
       }
 
       .pf-title {
         margin: 0 0 6px;
         font-size: 22px;
-        font-weight: 700;
-        color: #004C97;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-primary);
       }
       .pf-lead {
         margin: 0 0 18px;
@@ -888,11 +888,11 @@ export class PrayerFeedbackWidget extends MPNextWidget {
         gap: 6px;
         margin: 0 0 18px;
         padding: 10px 14px;
-        border-radius: 8px;
+        border-radius: var(--_nw-radius);
         background: rgba(0, 156, 222, 0.1);
         border: 1px solid rgba(0, 156, 222, 0.35);
-        font-size: 14px;
-        color: #002855;
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-secondary);
       }
       .pf-link {
         background: none;
@@ -900,11 +900,11 @@ export class PrayerFeedbackWidget extends MPNextWidget {
         padding: 0;
         font: inherit;
         font-weight: 600;
-        color: #004C97;
+        color: var(--_nw-color-primary);
         text-decoration: underline;
         cursor: pointer;
       }
-      .pf-link:hover { color: #002855; }
+      .pf-link:hover { color: var(--_nw-color-secondary); }
 
       .pf-status { margin: 0; }
       .pf-working {
@@ -916,7 +916,7 @@ export class PrayerFeedbackWidget extends MPNextWidget {
       .pf-spinner {
         width: 20px;
         height: 20px;
-        color: #004C97;
+        color: var(--_nw-color-primary);
         animation: pf-spin 1s linear infinite;
       }
       @keyframes pf-spin { to { transform: rotate(360deg); } }
@@ -926,97 +926,97 @@ export class PrayerFeedbackWidget extends MPNextWidget {
         font-size: 18px;
         font-weight: 600;
         line-height: 1.45;
-        color: #002855;
+        color: var(--_nw-color-secondary);
       }
-      .pf-headline--warn { color: #2D2926; font-weight: 500; }
+      .pf-headline--warn { color: var(--_nw-color-text); font-weight: 500; }
 
       .pf-form { display: block; }
       .pf-form-message {
-        margin: 0 0 16px;
+        margin: 0 0 var(--_nw-space-4);
         padding: 10px 14px;
-        border-radius: 8px;
-        font-size: 14px;
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
         border: 1px solid rgba(255, 109, 106, 0.4);
       }
 
       .pf-row {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 16px;
+        gap: var(--_nw-space-4);
       }
-      .pf-field { margin-bottom: 16px; }
+      .pf-field { margin-bottom: var(--_nw-space-4); }
       .pf-label {
         display: block;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
         font-size: 13px;
         font-weight: 600;
-        color: #2D2926;
+        color: var(--_nw-color-text);
       }
-      .pf-optional { font-weight: 400; color: #6b7280; }
+      .pf-optional { font-weight: 400; color: var(--_nw-color-muted); }
       .pf-input {
         display: block;
         width: 100%;
         box-sizing: border-box;
-        padding: 9px 12px;
-        border: 1px solid #d1d5db;
-        border-radius: 8px;
+        padding: 9px var(--_nw-space-3);
+        border: var(--_nw-border-width) solid var(--_nw-color-border-strong);
+        border-radius: var(--_nw-radius);
         font-family: inherit;
-        font-size: 14px;
-        color: #2D2926;
-        background: white;
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text);
+        background: var(--_nw-color-surface);
       }
       .pf-input:focus {
         outline: none;
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
         box-shadow: 0 0 0 2px rgba(0, 76, 151, 0.2);
       }
       .pf-textarea { resize: vertical; min-height: 110px; }
       .pf-hint {
         display: block;
-        margin-top: 4px;
+        margin-top: var(--_nw-space-1);
         font-size: 12px;
-        color: #6b7280;
+        color: var(--_nw-color-muted);
       }
       .pf-counter {
         display: block;
-        margin-top: 4px;
+        margin-top: var(--_nw-space-1);
         font-size: 12px;
-        color: #6b7280;
+        color: var(--_nw-color-muted);
         font-variant-numeric: tabular-nums;
       }
 
-      .pf-field--check { margin-top: 4px; }
+      .pf-field--check { margin-top: var(--_nw-space-1); }
       .pf-check {
         display: flex;
         align-items: center;
-        gap: 8px;
-        font-size: 14px;
+        gap: var(--_nw-space-2);
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
       }
-      .pf-check input { width: 16px; height: 16px; accent-color: #004C97; }
+      .pf-check input { width: 16px; height: 16px; accent-color: var(--_nw-color-primary); }
 
-      .pf-actions { margin-top: 20px; }
+      .pf-actions { margin-top: var(--_nw-space-5); }
       .pf-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
-      .pf-btn:hover { background: #002855; }
+      .pf-btn:hover { background: var(--_nw-button-bg-hover); }
       .pf-btn:focus-visible { outline: 3px solid rgba(0, 156, 222, 0.6); outline-offset: 2px; }
       .pf-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
       @media (max-width: 560px) {
-        .pf { padding: 20px 16px; }
+        .pf { padding: var(--_nw-space-5) var(--_nw-space-4); }
         .pf-row { grid-template-columns: 1fr; gap: 0; }
         .pf-title { font-size: 19px; }
       }

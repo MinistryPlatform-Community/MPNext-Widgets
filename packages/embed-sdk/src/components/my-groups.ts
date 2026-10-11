@@ -334,7 +334,7 @@ export class MyGroupsWidget extends MPNextWidget {
   }
 
   private groupSvg(): string {
-    return `<svg viewBox="0 0 24 24" fill="#004C97" class="group-icon" role="img" aria-label="${this.escapeHtml(this.t("myGroups.imageLabel"))}">
+    return `<svg viewBox="0 0 24 24" class="group-icon" role="img" aria-label="${this.escapeHtml(this.t("myGroups.imageLabel"))}">
       <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
     </svg>`;
   }
@@ -351,40 +351,40 @@ export class MyGroupsWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-groups {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
+        background: var(--_nw-color-surface);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .header {
-        background: #002855;
+        background: var(--_nw-color-secondary);
         color: white;
-        padding: 24px;
+        padding: var(--_nw-space-6);
       }
       .title {
         font-size: 24px;
         font-weight: bold;
         text-align: center;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
       }
       .subtitle {
         text-align: center;
         opacity: 0.8;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         margin: 0;
       }
       .loading-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         font-size: 18px;
       }
 
@@ -398,27 +398,27 @@ export class MyGroupsWidget extends MPNextWidget {
       }
 
       .body {
-        padding: 20px;
+        padding: var(--_nw-space-5);
       }
 
       .empty-state {
         text-align: center;
-        padding: 40px 20px;
+        padding: 40px var(--_nw-space-5);
         color: #9E9E9E;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
       }
 
       .group-grid {
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: var(--_nw-space-4);
       }
 
       .group-card {
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 16px;
-        background: white;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius-lg);
+        padding: var(--_nw-space-4);
+        background: var(--_nw-color-surface);
       }
       .group-card-top {
         display: flex;
@@ -431,7 +431,7 @@ export class MyGroupsWidget extends MPNextWidget {
         border-radius: 10px;
         object-fit: cover;
         flex-shrink: 0;
-        background: #f3f4f6;
+        background: var(--_nw-color-surface-muted);
       }
       .group-image--placeholder {
         display: flex;
@@ -442,6 +442,7 @@ export class MyGroupsWidget extends MPNextWidget {
       .group-icon {
         width: 32px;
         height: 32px;
+        fill: var(--_nw-color-primary);
       }
       .group-card-head {
         flex: 1;
@@ -449,8 +450,8 @@ export class MyGroupsWidget extends MPNextWidget {
       }
       .group-name {
         font-size: 16px;
-        font-weight: 700;
-        color: #002855;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
         margin-top: 6px;
         line-height: 1.3;
       }
@@ -481,62 +482,62 @@ export class MyGroupsWidget extends MPNextWidget {
       }
 
       .group-desc {
-        margin-top: 12px;
+        margin-top: var(--_nw-space-3);
         font-size: 13px;
         color: rgba(45, 41, 38, 0.7);
-        line-height: 1.5;
+        line-height: var(--_nw-line-height);
       }
 
       .grouplife-area {
-        margin-top: 16px;
+        margin-top: var(--_nw-space-4);
         padding-top: 14px;
-        border-top: 1px solid #f3f4f6;
+        border-top: var(--_nw-border-width) solid var(--_nw-color-surface-muted);
       }
       .grouplife-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         text-decoration: none;
         transition: background 0.15s;
       }
       .grouplife-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       .retry-section {
-        padding: 20px;
+        padding: var(--_nw-space-5);
         text-align: center;
       }
       .retry-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .retry-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       @media (max-width: 640px) {
         .header, .body {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .group-card-top {
-          gap: 12px;
+          gap: var(--_nw-space-3);
         }
         .group-image {
           width: 52px;
