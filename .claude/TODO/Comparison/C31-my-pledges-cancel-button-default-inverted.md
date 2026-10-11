@@ -75,3 +75,35 @@ reachable and testable; but note that legacy sites will still regress on migrati
 Same call applies to whether `cancelpledgeemailtemplate` should be required when cancel
 is enabled — legacy's metadata says *"If Hide Cancel Button = false, this value must be
 configured"*, and ours silently cancels with no email when it is unset.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W5, branch `ws/w5-giving`). The default now matches legacy: Cancel Pledge renders
+on every Active pledge unless `hide-cancel-button-pledge="true"`
+(`(readAttr("hide-cancel-button-pledge") || "false").toLowerCase() === "true"`).
+
+- Landed together with the C79 rename (previous commit) and the C39 reconfigure fix, so a
+  host can set either spelling after mount and see the result. The legacy spellings
+  `hidecancelbuttonpledge` / `cancelpledgeemailtemplate` are still read for one release.
+- The cancel flow and its confirmation email are untouched (protected by the
+  `my-pledges-cancel-email-scope` decision); a test drives confirm → POST
+  `{ pledgeId, cancelEmailTemplateId }` → "Pledge canceled".
+- `demo-my-pledges.html` and the demo-library entry (`widget-catalog.ts`) now describe the
+  new default; the demo control defaults to "Shown".
+
+**Decision — the companion question (cancel with no `cancel-pledge-email-template`).**
+The plan offered two options: refuse to render the control without a template, or send
+from a domain default. Neither was taken:
+
+- *Refusing* would re-break this very item: a bare `<next-my-pledges>` — the copy-paste
+  shape C31 is about — would again show no Cancel control, and the plan's own first
+  acceptance line ("no attributes renders a Cancel control") would fail.
+- *A domain default* does not exist to read: there is no repo setting, and
+  `dp_Configuration_Settings` is not readable from this workstream's API user.
+- Legacy sent **no** cancellation email at all, so cancelling without one is parity, not a
+  regression; the email is our improvement when configured.
+
+So the widget shows Cancel by default and, when it is offering cancel with no template
+configured, `console.warn`s **once per element** that cancellations will send no
+confirmation email — the host developer finds out, the donor still gets the on-screen
+"Pledge canceled". Revisit if MP exposes a domain-level default template.

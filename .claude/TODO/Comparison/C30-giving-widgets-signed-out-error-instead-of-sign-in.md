@@ -88,3 +88,25 @@ these four (plus `next-my-groups`, `next-my-household`, `next-my-invoices`,
 Four agents found this independently in four widget families (C13, C30, C46, C53). The
 sign-in affordance already exists as `requestLogin()` in `base-widget.ts` and is used by
 nine other components, so the fix is shared — do not close this item by fixing one widget.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W5, branch `ws/w5-giving`). All four widgets now branch on W0's
+`isNeedsAuth(res)` before the generic error path and render W0's shared, mode-aware
+`renderSignInRequired()` — no widget hand-rolls a panel or binds `[data-action="login"]`.
+
+- `dual` / `hardened`: the prompt plus a **Sign In** button → `requestLogin("<widget>")`.
+- `legacy`: the prompt plus *"Use the sign-in link on this page."*, **no button** (a button
+  there would silently no-op), and a passive `loginRequired` event the host can intercept.
+- "Try Again" now appears only for genuine faults (5xx / network). A 401 reaching a
+  *signed-in* visitor still renders as an error, by W0's design, so nobody is offered
+  sign-in in a loop.
+- CROSS-1 Phase 2 is in: each widget keeps its own header/title and lays the panel over
+  an `aria-hidden`, muted skeleton of its layout (`components/giving-shared.ts` —
+  `givingSignedOut()` + `GIVING_SIGNED_OUT_STYLES`; giving-family only, not `shared/`).
+- Per-widget prompts in en / es / pt-BR, worded after legacy:
+  `myGiving.signInPrompt`, `myPledges.signInPrompt`, `contributionStatement.signInPrompt`,
+  `statementPreferences.signInPrompt`.
+- Tests: `components/giving-widgets.test.ts` asserts, for each of the four widgets, the
+  heading + skeleton + prompt with no "Unable to Load", no retry; no button in `legacy`;
+  the button's `loginRequired` `wid` in `dual`; and that a 500 still shows Try Again.

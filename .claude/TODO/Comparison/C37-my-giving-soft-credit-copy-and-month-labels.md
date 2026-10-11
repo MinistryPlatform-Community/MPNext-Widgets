@@ -88,3 +88,22 @@ personally contribute. Their amounts are not included in your Total Giving and w
 appear on your tax statement."* That covers legacy's meaning in our voice. Note this
 string, like every other, is hardcoded English with no MP-configurable override —
 `C67` is the mechanism, this item is just the copy.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W5, branch `ws/w5-giving`).
+
+- **Month picker:** every option now carries the year ("January 2026", "enero de 2026",
+  "janeiro de 2026") through the new `myGiving.monthYear` message (shared with the C33
+  chart tooltips), so after navigating to a previous year the filter confirms which January.
+- **Soft-credit note:** rendered whenever the toggle is *available* — the loaded data holds a
+  soft credit and `hide-soft-credits` is not set — whether or not the box is ticked
+  (previously only while ticked). With `hide-soft-credits="true"` soft credits are never
+  listed, so the note is not shown either.
+- **Wording** (`myGiving.softCreditDisclaimer`, en / es / pt-BR, baselines re-synced):
+  *"Soft credit donations are gifts you are credited with but did not personally contribute.
+  Their amounts are excluded from your Total Giving and will not appear on your tax
+  statement."* — legacy's meaning, including the excluded-from-total clause, in our voice.
+
+The behaviour the note describes is unchanged and asserted: with a soft credit ticked on,
+the list grows by the soft-credit row while Total Giving stays the non-soft sum.

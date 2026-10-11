@@ -24,7 +24,7 @@ export const ptBRGiving = {
     disclaimer:
       "A lista de doações a seguir é informativa e não deve ser usada para fins fiscais.",
     softCreditDisclaimer:
-      "As doações com crédito indireto estão incluídas abaixo e refletem doações creditadas a você, mas que você não fez pessoalmente.",
+      "As doações com crédito indireto são doações creditadas a você, mas que você não fez pessoalmente. Os valores delas ficam fora do seu Total doado e não aparecerão no seu informe de doações para fins fiscais.",
     donations: "Doações",
     empty: "Nenhuma doação",
     showMore: "VER MAIS DOAÇÕES",
@@ -32,6 +32,10 @@ export const ptBRGiving = {
     badgeSpouse: "Cônjuge",
     badgeSoftCredit: "Crédito indireto",
     badgeNonDeductible: "Não dedutível",
+    signInPrompt: "Entre para ver as informações das suas doações.",
+    month: "Mês",
+    monthYear: "{month} de {year}",
+    barTooltip: "{label}: {amount}",
   },
 
   myPledges: {
@@ -61,6 +65,7 @@ export const ptBRGiving = {
       discontinued: "Descontinuada",
       pending: "Pendente",
     },
+    signInPrompt: "Entre para ver suas promessas de doação.",
   },
 
   pledgeCampaign: {
@@ -101,6 +106,12 @@ export const ptBRGiving = {
     registrationOpensOn: "As inscrições abrem em {date}.",
     registrationClosed: "As inscrições para esta campanha estão encerradas.",
     registrationClosedOn: "As inscrições para esta campanha encerraram em {date}.",
+    amountTooLow: "Informe um valor de promessa maior que {amount}.",
+    amountTooHigh: "Informe um valor de promessa de até {amount}.",
+    totalTooHigh:
+      "O total da sua promessa não pode passar de {amount}. Confira o valor e o cronograma.",
+    scheduleEmpty:
+      "Este cronograma não tem parcelas. Escolha uma data final posterior ou outra frequência.",
   },
 
   contributionStatement: {
@@ -109,6 +120,10 @@ export const ptBRGiving = {
     empty: "Nenhum informe disponível no momento.",
     selectYear: "Selecione o ano do informe",
     savePdf: "Salvar como PDF",
+    signInPrompt: "Entre para ver seus informes de doações.",
+    popupBlocked: "Seu navegador bloqueou a abertura do informe.",
+    openStatement: "Abrir o informe",
+    myGivingLink: "Ver minhas doações →",
   },
 
   statementPreferences: {
@@ -117,6 +132,7 @@ export const ptBRGiving = {
     goPaperless: "Dispense o papel! Receba seus informes online ou por e-mail.",
     updated: "Método de entrega atualizado",
     updateFailed: "Erro ao atualizar o método de entrega. Tente novamente.",
+    signInPrompt: "Entre para escolher como receber seus informes de doações.",
   },
 
   checkout: {

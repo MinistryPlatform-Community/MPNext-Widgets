@@ -6,6 +6,14 @@ import {
   FORM_VALIDATION_STYLES,
 } from "../shared/form-validation";
 
+/**
+ * Ceiling on a pledge amount (C32). Mirrors `MAX_PLEDGE_AMOUNT` in
+ * `@mpnext/types` (`SavePledgeRequestSchema`), which is the real gate — this
+ * package does not import that one at runtime (it would pull Zod into the
+ * bundle), so `pledge-campaign.test.ts` asserts the two values agree.
+ */
+export const MAX_PLEDGE_AMOUNT = 1_000_000_000;
+
 // ─────────────────────────────────────────────────────────────────────────
 // Local type declarations (mirrors @mpnext/types pledge-campaign.ts — this
 // package does not import that workspace package, so the shapes are redeclared
@@ -122,21 +130,25 @@ export class PledgeCampaignWidget extends MPNextWidget {
     ];
   }
 
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    if (name === "campaign-id" && this.campaign) {
-      this.init();
-    }
-  }
-
   connectedCallback() {
     this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  /**
+   * An observed attribute changed after the first paint (C39; the base class's
+   * `attributeChangedCallback` routes here). Re-init unconditionally: the old
+   * guard re-ran only when a campaign had already loaded, so a widget whose
+   * first load failed could never be pointed at another campaign.
+   */
+  protected override reload(): void {
+    void this.init();
   }
 
   /** Re-run the load — exposed so the demo page can refresh on sign-in. */
@@ -367,13 +379,29 @@ export class PledgeCampaignWidget extends MPNextWidget {
     const form = this.root.querySelector<HTMLFormElement>("#pc-form");
     if (!form) return;
 
-    if (!validateForm(form, { t: this.t }).valid) {
+    if (!validateForm(form, this.validationOptions()).valid) {
       this.setMessage("warning", this.t("validation.formIncomplete"));
       return;
     }
 
     // Recompute the plan from the current inputs before reading it.
     this.recalcTotal();
+
+    // C32: the amount field can be valid while the *plan* is not — a schedule
+    // whose dates yield no installment totals $0.00, and a large installment
+    // times many installments can pass the ceiling. Name the actual problem
+    // rather than the generic "please complete the form".
+    if (this.totalPledge <= 0) {
+      this.setMessage("danger", this.t("pledgeCampaign.scheduleEmpty"));
+      return;
+    }
+    if (this.totalPledge > MAX_PLEDGE_AMOUNT) {
+      this.setMessage(
+        "danger",
+        this.t("pledgeCampaign.totalTooHigh", { amount: this.fmt.currency(MAX_PLEDGE_AMOUNT) }),
+      );
+      return;
+    }
 
     const last = this.fieldValue("#pc-last-installment");
     if (this.pastCampaignEndDate(last)) {
@@ -429,7 +457,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
         return;
       }
 
-      const displayName = this.getDisplayName(payload.firstName, payload.lastName);
+      const displayName = this.getDisplayName(payload.firstName);
       // A campaign's own thank-you is church-authored copy and wins as written.
       const thankYou =
         this.campaign?.onlineThankYouMessage?.trim() ||
@@ -449,18 +477,59 @@ export class PledgeCampaignWidget extends MPNextWidget {
     }
   }
 
+  /**
+   * Validation for the pledge form: the shared rules plus the amount bounds
+   * (C32). `min="0.01"` alone would say "Value is out of range"; this names
+   * the floor and the ceiling. A custom validator runs before the native check.
+   */
+  private validationOptions() {
+    return {
+      t: this.t,
+      customValidators: {
+        InstallmentAmount: (value: string): string | null => {
+          if (value.trim() === "") return null; // `required` speaks for an empty field
+          const amount = Number(value);
+          if (!Number.isFinite(amount) || amount <= 0) {
+            return this.t("pledgeCampaign.amountTooLow", { amount: this.fmt.currency(0) });
+          }
+          if (amount > MAX_PLEDGE_AMOUNT) {
+            return this.t("pledgeCampaign.amountTooHigh", {
+              amount: this.fmt.currency(MAX_PLEDGE_AMOUNT),
+            });
+          }
+          return null;
+        },
+      },
+    };
+  }
+
   private setSubmitDisabled(disabled: boolean) {
     const btn = this.root.querySelector<HTMLButtonElement>("#pc-submit");
     if (btn) btn.disabled = disabled;
   }
 
-  private getDisplayName(firstName: string, lastName: string): string {
+  /**
+   * The name the thank-you greets (the C17 fix, as W3 applied it to
+   * group-details). It used to strip the comma from the picker's
+   * `Display_Name` ("Kehayias, Chris") and so read "Kehayias Chris"; and
+   * because it read the option *text*, choosing "Blank Form" greeted the
+   * donor as "Blank Form". Now: the chosen household member's Nickname, else
+   * First_Name — both already on the household read (`HouseholdMember`) and on
+   * the basic-contact read (`Nickname ?? First_Name`) — else the first name
+   * typed into the form, else a neutral "your household".
+   */
+  private getDisplayName(typedFirstName: string): string {
     const select = this.root.querySelector<HTMLSelectElement>("#pc-apply-as");
-    if (select && select.selectedIndex > 0) {
-      const text = select.options[select.selectedIndex]?.text ?? "";
-      if (text.trim()) return text.replace(/,/g, "").trim();
+    const chosen = Number(select?.value || 0);
+    if (chosen) {
+      const member = this.householdMembers.find((m) => m.contactId === chosen);
+      const fromMember = (member?.nickName || member?.firstName || "").trim();
+      if (fromMember) return fromMember;
+      if (this.contact?.contactId === chosen && this.contact.firstName?.trim()) {
+        return this.contact.firstName.trim();
+      }
     }
-    return `${firstName} ${lastName}`.trim() || this.t("pledgeCampaign.yourHousehold");
+    return typedFirstName.trim() || this.t("pledgeCampaign.yourHousehold");
   }
 
   // ── Total / installment math (port of CalculateTotalPledge) ─────────────
@@ -656,7 +725,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
       });
     }
 
-    if (form) bindLiveValidation(form, { t: this.t });
+    if (form) bindLiveValidation(form, this.validationOptions());
     this.recalcTotal();
   }
 
@@ -871,7 +940,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
       ${buttons}
       <div class="pc-field">
         <label for="pc-installment-amount">${this.escapeHtml(this.t("pledgeCampaign.pledgeAmount"))}${requiredStar()}</label>
-        <input id="pc-installment-amount" class="pc-input" type="number" name="InstallmentAmount" min="0" step="0.01" inputmode="decimal" required>
+        <input id="pc-installment-amount" class="pc-input" type="number" name="InstallmentAmount" min="0.01" max="${MAX_PLEDGE_AMOUNT}" step="0.01" inputmode="decimal" required>
       </div>`;
   }
 

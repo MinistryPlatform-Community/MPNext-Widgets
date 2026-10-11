@@ -265,4 +265,189 @@ describe("<next-pledge-campaign> registration window and capacity", () => {
       expect(text(el)).not.toContain("Registration opens");
     });
   });
+
+  describe("amount limits (C32)", () => {
+    beforeEach(() => {
+      // jsdom has no layout; validation and the banner both scroll into view.
+      Element.prototype.scrollIntoView = vi.fn();
+    });
+
+    function fill(el: HTMLElement, amount: string) {
+      const root = shadow(el);
+      const set = (sel: string, v: string) => {
+        const input = root.querySelector<HTMLInputElement | HTMLSelectElement>(sel)!;
+        input.value = v;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      set("#pc-first-name", "Ada");
+      set("#pc-last-name", "Lovelace");
+      set("#pc-email", "ada@example.com");
+      set("#pc-installment-amount", amount);
+      set("#pc-frequency", "12");
+    }
+    const saves = () =>
+      (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([u]) =>
+        String(u).includes("/pledge-campaign/save"),
+      );
+
+    it("mirrors the server's ceiling exactly", async () => {
+      const { MAX_PLEDGE_AMOUNT: server } = await import("@mpnext/types");
+      const { MAX_PLEDGE_AMOUNT: client } = await import("./pledge-campaign");
+      expect(client).toBe(server);
+    });
+
+    it("the amount input's floor is a cent, not zero", async () => {
+      const el = await mountSettled();
+      expect(shadow(el).querySelector("#pc-installment-amount")).toHaveAttribute("min", "0.01");
+    });
+
+    it("refuses $0 with a message naming the amount, and posts nothing", async () => {
+      const el = await mountSettled();
+      fill(el, "0");
+      shadow(el).querySelector<HTMLButtonElement>("#pc-submit")!.click();
+
+      await vi.waitFor(() =>
+        expect(text(el)).toContain("Enter a pledge amount greater than $0.00."),
+      );
+      expect(saves()).toHaveLength(0);
+    });
+
+    it("refuses an absurd installment, and posts nothing", async () => {
+      const el = await mountSettled();
+      fill(el, "999999999999");
+      shadow(el).querySelector<HTMLButtonElement>("#pc-submit")!.click();
+
+      await vi.waitFor(() =>
+        expect(text(el)).toContain("Enter a pledge amount of $1,000,000,000.00 or less."),
+      );
+      expect(saves()).toHaveLength(0);
+    });
+
+    it("still posts a sane pledge (regression guard)", async () => {
+      const el = await mountSettled();
+      fill(el, "10");
+      shadow(el).querySelector<HTMLButtonElement>("#pc-submit")!.click();
+
+      await vi.waitFor(() => expect(saves()).toHaveLength(1));
+      const sent = JSON.parse(String((saves()[0][1] as RequestInit).body));
+      expect(sent.installmentAmount).toBe(10);
+      expect(sent.totalPledge).toBe(10 * sent.installmentsPlanned);
+    });
+
+    it("refuses a total that the schedule pushes past the ceiling", async () => {
+      const el = await mountSettled();
+      fill(el, "500000000"); // monthly, many months → far past $1bn
+      shadow(el).querySelector<HTMLButtonElement>("#pc-submit")!.click();
+
+      await vi.waitFor(() => expect(banner(el)).toContain("cannot be more than $1,000,000,000.00"));
+      expect(saves()).toHaveLength(0);
+    });
+  });
+
+  describe("thank-you greeting (the C17 fix)", () => {
+    beforeEach(() => {
+      Element.prototype.scrollIntoView = vi.fn();
+    });
+
+    function member(id: number, first: string, nick: string | null) {
+      return {
+        contactId: id,
+        firstName: first,
+        lastName: "Kehayias",
+        nickName: nick,
+        displayName: `Kehayias, ${nick ?? first}`,
+        emailAddress: `${first.toLowerCase()}@example.com`,
+        mobilePhoneNumber: null,
+      };
+    }
+
+    async function mountSignedIn(): Promise<HTMLElement> {
+      const fn = mockFetch();
+      const base = fn.getMockImplementation()!;
+      fn.mockImplementation(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.includes("/pledge-campaign/basic-contact")) {
+          return jsonResponse({
+            contact: {
+              contactId: 98, firstName: "Chris", lastName: "Kehayias",
+              emailAddress: "chris@example.com", mobilePhoneNumber: null, householdId: 5,
+            },
+          });
+        }
+        if (url.includes("/api/embed/household")) {
+          return jsonResponse({
+            members: [member(98, "Christopher", "Chris"), member(99, "Ada", null)],
+          });
+        }
+        if (url.includes("/pledge-campaign/save")) return jsonResponse({ success: true, pledgeId: 1 });
+        return base(input);
+      });
+      document.body.innerHTML = `<next-pledge-campaign api-host="${HOST}" campaign-id="3"></next-pledge-campaign>`;
+      const el = document.body.firstElementChild as HTMLElement;
+      await vi.waitFor(() => expect(shadow(el).querySelector("#pc-apply-as")).not.toBeNull());
+      return el;
+    }
+
+    function set(el: HTMLElement, sel: string, v: string) {
+      const input = shadow(el).querySelector<HTMLInputElement | HTMLSelectElement>(sel)!;
+      input.value = v;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    async function submitAs(el: HTMLElement, contact: string) {
+      set(el, "#pc-apply-as", contact);
+      if (!contact) {
+        set(el, "#pc-first-name", "Grace");
+        set(el, "#pc-last-name", "Hopper");
+        set(el, "#pc-email", "grace@example.com");
+      }
+      set(el, "#pc-installment-amount", "10");
+      set(el, "#pc-frequency", "12");
+      shadow(el).querySelector<HTMLButtonElement>("#pc-submit")!.click();
+      await vi.waitFor(() => expect(banner(el)).toContain("has been received"));
+    }
+
+    it("greets a household member by first name, never surname-first", async () => {
+      const el = await mountSignedIn();
+      await submitAs(el, "99");
+      expect(banner(el)).toContain("Your response for Ada has been received");
+      expect(banner(el)).not.toContain("Kehayias");
+    });
+
+    it("prefers the Nickname", async () => {
+      const el = await mountSignedIn();
+      await submitAs(el, "98");
+      expect(banner(el)).toContain("Your response for Chris has been received");
+    });
+
+    it("greets a Blank Form pledger by the first name they typed, not 'Blank Form'", async () => {
+      const el = await mountSignedIn();
+      await submitAs(el, "");
+      expect(banner(el)).toContain("Your response for Grace has been received");
+    });
+  });
+
+  describe("late attributes (C39)", () => {
+    it("re-inits when campaign-id changes on a widget whose first load failed", async () => {
+      const fn = mockFetch();
+      const base = fn.getMockImplementation()!;
+      fn.mockImplementation(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.endsWith("/api/embed/pledge-campaign/99")) {
+          return jsonResponse({ error: "not_found" }, 404);
+        }
+        return base(input);
+      });
+
+      document.body.innerHTML = `<next-pledge-campaign api-host="${HOST}" campaign-id="99"></next-pledge-campaign>`;
+      const el = document.body.firstElementChild as HTMLElement;
+      await vi.waitFor(() => expect(text(el)).toContain("No pledge campaign found."));
+      expect(shadow(el).querySelector(".pc-detail")).toBeNull();
+
+      el.setAttribute("campaign-id", "3");
+      await vi.waitFor(() => expect(shadow(el).querySelector(".pc-detail")).not.toBeNull());
+    });
+  });
 });

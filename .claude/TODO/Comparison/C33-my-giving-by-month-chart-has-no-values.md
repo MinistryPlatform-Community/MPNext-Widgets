@@ -69,3 +69,37 @@ print the value above or inside each non-zero bar, or add a max-value y-axis lab
 the scale is legible. Then either keep By Month visible under a month filter (a single
 bar is still informative) or say why it is hidden. If a hover treatment is wanted,
 `<rect>` + a CSS `:hover` fill change plus the `<title>` is the whole implementation.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W5, branch `ws/w5-giving`), with no charting library (CDN policy).
+`renderByMonthChart` in `my-giving.ts`:
+
+- **Every month is a `<g>` with a `<title>`** — "March 2026: $1,250.00" — so hovering any
+  month (a full-height transparent hit area, so even a short or `$0` month) shows the
+  browser's native tooltip.
+- **Every non-zero bar prints its value** above it in compact currency ("$1.5K",
+  `Intl.NumberFormat` `notation: "compact"` in the widget's locale and default currency);
+  the exact figure is in the tooltip and the table. Headroom was added above the tallest bar.
+- **Hover/selected treatment:** CSS fill change on `.chart-month:hover` and on the month
+  chosen in the month filter.
+- **A visually hidden `<table>`** (caption, Month / Amount headers, one row per month up to
+  the current one) gives screen-reader and keyboard users the numbers — better than
+  legacy's mouse-only CanvasJS tooltip. The SVG keeps `role="img"` + its label.
+
+**Decisions on the two smaller behaviours** (re-checked against `Plans/my-giving.md`):
+
+- *Months-shown cap:* all **twelve** slots are now laid out; in the current year the months
+  still to come keep their slot with a muted axis label and no bar, so the chart says "the
+  year is not over" instead of silently showing nine bars. The hidden table lists only the
+  months that have happened.
+- *Hide-on-month-select:* **removed.** By Month stays visible under a month filter, showing
+  that month's single bar in place (highlighted). Total Giving already reports the filtered
+  month's total (the API returns that month only), which answers "how much did I give in
+  May" directly, so no extra month-total row was added.
+
+The money path is unchanged: bucketing still reads the `YYYY-MM-DD` prefix via
+`parseDateParts`. Tests (`giving-widgets.test.ts`) cover tooltips, printed values, the
+hidden table, the month filter, and the year boundary (a Dec 31 23:30 gift lands in December
+of that year, not January). New catalogue keys `myGiving.month`, `myGiving.monthYear`,
+`myGiving.barTooltip` in en / es / pt-BR.

@@ -85,3 +85,32 @@ to each widget's style block so nothing moves visually. While in `my-pledges`, a
 `role="progressbar" aria-valuenow/aria-valuemin/aria-valuemax` to `.progress-track` and
 give `next-statement-preferences`' hidden checkbox a `:focus-visible` outline on the
 `.slider` it is paired with. All of it is mechanical; none of it changes layout.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W5, branch `ws/w5-giving`). The four widgets now emit a heading outline: tags
+swapped, classes kept, and `h1…h6 { font: inherit; margin: 0 }` (`HEADING_RESET_STYLES`)
+so nothing moves visually.
+
+| Widget | Outline (default `heading-level="2"`) |
+|---|---|
+| `next-my-giving` | `h2` My Giving → `h3` By Month / By Program / Donations |
+| `next-my-pledges` | `h2` My Pledges → `h3` campaign name → `h4` pledge owner |
+| `next-my-contribution-statement` | `h2` My Contribution Statements → `h3` accounting company |
+| `next-statement-preferences` | `h2` Contribution Statements |
+
+- **New `heading-level` attribute** (1–6, default 2; anything else falls back to 2), observed
+  on all four, so a widget under the host's own `<h1>` slots into the page outline rather
+  than starting a second one. Legacy hard-coded `h1`; the default of 2 is CROSS-3's
+  "better than both". Setting it after mount re-renders (reconfigure convention).
+  Helper: `headingTag()` in `components/giving-shared.ts`.
+- The signed-out state (C30) and the empty states keep the title heading; the
+  "Unable to Load" error title stays a `<div>` (it is a status, not a section).
+- `my-pledges`: `.progress-track` is `role="progressbar"` with `aria-valuemin="0"`,
+  `aria-valuemax="100"`, `aria-valuenow` (the same percent the bar draws),
+  `aria-valuetext` ("$300.00 of $1,200.00 (25%)") and `aria-label` = the campaign name.
+- `statement-preferences`: the visually hidden checkbox's `:focus-visible` now draws a
+  2px `#009CDE` outline on its paired `.slider` (the old box-shadow is kept as well).
+- `next-pledge-campaign`'s outline is untouched.
+- Tests in `components/giving-widgets.test.ts` assert each outline, `heading-level`
+  (including a late change and a nonsense value), and the progressbar attributes.

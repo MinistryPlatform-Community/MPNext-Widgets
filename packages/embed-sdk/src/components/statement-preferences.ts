@@ -1,4 +1,10 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import {
+  GIVING_SIGNED_OUT_STYLES,
+  HEADING_RESET_STYLES,
+  givingSignedOut,
+  headingTag,
+} from "./giving-shared";
 
 interface StatementPreference {
   donorId: number;
@@ -10,9 +16,15 @@ export class StatementPreferencesWidget extends MPNextWidget {
   private loading = true;
   private saving = false;
   private error: string | null = null;
+  /** Signed out is a state, not an error (C30 / CROSS-1). */
+  private signedOut = false;
   private paperless = false;
   private hasDonor = true;
   private message: { type: "success" | "error"; text: string } | null = null;
+
+  static get observedAttributes() {
+    return ["heading-level"];
+  }
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
@@ -20,8 +32,19 @@ export class StatementPreferencesWidget extends MPNextWidget {
     // sees English swap to Spanish.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.loadPreference();
     });
+  }
+
+  /**
+   * An observed attribute changed after the first paint (C39 convention).
+   * `heading-level` only changes markup, so a re-render is enough.
+   */
+  protected override reload(): void {
+    if (this.loading) return;
+    this.render();
+    this.attachListeners();
   }
 
   public retryLoad() {
@@ -34,10 +57,19 @@ export class StatementPreferencesWidget extends MPNextWidget {
   private async loadPreference() {
     this.loading = true;
     this.error = null;
+    this.signedOut = false;
     this.render();
 
     try {
       const res = await this.fetch("/api/embed/statement-preferences");
+      if (this.isNeedsAuth(res)) {
+        // An anonymous visitor: offer sign-in, never "Unable to Load" + a
+        // Try Again that can only fail again. A 401 reaching a signed-in
+        // visitor is not this state and falls through to the error.
+        this.signedOut = true;
+        this.hasDonor = true;
+        return;
+      }
 
       if (res.status === 404) {
         this.hasDonor = false;
@@ -133,6 +165,25 @@ export class StatementPreferencesWidget extends MPNextWidget {
       return;
     }
 
+    if (this.signedOut) {
+      this.root.innerHTML = `
+        <div class="nw-statement">
+          <div class="header">
+            <${this.h(0)} class="title">${this.escapeHtml(this.t("statementPreferences.title"))}</${this.h(0)}>
+          </div>
+          <div class="card-body">
+            ${givingSignedOut(
+              this.renderSignInRequired({
+                subject: "statement-preferences",
+                message: this.t("statementPreferences.signInPrompt"),
+              }),
+              1,
+            )}
+          </div>
+        </div>`;
+      return;
+    }
+
     if (this.error) {
       this.root.innerHTML = `
         <div class="nw-statement">
@@ -151,7 +202,7 @@ export class StatementPreferencesWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-statement">
           <div class="header">
-            <div class="title">${this.escapeHtml(this.t("statementPreferences.title"))}</div>
+            <${this.h(0)} class="title">${this.escapeHtml(this.t("statementPreferences.title"))}</${this.h(0)}>
           </div>
           <div class="card-body">
             <div class="empty-state">${this.escapeHtml(this.t("errors.donor_not_found"))}</div>
@@ -163,7 +214,7 @@ export class StatementPreferencesWidget extends MPNextWidget {
     this.root.innerHTML = `
       <div class="nw-statement">
         <div class="header">
-          <div class="title">${this.escapeHtml(this.t("statementPreferences.title"))}</div>
+          <${this.h(0)} class="title">${this.escapeHtml(this.t("statementPreferences.title"))}</${this.h(0)}>
         </div>
         <div class="card-body">
           <label class="toggle-row" for="paperless-toggle">
@@ -195,8 +246,13 @@ export class StatementPreferencesWidget extends MPNextWidget {
     </svg>`;
   }
 
+  /** Heading tag `offset` levels below this widget's `heading-level` (C35). */
+  private h(offset = 0): string {
+    return headingTag(this.getAttribute("heading-level"), offset);
+  }
+
   private getStyles(): string {
-    return `
+    return `${HEADING_RESET_STYLES}${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
       :host {
         all: initial;
         display: block;
@@ -310,7 +366,11 @@ export class StatementPreferencesWidget extends MPNextWidget {
       .switch input:checked + .slider::before {
         transform: translateX(24px);
       }
+      /* C35: the checkbox is visually hidden, so its focus ring is drawn on
+         the slider it is paired with. */
       .switch input:focus-visible + .slider {
+        outline: 2px solid #009CDE;
+        outline-offset: 2px;
         box-shadow: 0 0 0 3px rgba(0, 76, 151, 0.4);
       }
       .switch input:disabled + .slider {

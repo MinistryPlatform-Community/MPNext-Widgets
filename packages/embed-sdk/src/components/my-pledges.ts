@@ -1,4 +1,10 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import {
+  GIVING_SIGNED_OUT_STYLES,
+  HEADING_RESET_STYLES,
+  givingSignedOut,
+  headingTag,
+} from "./giving-shared";
 
 interface Pledge {
   pledgeId: number;
@@ -20,20 +26,58 @@ export class MyPledgesWidget extends MPNextWidget {
   private pledges: Pledge[] = [];
   private loading = true;
   private error: string | null = null;
+  /** Signed out is a state, not an error (C30 / CROSS-1). */
+  private signedOut = false;
   private confirmingCancelId: number | null = null;
   private cancelingId: number | null = null;
   private message: { type: "success" | "error"; text: string } | null = null;
 
+  /** C79: the legacy flat spellings are read (with a one-time warning) for one release. */
+  static readonly attributeAliases = {
+    "hide-cancel-button-pledge": "hidecancelbuttonpledge",
+    "cancel-pledge-email-template": "cancelpledgeemailtemplate",
+  };
+
   static get observedAttributes() {
-    return ["hidecancelbuttonpledge", "cancelpledgeemailtemplate"];
+    return [
+      "hide-cancel-button-pledge",
+      "cancel-pledge-email-template",
+      "heading-level",
+      ...Object.values(this.attributeAliases),
+    ];
   }
 
+  /**
+   * C31: hidden **only** when explicitly `"true"`, matching legacy
+   * (`getAttribute("hidecancelbuttonpledge") || false`). The old default hid
+   * the feature on every bare `<next-my-pledges>` embed — the exact shape of
+   * the copy-paste snippet — so every migrated site silently lost self-service
+   * cancel.
+   */
   private get hideCancelButton(): boolean {
-    return (this.getAttribute("hidecancelbuttonpledge") || "true").toLowerCase() !== "false";
+    return (this.readAttr("hide-cancel-button-pledge") || "false").toLowerCase() === "true";
+  }
+
+  /** The no-template warning is a host-developer signal: once per element. */
+  private warnedNoCancelTemplate = false;
+
+  /**
+   * Cancel is offered with no `cancel-pledge-email-template` configured, so the
+   * cancellation goes through with no confirmation email (legacy sent none at
+   * all). Say so once in the console so the host notices, rather than silently.
+   */
+  private warnIfNoCancelTemplate(): void {
+    if (this.warnedNoCancelTemplate || this.hideCancelButton) return;
+    if (this.cancelEmailTemplateId !== undefined) return;
+    if (!this.pledges.some((p) => p.pledgeStatus === "Active")) return;
+    this.warnedNoCancelTemplate = true;
+    console.warn(
+      "[mpnext] <next-my-pledges> offers Cancel Pledge but has no cancel-pledge-email-template; cancellations will send no confirmation email.",
+    );
   }
 
   private get cancelEmailTemplateId(): number | undefined {
-    const raw = this.getAttribute("cancelpledgeemailtemplate");
+    const raw = this.readAttr("cancel-pledge-email-template");
     if (!raw) return undefined;
     const parsed = parseInt(raw, 10);
     return isNaN(parsed) ? undefined : parsed;
@@ -45,14 +89,21 @@ export class MyPledgesWidget extends MPNextWidget {
     // sees English swap to Spanish.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.loadPledges();
     });
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue !== null && oldValue !== newValue) {
-      this.loadPledges();
-    }
+  /**
+   * An observed attribute changed after the first paint (C39; the base class's
+   * `attributeChangedCallback` routes here). Every attribute this widget reads
+   * only changes how already-loaded pledges are drawn, so a re-render is
+   * enough; a load still in flight reads them when it lands.
+   */
+  protected override reload(): void {
+    if (this.loading) return;
+    this.render();
+    this.attachListeners();
   }
 
   public retryLoad() {
@@ -63,10 +114,19 @@ export class MyPledgesWidget extends MPNextWidget {
   private async loadPledges() {
     this.loading = true;
     this.error = null;
+    this.signedOut = false;
     this.render();
 
     try {
       const res = await this.fetch("/api/embed/my-pledges");
+      if (this.isNeedsAuth(res)) {
+        // An anonymous visitor: offer sign-in, never "Unable to Load" + a
+        // Try Again that can only fail again. A 401 reaching a signed-in
+        // visitor is not this state and falls through to the error.
+        this.signedOut = true;
+        this.pledges = [];
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(this.errorText(data));
@@ -182,6 +242,25 @@ export class MyPledgesWidget extends MPNextWidget {
       return;
     }
 
+    if (this.signedOut) {
+      this.root.innerHTML = `
+        <div class="nw-pledges">
+          <div class="header">
+            <${this.h(0)} class="title">${this.escapeHtml(this.t("myPledges.title"))}</${this.h(0)}>
+          </div>
+          <div class="body">
+            ${givingSignedOut(
+              this.renderSignInRequired({
+                subject: "my-pledges",
+                message: this.t("myPledges.signInPrompt"),
+              }),
+              2,
+            )}
+          </div>
+        </div>`;
+      return;
+    }
+
     if (this.error) {
       this.root.innerHTML = `
         <div class="nw-pledges">
@@ -197,6 +276,7 @@ export class MyPledgesWidget extends MPNextWidget {
     }
 
     this.root.innerHTML = this.renderMain();
+    this.warnIfNoCancelTemplate();
   }
 
   private renderMain(): string {
@@ -208,7 +288,7 @@ export class MyPledgesWidget extends MPNextWidget {
     return `
       <div class="nw-pledges">
         <div class="header">
-          <div class="title">${this.escapeHtml(this.t("myPledges.title"))}</div>
+          <${this.h(0)} class="title">${this.escapeHtml(this.t("myPledges.title"))}</${this.h(0)}>
         </div>
         <div class="body">
           ${this.message
@@ -273,12 +353,14 @@ export class MyPledgesWidget extends MPNextWidget {
           ${media}
           <div class="pledge-card-head">
             <span class="badge ${statusClass}">${this.escapeHtml(statusLabel)}</span>
-            <div class="pledge-name">${this.escapeHtml(p.campaignName)}</div>
-            ${showOwner ? `<div class="pledge-owner">${this.escapeHtml(owner)}</div>` : ""}
+            <${this.h(1)} class="pledge-name">${this.escapeHtml(p.campaignName)}</${this.h(1)}>
+            ${showOwner ? `<${this.h(2)} class="pledge-owner">${this.escapeHtml(owner)}</${this.h(2)}>` : ""}
           </div>
         </div>
         <div class="progress-section">
-          <div class="progress-track">
+          <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+            aria-valuenow="${pct}" aria-valuetext="${this.escapeAttr(barText)}"
+            aria-label="${this.escapeAttr(p.campaignName)}">
             <div class="progress-fill" style="width:${pct}%"></div>
           </div>
           <div class="progress-text">${this.escapeHtml(barText)}</div>
@@ -352,8 +434,13 @@ export class MyPledgesWidget extends MPNextWidget {
     </svg>`;
   }
 
+  /** Heading tag `offset` levels below this widget's `heading-level` (C35). */
+  private h(offset = 0): string {
+    return headingTag(this.getAttribute("heading-level"), offset);
+  }
+
   private getStyles(): string {
-    return `
+    return `${HEADING_RESET_STYLES}${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
       :host {
         all: initial;
         display: block;

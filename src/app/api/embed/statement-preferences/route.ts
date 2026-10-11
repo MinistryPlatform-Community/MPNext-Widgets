@@ -63,7 +63,11 @@ export async function PUT(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
 
   try {
-    const claims = await requireWidgetAuth(req, { widget: ["statement-preferences", "user-menu"] });
+    const claims = await requireWidgetAuth(req, {
+      // C38: `next-my-contribution-statement` embeds this control behind
+      // `show-paperless-toggle`, and the page token carries the first widget id.
+      widget: ["statement-preferences", "user-menu", "my-contribution-statement"],
+    });
 
     if (claims.sub === "public") {
       return NextResponse.json(

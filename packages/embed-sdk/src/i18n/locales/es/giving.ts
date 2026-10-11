@@ -24,7 +24,7 @@ export const esGiving = {
     disclaimer:
       "La siguiente lista de donaciones es informativa y no debe utilizarse para fines fiscales.",
     softCreditDisclaimer:
-      "A continuación se incluyen las donaciones con crédito indirecto, que reflejan donativos que se le acreditan a usted pero que no realizó personalmente.",
+      "Las donaciones con crédito indirecto son donativos que se le acreditan a usted pero que no realizó personalmente. Sus montos se excluyen de su Total donado y no aparecerán en su estado de contribuciones para fines fiscales.",
     donations: "Donaciones",
     empty: "Sin donaciones",
     showMore: "VER MÁS DONACIONES",
@@ -32,6 +32,10 @@ export const esGiving = {
     badgeSpouse: "Cónyuge",
     badgeSoftCredit: "Crédito indirecto",
     badgeNonDeductible: "No deducible",
+    signInPrompt: "Inicie sesión para ver la información de sus donaciones.",
+    month: "Mes",
+    monthYear: "{month} de {year}",
+    barTooltip: "{label}: {amount}",
   },
 
   myPledges: {
@@ -62,6 +66,7 @@ export const esGiving = {
       discontinued: "Descontinuado",
       pending: "Pendiente",
     },
+    signInPrompt: "Inicie sesión para ver sus compromisos.",
   },
 
   pledgeCampaign: {
@@ -103,6 +108,12 @@ export const esGiving = {
     registrationOpensOn: "El registro abre el {date}.",
     registrationClosed: "El registro para esta campaña ya está cerrado.",
     registrationClosedOn: "El registro para esta campaña cerró el {date}.",
+    amountTooLow: "Ingrese un monto de compromiso mayor que {amount}.",
+    amountTooHigh: "Ingrese un monto de compromiso de {amount} o menos.",
+    totalTooHigh:
+      "Su compromiso total no puede ser mayor que {amount}. Revise el monto y el calendario.",
+    scheduleEmpty:
+      "Este calendario no tiene cuotas. Elija una fecha de finalización posterior u otra frecuencia.",
   },
 
   contributionStatement: {
@@ -111,6 +122,10 @@ export const esGiving = {
     empty: "No hay estados de contribuciones disponibles por el momento.",
     selectYear: "Seleccione el año del estado",
     savePdf: "Guardar como PDF",
+    signInPrompt: "Inicie sesión para ver sus estados de contribuciones.",
+    popupBlocked: "Su navegador impidió abrir el estado de contribuciones.",
+    openStatement: "Abrir el estado de contribuciones",
+    myGivingLink: "Ver mis donaciones →",
   },
 
   statementPreferences: {
@@ -121,6 +136,7 @@ export const esGiving = {
     updated: "Se actualizó el método de entrega",
     updateFailed:
       "Error al actualizar el método de entrega. Inténtelo de nuevo.",
+    signInPrompt: "Inicie sesión para elegir cómo recibe sus estados de contribuciones.",
   },
 
   checkout: {

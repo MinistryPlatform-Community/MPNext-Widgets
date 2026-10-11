@@ -83,3 +83,33 @@ refinement on the Zod schema so the route rejects it regardless of the client �
 `.positive()` plus a sane ceiling (MP's `Total_Pledge` is a money column, so anything
 past ~1e10 is certainly a typo). I would not try to guess the ceiling from the campaign
 goal; a flat cap plus a warning is enough.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W5, branch `ws/w5-giving`) in all three layers.
+
+1. **Schema — the real gate.** `packages/types/src/pledge-campaign.ts` adds
+   `MAX_PLEDGE_AMOUNT = 1_000_000_000` and `PledgeMoneySchema`
+   (`z.number().positive().max(MAX_PLEDGE_AMOUNT)`), used for both `installmentAmount` and
+   `totalPledge` in `SavePledgeRequestSchema`. `POST /api/embed/pledge-campaign/save` already
+   rejected a failed parse with 400; it now also carries the machine code
+   `error: "invalid_request"` (mapped by `WIRE_CODE_KEYS`, so no new catalogue entry).
+   `route.test.ts` proves `$0`, negative, `15999999999984`, `1e13` and one cent over the
+   ceiling are refused **without the service — and so MP — being called**, the ceiling itself
+   is accepted, and `$10` monthly Sep→Dec still saves `40` over 4 installments.
+2. **The input:** `min="0.01"` (was `0`) and `max` at the ceiling.
+3. **`submit()`:** a `customValidators` entry on `InstallmentAmount` names the floor
+   (*"Enter a pledge amount greater than $0.00."*) and the ceiling, instead of the native
+   "Value is out of range"; after `recalcTotal()` a total of `$0.00` (a schedule that yields
+   no installment) or over the ceiling is refused with its own message. en / es / pt-BR.
+
+**Decision — the ceiling is a flat $1,000,000,000**, not derived from the campaign goal: a
+donor may legitimately pledge past the goal, and a goal-derived cap would refuse good
+pledges (the plan's own advice). One billion is two orders of magnitude over any plausible
+single pledge and still refuses the sixteen-trillion typo. The SDK mirrors the constant
+(it does not import `@mpnext/types` at runtime — Zod would enter the bundle);
+`pledge-campaign.test.ts` asserts the two values are equal.
+
+Not done here: a shared money refinement for `paymentService` (C43) — that is W1's file;
+`PledgeMoneySchema` is exported from `@mpnext/types` if W1 wants the same shape.
+No live MP writes were made.
