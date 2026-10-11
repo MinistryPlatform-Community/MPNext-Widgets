@@ -179,9 +179,21 @@ export abstract class MPNextWidget extends HTMLElement {
     return res;
   }
 
+  /** The one constructed sheet this widget owns in `adoptedStyleSheets`. */
+  private ownSheet: CSSStyleSheet | null = null;
+  /** The `<style>` element used when constructable stylesheets are unavailable. */
+  private ownStyleTag: HTMLStyleElement | null = null;
+
   /**
-   * Inject CSS into Shadow DOM
-   * Uses Constructable Stylesheets when available, fallback to <style> tag
+   * Inject the widget's CSS into its Shadow DOM.
+   *
+   * Uses a constructable stylesheet when available, with a `<style>` tag as the
+   * fallback. **Never assigns over `adoptedStyleSheets`** (C68): the widget's
+   * own sheet is added once, placed *before* any sheet already there, and a
+   * later call replaces only that sheet. Anything a host page adopted into the
+   * open shadow root therefore survives re-injection and re-render, and — being
+   * later in the list — wins on equal specificity, as a church's override
+   * should.
    */
   protected injectStyles(css: string): void {
     if (
@@ -191,19 +203,29 @@ export abstract class MPNextWidget extends HTMLElement {
       try {
         const sheet = new CSSStyleSheet();
         sheet.replaceSync(css);
-        this.root.adoptedStyleSheets = [sheet];
+        const current = Array.from(this.root.adoptedStyleSheets ?? []);
+        const index = this.ownSheet ? current.indexOf(this.ownSheet) : -1;
+        if (index >= 0) current[index] = sheet;
+        else current.unshift(sheet);
+        this.root.adoptedStyleSheets = current;
+        this.ownSheet = sheet;
+        return;
       } catch {
-        this.injectStyleTag(css);
+        /* fall through to the <style> tag */
       }
-    } else {
-      this.injectStyleTag(css);
     }
+    this.injectStyleTag(css);
   }
 
   private injectStyleTag(css: string): void {
-    const style = document.createElement("style");
-    style.textContent = css;
-    this.root.appendChild(style);
+    if (!this.ownStyleTag) {
+      this.ownStyleTag = document.createElement("style");
+    }
+    this.ownStyleTag.textContent = css;
+    // Re-insert when a render's `innerHTML` assignment detached it.
+    if (this.ownStyleTag.parentNode !== this.root) {
+      this.root.insertBefore(this.ownStyleTag, this.root.firstChild);
+    }
   }
 
   /**

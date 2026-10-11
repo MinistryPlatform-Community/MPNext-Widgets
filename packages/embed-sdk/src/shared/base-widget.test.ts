@@ -297,6 +297,81 @@ describe("MPNextWidget", () => {
       }
     });
 
+    // C68 part 1: the widget's sheet must never clobber one a host page adopted
+    // into the open shadow root — the previous `adoptedStyleSheets = [sheet]`
+    // assignment threw every host override away on the next inject.
+    /**
+     * jsdom implements neither `adoptedStyleSheets` nor `CSSStyleSheet.replace`,
+     * so without this the C68 tests would silently exercise the `<style>`
+     * fallback. A WeakMap-backed accessor is all the code under test touches.
+     */
+    function polyfillAdoptedStyleSheets(): () => void {
+      const store = new WeakMap<object, CSSStyleSheet[]>();
+      const accessor: PropertyDescriptor = {
+        configurable: true,
+        get(this: object) {
+          return store.get(this) ?? [];
+        },
+        set(this: object, value: CSSStyleSheet[]) {
+          store.set(this, [...value]);
+        },
+      };
+      const hadReplace = "replace" in CSSStyleSheet.prototype;
+      Object.defineProperty(Document.prototype, "adoptedStyleSheets", accessor);
+      Object.defineProperty(ShadowRoot.prototype, "adoptedStyleSheets", accessor);
+      if (!hadReplace) {
+        Object.defineProperty(CSSStyleSheet.prototype, "replace", {
+          configurable: true,
+          value: async () => undefined,
+        });
+      }
+      return () => {
+        delete (Document.prototype as unknown as Record<string, unknown>).adoptedStyleSheets;
+        delete (ShadowRoot.prototype as unknown as Record<string, unknown>).adoptedStyleSheets;
+        if (!hadReplace) {
+          delete (CSSStyleSheet.prototype as unknown as Record<string, unknown>).replace;
+        }
+      };
+    }
+
+    let restorePolyfill: (() => void) | null = null;
+    afterEach(() => {
+      restorePolyfill?.();
+      restorePolyfill = null;
+    });
+
+    it("keeps a host-adopted sheet across re-injection and render (C68)", () => {
+      restorePolyfill = polyfillAdoptedStyleSheets();
+      const widget = makeWidget();
+      document.body.appendChild(widget);
+      widget.callInjectStyles(":host { color: red; }");
+
+      const hostSheet = new CSSStyleSheet();
+      hostSheet.replaceSync(":host { color: purple; }");
+      const root = widget.getRoot();
+      root.adoptedStyleSheets = [...root.adoptedStyleSheets, hostSheet];
+
+      widget.callInjectStyles(":host { color: blue; }");
+      widget.render();
+
+      const sheets = root.adoptedStyleSheets;
+      expect(sheets).toContain(hostSheet);
+      expect(sheets).toHaveLength(2);
+      // The widget's own sheet stays first, so the host's rules win on equal
+      // specificity.
+      expect(sheets[1]).toBe(hostSheet);
+      expect(sheets[0]).not.toBe(hostSheet);
+    });
+
+    it("replaces only its own sheet on re-inject rather than stacking copies", () => {
+      restorePolyfill = polyfillAdoptedStyleSheets();
+      const widget = makeWidget();
+      widget.callInjectStyles(":host { color: red; }");
+      widget.callInjectStyles(":host { color: blue; }");
+      widget.callInjectStyles(":host { color: green; }");
+      expect(widget.getRoot().adoptedStyleSheets).toHaveLength(1);
+    });
+
     it("falls back to a <style> tag when adoptedStyleSheets path throws", () => {
       const widget = makeWidget();
 
