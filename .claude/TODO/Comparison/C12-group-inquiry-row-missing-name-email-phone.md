@@ -147,5 +147,30 @@ member paths then converge on the same shape as legacy.
   back-fill, client-supplied identity ignored, foreign contact refused with no write,
   anonymous contact refused, blank form stored as typed).
 
-Left open: `has-inquired` / `has-signed-up` still answer a boolean for any `contactId` in
-the query string. It discloses one bit per (group, contact) pair; recorded, not changed.
+~~Left open: `has-inquired` / `has-signed-up` still answer a boolean for any `contactId` in
+the query string. It discloses one bit per (group, contact) pair; recorded, not changed.~~
+Closed by the addendum below.
+
+## Resolution addendum — 2026-10-11 (integration follow-ups, `ws/integration-fixes`)
+
+**The disclosure is closed.** `GET /api/embed/group-details/has-inquired` and
+`/has-signed-up` now answer only when the queried `contactId` is the signed-in caller or a
+member of the caller's household. Anything else — including any id from a public token — is
+refused with `403 { error: "not_household_member" }` **before** MP is read.
+
+- **Decided: the shared helper, not W3's service method.** The check is
+  `canActAsContact(claims.sub, contactId)` from `src/services/_shared/household-contact.ts`
+  (W4's C21/C26 helper, already used by `custom-form/submit` and
+  `opportunity-details/respond`). It is the same rule as W3's
+  `GroupsService.resolveActingContact` — self, or the same non-null `Household_ID` — but
+  takes the JWT `sub` directly and needs no actor lookup in the route, and it makes the
+  household rule one implementation for every "as a household member" read.
+- **Decided: 403, not a silent `false`.** A `false` for a refused id would also hide the bit,
+  but would make a broken picker look like "never inquired". The widget already ignores a
+  non-OK answer (`checkPriorActivity` is best-effort), so nothing user-visible changes for a
+  legitimate visitor; `not_household_member` is already in all three catalogues.
+- The catch blocks no longer echo exception text: a token fault answers `403 forbidden`,
+  anything else `500 internal_error`.
+- Tests: `src/app/api/embed/group-details/has-inquired/route.test.ts` (covers both routes):
+  self/household answered, foreign contact refused with no MP read, public token refused,
+  malformed query answered `false` with no lookup, fault answered with a machine code.

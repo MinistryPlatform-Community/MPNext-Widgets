@@ -159,7 +159,6 @@ export class CustomFormWidget extends MPNextWidget {
       this.error = this.t("customForm.noFormSpecified");
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.emit("formError", { error: this.error });
       return;
     }
@@ -185,7 +184,6 @@ export class CustomFormWidget extends MPNextWidget {
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.prefillContact();
     }
   }
@@ -344,7 +342,6 @@ export class CustomFormWidget extends MPNextWidget {
         this.emit("formError", { error: msg });
         this.setSubmitDisabled(false);
         this.render();
-        this.attachListeners();
         this.prefillContact();
         return;
       }
@@ -358,7 +355,6 @@ export class CustomFormWidget extends MPNextWidget {
         contactId: member?.contactId ?? null,
       });
       this.render();
-      this.attachListeners();
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : this.t("errors.submitFailed");
@@ -446,7 +442,18 @@ export class CustomFormWidget extends MPNextWidget {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `<div class="cf">${this.stateRow(this.spinner(), this.t("customForm.loading"))}</div>`;
       return;

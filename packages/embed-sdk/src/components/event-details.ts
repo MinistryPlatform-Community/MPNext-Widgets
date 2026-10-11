@@ -1714,7 +1714,7 @@ export class EventDetailsWidget extends MPNextWidget {
         <h3 class="ed-reg-subtitle">${this.escapeHtml(
           this.t("eventDetails.additionalInformation")
         )}</h3>
-        ${renderCustomFormFields(this.customFields, { formId: ev.customFormId })}
+        ${renderCustomFormFields(this.customFields, { formId: ev.customFormId, t: this.t, idPrefix: this.instanceId })}
       </div>`;
   }
 

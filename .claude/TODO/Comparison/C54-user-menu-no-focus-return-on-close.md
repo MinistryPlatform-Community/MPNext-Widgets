@@ -146,3 +146,24 @@ Tests (`user-menu.test.ts`, "focus (C54)"): focus enters the dropdown on open an
 `.nw-avatar-btn` on Escape; an outside click leaves focus where the visitor put it; the
 modal takes focus on open, Escape closes it first and focus returns to the avatar; the Close
 button does the same.
+
+## Resolution addendum — 2026-10-11 (integration follow-ups, `ws/integration-fixes`)
+
+**The "left open" item above is closed.** The gap was fixed in the shared primitive, not
+forked into `user-menu.ts`:
+
+- `shared/dialog-focus.ts` `focusableWithin()` now walks the **composed** tree: it descends
+  into the open shadow root of every descendant element, follows `<slot>`s to their assigned
+  elements (fallback content when nothing is assigned), and prunes a `[hidden]` / `[inert]`
+  subtree including its shadow content. Closed shadow roots stay unreachable, by design.
+- The trap compares against the **deepest** `activeElement` (followed down through open
+  shadow roots) and tests "inside the dialog" with a shadow-crossing `contains`, so Tab off
+  the last field of a hosted widget wraps to Close, and Shift+Tab off Close lands on that
+  field. `keydown` is composed, so the container's listener already saw those events.
+- `user-menu.ts` `openModal()` no longer passes `trapTab: false`; the account modal traps Tab
+  (the default). The dropdown keeps `trapTab: false` — it is a disclosure, not a dialog.
+
+Tests: `dialog-focus.test.ts` ("shadow-hosted content") covers composed order, slots, a
+hidden host, forward and backward wrap across a shadow boundary, and focus return from a
+nested field; `user-menu.test.ts` "the account modal traps Tab, cycling through fields inside
+hosted widgets' shadow roots".

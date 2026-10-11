@@ -440,10 +440,20 @@ export class PrayerFeedbackWidget extends MPNextWidget {
   private paint(): void {
     if (this.detached) return;
     this.render();
+  }
+
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
     this.attachListeners();
   }
 
-  render() {
+  private paintMarkup(): void {
     if (this.state === "loading") {
       this.root.innerHTML = `
         <div class="pf">

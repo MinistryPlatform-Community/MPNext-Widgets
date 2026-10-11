@@ -375,17 +375,22 @@ export class SubscribeToPublicationWidget extends MPNextWidget {
 
   // ── Rendering ────────────────────────────────────────────────────────────
 
-  /** Render, then re-attach the listeners the new markup needs. */
+  /** Render (which re-binds the listeners) and mark the widget painted. */
   private paint(): void {
     if (this.detached) return;
     this.render();
     this.painted = true;
-    this.attachListeners();
   }
 
+  /**
+   * Paint, then re-bind the listeners the new markup needs. Both live here,
+   * not in `paint()`, because the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change.
+   */
   render() {
     const inner = this.renderState();
     this.root.innerHTML = `<div class="sp">${inner}</div>`;
+    this.attachListeners();
   }
 
   private renderState(): string {

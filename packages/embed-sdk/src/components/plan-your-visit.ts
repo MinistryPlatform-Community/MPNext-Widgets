@@ -213,7 +213,6 @@ export class PlanYourVisitWidget extends MPNextWidget {
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -294,7 +293,6 @@ export class PlanYourVisitWidget extends MPNextWidget {
         // translated sentence instead.
         this.setMessage("warning", this.t("planYourVisit.accountExists"));
         this.render();
-        this.attachListeners();
         return;
       }
       if (!data.success) {
@@ -556,13 +554,23 @@ export class PlanYourVisitWidget extends MPNextWidget {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
     } else {
       this.render();
-      this.attachListeners();
     }
   }
 
   // ── Render ──
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     // A full repaint rebuilds the child rows from `childRows`; snapshot them
     // first so a repaint can never cost a visitor what they typed (C82).
     this.syncChildren();

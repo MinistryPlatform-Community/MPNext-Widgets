@@ -75,7 +75,6 @@ export class MyGivingWidget extends MPNextWidget {
   protected override reload(): void {
     if (this.loading) return;
     this.render();
-    this.attachListeners();
   }
 
   public retryLoad() {
@@ -127,7 +126,6 @@ export class MyGivingWidget extends MPNextWidget {
       this.loading = false;
       this.showFullList = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -166,7 +164,6 @@ export class MyGivingWidget extends MPNextWidget {
       softToggle.addEventListener("change", () => {
         this.includeSoftCredits = softToggle.checked;
         this.render();
-        this.attachListeners();
       });
     }
 
@@ -175,12 +172,22 @@ export class MyGivingWidget extends MPNextWidget {
       showMoreBtn.addEventListener("click", () => {
         this.showFullList = true;
         this.render();
-        this.attachListeners();
       });
     }
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `
         <div class="nw-giving">

@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { getAuthSession } from "../shared/auth-session";
-import { __resetLocaleSession } from "../i18n";
+import { __resetLocaleSession, getLocaleSession } from "../i18n";
 import "./my-giving";
 import "./my-pledges";
 import "./my-contribution-statement";
@@ -728,6 +728,70 @@ describe("giving widgets", () => {
       );
       const el = await settled(mount("next-my-giving"));
       expect($(el, ".total-amount")?.textContent).toBe("$19,502.58");
+    });
+  });
+
+  // ── A page-wide language change must not leave the buttons dead ─────────
+  //
+  // The base class re-renders through `render()` alone on a locale change.
+  // These widgets used to bind their listeners in a separate call after each
+  // internal render, so the switch repainted the markup with nothing bound.
+
+  describe("locale switch keeps listeners bound", () => {
+    it("next-my-giving: the previous-year button still loads after a switch to Spanish", async () => {
+      const fetchMock = mockFetch((url) =>
+        url.includes("/api/embed/my-giving") ? jsonResponse({ donations: [donation()] }) : undefined,
+      );
+      const el = await settled(mount("next-my-giving"));
+      await getLocaleSession().setLocale("es");
+      await vi.waitFor(() => expect(el).toHaveAttribute("lang", "es"));
+
+      const calls = () => fetchMock.mock.calls.filter(([u]) => String(u).includes("/api/embed/my-giving")).length;
+      const before = calls();
+      $<HTMLButtonElement>(el, '[data-action="prev-year"]')!.click();
+      await vi.waitFor(() => expect(calls()).toBe(before + 1));
+    });
+
+    it("next-my-pledges: Cancel Pledge still opens its confirmation after a switch", async () => {
+      mockFetch((url) =>
+        url.includes("/api/embed/my-pledges") ? jsonResponse({ pledges: [pledge()] }) : undefined,
+      );
+      const el = await settled(mount("next-my-pledges", 'cancel-pledge-email-template="9"'));
+      await getLocaleSession().setLocale("es");
+      await vi.waitFor(() => expect(el).toHaveAttribute("lang", "es"));
+
+      $<HTMLButtonElement>(el, '[data-action="request-cancel"]')!.click();
+      expect($(el, '[data-action="confirm-cancel"]')).not.toBeNull();
+    });
+
+    it("next-my-contribution-statement: a year button still selects after a switch", async () => {
+      mockFetch((url) =>
+        url.includes("/api/embed/contribution-statements") ? jsonResponse(statementGroups()) : undefined,
+      );
+      const el = await settled(mount("next-my-contribution-statement"));
+      await getLocaleSession().setLocale("es");
+      await vi.waitFor(() => expect(el).toHaveAttribute("lang", "es"));
+
+      $<HTMLButtonElement>(el, '[data-year="2024"]')!.click();
+      expect($(el, '[data-year="2024"]')).toHaveClass("year-btn--active");
+    });
+
+    it("does not double-bind: one click after a switch fires one request", async () => {
+      const fetchMock = mockFetch((url) =>
+        url.includes("/api/embed/my-giving") ? jsonResponse({ donations: [donation()] }) : undefined,
+      );
+      const el = await settled(mount("next-my-giving"));
+      await getLocaleSession().setLocale("es");
+      await vi.waitFor(() => expect(el).toHaveAttribute("lang", "es"));
+      await getLocaleSession().setLocale("en");
+      await vi.waitFor(() => expect(el).toHaveAttribute("lang", "en"));
+
+      const calls = () => fetchMock.mock.calls.filter(([u]) => String(u).includes("/api/embed/my-giving")).length;
+      const before = calls();
+      $<HTMLButtonElement>(el, '[data-action="prev-year"]')!.click();
+      await vi.waitFor(() => expect(calls()).toBe(before + 1));
+      await new Promise((r) => setTimeout(r, 10));
+      expect(calls()).toBe(before + 1);
     });
   });
 });

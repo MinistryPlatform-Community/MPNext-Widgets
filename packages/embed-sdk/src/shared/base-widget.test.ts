@@ -267,6 +267,42 @@ describe("MPNextWidget", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    it("does not refresh or retry a 401 when the token sent was already public", async () => {
+      const b64 = (o: unknown) =>
+        btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      const publicToken = `${b64({ alg: "HS256" })}.${b64({ sub: "public" })}.sig`;
+      const get = vi.fn(async () => publicToken);
+      const refresh = vi.fn(async () => publicToken);
+      window.__nextTokenProvider = { get, refresh };
+
+      fetchMock.mockResolvedValueOnce(makeResponse({ error: "auth_required" }, { status: 401, ok: false }));
+
+      const widget = makeWidget();
+      const res = await widget.callFetch("/secure");
+      expect(res.status).toBe(401);
+      expect(refresh).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      // And the signed-out state still reads correctly off that one response.
+      expect(widget.callIsNeedsAuth(res)).toBe(true);
+    });
+
+    it("still refreshes a 401 for a signed-in (non-public) token", async () => {
+      const b64 = (o: unknown) =>
+        btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      const userToken = `${b64({ alg: "HS256" })}.${b64({ sub: "user-guid" })}.sig`;
+      const refresh = vi.fn(async () => "fresh-token");
+      window.__nextTokenProvider = { get: vi.fn(async () => userToken), refresh };
+
+      fetchMock
+        .mockResolvedValueOnce(makeResponse({}, { status: 401, ok: false }))
+        .mockResolvedValueOnce(makeResponse({ ok: true }, { status: 200 }));
+
+      const widget = makeWidget();
+      const res = await widget.callFetch("/secure");
+      expect(res.status).toBe(200);
+      expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
     it("does not retry on non-401 errors", async () => {
       const get = vi.fn(async () => "tok");
       const refresh = vi.fn(async () => "new-tok");

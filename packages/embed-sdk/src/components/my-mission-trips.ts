@@ -183,7 +183,6 @@ export class MyMissionTripsWidget extends MPNextWidget {
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -268,7 +267,18 @@ export class MyMissionTripsWidget extends MPNextWidget {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     this.root.innerHTML = `
       <section class="mmt">
         <h2 class="mmt-title">${this.escapeHtml(this.t("myMissionTrips.title"))}</h2>

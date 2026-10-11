@@ -238,7 +238,6 @@ export class ContactAttributesWidget extends MPNextWidget {
   /** `render()` plus the listener pass every repaint needs. */
   private paint() {
     this.render();
-    this.attachListeners();
   }
 
   private attachListeners() {
@@ -294,7 +293,18 @@ export class ContactAttributesWidget extends MPNextWidget {
     if (submit) submit.disabled = this.saving || !this.dirty;
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.phase === "loading") {
       this.root.innerHTML = this.shell(`
         <div class="ca-loading">

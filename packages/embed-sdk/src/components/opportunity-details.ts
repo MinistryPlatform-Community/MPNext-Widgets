@@ -186,7 +186,6 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       this.error = this.t("opportunityDetails.noOpportunitySpecified");
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.emit("opportunityDetailError", { error: this.error });
       return;
     }
@@ -231,13 +230,11 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       this.opportunity = null;
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.emit("opportunityDetailError", { error: this.error });
       return;
     }
 
     this.render();
-    this.attachListeners();
   }
 
   private async loadBasicContact() {
@@ -362,7 +359,6 @@ export class OpportunityDetailsWidget extends MPNextWidget {
           : this.t("opportunityDetails.responseReceived"),
       };
       this.render();
-      this.attachListeners();
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : this.t("errors.submitFailed");
@@ -415,7 +411,6 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       container.style.display = "";
     } else {
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -433,7 +428,6 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       respondAs.addEventListener("change", () => {
         this.respondAs = respondAs.value;
         this.render();
-        this.attachListeners();
         void this.checkHasResponded(Number(this.respondAs) || null);
       });
     }
@@ -452,7 +446,6 @@ export class OpportunityDetailsWidget extends MPNextWidget {
         this.submitted = false;
         this.message = null;
         this.render();
-        this.attachListeners();
       });
     }
 
@@ -465,7 +458,18 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
   // ── Render ──
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `<div class="od">${this.renderState(this.spinnerSvg(), this.t("opportunityDetails.loading"))}</div>`;
       return;

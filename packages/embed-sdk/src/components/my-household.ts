@@ -142,8 +142,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       return;
     }
     if (this.view !== "details") return;
-    this.render();
-    this.attachListeners();
+    this.render(); // render() re-binds its own listeners
   }
 
   /**
@@ -200,8 +199,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       const data: HouseholdData = await res.json();
       this.data = data;
       this.loading = false;
-      this.render();
-      this.attachListeners();
+      this.render(); // render() re-binds its own listeners
       this.emit("householdLoaded", { memberCount: data.members?.length ?? 0 });
     } catch (err) {
       this.loading = false;
@@ -209,8 +207,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       // dropped connection) becomes the generic network message.
       this.error =
         err instanceof Error ? err.message : this.t("errors.network");
-      this.render();
-      this.attachListeners();
+      this.render(); // render() re-binds its own listeners
       this.emit("householdError", { error: this.error });
     }
   }

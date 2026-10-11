@@ -151,3 +151,30 @@ describe("<next-event-details> reconfigure (C39 convention)", () => {
     expect(paths.length).toBe(before);
   });
 });
+
+describe("<next-event-details> custom-form field ids", () => {
+  it("prefixes custom-form ids with the instance id, so two forms on one page never collide", () => {
+    const field = {
+      formFieldId: 41, fieldLabel: "T-shirt size", fieldType: 1, required: true,
+      fieldOrder: 1, fieldValues: [], dependsOn: null, dependsOnValue: null, isHidden: false,
+    };
+    type Internals = {
+      event: unknown; customFields: unknown[]; instanceId: string;
+      renderCustomFormSection(): string;
+    };
+    const render = () => {
+      const el = document.createElement("next-event-details") as unknown as Internals;
+      el.event = { ...EVENT, customFormId: 9 };
+      el.customFields = [field];
+      const html = el.renderCustomFormSection();
+      const host = document.createElement("div");
+      host.innerHTML = html;
+      return { id: host.querySelector("input.cf-input")!.id, prefix: el.instanceId };
+    };
+    const a = render();
+    const b = render();
+    expect(a.id.startsWith(`${a.prefix}-`)).toBe(true);
+    expect(b.id.startsWith(`${b.prefix}-`)).toBe(true);
+    expect(a.id).not.toBe(b.id);
+  });
+});

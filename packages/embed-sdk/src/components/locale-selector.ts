@@ -47,7 +47,6 @@ export class LocaleSelectorWidget extends MPNextWidget {
     // widgets that get this wrong).
     if (oldValue === newValue || !this.isConnected) return;
     this.render();
-    this.attachListeners();
   }
 
   connectedCallback() {
@@ -58,7 +57,6 @@ export class LocaleSelectorWidget extends MPNextWidget {
     // sibling widget or another tab changes the language.
     void this.initLocale().then(() => {
       this.render();
-      this.attachListeners();
     });
   }
 
@@ -79,7 +77,18 @@ export class LocaleSelectorWidget extends MPNextWidget {
     return filtered.length ? filtered : [...LOCALE_CODES];
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     const locales = this.offered();
     const current = this.locale;
     const hideLabel = this.hasAttribute("hide-label");

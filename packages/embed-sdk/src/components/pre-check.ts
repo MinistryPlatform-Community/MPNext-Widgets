@@ -436,16 +436,21 @@ export class PreCheckWidget extends MPNextWidget {
 
   // ── Rendering ────────────────────────────────────────────────────────────
 
-  /** Render, then re-attach the listeners the new markup needs. */
+  /** Render (which re-binds the listeners) and mark the widget painted. */
   private paint(): void {
     if (this.detached) return;
     this.render();
     this.painted = true;
-    this.attachListeners();
   }
 
+  /**
+   * Paint, then re-bind the listeners the new markup needs. Both live here,
+   * not in `paint()`, because the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change.
+   */
   render() {
     this.root.innerHTML = `<div class="pc">${this.renderHeader()}${this.renderState()}</div>`;
+    this.attachListeners();
   }
 
   private renderHeader(): string {
