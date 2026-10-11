@@ -69,7 +69,10 @@ const PATTERNS: Record<ValueClass, RegExp> = {
  */
 const BUDGET: Record<string, Partial<Record<ValueClass, number>>> = {
   "components/add-to-calendar.ts": { brandHex: 7, fontStack: 1 },
-  "components/checkout-complete.ts": { brandHex: 9, fontStack: 1 },
+  // W7b-payments: the pending (amber) status stripe. Its hex equals the accent,
+  // but it means "pending", not "highlight"; tying it to --nw-color-accent would
+  // let a re-brand recolour a payment status. No warning token exists. Permanent.
+  "components/checkout-complete.ts": { brandHex: 1 },
   "components/contact-attributes.ts": { brandHex: 9, fontStack: 1 },
   "components/custom-form.ts": { brandHex: 6, fontStack: 1 },
   "components/event-details.ts": { brandHex: 29, fontStack: 1 },
