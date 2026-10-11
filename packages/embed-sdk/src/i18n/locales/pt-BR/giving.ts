@@ -151,6 +151,7 @@ export const ptBRGiving = {
     paymentError: "Não conseguimos registrar seu pagamento. Entre em contato conosco antes de tentar novamente, para não ser cobrado duas vezes.",
     amountTooHigh: "O valor não pode ser maior que o saldo devedor ({amount}).",
     balanceChanged: "O saldo desta fatura mudou. Revise-o e tente novamente.",
+    registrationComplete: "Sua inscrição está concluída.",
   },
 
   checkoutComplete: {

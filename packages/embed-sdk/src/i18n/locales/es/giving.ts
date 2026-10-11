@@ -154,6 +154,7 @@ export const esGiving = {
     paymentError: "No pudimos registrar su pago. Comuníquese con nosotros antes de volver a intentarlo, para que no se le cobre dos veces.",
     amountTooHigh: "El monto no puede ser mayor que el saldo pendiente ({amount}).",
     balanceChanged: "El saldo de esta factura cambió. Revíselo e inténtelo de nuevo.",
+    registrationComplete: "Su inscripción está completa.",
   },
 
   checkoutComplete: {

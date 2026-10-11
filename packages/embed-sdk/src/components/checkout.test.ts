@@ -250,3 +250,43 @@ describe("single-use and overpay (C43)", () => {
   });
 });
 
+describe("<next-checkout> nothing-to-pay wording (C47)", () => {
+  beforeEach(() => {
+    setup();
+    window.history.replaceState(null, "", PAGE);
+  });
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  async function mountWith(over: Record<string, unknown>): Promise<HTMLElement> {
+    mockFetch((url) =>
+      url.includes("/checkout/invoice") ? jsonResponse({ invoice: invoice(over) }) : undefined,
+    );
+    return mountCheckout();
+  }
+
+  it("a zero-total invoice reads 'registration is complete', never 'Paid in full'", async () => {
+    const el = await mountWith({
+      invoiceTotal: 0, amountPaid: 0, balanceDue: 0, canPay: false, status: "None Paid",
+    });
+    expect(text(el)).toContain("Your registration is complete.");
+    expect(text(el)).not.toContain("Paid in full");
+    expect(text(el)).not.toContain("None Paid");
+  });
+
+  it("money paid and no balance reads 'Paid in full'", async () => {
+    const el = await mountWith({
+      amountPaid: 40, balanceDue: 0, canPay: false, status: "Paid in Full",
+    });
+    expect(shadow(el).querySelector(".nw-co-status--paid")).toHaveTextContent("Paid in full");
+  });
+
+  it("otherwise MP's own status, as written", async () => {
+    const el = await mountWith({ canPay: false, status: "Cancelled", statusId: 7 });
+    expect(shadow(el).querySelector(".nw-co-status--closed")).toHaveTextContent("Cancelled");
+  });
+});
+

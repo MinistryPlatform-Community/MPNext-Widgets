@@ -178,6 +178,7 @@ export const giving = {
     paymentError: "We could not record your payment. Please contact us before trying again, so you are not charged twice.",
     amountTooHigh: "The amount cannot be more than the balance due ({amount}).",
     balanceChanged: "The balance on this invoice has changed. Please review it and try again.",
+    registrationComplete: "Your registration is complete.",
   },
 
   checkoutComplete: {

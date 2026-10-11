@@ -447,10 +447,16 @@ export class CheckoutWidget extends MPNextWidget {
           <span class="nw-co-meta-label">${this.escapeHtml(this.t("checkout.invoiceDate"))}</span>
           <span class="nw-co-meta-value">${this.escapeHtml(this.fmt.date(inv.invoiceDate, "long"))}</span>
         </div>
-        <div>
-          <span class="nw-co-meta-label">${this.escapeHtml(this.t("checkout.status"))}</span>
-          <span class="nw-co-meta-value">${this.escapeHtml(inv.status)}</span>
-        </div>
+        ${
+          // MP's status vocabulary is about payment; a free registration has
+          // no payment to describe, so "Status: None Paid" is left out (C47).
+          inv.invoiceTotal > 0
+            ? `<div>
+                <span class="nw-co-meta-label">${this.escapeHtml(this.t("checkout.status"))}</span>
+                <span class="nw-co-meta-value">${this.escapeHtml(inv.status)}</span>
+              </div>`
+            : ""
+        }
       </div>
 
       ${
@@ -559,16 +565,32 @@ export class CheckoutWidget extends MPNextWidget {
       </form>`;
   }
 
+  /**
+   * The closing line for an invoice with nothing to pay (C47). Three cases,
+   * because "nothing to pay" and "has been paid" are different facts:
+   *
+   * - a zero-total invoice (a free registration) → neutral "registration is
+   *   complete". It never had a balance, so "Paid in full" — in the success
+   *   colour, under "Status: None Paid" — was false on its face;
+   * - money paid and no balance left → "Paid in full";
+   * - otherwise → MP's own status wording (Cancelled, say), as written.
+   */
   private renderStatusSection(inv: CheckoutInvoice): string {
-    const paid = inv.balanceDue <= 0;
-    const cls = paid ? "nw-co-status--paid" : "nw-co-status--closed";
-    // A non-paid status is MP's own wording for it, so it renders as written.
-    const label = paid
-      ? this.escapeHtml(this.t("checkout.paidInFull"))
-      : this.escapeHtml(inv.status);
+    let cls: string;
+    let label: string;
+    if (inv.invoiceTotal <= 0) {
+      cls = "nw-co-status--complete";
+      label = this.t("checkout.registrationComplete");
+    } else if (inv.amountPaid > 0 && inv.balanceDue <= 0) {
+      cls = "nw-co-status--paid";
+      label = this.t("checkout.paidInFull");
+    } else {
+      cls = "nw-co-status--closed";
+      label = inv.status;
+    }
     return `
-      <div class="nw-co-status ${cls}">
-        ${label}
+      <div class="nw-co-status ${cls}" role="status">
+        ${this.escapeHtml(label)}
       </div>`;
   }
 
@@ -667,6 +689,7 @@ export class CheckoutWidget extends MPNextWidget {
       .nw-co-status { margin-top: 20px; padding: 16px; border-radius: 10px; text-align: center; font-size: 16px; font-weight: 700; }
       .nw-co-status--paid { background: rgba(134,173,63,0.15); color: #4d6a14; }
       .nw-co-status--closed { background: #f3f4f6; color: #474747; }
+      .nw-co-status--complete { background: rgba(0,76,151,0.08); color: #002855; }
 
       @media (max-width: 640px) {
         .nw-co-header, .nw-co-body { padding: 16px; }
