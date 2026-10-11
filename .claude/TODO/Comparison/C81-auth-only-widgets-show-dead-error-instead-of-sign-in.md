@@ -84,3 +84,71 @@ re-introducing it, and would be the smaller change overall than ten separate edi
 Worth pairing with a test that asserts the anonymous render of every auth-only widget
 offers a login path, since this whole class survived because nothing checked the
 signed-out case.
+
+## Resolution — 2026-10-11 (epic summary, W9)
+
+**Fixed, in the base class as suggested, then adopted by every auth-only widget.** C13,
+C30, C46 and C53 are closed alongside it, each with its own resolution section.
+
+**The shared state (W0, `5933f9e`).** Two helpers on `MPNextWidget`
+(`shared/base-widget.ts`):
+
+- **`isNeedsAuth(resOrBody)`** is true for a 401, or for a body whose code is
+  `auth_required`, `session_expired` or `invalid_session`, but **only when the request's
+  token was public**.
+  - A 401 that reaches a *signed-in* visitor is an error with Try Again, not a sign-in loop.
+  - It never tests message text.
+- **`renderSignInRequired({ subject, message, legacyMessage, className, buttonClass })`**
+  draws the panel.
+  - It never offers Try Again.
+  - The base class delegates `[data-action="login"]`; a widget must not bind it itself.
+  - `SIGN_IN_REQUIRED_STYLES` styles a widget that passes no classes of its own.
+
+**Behaviour by auth mode:**
+
+- **`dual` / `hardened`:** the prompt plus a **Sign In** button. The button calls
+  `requestLogin()`, which fires a cancelable `loginRequired` event, then runs
+  `authSession.login`.
+- **`legacy`, or a mode not yet known:** the prompt plus "Use the sign-in link on this
+  page.", and **no button**.
+  - MPWidgets.js's `<mpp-user-login>` owns sign-in in this mode, and a second button would
+    start a different login.
+  - A passive `loginRequired` (`detail.passive: true`) fires once per element, so a host
+    can still react.
+  - `next-online-directory` and `next-contact-attributes` used to draw a button in legacy
+    mode; they no longer do.
+
+**Adopted by:**
+
+| WS | Widgets | Item |
+|---|---|---|
+| W0 | `next-my-mission-trips` (the reference consumer), `next-pre-check` | — |
+| W1 | `next-my-invoices` | C46 |
+| W3 | `next-my-groups`; the sign-up tab of `next-group-details`; Suggest a Group on `next-group-finder`, gated at the button before any field is typed | C13, C15 |
+| W5 | `next-my-giving`, `next-my-pledges`, `next-my-contribution-statement`, `next-statement-preferences`, each over a muted skeleton of its own layout (`givingSignedOut()` in `components/giving-shared.ts`) | C30 |
+| W6 | `next-profile`, `next-my-household`, `next-subscriptions`; `next-online-directory` and `next-contact-attributes` moved off their hand-rolled panels | C53 |
+
+That is 15 widgets. `grep -l renderSignInRequired packages/embed-sdk/src/components` lists
+16 files, because it also matches `giving-shared.ts`, a helper rather than a widget.
+
+**The test this item asked for:**
+
+- `e2e/widget/auth-only-widgets-signed-out.spec.ts` (W8, `f399e8a`) loads every auth-only
+  demo page anonymously, in two runs:
+  - against the `legacy`-pinned origin (:5174);
+  - against the `dual`-pinned origin (:5175).
+- It asserts a sign-in path, no "Unable to Load", and no Try Again.
+- Unit coverage: `people-signin.test.ts`, `giving-widgets.test.ts`, `my-groups.test.ts` and
+  `my-invoices.test.ts`.
+
+**Still open (optional).** Five partly-public widgets still hand-roll a sign-in panel for
+the signed-in-only part of their flow:
+
+- `next-custom-form`
+- `next-opportunity-details`
+- `next-event-details`
+- `next-plan-your-visit`
+- `next-pledge-campaign`
+
+They work. Moving them onto `renderSignInRequired()` would give them the same legacy/dual
+behaviour; that is a consolidation, not a defect.

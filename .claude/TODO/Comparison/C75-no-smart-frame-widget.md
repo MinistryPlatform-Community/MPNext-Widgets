@@ -84,3 +84,18 @@ the encrypted server session and never reach host-page storage
 handed to an arbitrary framed origin runs against that premise, and it is plausible that
 both smart widgets were omitted on purpose. If so, this item's resolution is a documented
 "won't port, and here is what to use instead" rather than an implementation.
+
+## Status — DEFERRED, decided 2026-10-11 (comparison-remediation epic)
+
+**Still open, and deliberately left out of the epic.** C74 (`mpp-smart-link`) and C75
+(`mpp-smart-frame`) both wait on the same Tier 3 auth-design decision.
+
+- **The question:** can the signed-in user's PII (email, display name) be merged into a URL
+  that is handed to a third party, or to a framed origin, under the hardened auth model?
+- **Where it is framed:** `Plans/ROADMAP-missing-widgets.md`, Tier 3. That section also
+  lists the security requirements that apply if either element is built.
+- **Possible outcome:** "won't port, here is what to use instead" is still a legitimate
+  answer.
+
+Until the decision is made, a church that relies on this widget keeps MPWidgets.js on that
+page. README "Migrating from MPWidgets.js" says so.

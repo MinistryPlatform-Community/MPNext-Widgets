@@ -87,3 +87,62 @@ every string in every component's `observedAttributes` matches
 `/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/` and contains a hyphen when it is more than one word. That
 turns a convention into something the suite enforces instead of something a reviewer has to
 remember.
+
+## Resolution — 2026-10-11 (epic summary, W9)
+
+**Fixed.**
+- All five attributes are renamed, and each keeps an alias.
+- The rule is written down and a test enforces it.
+- The test's allowlist is now **empty**.
+
+**The mechanism (W0, `aa6de6c`):**
+
+- `static readonly attributeAliases: Record<string, string>` maps each kebab name to its
+  old spelling, for example `{ "hide-soft-credits": "hidesoftcredits" }`.
+- `protected readAttr(name, legacyAlias?)` reads the kebab name first and falls back to the
+  alias. On a fallback it calls `console.warn` **once per class**, so a host that still uses
+  the old spelling finds out.
+- `observedAttributes` lists the kebab names plus `Object.values(this.attributeAliases)`. A
+  late set of either spelling therefore reconfigures the widget (C39).
+
+**The renames:**
+
+| Widget | Kebab-case (canonical) | Legacy spelling, still read for one release | WS / commit |
+|---|---|---|---|
+| `next-my-giving` | `hide-soft-credits` | `hidesoftcredits` | W5 `678df31` |
+| `next-my-pledges` | `hide-cancel-button-pledge` | `hidecancelbuttonpledge` | W5 `678df31` |
+| `next-my-pledges` | `cancel-pledge-email-template` | `cancelpledgeemailtemplate` | W5 `678df31` |
+| `next-my-groups` | `hide-group-life` | `hidegrouplife` | W3 `967d6da` |
+| `next-my-household` | `hide-add-household-member` | `hideaddhouseholdmember` | W6 `8e07b6d` |
+
+`next-user-menu`'s Giving tab and the demo library's widget catalogue now write the kebab
+names (`2e2d219`).
+
+**The guard.** `packages/embed-sdk/src/components/observed-attributes.test.ts` asserts that
+every string in every component's `observedAttributes` matches
+`/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/`. It has two exemptions:
+
+- the values of `attributeAliases`;
+- `LEGACY_SPELLINGS`, a delete-only ratchet. Each workstream deleted its entry in the same
+  commit as its rename, and the table is now `{}`.
+
+One deviation from the suggested fix: the test cannot also check for a hyphen in every
+multi-word name, because it cannot see word boundaries. What it enforces is the regex plus
+the ratchet.
+
+**New attributes added during the epic are kebab-case from the start:**
+
+`cards-scope` · `show-full-address` · `show-free-events` · `checkout-url` ·
+`receipt-template-id` · `heading-level` · `my-giving-url` · `show-paperless-toggle` ·
+`require-inquiry-phone` · `city-postal-code` · `congregation-id` · `google-maps-api-key` ·
+`user-notification-email-template-id` · `response-email-template`.
+
+Legacy spellings with no earlier `next-*` form are deliberately **not** aliased, because no
+host ever shipped them. Two examples: `congregationid` on `next-subscriptions`, and
+`mygivingwidgettargeturl`.
+
+**Still open:**
+
+- **Optional:** remove the five aliases after one release by deleting the
+  `attributeAliases` entries. `readAttr` and the guard need no change.
+- The customer-facing migration note is in README, "Migrating from MPWidgets.js".
