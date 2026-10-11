@@ -106,6 +106,8 @@ export async function POST(req: NextRequest) {
     addressCity: request.addressCity,
     addressState: request.addressState,
     addressZip: request.addressZip,
+    // Echoed so the receipt survives the processor round trip (C66).
+    receiptTemplateId: request.receiptTemplateId ?? null,
   };
 
   const token = checkout.buildResponseToken(responseToken);

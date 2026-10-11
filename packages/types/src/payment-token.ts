@@ -33,6 +33,14 @@ export const PaymentRequestTokenSchema = z.object({
    * successful submit; a spent or unknown `jti` cannot be unpacked or paid.
    */
   jti: z.string(),
+  /**
+   * `receipt-template-id` from `next-checkout` (C66) — legacy
+   * `receipttemplateid`. Carried through the processor round trip so the
+   * receipt is sent from wherever the payment is recorded, including the
+   * server-to-server notify with no browser involved. Optional so a token
+   * minted before this field existed still decodes.
+   */
+  receiptTemplateId: z.number().int().positive().nullable().optional(),
 });
 export type PaymentRequestToken = z.infer<typeof PaymentRequestTokenSchema>;
 
@@ -53,6 +61,8 @@ export const PaymentResponseTokenSchema = z.object({
   addressCity: z.string().nullable().optional(),
   addressState: z.string().nullable().optional(),
   addressZip: z.string().nullable().optional(),
+  /** Echoed from the request token (C66); a vendor passes it through. */
+  receiptTemplateId: z.number().int().positive().nullable().optional(),
 });
 export type PaymentResponseToken = z.infer<typeof PaymentResponseTokenSchema>;
 

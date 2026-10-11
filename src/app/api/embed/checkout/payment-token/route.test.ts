@@ -89,6 +89,14 @@ describe('GET /api/embed/checkout/payment-token', () => {
     expect(request.paymentNotifyUrl).toBe('http://localhost:3000/api/embed/payment/notify');
   });
 
+  it('threads receipt-template-id into the request token, ignoring junk (C66)', async () => {
+    const checkout = CheckoutService.getInstance();
+    const good = await (await get('guid=inv-guid&receiptTemplateId=2695')).json();
+    expect(checkout.decodeRequestToken(good.token).receiptTemplateId).toBe(2695);
+    const junk = await (await get('guid=inv-guid&receiptTemplateId=abc')).json();
+    expect(checkout.decodeRequestToken(junk.token).receiptTemplateId).toBeNull();
+  });
+
   it('scopes a signed-in payer to their own invoice (C80)', async () => {
     await get('guid=inv-guid', 'user-guid');
     expect(mockGetCheckoutInvoiceByGuid).toHaveBeenCalledWith('inv-guid', 98);

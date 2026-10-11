@@ -78,6 +78,7 @@ export class CheckoutWidget extends MPNextWidget {
       "back-to-event-url",
       "invoice-id-parameter-name",
       "invoice-id",
+      "receipt-template-id",
     ];
   }
 
@@ -299,12 +300,16 @@ export class CheckoutWidget extends MPNextWidget {
     this.render();
 
     try {
-      const returnUrl = encodeURIComponent(this.currentPageUrlWithoutToken());
-      const res = await this.fetch(
-        `/api/embed/checkout/payment-token?guid=${encodeURIComponent(
-          this.guid,
-        )}&amount=${encodeURIComponent(String(amount))}&returnUrl=${returnUrl}`,
-      );
+      const params = new URLSearchParams({
+        guid: this.guid,
+        amount: String(amount),
+        returnUrl: this.currentPageUrlWithoutToken(),
+      });
+      // Legacy `receipttemplateid` (C66): threaded into the request token so
+      // the server sends the receipt wherever the payment is recorded.
+      const receipt = this.getAttribute("receipt-template-id")?.trim();
+      if (receipt) params.set("receiptTemplateId", receipt);
+      const res = await this.fetch(`/api/embed/checkout/payment-token?${params.toString()}`);
       if (res.status === 422) {
         // The server refused an amount above the balance due (C43). The form
         // already caps it, so the balance has most likely moved under us — a

@@ -4,6 +4,10 @@ import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { InvoiceService } from "@/services/invoiceService";
 import { sqlLiteral } from "@/services/_shared/mp-lookup";
 import { getSessionStore } from "@/lib/embed/session-store";
+import {
+  MessageTemplateService,
+  TemplateNotFoundError,
+} from "@/services/messageTemplateService";
 import type {
   CheckoutInvoice,
   PaymentOutcome,
@@ -266,7 +270,83 @@ export class PaymentService {
       console.error("PaymentService: invoice status update failed:", err);
     }
 
+    // Receipt (C66) — only for a payment recorded *now*, never for a replay,
+    // and never able to fail the payment: the money is recorded either way.
+    if (token.receiptTemplateId) {
+      await this.sendReceipt(token.receiptTemplateId, token, invoice, {
+        paymentId,
+        amount,
+        code,
+        paymentDate: now,
+      }).catch((err) =>
+        console.error("PaymentService: receipt not sent (payment is recorded):", err)
+      );
+    }
+
     return { invoiceId, status: "received" };
+  }
+
+  /**
+   * Send the payment receipt from the template `next-checkout` was configured
+   * with (`receipt-template-id`, legacy `receipttemplateid`).
+   *
+   * ## Which template table
+   *
+   * Legacy's id is documented (C66) as a `dp_Communication_Templates` id, but
+   * the one live example (`2695`) could not be read on any domain we reach,
+   * and a church migrating may hold either kind of id. So the communication
+   * template is tried first and a **not-found** falls back to the
+   * `dp_Communications` message template of the same id. Only not-found falls
+   * back — a missing From address or a send failure is a real fault and is
+   * reported as one.
+   *
+   * ## Merge tokens
+   *
+   * `[mpp_contact_first_name]`, `[mpp_contact_last_name]`,
+   * `[mpp_payment_amount]` (formatted, USD), `[mpp_payment_date]`,
+   * `[mpp_transaction_code]`, `[mpp_payment_id]`, `[mpp_invoice_id]`,
+   * `[mpp_invoice_total]`, `[mpp_balance_due]` (after this payment). Same
+   * `mpp_` convention as the plan-your-visit templates.
+   */
+  private async sendReceipt(
+    templateId: number,
+    token: PaymentResponseToken,
+    invoice: CheckoutInvoice,
+    payment: { paymentId: number; amount: number; code: string; paymentDate: string }
+  ): Promise<void> {
+    const email = invoice.payor.email ?? token.email ?? null;
+    if (!email) {
+      console.warn("PaymentService: no payor email; receipt not sent for", payment.code);
+      return;
+    }
+    const firstName = invoice.payor.firstName ?? token.firstName ?? "";
+    const lastName = invoice.payor.lastName ?? token.lastName ?? "";
+    const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+    const balanceAfter = Math.max(
+      0,
+      Number((invoice.balanceDue - payment.amount).toFixed(2))
+    );
+    const merge = {
+      mpp_contact_first_name: firstName,
+      mpp_contact_last_name: lastName,
+      mpp_payment_amount: money.format(payment.amount),
+      // The MP wall-clock date (`YYYY-MM-DD`), as the domain recorded it.
+      mpp_payment_date: payment.paymentDate.slice(0, 10),
+      mpp_transaction_code: payment.code,
+      mpp_payment_id: String(payment.paymentId),
+      mpp_invoice_id: String(invoice.invoiceId),
+      mpp_invoice_total: money.format(invoice.invoiceTotal),
+      mpp_balance_due: money.format(balanceAfter),
+    };
+    const to = { email, name: [firstName, lastName].filter(Boolean).join(" ") };
+
+    const templates = await MessageTemplateService.getInstance();
+    try {
+      await templates.sendCommunicationTemplate(templateId, to, merge);
+    } catch (err) {
+      if (!(err instanceof TemplateNotFoundError)) throw err;
+      await templates.sendMessageTemplate(templateId, to, merge);
+    }
   }
 
   /**

@@ -23,6 +23,25 @@ vi.mock('@/services/domainTimezoneService', () => ({
   },
 }));
 
+const templates = vi.hoisted(() => {
+  class TemplateNotFoundError extends Error {}
+  return {
+    TemplateNotFoundError,
+    sendCommunicationTemplate: vi.fn(),
+    sendMessageTemplate: vi.fn(),
+  };
+});
+
+vi.mock('@/services/messageTemplateService', () => ({
+  TemplateNotFoundError: templates.TemplateNotFoundError,
+  MessageTemplateService: {
+    getInstance: async () => ({
+      sendCommunicationTemplate: templates.sendCommunicationTemplate,
+      sendMessageTemplate: templates.sendMessageTemplate,
+    }),
+  },
+}));
+
 import { PaymentService } from '@/services/paymentService';
 import { InvoiceService } from '@/services/invoiceService';
 
@@ -189,5 +208,60 @@ describe('PaymentService.createPaymentFromResponse (C40)', () => {
     const svc = await PaymentService.getInstance();
     expect((await svc.createPaymentFromResponse(token())).status).toBe('received');
     expect(mp.createTableRecords).not.toHaveBeenCalled();
+  });
+
+  describe('receipt (C66)', () => {
+    beforeEach(() => {
+      templates.sendCommunicationTemplate.mockReset().mockResolvedValue(undefined);
+      templates.sendMessageTemplate.mockReset().mockResolvedValue(undefined);
+    });
+
+    it('sends the configured template to the payor after the Payments row', async () => {
+      const svc = await PaymentService.getInstance();
+      await svc.createPaymentFromResponse(token({ receiptTemplateId: 2695 }));
+
+      expect(templates.sendCommunicationTemplate).toHaveBeenCalledWith(
+        2695,
+        { email: 'pat@example.org', name: 'Pat Payer' },
+        expect.objectContaining({
+          mpp_contact_first_name: 'Pat',
+          mpp_payment_amount: '$25.00',
+          mpp_transaction_code: 'txn-1',
+          mpp_invoice_id: '6',
+          mpp_balance_due: '$35.00',
+        })
+      );
+      const sendOrder = templates.sendCommunicationTemplate.mock.invocationCallOrder[0];
+      const insertOrder = mp.createTableRecords.mock.invocationCallOrder[0];
+      expect(sendOrder).toBeGreaterThan(insertOrder);
+    });
+
+    it('falls back to a dp_Communications message template on not-found', async () => {
+      templates.sendCommunicationTemplate.mockRejectedValue(new templates.TemplateNotFoundError('nf'));
+      const svc = await PaymentService.getInstance();
+      await svc.createPaymentFromResponse(token({ receiptTemplateId: 2695 }));
+      expect(templates.sendMessageTemplate).toHaveBeenCalledWith(2695, expect.anything(), expect.anything());
+    });
+
+    it('a template fault never fails the payment', async () => {
+      templates.sendCommunicationTemplate.mockRejectedValue(new Error('smtp down'));
+      const svc = await PaymentService.getInstance();
+      const result = await svc.createPaymentFromResponse(token({ receiptTemplateId: 2695 }));
+      expect(result.status).toBe('received');
+      expect(templates.sendMessageTemplate).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalled();
+    });
+
+    it('sends nothing without a template id, or on a replay', async () => {
+      const svc = await PaymentService.getInstance();
+      await svc.createPaymentFromResponse(token());
+      expect(templates.sendCommunicationTemplate).not.toHaveBeenCalled();
+
+      mp.getTableRecords.mockImplementation((args: { table: string }) =>
+        args.table === 'Payments' ? Promise.resolve([{ Payment_ID: 900 }]) : tables(args)
+      );
+      await svc.createPaymentFromResponse(token({ receiptTemplateId: 2695 }));
+      expect(templates.sendCommunicationTemplate).not.toHaveBeenCalled();
+    });
   });
 });

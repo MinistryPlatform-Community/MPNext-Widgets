@@ -50,6 +50,12 @@ export async function GET(req: NextRequest) {
   }
   const returnUrl = sp.get("returnUrl")?.trim() ?? "";
   const amountParam = Number(sp.get("amount"));
+  // `receipt-template-id` on next-checkout (C66). Anything but a positive
+  // integer is ignored rather than refused: a bad attribute must not block a
+  // payment, it just means no receipt.
+  const receiptParam = Number(sp.get("receiptTemplateId"));
+  const receiptTemplateId =
+    Number.isInteger(receiptParam) && receiptParam > 0 ? receiptParam : null;
 
   try {
     const service = await InvoiceService.getInstance();
@@ -98,6 +104,7 @@ export async function GET(req: NextRequest) {
       addressZip: invoice.payor.postalCode,
       addressCountry: null,
       fundId: null,
+      receiptTemplateId,
     };
 
     const token = await CheckoutService.getInstance().issueRequestToken(requestToken);

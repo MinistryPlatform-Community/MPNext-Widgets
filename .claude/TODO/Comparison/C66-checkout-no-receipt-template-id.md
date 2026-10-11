@@ -144,3 +144,51 @@ have to reach the server: either as `receipt-template-id` on `next-checkout` thr
 into `PaymentRequestToken` (so it survives the gateway round trip, as legacy does by
 putting it on `mpp-checkout`), or as server configuration if a per-embed override is not
 actually wanted.
+
+## Resolution — 2026-10-11
+
+**Fixed (epic W1, branch `ws/w1-payments`).** `next-checkout` has `receipt-template-id`, and the
+receipt is sent from the server.
+
+- **Threading.** The attribute is read by `checkout.ts` and sent as `receiptTemplateId` to
+  `checkout/payment-token`, which accepts only a positive integer and otherwise ignores it.
+  A bad attribute must not block a payment; it only means no receipt. It is stored as
+  `PaymentRequestToken.receiptTemplateId`, echoed by the processor (`pay/response`) into
+  `PaymentResponseToken.receiptTemplateId`, and consumed by
+  `PaymentService.createPaymentFromResponse`. Both token fields are optional in the schema,
+  so a token minted before this change still decodes.
+- **Where it is sent.** In `recordPayment`, right after the `Payments` row, its allocation and
+  the status update. That is the one place `checkout/payment-response`,
+  `next-checkout-complete` and the server-to-server `payment/notify` all converge, so it still
+  works when the payer closes the tab. It is sent **only for a payment recorded now**, never
+  on an idempotent replay, so reloads do not send duplicate receipts.
+- **Mechanism.** `MessageTemplateService` is the shared primitive; no second mechanism was
+  written. **Decision on the table:** legacy's id is documented as a
+  `dp_Communication_Templates` id, but the only live example (`2695`) is unreadable on every
+  domain we reach. So `sendCommunicationTemplate` runs first, and a `TemplateNotFoundError`
+  only falls back to `sendMessageTemplate` (`dp_Communications`) with the same id. A missing
+  From address or a send failure is a real fault and does not fall back. Schema check
+  2026-10-11: both tables exist on the live domain (`dp_Communication_Templates`:
+  `Template_Name`, `Subject_Text`, `Body_Html`; `dp_Communications` rows with
+  `Template = 1`).
+- **Never fails the payment.** A template fault is logged at `error` ("receipt not sent
+  (payment is recorded)"), and the outcome stays `received`.
+- **Merge tokens** (our set, in the same `mpp_` convention as plan-your-visit):
+  `[mpp_contact_first_name]`, `[mpp_contact_last_name]`, `[mpp_payment_amount]`,
+  `[mpp_payment_date]`, `[mpp_transaction_code]`, `[mpp_payment_id]`, `[mpp_invoice_id]`,
+  `[mpp_invoice_total]`, `[mpp_balance_due]` (balance after this payment). The recipient is the
+  invoice purchaser's email, falling back to the token's email. No email address means a
+  warning and no send.
+- Demo snippet in `demo-checkout.html` documents the attribute. The live demo element does not
+  set it, because this domain has no receipt template.
+- **Tests:** `src/services/paymentService.test.ts` covers the following: sent after the
+  `Payments` insert with the expected merge; fallback on not-found; a send fault leaves the
+  outcome `received`; nothing is sent without an id or on a replay. The payment-token route test
+  covers threading and junk values.
+
+**Still open (unchanged from the runtime note above):** whether legacy really *sends* 2695 could
+not be established. That needs a completed payment on MP's own `/widgets/pay`, which is out of
+bounds. So the severity question (breaking vs functional vs cosmetic) stays unanswered, but the
+configurability gap this item is about is closed regardless. Also, a real vendor must echo
+`receiptTemplateId` back in its response token, as it does the invoice id. Record that in the
+vendor-integration checklist (see C48).
