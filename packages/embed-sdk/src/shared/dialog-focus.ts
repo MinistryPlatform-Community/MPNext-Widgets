@@ -6,7 +6,8 @@
  *
  * 1. **Open** — focus moves into the container (the first focusable element,
  *    or `initialFocus`; the container itself when it holds nothing focusable).
- * 2. **While open** — Tab and Shift+Tab cycle inside the container
+ * 2. **While open** — Tab and Shift+Tab cycle inside the container,
+ *    including fields in the open shadow roots of widgets it hosts
  *    (`trapTab`, default on; a `role="menu"` passes `false`, because Tab out of
  *    a menu is expected to leave it). Escape calls `onEscape` when given.
  * 3. **Close** — `release(reason)` returns focus to the trigger, **except**
@@ -65,17 +66,57 @@ const FOCUSABLE = [
   '[contenteditable="true"]',
 ].join(",");
 
-/** Focusable descendants of `container`, in document order. */
+const HIDDEN = "[hidden], [inert]";
+
+/**
+ * Focusable descendants of `container`, in **composed** (rendered) order.
+ *
+ * Descends into the open shadow root of every descendant element, and through
+ * `<slot>`s to their assigned nodes, so a dialog that hosts other widgets
+ * (`next-user-menu`'s account modal holds `next-profile`, `next-my-household`,
+ * ..., whose fields live in their own shadow roots) cycles through those fields
+ * rather than skipping them. A shadow host's own light children are reached
+ * only through its slots, as the browser renders them. A `[hidden]` / `[inert]`
+ * element prunes its whole subtree, shadow content included. Closed shadow
+ * roots are unreachable by design and are skipped.
+ */
 export function focusableWithin(container: ParentNode): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-    (el) => !el.closest("[hidden], [inert]"),
-  );
+  const out: HTMLElement[] = [];
+  const visit = (el: Element): void => {
+    if (el.matches(HIDDEN)) return;
+    if (el.matches(FOCUSABLE)) out.push(el as HTMLElement);
+    if (typeof HTMLSlotElement !== "undefined" && el instanceof HTMLSlotElement) {
+      const assigned = el.assignedElements({ flatten: true });
+      (assigned.length > 0 ? assigned : Array.from(el.children)).forEach(visit);
+      return;
+    }
+    const shadow = (el as HTMLElement).shadowRoot;
+    Array.from((shadow ?? el).children).forEach(visit);
+  };
+  Array.from(container.children).forEach(visit);
+  return out;
 }
 
-/** The focused element as seen from `container`'s tree (shadow-aware). */
+/**
+ * The focused element as seen from `root`'s tree, followed down through open
+ * shadow roots to the element that really has focus.
+ */
 function activeIn(root: Node): Element | null {
   const scope = root as Document | ShadowRoot;
-  return "activeElement" in scope ? scope.activeElement : null;
+  let current = "activeElement" in scope ? scope.activeElement : null;
+  while (current?.shadowRoot?.activeElement) current = current.shadowRoot.activeElement;
+  return current;
+}
+
+/** `container.contains(node)`, across shadow boundaries. */
+function containsComposed(container: Node, node: Node | null): boolean {
+  let cur: Node | null = node;
+  while (cur) {
+    if (container.contains(cur)) return true;
+    const rootNode = cur.getRootNode();
+    cur = rootNode instanceof ShadowRoot ? rootNode.host : null;
+  }
+  return false;
 }
 
 function resolveTrigger(trigger: TriggerRef): HTMLElement | null {
@@ -110,10 +151,10 @@ export function dialogFocus(
     const first = items[0];
     const last = items[items.length - 1];
     const current = activeIn(root);
-    if (e.shiftKey && (current === first || !container.contains(current))) {
+    if (e.shiftKey && (current === first || !containsComposed(container, current))) {
       e.preventDefault();
       last.focus();
-    } else if (!e.shiftKey && (current === last || !container.contains(current))) {
+    } else if (!e.shiftKey && (current === last || !containsComposed(container, current))) {
       e.preventDefault();
       first.focus();
     }
@@ -156,7 +197,7 @@ export function dialogFocus(
       const lost =
         current === null || current === document.body
           ? docActive === null || docActive === document.body
-          : container.contains(current) || !current.isConnected;
+          : containsComposed(container, current) || !current.isConnected;
       if (!lost) return;
 
       const back = resolveTrigger(trigger);

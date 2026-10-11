@@ -373,6 +373,33 @@ describe("<next-user-menu> auth modes", () => {
       expect(shadow(el).activeElement?.className).toBe("nw-avatar-btn");
     });
 
+    it("the account modal traps Tab, cycling through fields inside hosted widgets' shadow roots", async () => {
+      const el = await mountSignedIn();
+      avatar(el).click();
+      shadow(el).querySelector<HTMLButtonElement>('[data-action="account"]')!.click();
+
+      const portal = document.getElementById("nw-user-menu-portal")!;
+      const container = portal.querySelector<HTMLElement>(".nw-modal-container")!;
+      // Stand-in for a tab-panel widget: its field lives in its own shadow root.
+      const panelWidget = document.createElement("x-panel-widget");
+      container.appendChild(panelWidget);
+      const panelShadow = panelWidget.attachShadow({ mode: "open" });
+      panelShadow.innerHTML = `<input class="deep-field">`;
+      const deep = panelShadow.querySelector<HTMLInputElement>(".deep-field")!;
+
+      // Shift+Tab off the first element (Close) wraps to the last field — the nested one.
+      const back = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, composed: true, cancelable: true });
+      document.activeElement!.dispatchEvent(back);
+      expect(back.defaultPrevented).toBe(true);
+      expect(panelShadow.activeElement).toBe(deep);
+
+      // Tab off that nested last field wraps to the first, rather than leaving the dialog.
+      const fwd = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, composed: true, cancelable: true });
+      deep.dispatchEvent(fwd);
+      expect(fwd.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(portal.querySelector(".nw-modal-close"));
+    });
+
     it("the modal Close button also returns focus to the avatar", async () => {
       const el = await mountSignedIn();
       avatar(el).click();

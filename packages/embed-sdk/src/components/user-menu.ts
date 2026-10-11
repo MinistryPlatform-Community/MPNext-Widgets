@@ -1259,14 +1259,13 @@ export class UserMenuWidget extends MPNextWidget {
     this.createPortal();
 
     // C54: move focus into the dialog (its Close button) and return it to the
-    // avatar on close. `trapTab` is off on purpose: the shared trap only sees
-    // light-DOM focusables, and the tab panels are widgets with their own
-    // shadow roots, so it would skip every form field in the modal. Reported to
-    // W0 rather than forked here; see C54's resolution.
+    // avatar on close. Tab is trapped (`dialogFocus`'s default): the trap walks
+    // open shadow roots, so it cycles through the form fields of the tab-panel
+    // widgets (`next-profile`, `next-my-household`, ...) rather than skipping them.
     const dialog = this.portalEl?.querySelector<HTMLElement>(".nw-modal-container");
     this.modalFocus?.release("programmatic");
     this.modalFocus = dialog
-      ? dialogFocus(dialog, this.avatarTrigger, { initialFocus: ".nw-modal-close", trapTab: false })
+      ? dialogFocus(dialog, this.avatarTrigger, { initialFocus: ".nw-modal-close" })
       : null;
 
     this.emit("accountModalOpen", { tab: this.state.activeTab });

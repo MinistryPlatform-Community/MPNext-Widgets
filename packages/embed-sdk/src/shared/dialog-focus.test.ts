@@ -171,3 +171,81 @@ describe("focusableWithin()", () => {
     expect(focusableWithin(document.getElementById("r")!)).toHaveLength(3);
   });
 });
+
+describe("shadow-hosted content (C54: the account modal hosts widgets)", () => {
+  /** A dialog whose second child is a "widget" with its own open shadow root. */
+  function setupNested() {
+    document.body.innerHTML = `
+      <button id="trigger">Open</button>
+      <div id="dialog" role="dialog" aria-modal="true">
+        <button id="close">Close</button>
+        <x-widget id="w"></x-widget>
+      </div>`;
+    const host = document.getElementById("w")!;
+    const shadow = host.attachShadow({ mode: "open" });
+    shadow.innerHTML = `<input class="f1"><select class="f2"><option>1</option></select><button class="save">Save</button>`;
+    return {
+      dialog: document.getElementById("dialog")!,
+      trigger: document.getElementById("trigger")!,
+      host,
+      shadow,
+    };
+  }
+
+  it("focusableWithin() descends into open shadow roots in composed order", () => {
+    const { dialog } = setupNested();
+    const names = focusableWithin(dialog).map((el) => el.id || el.className);
+    expect(names).toEqual(["close", "f1", "f2", "save"]);
+  });
+
+  it("follows slots to their assigned light children, in slot order", () => {
+    document.body.innerHTML = `<div id="d"><x-host id="h"><button id="slotted">S</button><button id="unslotted" slot="nowhere">U</button></x-host></div>`;
+    const shadow = document.getElementById("h")!.attachShadow({ mode: "open" });
+    shadow.innerHTML = `<button class="before">B</button><slot></slot><button class="after">A</button>`;
+    const names = focusableWithin(document.getElementById("d")!).map((el) => el.id || el.className);
+    expect(names).toEqual(["before", "slotted", "after"]);
+  });
+
+  it("prunes a [hidden] host's shadow content", () => {
+    const { dialog, host } = setupNested();
+    host.hidden = true;
+    expect(focusableWithin(dialog).map((el) => el.id)).toEqual(["close"]);
+  });
+
+  it("wraps Tab from the last field inside a nested widget back to the first", () => {
+    const { dialog, trigger, shadow } = setupNested();
+    dialogFocus(dialog, trigger);
+    const save = shadow.querySelector<HTMLElement>(".save")!;
+    save.focus();
+    const ev = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, composed: true, cancelable: true });
+    save.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(document.activeElement?.id).toBe("close");
+  });
+
+  it("does not trap Tab while it moves between fields of a nested widget", () => {
+    const { dialog, trigger, shadow } = setupNested();
+    dialogFocus(dialog, trigger);
+    const f1 = shadow.querySelector<HTMLElement>(".f1")!;
+    f1.focus();
+    const ev = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, composed: true, cancelable: true });
+    f1.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it("wraps Shift+Tab from the first element to the last nested field", () => {
+    const { dialog, trigger, shadow } = setupNested();
+    dialogFocus(dialog, trigger);
+    const ev = tab(document.getElementById("close")!, true);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(shadow.activeElement).toBe(shadow.querySelector(".save"));
+  });
+
+  it("returns focus to the trigger when it was last inside a nested widget", () => {
+    const { dialog, trigger, shadow } = setupNested();
+    const handle = dialogFocus(dialog, trigger);
+    shadow.querySelector<HTMLElement>(".f1")!.focus();
+    handle.release("programmatic");
+    expect(document.activeElement).toBe(trigger);
+  });
+});
