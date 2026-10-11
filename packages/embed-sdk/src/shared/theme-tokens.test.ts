@@ -73,7 +73,6 @@ const BUDGET: Record<string, Partial<Record<ValueClass, number>>> = {
   "components/checkout.ts": { brandHex: 17, fontStack: 1 },
   "components/contact-attributes.ts": { brandHex: 9, fontStack: 1 },
   "components/custom-form.ts": { brandHex: 6, fontStack: 1 },
-  "components/event-details.ts": { brandHex: 29, fontStack: 1 },
   "components/giving-shared.ts": { brandHex: 2 },
   "components/group-details.ts": { brandHex: 18, fontStack: 1 },
   "components/group-finder.ts": { brandHex: 21, fontStack: 1 },
