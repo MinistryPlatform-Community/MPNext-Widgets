@@ -132,6 +132,16 @@ export const giving = {
     registrationOpensOn: "Registration opens on {date}.",
     registrationClosed: "Registration for this campaign has closed.",
     registrationClosedOn: "Registration for this campaign closed on {date}.",
+    // ── Amount limits (C32) ──
+    //
+    // `{amount}` is a formatted currency value: $0.00 for the floor, the flat
+    // ceiling (MAX_PLEDGE_AMOUNT) for the two upper bounds.
+    amountTooLow: "Enter a pledge amount greater than {amount}.",
+    amountTooHigh: "Enter a pledge amount of {amount} or less.",
+    totalTooHigh: "Your total pledge cannot be more than {amount}. Check the amount and the schedule.",
+    /** The dates and frequency chosen yield no installment, so the total is $0.00. */
+    scheduleEmpty:
+      "This schedule has no installments. Choose a later end date or a different frequency.",
   },
 
   contributionStatement: {

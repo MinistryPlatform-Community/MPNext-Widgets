@@ -88,6 +88,22 @@ export type PledgeBasicContact = z.infer<typeof PledgeBasicContactSchema>;
  * coerced server-side. `contactId` is the selected household member's contact
  * id, or "0" / "Blank Form" for an anonymous/blank registrant.
  */
+/**
+ * Ceiling on a pledge's installment amount and total (C32), in the domain's
+ * currency. A **flat** bound, deliberately not derived from the campaign goal:
+ * a donor may legitimately pledge past the goal, and a goal-derived cap would
+ * reject good pledges. One billion leaves two orders of magnitude over any
+ * plausible single pledge while still refusing the "sixteen trillion" typo the
+ * comparison run wrote into `Pledges` (`Total_Pledge = 15999999999984`).
+ *
+ * `next-pledge-campaign` mirrors this value (the SDK does not import this
+ * package at runtime); `pledge-campaign.test.ts` asserts the two agree.
+ */
+export const MAX_PLEDGE_AMOUNT = 1_000_000_000;
+
+/** A pledge money value (Zod 4 numbers are already finite): greater than zero, at most {@link MAX_PLEDGE_AMOUNT}. */
+export const PledgeMoneySchema = z.number().positive().max(MAX_PLEDGE_AMOUNT);
+
 export const SavePledgeRequestSchema = z.object({
   pledgeCampaignId: z.number(),
   pledgeEmailTemplateId: z.number().optional(),
@@ -96,13 +112,13 @@ export const SavePledgeRequestSchema = z.object({
   lastName: z.string().optional(),
   email: z.string().optional(),
   mobilePhoneNumber: z.string().optional(),
-  installmentAmount: z.number(),
+  installmentAmount: PledgeMoneySchema,
   frequency: z.number(),
   firstInstallmentDate: z.string(),
   lastInstallmentDate: z.string().nullable().optional(),
   installmentsPlanned: z.number(),
   installmentsPerYear: z.number(),
-  totalPledge: z.number(),
+  totalPledge: PledgeMoneySchema,
 });
 export type SavePledgeRequest = z.infer<typeof SavePledgeRequestSchema>;
 

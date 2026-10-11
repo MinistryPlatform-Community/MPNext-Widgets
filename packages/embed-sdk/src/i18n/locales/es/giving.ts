@@ -105,6 +105,12 @@ export const esGiving = {
     registrationOpensOn: "El registro abre el {date}.",
     registrationClosed: "El registro para esta campaña ya está cerrado.",
     registrationClosedOn: "El registro para esta campaña cerró el {date}.",
+    amountTooLow: "Ingrese un monto de compromiso mayor que {amount}.",
+    amountTooHigh: "Ingrese un monto de compromiso de {amount} o menos.",
+    totalTooHigh:
+      "Su compromiso total no puede ser mayor que {amount}. Revise el monto y el calendario.",
+    scheduleEmpty:
+      "Este calendario no tiene cuotas. Elija una fecha de finalización posterior u otra frecuencia.",
   },
 
   contributionStatement: {

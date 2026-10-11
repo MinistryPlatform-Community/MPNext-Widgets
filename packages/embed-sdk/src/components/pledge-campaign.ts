@@ -6,6 +6,14 @@ import {
   FORM_VALIDATION_STYLES,
 } from "../shared/form-validation";
 
+/**
+ * Ceiling on a pledge amount (C32). Mirrors `MAX_PLEDGE_AMOUNT` in
+ * `@mpnext/types` (`SavePledgeRequestSchema`), which is the real gate — this
+ * package does not import that one at runtime (it would pull Zod into the
+ * bundle), so `pledge-campaign.test.ts` asserts the two values agree.
+ */
+export const MAX_PLEDGE_AMOUNT = 1_000_000_000;
+
 // ─────────────────────────────────────────────────────────────────────────
 // Local type declarations (mirrors @mpnext/types pledge-campaign.ts — this
 // package does not import that workspace package, so the shapes are redeclared
@@ -371,13 +379,29 @@ export class PledgeCampaignWidget extends MPNextWidget {
     const form = this.root.querySelector<HTMLFormElement>("#pc-form");
     if (!form) return;
 
-    if (!validateForm(form, { t: this.t }).valid) {
+    if (!validateForm(form, this.validationOptions()).valid) {
       this.setMessage("warning", this.t("validation.formIncomplete"));
       return;
     }
 
     // Recompute the plan from the current inputs before reading it.
     this.recalcTotal();
+
+    // C32: the amount field can be valid while the *plan* is not — a schedule
+    // whose dates yield no installment totals $0.00, and a large installment
+    // times many installments can pass the ceiling. Name the actual problem
+    // rather than the generic "please complete the form".
+    if (this.totalPledge <= 0) {
+      this.setMessage("danger", this.t("pledgeCampaign.scheduleEmpty"));
+      return;
+    }
+    if (this.totalPledge > MAX_PLEDGE_AMOUNT) {
+      this.setMessage(
+        "danger",
+        this.t("pledgeCampaign.totalTooHigh", { amount: this.fmt.currency(MAX_PLEDGE_AMOUNT) }),
+      );
+      return;
+    }
 
     const last = this.fieldValue("#pc-last-installment");
     if (this.pastCampaignEndDate(last)) {
@@ -451,6 +475,32 @@ export class PledgeCampaignWidget extends MPNextWidget {
       this.emit("pledgeError", { error: msg });
       this.setSubmitDisabled(false);
     }
+  }
+
+  /**
+   * Validation for the pledge form: the shared rules plus the amount bounds
+   * (C32). `min="0.01"` alone would say "Value is out of range"; this names
+   * the floor and the ceiling. A custom validator runs before the native check.
+   */
+  private validationOptions() {
+    return {
+      t: this.t,
+      customValidators: {
+        InstallmentAmount: (value: string): string | null => {
+          if (value.trim() === "") return null; // `required` speaks for an empty field
+          const amount = Number(value);
+          if (!Number.isFinite(amount) || amount <= 0) {
+            return this.t("pledgeCampaign.amountTooLow", { amount: this.fmt.currency(0) });
+          }
+          if (amount > MAX_PLEDGE_AMOUNT) {
+            return this.t("pledgeCampaign.amountTooHigh", {
+              amount: this.fmt.currency(MAX_PLEDGE_AMOUNT),
+            });
+          }
+          return null;
+        },
+      },
+    };
   }
 
   private setSubmitDisabled(disabled: boolean) {
@@ -660,7 +710,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
       });
     }
 
-    if (form) bindLiveValidation(form, { t: this.t });
+    if (form) bindLiveValidation(form, this.validationOptions());
     this.recalcTotal();
   }
 
@@ -875,7 +925,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
       ${buttons}
       <div class="pc-field">
         <label for="pc-installment-amount">${this.escapeHtml(this.t("pledgeCampaign.pledgeAmount"))}${requiredStar()}</label>
-        <input id="pc-installment-amount" class="pc-input" type="number" name="InstallmentAmount" min="0" step="0.01" inputmode="decimal" required>
+        <input id="pc-installment-amount" class="pc-input" type="number" name="InstallmentAmount" min="0.01" max="${MAX_PLEDGE_AMOUNT}" step="0.01" inputmode="decimal" required>
       </div>`;
   }
 

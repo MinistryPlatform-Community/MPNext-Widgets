@@ -103,6 +103,12 @@ export const ptBRGiving = {
     registrationOpensOn: "As inscrições abrem em {date}.",
     registrationClosed: "As inscrições para esta campanha estão encerradas.",
     registrationClosedOn: "As inscrições para esta campanha encerraram em {date}.",
+    amountTooLow: "Informe um valor de promessa maior que {amount}.",
+    amountTooHigh: "Informe um valor de promessa de até {amount}.",
+    totalTooHigh:
+      "O total da sua promessa não pode passar de {amount}. Confira o valor e o cronograma.",
+    scheduleEmpty:
+      "Este cronograma não tem parcelas. Escolha uma data final posterior ou outra frequência.",
   },
 
   contributionStatement: {

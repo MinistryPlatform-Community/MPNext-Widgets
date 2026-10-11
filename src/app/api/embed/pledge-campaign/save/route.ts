@@ -30,8 +30,16 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null);
     const parsed = SavePledgeRequestSchema.safeParse(body);
     if (!parsed.success) {
+      // Includes a zero, negative or absurd `installmentAmount` / `totalPledge`
+      // (C32): the schema is the gate, not the browser, so a scripted POST
+      // cannot write a $0.00 or sixteen-trillion-dollar pledge either.
       return NextResponse.json(
-        { success: false, pledgeId: null, message: "Invalid request body." },
+        {
+          success: false,
+          pledgeId: null,
+          error: "invalid_request",
+          message: "Invalid request body.",
+        },
         { status: 400, headers: getCorsHeaders(origin) }
       );
     }
