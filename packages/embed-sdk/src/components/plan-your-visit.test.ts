@@ -44,7 +44,8 @@ const AGE_GROUPS = [
 ];
 
 function mockFetch() {
-  const fn = vi.fn(async (input: RequestInfo | URL) => {
+  const fn = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+    void _init;
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/api/embed/auth/config")) return jsonResponse({ mode: "legacy" });
     if (url.includes("/api/embed/session")) return jsonResponse({ token: makeJwt() });
@@ -190,6 +191,38 @@ describe("<next-plan-your-visit>", () => {
       set(el, "spousePhone", "");
       submit(el);
       await vi.waitFor(() => expect(posted(fetchFn, "/plan-your-visit/register")).toHaveLength(1));
+    });
+  });
+
+  describe("accessible names (C28)", () => {
+    const unnamed = (root: ParentNode) =>
+      Array.from(
+        root.querySelectorAll<HTMLInputElement>("input:not([type=hidden]), select, textarea")
+      )
+        .filter((c) => !(c.labels && c.labels.length) && !c.getAttribute("aria-label"))
+        .map((c) => c.name);
+
+    it("names every control on the details form, children and address included", async () => {
+      mockFetch();
+      const el = await mountDetails('collect-address="true"');
+      shadow(el).querySelector<HTMLButtonElement>('[data-action="add-child"]')!.click();
+      expect(input(el, "addressLine1")).not.toBeNull();
+      expect(input(el, "child-0-ageGroup")).not.toBeNull();
+      expect(unnamed(detailsForm(el)!)).toEqual([]);
+    });
+
+    it("names every control on the initial form", async () => {
+      mockFetch();
+      document.body.innerHTML = `<next-plan-your-visit api-host="${HOST}"></next-plan-your-visit>`;
+      const el = document.body.firstElementChild as HTMLElement;
+      await vi.waitFor(() => expect(shadow(el).querySelector("#pyv-verify-form")).not.toBeNull());
+      expect(unnamed(shadow(el).querySelector("#pyv-verify-form")!)).toEqual([]);
+    });
+
+    it("defaults the country to the US entry exactly once", async () => {
+      mockFetch();
+      const el = await mountDetails('collect-address="true"');
+      expect(input(el, "addressCountry").value).toBe("US");
     });
   });
 

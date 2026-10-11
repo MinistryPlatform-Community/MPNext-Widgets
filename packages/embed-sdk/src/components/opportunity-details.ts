@@ -10,7 +10,9 @@ import {
   validateForm,
   bindLiveValidation,
   requiredStar,
+  field,
   FORM_VALIDATION_STYLES,
+  type FieldOptions,
 } from "../shared/form-validation";
 
 interface OpportunityContact {
@@ -291,7 +293,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     const form = this.root.querySelector<HTMLFormElement>("#od-form");
     if (!form) return;
 
-    if (!validateForm(form).valid) {
+    if (!validateForm(form, { t: this.t }).valid) {
       this.setMessage("warning", this.t("opportunityDetails.verifyDetails"));
       return;
     }
@@ -429,7 +431,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     const form = this.root.querySelector<HTMLFormElement>("#od-form");
     if (form) {
       bindCustomFormDependsOn(form, this.customFields);
-      bindLiveValidation(form);
+      bindLiveValidation(form, { t: this.t });
     }
   }
 
@@ -648,14 +650,19 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       <fieldset class="od-fieldset">
         <legend>${this.escapeHtml(this.t("opportunityDetails.yourInformation"))}</legend>
         <div class="od-grid2">
-          <div class="od-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="od-input" name="FirstName" required></div>
-          <div class="od-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="od-input" name="LastName" required></div>
+          ${this.odField({ name: "FirstName", label: this.t("fields.firstName"), required: true, autocomplete: "given-name" })}
+          ${this.odField({ name: "LastName", label: this.t("fields.lastName"), required: true, autocomplete: "family-name" })}
         </div>
         <div class="od-grid2">
-          <div class="od-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="od-input" type="email" name="EmailAddress" required></div>
-          <div class="od-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}${requiredStar()}</label><input class="od-input" name="MobilePhoneNumber" required></div>
+          ${this.odField({ name: "EmailAddress", label: this.t("fields.email"), type: "email", required: true, autocomplete: "email" })}
+          ${this.odField({ name: "MobilePhoneNumber", label: this.t("fields.mobilePhone"), type: "tel", required: true })}
         </div>
       </fieldset>`;
+  }
+
+  /** `field()` with this widget's id prefix and classes (C28, C29). */
+  private odField(opts: FieldOptions): string {
+    return field({ idPrefix: this.instanceId, wrapperClass: "od-field", inputClass: "od-input", ...opts });
   }
 
   private renderMessageField(): string {
@@ -672,7 +679,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     return `
       <div class="od-customform">
         <h3 class="od-reg-subtitle">${this.escapeHtml(this.t("opportunityDetails.additionalInformation"))}</h3>
-        ${renderCustomFormFields(this.customFields, { formId: op.customFormId, t: this.t })}
+        ${renderCustomFormFields(this.customFields, { formId: op.customFormId, t: this.t, idPrefix: this.instanceId })}
       </div>`;
   }
 

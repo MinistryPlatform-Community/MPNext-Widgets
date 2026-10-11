@@ -66,3 +66,17 @@ fields whose label reads like a phone number (Form 6 has three: *Reference 1/2/3
 Phone Number*, all `type="text"` on both sides) — but MP's `Form_Field_Types` has no
 phone type, so legacy renders those as text too; that half is parity and should not be
 guessed at from the label.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W4, branch `ws/w4-serving-forms`), together with C28.
+
+- `next-opportunity-details` `MobilePhoneNumber` and `next-custom-form`
+  `MobilePhoneNumber` are now `field({ type: "tel" })`, which also sets
+  `autocomplete="tel"` and `inputmode="tel"`.
+- `next-plan-your-visit`'s two phones were already `tel`. They are now `field()` too (C24).
+- **Not done, deliberately:** MP custom-form fields whose *label* reads like a phone
+  ("Reference 1: Phone Number") stay `type="text"`. `Form_Field_Types` has no phone type,
+  and legacy renders them as text. `custom-form.test.ts` asserts that.
+- No phone *format* validation was added to these two widgets. That is parity (neither
+  side validated it), and C24 is the warning about adding one carelessly.

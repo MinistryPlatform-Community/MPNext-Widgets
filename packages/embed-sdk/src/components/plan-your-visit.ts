@@ -2,11 +2,11 @@ import { MPNextWidget } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
-  requiredStar,
   field,
   fieldId,
   FORM_VALIDATION_STYLES,
   type CustomValidator,
+  type FieldOptions,
 } from "../shared/form-validation";
 
 interface PyvOption {
@@ -221,7 +221,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
   }
 
   private selectedCongregationId(): number {
-    const sel = this.root.querySelector<HTMLSelectElement>("#pyv-congregation");
+    const sel = this.root.querySelector<HTMLSelectElement>('[name="congregationId"]');
     if (sel && sel.value) return Number(sel.value);
     return this.config.congregations[0]?.id ?? 0;
   }
@@ -452,7 +452,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
         this.submitDetails(detForm);
       });
 
-      const cong = this.root.querySelector<HTMLSelectElement>("#pyv-congregation");
+      const cong = this.root.querySelector<HTMLSelectElement>('[name="congregationId"]');
       if (cong) {
         cong.addEventListener("change", async () => {
           await this.loadAgeGroups(Number(cong.value) || 0);
@@ -543,10 +543,10 @@ export class PlanYourVisitWidget extends MPNextWidget {
       <p class="pyv-lead">${this.escapeHtml(this.t("planYourVisit.lead"))}</p>
       <form id="pyv-verify-form" class="pyv-form" novalidate>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="pyv-input" name="firstName" required></div>
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="pyv-input" name="lastName" required></div>
+          ${this.pf({ name: "firstName", label: this.t("fields.firstName"), required: true, autocomplete: "given-name" })}
+          ${this.pf({ name: "lastName", label: this.t("fields.lastName"), required: true, autocomplete: "family-name" })}
         </div>
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="pyv-input" type="email" name="email" required></div>
+        ${this.pf({ name: "email", label: this.t("fields.email"), type: "email", required: true, autocomplete: "email" })}
         <div class="pyv-actions">
           <button type="submit" class="pyv-btn pyv-btn--primary pyv-submit">${this.escapeHtml(this.t("planYourVisit.sendVerification"))}</button>
         </div>
@@ -572,31 +572,25 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   private renderDetailsForm(): string {
     const v = this.verify!;
-    const congOptions = this.config.congregations
-      .map((c) => `<option value="${c.id}">${this.escapeHtml(c.name)}</option>`)
-      .join("");
+    const congOptions = [{ value: "", label: this.t("planYourVisit.selectCongregation") }].concat(
+      this.config.congregations.map((c) => ({ value: String(c.id), label: c.name }))
+    );
 
     return `
       <h2 class="pyv-title">${this.escapeHtml(this.t("planYourVisit.title"))}</h2>
       <p class="pyv-lead">${this.escapeHtml(this.t("planYourVisit.detailsLead"))}</p>
       <form id="pyv-details-form" class="pyv-form" novalidate>
         <h3 class="pyv-section">${this.escapeHtml(this.t("planYourVisit.visitDetails"))}</h3>
-        <div class="pyv-field">
-          <label for="pyv-congregation">${this.escapeHtml(this.t("fields.congregation"))}${requiredStar()}</label>
-          <select id="pyv-congregation" class="pyv-input" name="congregationId" required>
-            <option value="">${this.escapeHtml(this.t("planYourVisit.selectCongregation"))}</option>
-            ${congOptions}
-          </select>
-        </div>
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("planYourVisit.whenCanWeExpectYou"))}${requiredStar()}</label><input class="pyv-input" name="whenCanWeExpectYou" required></div>
+        ${this.pf({ name: "congregationId", label: this.t("fields.congregation"), type: "select", required: true, options: congOptions })}
+        ${this.pf({ name: "whenCanWeExpectYou", label: this.t("planYourVisit.whenCanWeExpectYou"), required: true })}
 
         <h3 class="pyv-section">${this.escapeHtml(this.t("planYourVisit.yourDetails"))}</h3>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="pyv-input" name="headFirstName" value="${this.escapeAttr(v.firstName || "")}" required></div>
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="pyv-input" name="headLastName" value="${this.escapeAttr(v.lastName || "")}" required></div>
+          ${this.pf({ name: "headFirstName", label: this.t("fields.firstName"), required: true, autocomplete: "given-name", value: v.firstName || "" })}
+          ${this.pf({ name: "headLastName", label: this.t("fields.lastName"), required: true, autocomplete: "family-name", value: v.lastName || "" })}
         </div>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.email"))}</label><input class="pyv-input pyv-readonly" type="email" value="${this.escapeAttr(v.email || "")}" readonly></div>
+          ${this.pf({ name: "headEmail", label: this.t("fields.email"), type: "email", value: v.email || "", inputClass: "pyv-input pyv-readonly", attrs: { readonly: true } })}
           ${this.phoneField("headMobilePhone", true)}
         </div>
         ${this.renderAddress()}
@@ -617,9 +611,9 @@ export class PlanYourVisitWidget extends MPNextWidget {
     return `
       <fieldset class="pyv-fieldset">
         <legend>${this.escapeHtml(this.t("planYourVisit.spouse"))}</legend>
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.firstName"))}</label><input class="pyv-input" name="spouseFirstName"></div>
+        ${this.pf({ name: "spouseFirstName", label: this.t("fields.firstName") })}
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.email"))}</label><input class="pyv-input" type="email" name="spouseEmail"></div>
+          ${this.pf({ name: "spouseEmail", label: this.t("fields.email"), type: "email" })}
           ${this.phoneField("spousePhone", false)}
         </div>
       </fieldset>`;
@@ -628,7 +622,6 @@ export class PlanYourVisitWidget extends MPNextWidget {
   private renderChild(c: ChildState): string {
     const v = c.values;
     const name = (f: string) => `child-${c.key}-${f}`;
-    const base = { idPrefix: this.instanceId, wrapperClass: "pyv-field", inputClass: "pyv-input" };
     // The gender and age/grade *values* come from MP and stay as MP supplies
     // them; the empty first option is the widget's own placeholder.
     const genderOptions = [{ value: "", label: this.t("fields.gender") }].concat(
@@ -638,12 +631,12 @@ export class PlanYourVisitWidget extends MPNextWidget {
       <fieldset class="pyv-fieldset" id="pyv-child-${c.key}">
         <legend>${this.escapeHtml(this.t("planYourVisit.child"))} <button type="button" class="pyv-remove" data-action="remove-child" data-child-key="${c.key}" aria-label="${this.escapeAttr(this.t("planYourVisit.removeChild"))}">&times;</button></legend>
         <div class="pyv-grid2">
-          ${field({ ...base, name: name("firstName"), label: this.t("fields.firstName"), required: true, value: v.firstName })}
-          ${field({ ...base, name: name("lastName"), label: this.t("fields.lastName"), required: true, value: v.lastName ?? this.verify?.lastName ?? "" })}
+          ${this.pf({ name: name("firstName"), label: this.t("fields.firstName"), required: true, value: v.firstName })}
+          ${this.pf({ name: name("lastName"), label: this.t("fields.lastName"), required: true, value: v.lastName ?? this.verify?.lastName ?? "" })}
         </div>
         <div class="pyv-grid2">
-          ${field({ ...base, name: name("dob"), label: this.t("fields.dateOfBirth"), type: "date", required: true, value: v.dob, attrs: { "data-role": "child-dob", "data-child-key": c.key } })}
-          ${field({ ...base, name: name("gender"), label: this.t("fields.gender"), type: "select", value: v.gender ?? "", options: genderOptions })}
+          ${this.pf({ name: name("dob"), label: this.t("fields.dateOfBirth"), type: "date", required: true, value: v.dob, attrs: { "data-role": "child-dob", "data-child-key": c.key } })}
+          ${this.pf({ name: name("gender"), label: this.t("fields.gender"), type: "select", value: v.gender ?? "", options: genderOptions })}
         </div>
         <div class="pyv-field" data-mpx-field>
           <label for="${fieldId(name("ageGroup"), this.instanceId)}">${this.escapeHtml(this.t("planYourVisit.ageOrGradeGroup"))}</label>
@@ -685,27 +678,32 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   private renderAddress(): string {
     if (!this.collectAddress) return "";
-    const countryOptions = [
-      `<option value="">${this.escapeHtml(this.t("fields.country"))}</option>`,
-    ]
-      .concat(
-        this.config.countries.map(
-          (c) =>
-            `<option value="${this.escapeAttr(c.code)}" ${/united states/i.test(c.name) ? "selected" : ""}>${this.escapeHtml(c.name)}</option>`
-        )
-      )
-      .join("");
+    // Default to the United States entry, chosen once: a name regex alone also
+    // marks "United States Minor Outlying Islands" selected, and the browser
+    // then keeps the *last* selected option.
+    const countries = this.config.countries;
+    const us =
+      countries.find((c) => c.code.toUpperCase() === "US") ??
+      countries.find((c) => /^united states/i.test(c.name));
+    const countryOptions = [{ value: "", label: this.t("fields.country") }].concat(
+      countries.map((c) => ({ value: c.code, label: c.name }))
+    );
     return `
       <h3 class="pyv-section">${this.escapeHtml(this.t("fields.address"))}</h3>
-      <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.address"))}${requiredStar()}</label><input class="pyv-input" name="addressLine1" required></div>
+      ${this.pf({ name: "addressLine1", label: this.t("fields.address"), required: true, autocomplete: "address-line1" })}
       <div class="pyv-grid2">
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.city"))}${requiredStar()}</label><input class="pyv-input" name="addressCity" required></div>
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("planYourVisit.stateProvince"))}${requiredStar()}</label><input class="pyv-input" name="addressState" required></div>
+        ${this.pf({ name: "addressCity", label: this.t("fields.city"), required: true, autocomplete: "address-level2" })}
+        ${this.pf({ name: "addressState", label: this.t("planYourVisit.stateProvince"), required: true, autocomplete: "address-level1" })}
       </div>
       <div class="pyv-grid2">
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("planYourVisit.zipPostalCode"))}${requiredStar()}</label><input class="pyv-input" name="addressPostal" required></div>
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.country"))}</label><select class="pyv-input" name="addressCountry">${countryOptions}</select></div>
+        ${this.pf({ name: "addressPostal", label: this.t("planYourVisit.zipPostalCode"), required: true, autocomplete: "postal-code" })}
+        ${this.pf({ name: "addressCountry", label: this.t("fields.country"), type: "select", autocomplete: "country", value: us?.code ?? "", options: countryOptions })}
       </div>`;
+  }
+
+  /** `field()` with this widget's id prefix and classes (C28). */
+  private pf(opts: FieldOptions): string {
+    return field({ idPrefix: this.instanceId, wrapperClass: "pyv-field", inputClass: "pyv-input", ...opts });
   }
 
   private hiddenMilestones(): string {

@@ -8,8 +8,9 @@ import {
 import {
   validateForm,
   bindLiveValidation,
-  requiredStar,
+  field,
   FORM_VALIDATION_STYLES,
+  type FieldOptions,
 } from "../shared/form-validation";
 import {
   loadGoogleMaps,
@@ -200,7 +201,7 @@ export class CustomFormWidget extends MPNextWidget {
   private async submit() {
     const form = this.root.querySelector<HTMLFormElement>("#cf-form");
     if (!form || !this.header) return;
-    if (!validateForm(form).valid) return;
+    if (!validateForm(form, { t: this.t }).valid) return;
 
     const fd = new FormData(form);
     const payload: Record<string, string> = {};
@@ -268,7 +269,7 @@ export class CustomFormWidget extends MPNextWidget {
     const form = this.root.querySelector<HTMLFormElement>("#cf-form");
     if (form) {
       bindCustomFormDependsOn(form, this.fields);
-      bindLiveValidation(form);
+      bindLiveValidation(form, { t: this.t });
       this.initGooglePlaces();
     }
   }
@@ -283,7 +284,7 @@ export class CustomFormWidget extends MPNextWidget {
     const key = this.header?.googleMapsApiKey;
     if (!this.header?.getAddressInfo || !key || key.trim() === "") return;
 
-    const line1 = this.root.querySelector<HTMLInputElement>("#cf-line1");
+    const line1 = this.control("AddressLine1");
     if (!line1) return;
 
     let loaded = false;
@@ -297,17 +298,17 @@ export class CustomFormWidget extends MPNextWidget {
     if (!line1.isConnected) return;
 
     attachAddressAutocomplete(line1, (addr) => {
-      const setVal = (id: string, value: string) => {
-        const el = this.root.querySelector<HTMLInputElement>(`#${id}`);
+      const setVal = (name: string, value: string) => {
+        const el = this.control(name);
         if (el && value) {
           el.value = value;
           el.dispatchEvent(new Event("input", { bubbles: true }));
         }
       };
-      setVal("cf-line1", addr.line1);
-      setVal("cf-city", addr.city);
-      setVal("cf-state", addr.state);
-      setVal("cf-postal", addr.postalCode);
+      setVal("AddressLine1", addr.line1);
+      setVal("City", addr.city);
+      setVal("StateRegion", addr.state);
+      setVal("PostalCode", addr.postalCode);
     });
   }
 
@@ -368,7 +369,7 @@ export class CustomFormWidget extends MPNextWidget {
           <form id="cf-form" class="cf-form" novalidate>
             ${h.getContactInfo ? this.renderContactBlock() : ""}
             ${h.getAddressInfo ? this.renderAddressBlock() : ""}
-            ${renderCustomFormFields(this.fields, { formId: h.formId, t: this.t })}
+            ${renderCustomFormFields(this.fields, { formId: h.formId, t: this.t, idPrefix: this.instanceId })}
             <div class="cf-actions">
               <button class="cf-btn cf-btn--primary cf-submit" type="button">${this.escapeHtml(this.t("common.submit"))}</button>
             </div>
@@ -382,28 +383,44 @@ export class CustomFormWidget extends MPNextWidget {
       <fieldset class="cf-fieldset">
         <legend>${this.escapeHtml(this.t("customForm.yourInformation"))}</legend>
         <div class="cf-grid2">
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="cf-input" name="FirstName" required></div>
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="cf-input" name="LastName" required></div>
+          ${this.cf({ name: "FirstName", label: this.t("fields.firstName"), required: true, autocomplete: "given-name" })}
+          ${this.cf({ name: "LastName", label: this.t("fields.lastName"), required: true, autocomplete: "family-name" })}
         </div>
         <div class="cf-grid2">
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="cf-input" type="email" name="EmailAddress" required></div>
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}</label><input class="cf-input" name="MobilePhoneNumber"></div>
+          ${this.cf({ name: "EmailAddress", label: this.t("fields.email"), type: "email", required: true, autocomplete: "email" })}
+          ${this.cf({ name: "MobilePhoneNumber", label: this.t("fields.mobilePhone"), type: "tel" })}
         </div>
       </fieldset>`;
   }
 
+  /**
+   * The address block. `autocomplete="off"` stays on these inputs because
+   * Google Places draws its own suggestion list over line 1, and a browser
+   * autofill dropdown would sit on top of it.
+   */
   private renderAddressBlock(): string {
+    const off = "off";
     return `
       <fieldset class="cf-fieldset">
         <legend>${this.escapeHtml(this.t("fields.address"))}</legend>
-        <div class="cf-field"><label>${this.escapeHtml(this.t("fields.addressLine1"))}${requiredStar()}</label><input class="cf-input" id="cf-line1" name="AddressLine1" autocomplete="off" required></div>
-        <div class="cf-field"><label>${this.escapeHtml(this.t("fields.addressLine2"))}</label><input class="cf-input" id="cf-line2" name="AddressLine2" autocomplete="off"></div>
+        ${this.cf({ name: "AddressLine1", label: this.t("fields.addressLine1"), required: true, autocomplete: off })}
+        ${this.cf({ name: "AddressLine2", label: this.t("fields.addressLine2"), autocomplete: off })}
         <div class="cf-grid3">
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.city"))}${requiredStar()}</label><input class="cf-input" id="cf-city" name="City" autocomplete="off" required></div>
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.stateRegion"))}${requiredStar()}</label><input class="cf-input" id="cf-state" name="StateRegion" autocomplete="off" required></div>
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.postalCode"))}${requiredStar()}</label><input class="cf-input" id="cf-postal" name="PostalCode" autocomplete="off" required></div>
+          ${this.cf({ name: "City", label: this.t("fields.city"), required: true, autocomplete: off })}
+          ${this.cf({ name: "StateRegion", label: this.t("fields.stateRegion"), required: true, autocomplete: off })}
+          ${this.cf({ name: "PostalCode", label: this.t("fields.postalCode"), required: true, autocomplete: off })}
         </div>
       </fieldset>`;
+  }
+
+  /** `field()` with this widget's id prefix and classes (C28). */
+  private cf(opts: FieldOptions): string {
+    return field({ idPrefix: this.instanceId, wrapperClass: "cf-field", inputClass: "cf-input", ...opts });
+  }
+
+  /** A control in this widget's own blocks, by `name`. */
+  private control(name: string): HTMLInputElement | null {
+    return this.root.querySelector<HTMLInputElement>(`#cf-form [name="${name}"]`);
   }
 
   private stateRow(icon: string, text: string): string {
