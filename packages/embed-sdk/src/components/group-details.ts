@@ -4,6 +4,7 @@ import {
   validateForm,
   bindLiveValidation,
   requiredStar,
+  field,
   FORM_VALIDATION_STYLES,
 } from "../shared/form-validation";
 
@@ -106,6 +107,7 @@ export class GroupDetailsWidget extends MPNextWidget {
       "inquiry-email-template",
       "signup-email-template",
       "leader-signup-email-template",
+      "require-inquiry-phone",
     ];
   }
 
@@ -135,6 +137,10 @@ export class GroupDetailsWidget extends MPNextWidget {
   }
   private boolAttr(name: string): boolean {
     return this.getAttribute(name) === "true";
+  }
+  /** C16: the inquiry phone is required unless the page opts out. Default true. */
+  private get requireInquiryPhone(): boolean {
+    return this.getAttribute("require-inquiry-phone") !== "false";
   }
 
   private resolveGroupId(): string {
@@ -471,6 +477,10 @@ export class GroupDetailsWidget extends MPNextWidget {
       });
     });
 
+    // Sync `required` on the identity blocks with their visibility.
+    this.toggleBlankFields("inquire");
+    this.toggleBlankFields("signup");
+
     const inquireForm = this.root.querySelector<HTMLFormElement>("#gd-inquire-form");
     if (inquireForm) bindLiveValidation(inquireForm);
     const signupForm = this.root.querySelector<HTMLFormElement>("#gd-signup-form");
@@ -484,7 +494,11 @@ export class GroupDetailsWidget extends MPNextWidget {
     );
     if (!blank) return;
     const id = tab === "inquire" ? this.inquireContactId : this.signupContactId;
-    const showBlank = !id || id === "blank";
+    // Anonymous inquirers have no picker: the block is their only identity.
+    const showBlank =
+      tab === "inquire"
+        ? !this.isAuthenticated || !id || id === "blank"
+        : id === "blank";
     blank.style.display = showBlank ? "" : "none";
     blank.querySelectorAll<HTMLInputElement>("input[data-required]").forEach((input) => {
       if (showBlank) input.setAttribute("required", "");
@@ -690,7 +704,7 @@ export class GroupDetailsWidget extends MPNextWidget {
       <form id="gd-inquire-form" class="gd-form" novalidate>
         ${asPicker}
         <div id="gd-inquire-blank" style="display:${showBlank ? "" : "none"}">
-          ${this.renderBlankFields(showBlank)}
+          ${this.renderBlankFields("inquire")}
         </div>
         <div class="gd-field">
           <label for="gd-inquire-message">${this.escapeHtml(this.t("fields.message"))}</label>
@@ -718,7 +732,7 @@ export class GroupDetailsWidget extends MPNextWidget {
       <form id="gd-signup-form" class="gd-form" novalidate>
         ${this.renderAsPicker("signup")}
         <div id="gd-signup-blank" style="display:${showBlank ? "" : "none"}">
-          ${this.renderBlankFields(showBlank)}
+          ${this.renderBlankFields("signup")}
         </div>
         <div class="gd-field">
           <label for="gd-signup-message">${this.escapeHtml(this.t("fields.message"))} <span class="gd-optional">(${this.escapeHtml(this.t("common.optional"))})</span></label>
@@ -768,16 +782,46 @@ export class GroupDetailsWidget extends MPNextWidget {
       </div>`;
   }
 
-  private renderBlankFields(required: boolean): string {
-    const req = required ? "required" : "";
+  /**
+   * The "Someone else…" identity block. Each control comes from the shared
+   * `field()` (W0), so it has a real `<label for>` and a missing value reads
+   * "{label} is required." (C19 row 9).
+   *
+   * Rendered `required` with its star, then {@link toggleBlankFields} strips
+   * `required` while the block is hidden: rendering it non-required would
+   * draw no star, and the star would then be missing when the block opens.
+   *
+   * The phone is required (C16) — on the inquiry tab unless the page sets
+   * `require-inquiry-phone="false"`, and always on a sign-up, as legacy did.
+   */
+  private renderBlankFields(tab: Tab): string {
+    const phoneRequired = tab === "signup" || this.requireInquiryPhone;
+    const f = (
+      name: string,
+      label: string,
+      opts: { type?: string; autocomplete?: string; required?: boolean } = {},
+    ) => {
+      const required = opts.required ?? true;
+      return field({
+        name,
+        label,
+        type: opts.type,
+        autocomplete: opts.autocomplete,
+        required,
+        idPrefix: `${this.instanceId}-${tab}`,
+        wrapperClass: "gd-field",
+        inputClass: "gd-input",
+        attrs: required ? { "data-required": true } : undefined,
+      });
+    };
     return `
       <div class="gd-grid2">
-        <div class="gd-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="gd-input" name="firstName" data-required ${req}></div>
-        <div class="gd-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="gd-input" name="lastName" data-required ${req}></div>
+        ${f("firstName", this.t("fields.firstName"), { autocomplete: "given-name" })}
+        ${f("lastName", this.t("fields.lastName"), { autocomplete: "family-name" })}
       </div>
       <div class="gd-grid2">
-        <div class="gd-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="gd-input" type="email" name="emailAddress" data-required ${req}></div>
-        <div class="gd-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}</label><input class="gd-input" type="tel" name="mobilePhoneNumber"></div>
+        ${f("emailAddress", this.t("fields.email"), { type: "email", autocomplete: "email" })}
+        ${f("mobilePhoneNumber", this.t("fields.mobilePhone"), { type: "tel", required: phoneRequired })}
       </div>`;
   }
 

@@ -233,4 +233,42 @@ describe("<next-group-details>", () => {
       expect(shadow(el).querySelector(".gd-message--warning")).not.toBeNull();
     });
   });
+
+  describe("inquiry phone (C16)", () => {
+    it("requires the phone on an anonymous inquiry and names the field", async () => {
+      const fetchFn = mockFetch({}, { signedIn: false });
+      const el = await mountSettled();
+      const phone = shadow(el).querySelector<HTMLInputElement>('#gd-inquire-form [name="mobilePhoneNumber"]')!;
+      expect(phone.required).toBe(true);
+      expect(phone.type).toBe("tel");
+      // A real accessible name: <label for=id>.
+      expect(shadow(el).querySelector(`label[for="${phone.id}"]`)?.textContent).toContain("Mobile Phone");
+
+      fill(el, "#gd-inquire-form", { firstName: "Grace", lastName: "Hopper", emailAddress: "g@example.com" });
+      submit(el, "inquire");
+      await vi.waitFor(() => expect(text(el)).toContain("Mobile Phone is required."));
+      expect(postsTo(fetchFn, "/group-details/inquire")).toHaveLength(0);
+    });
+
+    it("lets a church opt out with require-inquiry-phone=\"false\"", async () => {
+      const fetchFn = mockFetch({}, { signedIn: false });
+      const el = await mountSettled('group-id="49" require-inquiry-phone="false"');
+      expect(
+        shadow(el).querySelector<HTMLInputElement>('#gd-inquire-form [name="mobilePhoneNumber"]')!.required,
+      ).toBe(false);
+      fill(el, "#gd-inquire-form", { firstName: "Grace", lastName: "Hopper", emailAddress: "g@example.com" });
+      submit(el, "inquire");
+      await vi.waitFor(() => expect(postsTo(fetchFn, "/group-details/inquire")).toHaveLength(1));
+    });
+
+    it("does not require hidden identity fields when a household member is picked", async () => {
+      const fetchFn = mockFetch();
+      const el = await mountSettled();
+      const first = shadow(el).querySelector<HTMLInputElement>('#gd-inquire-form [name="firstName"]')!;
+      expect(first.required).toBe(false);
+      submit(el, "inquire");
+      await vi.waitFor(() => expect(postsTo(fetchFn, "/group-details/inquire")).toHaveLength(1));
+      expect(postsTo(fetchFn, "/group-details/inquire")[0]).toMatchObject({ contactId: 98 });
+    });
+  });
 });
