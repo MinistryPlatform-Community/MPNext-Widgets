@@ -285,3 +285,16 @@ describe('SubscriptionUpdateSchema bulk email (C55)', () => {
     ).toBe(true);
   });
 });
+
+describe('SubscriptionUpdateSchema congregationId (C61)', () => {
+  it('accepts a positive integer or null beside subscribedIds', () => {
+    expect(SubscriptionUpdateSchema.safeParse({ subscribedIds: [1], congregationId: 3 }).success).toBe(true);
+    expect(SubscriptionUpdateSchema.safeParse({ subscribedIds: [1], congregationId: null }).success).toBe(true);
+  });
+
+  it('rejects zero, negatives and floats', () => {
+    for (const congregationId of [0, -1, 1.5]) {
+      expect(SubscriptionUpdateSchema.safeParse({ subscribedIds: [1], congregationId }).success).toBe(false);
+    }
+  });
+});

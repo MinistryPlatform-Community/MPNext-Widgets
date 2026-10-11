@@ -12,6 +12,23 @@ interface SubscriptionItem {
 const SEARCH_THRESHOLD = 6;
 
 export class SubscriptionsWidget extends MPNextWidget {
+  /**
+   * C61: `congregation-id` scopes the publication list (legacy `congregationid`,
+   * its one supported option). An attribute for the embedding page, not a
+   * visitor-facing campus dropdown.
+   */
+  static get observedAttributes() {
+    return ["congregation-id"];
+  }
+
+  /** A positive integer, or null (unscoped). Anything else is ignored. */
+  private get congregationId(): number | null {
+    const raw = (this.readAttr("congregation-id") ?? "").trim();
+    if (!/^\d+$/.test(raw)) return null;
+    const n = Number(raw);
+    return n > 0 ? n : null;
+  }
+
   private items: SubscriptionItem[] = [];
   private loading = true;
   /** Signed out: a prompt with Sign In, never "Unable to Load" + Try Again (C53). */
@@ -42,6 +59,7 @@ export class SubscriptionsWidget extends MPNextWidget {
     // sees English swap to Spanish.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.loadSubscriptions();
     });
     document.addEventListener("profileSaved", this.onProfileSaved);
@@ -57,6 +75,14 @@ export class SubscriptionsWidget extends MPNextWidget {
     this.loadSubscriptions();
   }
 
+  /** C39: a late or changed `congregation-id` re-scopes the list. */
+  protected override reload(): void {
+    this.items = [];
+    this.message = null;
+    this.searchQuery = "";
+    this.loadSubscriptions();
+  }
+
   private async loadSubscriptions() {
     this.loading = true;
     this.needsAuth = false;
@@ -64,7 +90,12 @@ export class SubscriptionsWidget extends MPNextWidget {
     this.render();
 
     try {
-      const res = await this.fetch("/api/embed/subscriptions");
+      const congregationId = this.congregationId;
+      const res = await this.fetch(
+        congregationId === null
+          ? "/api/embed/subscriptions"
+          : `/api/embed/subscriptions?congregationId=${congregationId}`
+      );
       if (this.isNeedsAuth(res)) {
         this.needsAuth = true;
         return;
@@ -112,7 +143,9 @@ export class SubscriptionsWidget extends MPNextWidget {
       const res = await this.fetch("/api/embed/subscriptions", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subscribedIds }),
+        // The same scope the list was read with, so the server diffs against
+        // the publications this page showed and nothing else (C61).
+        body: JSON.stringify({ subscribedIds, congregationId: this.congregationId }),
       });
 
       if (!res.ok) {

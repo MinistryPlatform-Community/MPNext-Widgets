@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   SubscriptionService,
+  publicationFilter,
   isContactGuid,
   maskEmailForDisplay,
 } from '@/services/subscriptionService';
@@ -1082,6 +1083,45 @@ describe('SubscriptionService', () => {
       const service = await SubscriptionService.getInstance();
       const result = await service.setBulkEmailOptOutForContact(100, false);
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('congregation scope (C61)', () => {
+    it('leaves the unscoped filter exactly as it was', () => {
+      expect(publicationFilter(null)).toBe('Available_Online = 1 OR Available_Online IS NULL');
+      expect(publicationFilter(0)).toBe('Available_Online = 1 OR Available_Online IS NULL');
+    });
+
+    it('narrows, not replaces, the Available_Online clause, keeping church-wide publications', () => {
+      expect(publicationFilter(3)).toBe(
+        '(Available_Online = 1 OR Available_Online IS NULL) AND (Congregation_ID = 3 OR Congregation_ID IS NULL)'
+      );
+    });
+
+    it('reads with the scope', async () => {
+      mockGetTableRecords.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      const service = await SubscriptionService.getInstance();
+      await service.getSubscriptions(100, 3);
+      expect(mockGetTableRecords.mock.calls[0][0].filter).toBe(publicationFilter(3));
+    });
+
+    it('diffs a save against the same scope, so publications the page did not show are untouched', async () => {
+      // Scoped universe: publication 3 only. The contact is also on 9 (another
+      // campus), which a scoped save must not unsubscribe.
+      mockGetTableRecords
+        .mockResolvedValueOnce([{ Publication_ID: 3 }])
+        .mockResolvedValueOnce([
+          { Contact_Publication_ID: 50, Publication_ID: 3, Unsubscribed: false },
+          { Contact_Publication_ID: 51, Publication_ID: 9, Unsubscribed: false },
+        ]);
+      mockUpdateTableRecords.mockResolvedValueOnce([]);
+      const service = await SubscriptionService.getInstance();
+      await service.updateSubscriptions(100, [], 3);
+
+      expect(mockGetTableRecords.mock.calls[0][0].filter).toBe(publicationFilter(3));
+      expect(mockUpdateTableRecords).toHaveBeenCalledWith('dp_Contact_Publications', [
+        { Contact_Publication_ID: 50, Unsubscribed: true },
+      ]);
     });
   });
 });

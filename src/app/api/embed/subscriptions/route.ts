@@ -10,6 +10,17 @@ import { SubscriptionService } from "@/services/subscriptionService";
 import { SubscriptionUpdateSchema } from "@mpnext/types";
 import { z } from "zod";
 
+/**
+ * `?congregationId=` (C61). Absent or empty → no scope; anything else must be a
+ * positive integer, or the request is refused rather than silently unscoped.
+ */
+function parseCongregationId(value: string | null): { ok: true; value: number | null } | { ok: false } {
+  if (value === null || value.trim() === "") return { ok: true, value: null };
+  if (!/^\d+$/.test(value.trim())) return { ok: false };
+  const n = Number(value.trim());
+  return n > 0 ? { ok: true, value: n } : { ok: false };
+}
+
 function fallbackCors(origin: string): HeadersInit {
   return buildFallbackCorsHeaders(origin);
 }
@@ -32,6 +43,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const congregation = parseCongregationId(req.nextUrl.searchParams.get("congregationId"));
+    if (!congregation.ok) {
+      return NextResponse.json(
+        { error: "validation_failed", message: "congregationId must be a positive integer" },
+        { status: 400, headers }
+      );
+    }
+
     const service = await SubscriptionService.getInstance();
     const contactId = await service.getContactIdByUserGuid(claims.sub);
 
@@ -43,7 +62,7 @@ export async function GET(req: NextRequest) {
     }
 
     const [subscriptions, bulkEmailOptOut] = await Promise.all([
-      service.getSubscriptions(contactId),
+      service.getSubscriptions(contactId, congregation.value),
       service.getBulkEmailOptOut(contactId),
     ]);
 
@@ -97,11 +116,11 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    const { subscribedIds, bulkEmailOptOut } = parsed.data;
+    const { subscribedIds, bulkEmailOptOut, congregationId } = parsed.data;
     let result: { success: boolean; error?: string; bulkEmailOptOut?: boolean } = { success: true };
 
     if (subscribedIds !== undefined) {
-      result = await service.updateSubscriptions(contactId, subscribedIds);
+      result = await service.updateSubscriptions(contactId, subscribedIds, congregationId ?? null);
     }
     if (result.success && bulkEmailOptOut !== undefined) {
       result = await service.setBulkEmailOptOutForContact(contactId, bulkEmailOptOut);

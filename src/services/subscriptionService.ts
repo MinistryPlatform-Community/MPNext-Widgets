@@ -149,6 +149,23 @@ const NO_MATCH: UnsubscribeOutcome = {
   changed: 0,
 };
 
+/**
+ * The `dp_Publications` filter for the signed-in management view.
+ *
+ * `congregationId` (C61, legacy `congregationid`) **narrows** the
+ * `Available_Online` clause, never replaces it. `dp_Publications.Congregation_ID`
+ * is a plain nullable FK column (checked with `mp_lookup`), so no `_TABLE`
+ * traversal is needed. A publication with no congregation is church-wide and
+ * stays visible on every campus page; hiding it would take the main newsletter
+ * off every scoped page. Exported so the read and the write can never use
+ * different universes.
+ */
+export function publicationFilter(congregationId?: number | null): string {
+  const online = "Available_Online = 1 OR Available_Online IS NULL";
+  if (!congregationId || !Number.isInteger(congregationId) || congregationId <= 0) return online;
+  return `(${online}) AND (Congregation_ID = ${congregationId} OR Congregation_ID IS NULL)`;
+}
+
 export class SubscriptionService {
   private static instance: SubscriptionService;
   private mp: MPHelper | null = null;
@@ -189,12 +206,13 @@ export class SubscriptionService {
    * contact's subscription state. Sorted by Online_Sort_Order then Title.
    */
   public async getSubscriptions(
-    contactId: number
+    contactId: number,
+    congregationId: number | null = null
   ): Promise<SubscriptionItem[]> {
     const [publications, contactPubs] = await Promise.all([
       this.mp!.getTableRecords<PublicationRow>({
         table: "dp_Publications",
-        filter: `Available_Online = 1 OR Available_Online IS NULL`,
+        filter: publicationFilter(congregationId),
         select: "Publication_ID,Title,Description,Online_Sort_Order",
       }),
       this.mp!.getTableRecords<ContactPublicationRow>({
@@ -285,13 +303,17 @@ export class SubscriptionService {
    */
   public async updateSubscriptions(
     contactId: number,
-    subscribedIds: number[]
+    subscribedIds: number[],
+    congregationId: number | null = null
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Get all available publications
+      // The publications the widget showed. `subscribedIds` is the full desired
+      // set *within this universe*, so a congregation-scoped page must diff
+      // against the same scope (C61) — otherwise every publication it did not
+      // show would read as "unticked" and be unsubscribed.
       const publications = await this.mp!.getTableRecords<PublicationRow>({
         table: "dp_Publications",
-        filter: `Available_Online = 1 OR Available_Online IS NULL`,
+        filter: publicationFilter(congregationId),
         select: "Publication_ID",
       });
       const validPubIds = new Set(publications.map((p) => p.Publication_ID));

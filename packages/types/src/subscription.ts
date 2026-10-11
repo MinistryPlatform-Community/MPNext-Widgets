@@ -51,6 +51,12 @@ export const SubscriptionUpdateSchema = z
     subscribedIds: z.array(z.number().int()).optional(),
     /** Set `Contacts.Bulk_Email_Opt_Out` (C55). Saved per toggle, like a publication. */
     bulkEmailOptOut: z.boolean().optional(),
+    /**
+     * The `congregation-id` the list was scoped to (C61). `subscribedIds` is
+     * diffed against the same scope, so publications the page did not show are
+     * left alone.
+     */
+    congregationId: z.number().int().positive().nullable().optional(),
   })
   .refine((d) => d.subscribedIds !== undefined || d.bulkEmailOptOut !== undefined, {
     message: "Provide subscribedIds or bulkEmailOptOut",

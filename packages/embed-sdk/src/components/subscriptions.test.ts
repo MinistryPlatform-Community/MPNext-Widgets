@@ -4,6 +4,8 @@
  *   - C55: the bulk-email toggle round-trips `Bulk_Email_Opt_Out`, saves per
  *     toggle with no submit button, reverts on failure, and follows a
  *     `next-profile` save on the same page.
+ *   - C61: `congregation-id` scopes the read *and* the diff the save is made
+ *     against, and a late set re-scopes (C39).
  *   - per-publication saving is unchanged (regression guard).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -163,6 +165,33 @@ describe("<next-subscriptions>", () => {
     const el = await mountSettled();
     toggle(shadow(el).querySelector<HTMLInputElement>('.sub-check[data-id="4"]')!, true);
     await vi.waitFor(() => expect(puts).toHaveLength(1));
-    expect(puts[0]).toEqual({ subscribedIds: [3, 4] });
+    expect(puts[0]).toEqual({ subscribedIds: [3, 4], congregationId: null });
+  });
+
+  describe("congregation-id (C61)", () => {
+    it("scopes the read and sends the same scope with every publication save", async () => {
+      mockFetch({ bulkEmailOptOut: false });
+      const el = await mountSettled('congregation-id="3"');
+      expect(gets.at(-1)).toContain("/api/embed/subscriptions?congregationId=3");
+
+      toggle(shadow(el).querySelector<HTMLInputElement>('.sub-check[data-id="4"]')!, true);
+      await vi.waitFor(() => expect(puts).toHaveLength(1));
+      expect(puts[0]).toEqual({ subscribedIds: [3, 4], congregationId: 3 });
+    });
+
+    it("is unscoped without the attribute, and ignores a non-numeric value", async () => {
+      mockFetch();
+      await mountSettled('congregation-id="north"');
+      expect(gets.at(-1)).not.toContain("congregationId");
+    });
+
+    it("re-scopes when the attribute is set after the first paint (C39)", async () => {
+      mockFetch();
+      const el = await mountSettled();
+      expect(gets).toHaveLength(1);
+      el.setAttribute("congregation-id", "7");
+      await vi.waitFor(() => expect(gets).toHaveLength(2));
+      expect(gets[1]).toContain("congregationId=7");
+    });
   });
 });
