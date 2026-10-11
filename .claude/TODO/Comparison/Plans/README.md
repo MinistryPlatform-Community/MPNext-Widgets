@@ -1,5 +1,7 @@
 # Remediation plans — 82 comparison findings, grouped into work
 
+> **2026-10-11: execution now runs through [`EPIC/`](EPIC/README.md)** (branch `epic/comparison-remediation`). Its status is re-verified against the code; where these files disagree, the EPIC files win.
+
 Written 2026-09-09 from the 82 `C`-numbered items in
 [`../`](..) (see [`../README.md`](../README.md) for the findings themselves).
 
