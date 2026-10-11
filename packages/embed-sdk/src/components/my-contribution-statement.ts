@@ -6,6 +6,8 @@ import {
   givingSignedOut,
   headingTag,
 } from "./giving-shared";
+// C38: the Go Paperless control is this element, nested (`show-paperless-toggle`).
+import "./statement-preferences";
 
 interface ContributionStatement {
   Statement_ID: number;
@@ -34,7 +36,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
   private fallbackLinks: Record<string, string> = {};
 
   static get observedAttributes() {
-    return ["heading-level"];
+    return ["heading-level", "show-paperless-toggle"];
   }
 
   connectedCallback() {
@@ -220,9 +222,71 @@ export class MyContributionStatementWidget extends MPNextWidget {
       });
   }
 
+  /**
+   * Paint the widget. The shadow root holds two regions: the statements card,
+   * which is re-rendered freely, and — when `show-paperless-toggle` is set — a
+   * persistent `<next-statement-preferences>` beneath it (C38). Keeping that
+   * element out of the re-rendered region means a year click does not destroy
+   * it, refetch the preference, or drop its "updated" message.
+   */
   render() {
+    this.ensureLayout();
+    this.mainEl!.innerHTML = this.renderMainHtml();
+    this.syncPaperless();
+  }
+
+  private mainEl: HTMLDivElement | null = null;
+  private extrasEl: HTMLDivElement | null = null;
+  private prefsEl: HTMLElement | null = null;
+
+  private ensureLayout(): void {
+    if (this.mainEl?.parentNode === this.root && this.extrasEl?.parentNode === this.root) return;
+    this.mainEl = document.createElement("div");
+    this.mainEl.className = "nw-main";
+    this.extrasEl = document.createElement("div");
+    this.extrasEl.className = "nw-extras";
+    this.root.append(this.mainEl, this.extrasEl);
+  }
+
+  /** `show-paperless-toggle` (C38): opt-in, any value but "false" turns it on. */
+  private get showPaperlessToggle(): boolean {
+    const raw = this.getAttribute("show-paperless-toggle");
+    return raw !== null && raw.trim().toLowerCase() !== "false";
+  }
+
+  /**
+   * C38: embed the Go Paperless control by **reusing** `next-statement-preferences`
+   * — the element itself, not a copy of its logic — so `Statement_Method_ID` is
+   * read and written by exactly one implementation (the one that reads it
+   * correctly, unlike legacy). It follows this widget's locale and heading level,
+   * and is hidden while this widget is loading, signed out or in error, so a
+   * signed-out visitor sees one sign-in prompt, not two.
+   */
+  private syncPaperless(): void {
+    const extras = this.extrasEl!;
+    if (!this.showPaperlessToggle) {
+      this.prefsEl?.remove();
+      this.prefsEl = null;
+      extras.hidden = true;
+      return;
+    }
+    if (!this.prefsEl) {
+      const el = document.createElement("next-statement-preferences");
+      if (this.apiHost) el.setAttribute("api-host", this.apiHost);
+      this.prefsEl = el;
+      extras.appendChild(el);
+    }
+    const el = this.prefsEl;
+    const level = this.getAttribute("heading-level");
+    if (level === null) el.removeAttribute("heading-level");
+    else if (el.getAttribute("heading-level") !== level) el.setAttribute("heading-level", level);
+    if (el.getAttribute("lang") !== this.locale) el.setAttribute("lang", this.locale);
+    extras.hidden = this.loading || this.signedOut || this.error !== null;
+  }
+
+  private renderMainHtml(): string {
     if (this.loading) {
-      this.root.innerHTML = `
+      return `
         <div class="nw-statements">
           <div class="header">
             <div class="loading-row">
@@ -231,11 +295,10 @@ export class MyContributionStatementWidget extends MPNextWidget {
             </div>
           </div>
         </div>`;
-      return;
     }
 
     if (this.signedOut) {
-      this.root.innerHTML = `
+      return `
         <div class="nw-statements">
           <div class="header">
             <${this.h(0)} class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</${this.h(0)}>
@@ -250,11 +313,10 @@ export class MyContributionStatementWidget extends MPNextWidget {
             )}
           </div>
         </div>`;
-      return;
     }
 
     if (this.error) {
-      this.root.innerHTML = `
+      return `
         <div class="nw-statements">
           <div class="header">
             <div class="title">${this.escapeHtml(this.t("common.unableToLoad"))}</div>
@@ -264,12 +326,11 @@ export class MyContributionStatementWidget extends MPNextWidget {
             <button class="retry-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
           </div>
         </div>`;
-      return;
     }
 
     const hasStatements = this.groups.some((g) => g.statements.length > 0);
     if (!hasStatements) {
-      this.root.innerHTML = `
+      return `
         <div class="nw-statements">
           <div class="header">
             <${this.h(0)} class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</${this.h(0)}>
@@ -278,10 +339,9 @@ export class MyContributionStatementWidget extends MPNextWidget {
             <div class="empty-state">${this.escapeHtml(this.t("contributionStatement.empty"))}</div>
           </div>
         </div>`;
-      return;
     }
 
-    this.root.innerHTML = this.renderList();
+    return this.renderList();
   }
 
   private renderList(): string {
@@ -408,6 +468,14 @@ export class MyContributionStatementWidget extends MPNextWidget {
       }
       @keyframes spin {
         to { transform: rotate(360deg); }
+      }
+
+      .nw-extras {
+        display: block;
+        margin-top: 16px;
+      }
+      .nw-extras[hidden] {
+        display: none;
       }
 
       .list-body {

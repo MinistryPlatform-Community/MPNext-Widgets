@@ -293,7 +293,20 @@ const extras: Record<string, WidgetExtras> = {
   },
 
   "my-contribution-statement": {
-    implementationCode: `<next-my-contribution-statement></next-my-contribution-statement>`,
+    attributes: { "show-paperless-toggle": "true" },
+    controls: [
+      {
+        name: "showPaperlessToggle", label: "Go Paperless toggle", type: "select", attribute: "show-paperless-toggle",
+        options: [
+          { label: "Shown", value: "true" },
+          { label: "Hidden", value: "false" },
+        ],
+        defaultValue: "true",
+      },
+    ],
+    implementationCode: `<!-- Replacing mpp-my-contribution-statement? Legacy carried the
+     Go Paperless toggle too; show-paperless-toggle embeds it (C38). -->
+<next-my-contribution-statement show-paperless-toggle="true"></next-my-contribution-statement>`,
   },
 
   "statement-preferences": {

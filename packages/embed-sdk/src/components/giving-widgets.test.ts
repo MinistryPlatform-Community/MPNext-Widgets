@@ -612,6 +612,68 @@ describe("giving widgets", () => {
     });
   });
 
+  // ── C38: Go Paperless inside the statement widget ──────────────────────
+
+  describe("next-my-contribution-statement show-paperless-toggle (C38)", () => {
+    const both = (method = 2): Handler => (url) => {
+      if (url.includes("/api/embed/contribution-statements")) return jsonResponse(statementGroups());
+      if (url.includes("/api/embed/statement-preferences")) {
+        return jsonResponse({ donorId: 6, statementMethodId: method, paperless: method === 2 });
+      }
+      return undefined;
+    };
+    const prefs = (el: HTMLElement) =>
+      shadow(el).querySelector<HTMLElement>("next-statement-preferences");
+
+    it("is off by default — nothing changes for a host that does not ask", async () => {
+      const fn = mockFetch(both());
+      const el = await settled(mount("next-my-contribution-statement"));
+      expect(prefs(el)).toBeNull();
+      expect(fn.mock.calls.some(([u]) => String(u).includes("statement-preferences"))).toBe(false);
+    });
+
+    it("embeds next-statement-preferences, which reads Statement_Method_ID correctly", async () => {
+      mockFetch(both(1)); // 1 = Postal Mail: legacy showed this as paperless; we must not
+      const el = await settled(
+        mount("next-my-contribution-statement", 'show-paperless-toggle="true" heading-level="3"'),
+      );
+      const inner = prefs(el)!;
+      expect(inner).not.toBeNull();
+      expect(inner.closest(".nw-extras")).not.toHaveAttribute("hidden");
+      await settled(inner);
+      expect(inner.shadowRoot!.querySelector<HTMLInputElement>("#paperless-toggle")!.checked).toBe(false);
+      expect(inner).toHaveAttribute("heading-level", "3");
+      expect(inner).toHaveAttribute("api-host", HOST);
+    });
+
+    it("survives a year click without being rebuilt", async () => {
+      mockFetch(both());
+      const el = await settled(mount("next-my-contribution-statement", 'show-paperless-toggle="true"'));
+      const before = prefs(el);
+      $<HTMLButtonElement>(el, '[data-year="2024"]')!.click();
+      expect(prefs(el)).toBe(before);
+    });
+
+    it("can be switched on and off after mount", async () => {
+      mockFetch(both());
+      const el = await settled(mount("next-my-contribution-statement"));
+      el.setAttribute("show-paperless-toggle", "true");
+      expect(prefs(el)).not.toBeNull();
+      el.setAttribute("show-paperless-toggle", "false");
+      expect(prefs(el)).toBeNull();
+    });
+
+    it("is hidden while signed out, so the visitor sees one prompt", async () => {
+      mockFetch((url) =>
+        url.includes("/api/embed/contribution-statements") || url.includes("/statement-preferences")
+          ? jsonResponse({ error: "auth_required" }, 401)
+          : undefined,
+      );
+      const el = await settled(mount("next-my-contribution-statement", 'show-paperless-toggle="true"'));
+      expect($(el, ".nw-extras")).toHaveAttribute("hidden");
+    });
+  });
+
   // ── protect: the money ─────────────────────────────────────────────────
 
   describe("next-my-giving money (regression guard)", () => {

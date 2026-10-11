@@ -114,3 +114,39 @@ opt-out attribute (e.g. `hide-statement-preferences`), reusing
 working. Separately, consider surfacing the third `Statement_Method` value instead of
 collapsing it to a boolean — a three-way radio (Postal Mail / Email·Online / No
 statement) would stop the silent `4 → 1` rewrite in both widgets.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W5, branch `ws/w5-giving`) per the epic's W5 brief, which overrides the plan's
+Option B default: an **opt-in** `show-paperless-toggle` attribute on
+`next-my-contribution-statement` embeds the Go Paperless control, and the separate
+`next-statement-preferences` element stays as it is.
+
+- **Reuse, not a copy.** The embedded control *is* `<next-statement-preferences>`, created
+  inside the statement widget's shadow root. `Statement_Method_ID` is therefore read and
+  written by exactly one implementation — the one that reads all three values correctly
+  (1 → off, 2 → on, 4 → off), which legacy does not. A test pins the Postal-Mail case.
+- It lives in a region of the shadow root that is **not** re-rendered, so clicking a year
+  does not destroy it, refetch the preference or drop its "Statement method updated"
+  message. It inherits the parent's resolved locale and `heading-level`, and is hidden while
+  the parent is loading, signed out or in error (one sign-in prompt, not two).
+- Set or cleared after mount, it appears / disappears (reconfigure convention). Any value
+  except `"false"` turns it on.
+- **Route:** `PUT /api/embed/statement-preferences` now also accepts a token minted for
+  `my-contribution-statement` (the page token carries the first widget's id).
+- **Option A as well:** `demo-my-contribution-statement.html` runs with the toggle on and its
+  copy-paste snippet tells a migrating church that `show-paperless-toggle="true"` restores
+  the legacy surface; the demo library entry (`widget-catalog.ts`) has a control for it.
+  The universal setup snippet in `vite.config.ts` names no widget tags, so it needed no edit.
+
+**Decision — opt-in, not opt-out.** The epic brief chose an opt-in attribute. The honest
+consequence: a one-for-one tag swap still drops the toggle unless the host adds the
+attribute, so this is mitigated by the demo snippet and must also be listed in the customer
+migration notes (W9): *"`mpp-my-contribution-statement` → `next-my-contribution-statement
+show-paperless-toggle="true"`."*
+
+**Deliberately left open:** the three-way statement-method control (Postal Mail / Email ·
+Online / No statement). Both systems still model `Statement_Method_ID` as a boolean, so a
+donor on `4 = No Statement Needed` who flips the toggle moves to `1`. Unchanged here (no
+regression, and outside this item's acceptance in the epic brief); it is the obvious next
+step for `next-statement-preferences`.
