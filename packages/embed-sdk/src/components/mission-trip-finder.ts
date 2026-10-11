@@ -436,41 +436,41 @@ export class MissionTripFinderWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .mtf { max-width: 1024px; margin: 0 auto; }
-      .mtf-title { font-size: 22px; font-weight: 700; color: #002855; margin: 0 0 16px; }
+      .mtf-title { font-size: 22px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: 0 0 var(--_nw-space-4); }
 
-      .mtf-form { display: flex; gap: 8px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      .mtf-input { flex: 1; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; outline: none; }
-      .mtf-input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
-      .mtf-btn { padding: 10px 20px; background: #004C97; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
-      .mtf-btn:hover { background: #002855; }
+      .mtf-form { display: flex; gap: var(--_nw-space-2); background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-4); margin-bottom: var(--_nw-space-5); box-shadow: var(--_nw-shadow); }
+      .mtf-input { flex: 1; padding: 10px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); outline: none; }
+      .mtf-input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
+      .mtf-btn { padding: 10px var(--_nw-space-5); background: var(--_nw-button-bg); color: var(--_nw-button-fg); border: none; border-radius: var(--_nw-button-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+      .mtf-btn:hover { background: var(--_nw-button-bg-hover); }
 
-      .mtf-count { font-size: 13px; color: #6b7280; margin: 0 0 12px; }
-      .mtf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+      .mtf-count { font-size: 13px; color: var(--_nw-color-muted); margin: 0 0 var(--_nw-space-3); }
+      .mtf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--_nw-space-4); }
 
-      .mtf-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: border-color 0.15s, box-shadow 0.15s; text-decoration: none; color: inherit; }
-      a.mtf-card:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
-      a.mtf-card:focus-visible { outline: 2px solid #004C97; outline-offset: 2px; }
+      .mtf-card { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--_nw-shadow); transition: border-color 0.15s, box-shadow 0.15s; text-decoration: none; color: inherit; }
+      a.mtf-card:hover { border-color: var(--_nw-color-primary); box-shadow: var(--_nw-shadow-hover); }
+      a.mtf-card:focus-visible { outline: 2px solid var(--_nw-color-primary); outline-offset: 2px; }
       .mtf-card-imgwrap { position: relative; }
       .mtf-card-img { width: 100%; height: 160px; object-fit: cover; display: block; }
-      .mtf-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #9ca3af; height: 160px; }
+      .mtf-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: var(--_nw-color-surface-muted); color: #9ca3af; height: 160px; }
       .mtf-badge { position: absolute; top: 10px; left: 10px; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.03em; }
-      .mtf-badge--full { background: #FF6D6A; color: white; }
+      .mtf-badge--full { background: var(--_nw-color-error); color: white; }
 
-      .mtf-card-body { padding: 16px; display: flex; flex-direction: column; flex: 1; }
-      .mtf-card-title { font-size: 16px; font-weight: 700; color: #002855; margin: 0 0 6px; }
-      .mtf-card-sub { font-size: 13px; color: #004C97; font-weight: 600; margin: 0 0 8px; }
-      .mtf-card-dates { font-size: 13px; color: #2D2926; margin: 0 0 4px; font-weight: 600; }
-      .mtf-card-reg { font-size: 12px; color: #6b7280; margin: 0 0 4px; }
-      .mtf-card-spots { font-size: 12px; color: #5a7a1a; font-weight: 600; margin: 0 0 8px; }
-      .mtf-card-desc { font-size: 13px; color: #474747; line-height: 1.5; flex: 1; margin: 0; }
-      .mtf-card-cta { margin-top: 12px; font-size: 13px; font-weight: 600; color: #004C97; }
+      .mtf-card-body { padding: var(--_nw-space-4); display: flex; flex-direction: column; flex: 1; }
+      .mtf-card-title { font-size: 16px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: 0 0 6px; }
+      .mtf-card-sub { font-size: 13px; color: var(--_nw-color-primary); font-weight: 600; margin: 0 0 var(--_nw-space-2); }
+      .mtf-card-dates { font-size: 13px; color: var(--_nw-color-text); margin: 0 0 var(--_nw-space-1); font-weight: 600; }
+      .mtf-card-reg { font-size: 12px; color: var(--_nw-color-muted); margin: 0 0 var(--_nw-space-1); }
+      .mtf-card-spots { font-size: 12px; color: #5a7a1a; font-weight: 600; margin: 0 0 var(--_nw-space-2); }
+      .mtf-card-desc { font-size: 13px; color: var(--_nw-color-text-subtle); line-height: var(--_nw-line-height); flex: 1; margin: 0; }
+      .mtf-card-cta { margin-top: var(--_nw-space-3); font-size: 13px; font-weight: 600; color: var(--_nw-color-primary); }
 
-      .mtf-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; font-size: 15px; flex-direction: column; text-align: center; }
-      .mtf-spinner { animation: mtf-spin 1s linear infinite; color: #004C97; }
+      .mtf-state { display: flex; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 48px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; flex-direction: column; text-align: center; }
+      .mtf-spinner { animation: mtf-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes mtf-spin { to { transform: rotate(360deg); } }
-      .mtf-error p { color: #b91c1c; margin: 0; }
+      .mtf-error p { color: var(--_nw-color-error-text); margin: 0; }
 
       @media (max-width: 1024px) { .mtf-grid { grid-template-columns: repeat(2, 1fr); } }
       @media (max-width: 640px) { .mtf-grid { grid-template-columns: 1fr; } }
