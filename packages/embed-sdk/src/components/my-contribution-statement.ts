@@ -1,4 +1,5 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { GIVING_SIGNED_OUT_STYLES, givingSignedOut } from "./giving-shared";
 
 interface ContributionStatement {
   Statement_ID: number;
@@ -18,6 +19,8 @@ export class MyContributionStatementWidget extends MPNextWidget {
   private groups: ContributionStatementGroup[] = [];
   private loading = true;
   private error: string | null = null;
+  /** Signed out is a state, not an error (C30 / CROSS-1). */
+  private signedOut = false;
   private selectedYear: Record<string, number> = {};
 
   connectedCallback() {
@@ -38,10 +41,19 @@ export class MyContributionStatementWidget extends MPNextWidget {
   private async loadStatements() {
     this.loading = true;
     this.error = null;
+    this.signedOut = false;
     this.render();
 
     try {
       const res = await this.fetch("/api/embed/contribution-statements");
+      if (this.isNeedsAuth(res)) {
+        // An anonymous visitor: offer sign-in, never "Unable to Load" + a
+        // Try Again that can only fail again. A 401 reaching a signed-in
+        // visitor is not this state and falls through to the error.
+        this.signedOut = true;
+        this.groups = [];
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(this.errorText(data));
@@ -123,6 +135,25 @@ export class MyContributionStatementWidget extends MPNextWidget {
               ${this.spinnerSvg()}
               <span>${this.escapeHtml(this.t("contributionStatement.loading"))}</span>
             </div>
+          </div>
+        </div>`;
+      return;
+    }
+
+    if (this.signedOut) {
+      this.root.innerHTML = `
+        <div class="nw-statements">
+          <div class="header">
+            <div class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</div>
+          </div>
+          <div class="list-body">
+            ${givingSignedOut(
+              this.renderSignInRequired({
+                subject: "my-contribution-statement",
+                message: this.t("contributionStatement.signInPrompt"),
+              }),
+              2,
+            )}
           </div>
         </div>`;
       return;
@@ -220,7 +251,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
   }
 
   private getStyles(): string {
-    return `
+    return `${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
       :host {
         all: initial;
         display: block;

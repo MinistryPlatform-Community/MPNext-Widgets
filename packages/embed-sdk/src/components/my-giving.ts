@@ -1,4 +1,5 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { GIVING_SIGNED_OUT_STYLES, givingSignedOut } from "./giving-shared";
 
 interface DonationRecord {
   donationDate: string;
@@ -34,6 +35,8 @@ export class MyGivingWidget extends MPNextWidget {
   private showFullList = false;
   private loading = true;
   private error: string | null = null;
+  /** Signed out is a state, not an error (C30 / CROSS-1). */
+  private signedOut = false;
 
   static get observedAttributes() {
     return ["hidesoftcredits"];
@@ -68,6 +71,7 @@ export class MyGivingWidget extends MPNextWidget {
   private async loadDonations() {
     this.loading = true;
     this.error = null;
+    this.signedOut = false;
     this.render();
 
     try {
@@ -75,6 +79,14 @@ export class MyGivingWidget extends MPNextWidget {
       if (this.selectedMonth > 0) url += `&month=${this.selectedMonth}`;
 
       const res = await this.fetch(url);
+      if (this.isNeedsAuth(res)) {
+        // An anonymous visitor: offer sign-in, never "Unable to Load" + a
+        // Try Again that can only fail again. A 401 reaching a signed-in
+        // visitor is not this state and falls through to the error.
+        this.signedOut = true;
+        this.donations = [];
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(this.errorText(data));
@@ -162,6 +174,24 @@ export class MyGivingWidget extends MPNextWidget {
               ${this.spinnerSvg()}
               <span>${this.escapeHtml(this.t("myGiving.loading"))}</span>
             </div>
+          </div>
+        </div>`;
+      return;
+    }
+
+    if (this.signedOut) {
+      this.root.innerHTML = `
+        <div class="nw-giving">
+          <div class="header">
+            <div class="title">${this.escapeHtml(this.t("myGiving.title"))}</div>
+          </div>
+          <div class="body">
+            ${givingSignedOut(
+              this.renderSignInRequired({
+                subject: "my-giving",
+                message: this.t("myGiving.signInPrompt"),
+              }),
+            )}
           </div>
         </div>`;
       return;
@@ -520,7 +550,7 @@ export class MyGivingWidget extends MPNextWidget {
   }
 
   private getStyles(): string {
-    return `
+    return `${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
       :host {
         all: initial;
         display: block;

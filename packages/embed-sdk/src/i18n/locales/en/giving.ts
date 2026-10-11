@@ -41,6 +41,8 @@ export const giving = {
     badgeSpouse: "Spouse",
     badgeSoftCredit: "Soft credit",
     badgeNonDeductible: "Non-deductible",
+    /** Signed-out prompt (C30); legacy: "Please login to view your giving information." */
+    signInPrompt: "Please sign in to view your giving information.",
   },
 
   myPledges: {
@@ -72,6 +74,8 @@ export const giving = {
       discontinued: "Discontinued",
       pending: "Pending",
     },
+    /** Signed-out prompt (C30); legacy: "Please login to view your pledges". */
+    signInPrompt: "Please sign in to view your pledges.",
   },
 
   pledgeCampaign: {
@@ -136,6 +140,8 @@ export const giving = {
     empty: "No statements currently available.",
     selectYear: "Select statement year",
     savePdf: "Save as PDF",
+    /** Signed-out prompt (C30); legacy: "Please login to view your contribution statements." */
+    signInPrompt: "Please sign in to view your contribution statements.",
   },
 
   statementPreferences: {
@@ -144,6 +150,8 @@ export const giving = {
     goPaperless: "Go Paperless! Get statements online/via email.",
     updated: "Statement method updated",
     updateFailed: "Error updating the statement method, please try again.",
+    /** Signed-out prompt (C30). */
+    signInPrompt: "Please sign in to manage how you receive your contribution statements.",
   },
 
   checkout: {

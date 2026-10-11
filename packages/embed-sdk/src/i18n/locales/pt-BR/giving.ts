@@ -32,6 +32,7 @@ export const ptBRGiving = {
     badgeSpouse: "Cônjuge",
     badgeSoftCredit: "Crédito indireto",
     badgeNonDeductible: "Não dedutível",
+    signInPrompt: "Entre para ver as informações das suas doações.",
   },
 
   myPledges: {
@@ -61,6 +62,7 @@ export const ptBRGiving = {
       discontinued: "Descontinuada",
       pending: "Pendente",
     },
+    signInPrompt: "Entre para ver suas promessas de doação.",
   },
 
   pledgeCampaign: {
@@ -109,6 +111,7 @@ export const ptBRGiving = {
     empty: "Nenhum informe disponível no momento.",
     selectYear: "Selecione o ano do informe",
     savePdf: "Salvar como PDF",
+    signInPrompt: "Entre para ver seus informes de doações.",
   },
 
   statementPreferences: {
@@ -117,6 +120,7 @@ export const ptBRGiving = {
     goPaperless: "Dispense o papel! Receba seus informes online ou por e-mail.",
     updated: "Método de entrega atualizado",
     updateFailed: "Erro ao atualizar o método de entrega. Tente novamente.",
+    signInPrompt: "Entre para escolher como receber seus informes de doações.",
   },
 
   checkout: {

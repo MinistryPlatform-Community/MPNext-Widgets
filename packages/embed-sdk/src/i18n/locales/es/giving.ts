@@ -32,6 +32,7 @@ export const esGiving = {
     badgeSpouse: "Cónyuge",
     badgeSoftCredit: "Crédito indirecto",
     badgeNonDeductible: "No deducible",
+    signInPrompt: "Inicie sesión para ver la información de sus donaciones.",
   },
 
   myPledges: {
@@ -62,6 +63,7 @@ export const esGiving = {
       discontinued: "Descontinuado",
       pending: "Pendiente",
     },
+    signInPrompt: "Inicie sesión para ver sus compromisos.",
   },
 
   pledgeCampaign: {
@@ -111,6 +113,7 @@ export const esGiving = {
     empty: "No hay estados de contribuciones disponibles por el momento.",
     selectYear: "Seleccione el año del estado",
     savePdf: "Guardar como PDF",
+    signInPrompt: "Inicie sesión para ver sus estados de contribuciones.",
   },
 
   statementPreferences: {
@@ -121,6 +124,7 @@ export const esGiving = {
     updated: "Se actualizó el método de entrega",
     updateFailed:
       "Error al actualizar el método de entrega. Inténtelo de nuevo.",
+    signInPrompt: "Inicie sesión para elegir cómo recibe sus estados de contribuciones.",
   },
 
   checkout: {

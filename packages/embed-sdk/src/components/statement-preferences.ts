@@ -1,4 +1,5 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { GIVING_SIGNED_OUT_STYLES, givingSignedOut } from "./giving-shared";
 
 interface StatementPreference {
   donorId: number;
@@ -10,6 +11,8 @@ export class StatementPreferencesWidget extends MPNextWidget {
   private loading = true;
   private saving = false;
   private error: string | null = null;
+  /** Signed out is a state, not an error (C30 / CROSS-1). */
+  private signedOut = false;
   private paperless = false;
   private hasDonor = true;
   private message: { type: "success" | "error"; text: string } | null = null;
@@ -34,10 +37,19 @@ export class StatementPreferencesWidget extends MPNextWidget {
   private async loadPreference() {
     this.loading = true;
     this.error = null;
+    this.signedOut = false;
     this.render();
 
     try {
       const res = await this.fetch("/api/embed/statement-preferences");
+      if (this.isNeedsAuth(res)) {
+        // An anonymous visitor: offer sign-in, never "Unable to Load" + a
+        // Try Again that can only fail again. A 401 reaching a signed-in
+        // visitor is not this state and falls through to the error.
+        this.signedOut = true;
+        this.hasDonor = true;
+        return;
+      }
 
       if (res.status === 404) {
         this.hasDonor = false;
@@ -133,6 +145,25 @@ export class StatementPreferencesWidget extends MPNextWidget {
       return;
     }
 
+    if (this.signedOut) {
+      this.root.innerHTML = `
+        <div class="nw-statement">
+          <div class="header">
+            <div class="title">${this.escapeHtml(this.t("statementPreferences.title"))}</div>
+          </div>
+          <div class="card-body">
+            ${givingSignedOut(
+              this.renderSignInRequired({
+                subject: "statement-preferences",
+                message: this.t("statementPreferences.signInPrompt"),
+              }),
+              1,
+            )}
+          </div>
+        </div>`;
+      return;
+    }
+
     if (this.error) {
       this.root.innerHTML = `
         <div class="nw-statement">
@@ -196,7 +227,7 @@ export class StatementPreferencesWidget extends MPNextWidget {
   }
 
   private getStyles(): string {
-    return `
+    return `${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
       :host {
         all: initial;
         display: block;
