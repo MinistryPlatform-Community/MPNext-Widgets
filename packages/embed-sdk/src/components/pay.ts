@@ -471,42 +471,42 @@ export class PayWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
-      .nw-pay { max-width: 480px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-      .nw-pay-header { background: #002855; color: white; padding: 24px; font-size: 22px; font-weight: 700; text-align: center; }
-      .nw-pay-sandbox { background: #F1BE48; color: #2D2926; padding: 10px 16px; font-size: 13px; font-weight: 700; text-align: center; }
-      .nw-pay-body { padding: 24px; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
+      .nw-pay { max-width: 480px; margin: 0 auto; background: var(--_nw-color-surface); border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+      .nw-pay-header { background: var(--_nw-color-secondary); color: var(--_nw-color-on-primary); padding: var(--_nw-space-6); font-size: 22px; font-weight: var(--_nw-font-weight-heading); text-align: center; }
+      .nw-pay-sandbox { background: var(--_nw-color-accent); color: var(--_nw-color-text); padding: 10px var(--_nw-space-4); font-size: 13px; font-weight: 700; text-align: center; }
+      .nw-pay-body { padding: var(--_nw-space-6); }
 
-      .nw-pay-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 40px 16px; color: #6b7280; font-size: 15px; text-align: center; }
-      .nw-pay-spinner { animation: nw-pay-spin 1s linear infinite; color: #004C97; }
+      .nw-pay-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 40px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; text-align: center; }
+      .nw-pay-spinner { animation: nw-pay-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes nw-pay-spin { to { transform: rotate(360deg); } }
-      .nw-pay-error p { color: #b91c1c; margin: 0 0 12px; }
-      .nw-pay-link p { margin: 0; color: #474747; }
-      .nw-pay-link .nw-pay-link-title { font-size: 17px; font-weight: 700; color: #002855; }
-      .nw-pay-link a.nw-pay-btn { text-decoration: none; margin-top: 8px; }
+      .nw-pay-error p { color: var(--_nw-color-error-text); margin: 0 0 var(--_nw-space-3); }
+      .nw-pay-link p { margin: 0; color: var(--_nw-color-text-subtle); }
+      .nw-pay-link .nw-pay-link-title { font-size: 17px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); }
+      .nw-pay-link a.nw-pay-btn { text-decoration: none; margin-top: var(--_nw-space-2); }
 
-      .nw-pay-summary { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }
-      .nw-pay-summary-row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding: 4px 0; color: #474747; }
-      .nw-pay-summary-row span:first-child { color: #6b7280; }
-      .nw-pay-summary-row span:last-child { font-weight: 600; color: #2D2926; text-align: right; word-break: break-word; }
-      .nw-pay-summary-row--amount { border-top: 1px solid #e5e7eb; margin-top: 6px; padding-top: 10px; font-size: 18px; }
-      .nw-pay-summary-row--amount span:last-child { color: #004C97; font-weight: 700; }
+      .nw-pay-summary { background: #f9fafb; border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: 10px; padding: 14px var(--_nw-space-4); margin-bottom: var(--_nw-space-5); }
+      .nw-pay-summary-row { display: flex; justify-content: space-between; gap: var(--_nw-space-3); font-size: var(--_nw-font-size-base); padding: var(--_nw-space-1) 0; color: var(--_nw-color-text-subtle); }
+      .nw-pay-summary-row span:first-child { color: var(--_nw-color-muted); }
+      .nw-pay-summary-row span:last-child { font-weight: 600; color: var(--_nw-color-text); text-align: right; word-break: break-word; }
+      .nw-pay-summary-row--amount { border-top: var(--_nw-border-width) solid var(--_nw-color-border); margin-top: 6px; padding-top: 10px; font-size: 18px; }
+      .nw-pay-summary-row--amount span:last-child { color: var(--_nw-color-primary); font-weight: 700; }
 
-      .nw-pay-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
-      .nw-pay-field label { font-size: 12px; font-weight: 600; color: #6b7280; }
-      .nw-pay-field input { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; outline: none; }
-      .nw-pay-field input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
-      .nw-pay-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .nw-pay-field { display: flex; flex-direction: column; gap: var(--_nw-space-1); margin-bottom: 14px; }
+      .nw-pay-field label { font-size: 12px; font-weight: 600; color: var(--_nw-color-muted); }
+      .nw-pay-field input { padding: 10px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); outline: none; }
+      .nw-pay-field input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
+      .nw-pay-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--_nw-space-3); }
 
-      .nw-pay-inline-error { color: #b91c1c; font-size: 13px; margin-bottom: 12px; }
+      .nw-pay-inline-error { color: var(--_nw-color-error-text); font-size: 13px; margin-bottom: var(--_nw-space-3); }
 
-      .nw-pay-btn { padding: 12px 20px; background: #004C97; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
-      .nw-pay-btn:hover { background: #002855; }
+      .nw-pay-btn { padding: var(--_nw-space-3) var(--_nw-space-5); background: var(--_nw-button-bg); color: var(--_nw-button-fg); border: none; border-radius: var(--_nw-button-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; }
+      .nw-pay-btn:hover { background: var(--_nw-button-bg-hover); }
       .nw-pay-btn:disabled { opacity: 0.6; cursor: default; }
       .nw-pay-btn--pay { display: block; width: 100%; padding: 14px; font-size: 15px; margin-top: 6px; }
 
       @media (max-width: 480px) {
-        .nw-pay-header, .nw-pay-body { padding: 16px; }
+        .nw-pay-header, .nw-pay-body { padding: var(--_nw-space-4); }
       }
     `;
   }

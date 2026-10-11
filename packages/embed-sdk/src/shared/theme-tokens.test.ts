@@ -69,15 +69,15 @@ const PATTERNS: Record<ValueClass, RegExp> = {
  */
 const BUDGET: Record<string, Partial<Record<ValueClass, number>>> = {
   "components/add-to-calendar.ts": { fontStack: 1 }, // stack adds BlinkMacSystemFont: not an exact match, so it stays literal
-  "components/checkout-complete.ts": { brandHex: 9, fontStack: 1 },
-  "components/checkout.ts": { brandHex: 17, fontStack: 1 },
+  // W7b-payments: the pending (amber) status stripe. Its hex equals the accent,
+  // but it means "pending", not "highlight"; tying it to --nw-color-accent would
+  // let a re-brand recolour a payment status. No warning token exists. Permanent.
+  "components/checkout-complete.ts": { brandHex: 1 },
   "components/contact-attributes.ts": { brandHex: 9, fontStack: 1 },
   "components/locale-selector.ts": { brandHex: 9, fontStack: 1 },
   "components/my-giving.ts": { fontStack: 2 },
   "components/my-household.ts": { brandHex: 9 },
-  "components/my-invoices.ts": { brandHex: 19, fontStack: 1 },
   "components/online-directory.ts": { brandHex: 16, fontStack: 1 },
-  "components/pay.ts": { brandHex: 13, fontStack: 1 },
   "components/profile.ts": { brandHex: 16, fontStack: 1 },
   "components/subscribe-to-publication.ts": { brandHex: 13, fontStack: 1 },
   "components/subscriptions.ts": { brandHex: 7, fontStack: 1 },
