@@ -457,7 +457,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
         return;
       }
 
-      const displayName = this.getDisplayName(payload.firstName, payload.lastName);
+      const displayName = this.getDisplayName(payload.firstName);
       // A campaign's own thank-you is church-authored copy and wins as written.
       const thankYou =
         this.campaign?.onlineThankYouMessage?.trim() ||
@@ -508,13 +508,28 @@ export class PledgeCampaignWidget extends MPNextWidget {
     if (btn) btn.disabled = disabled;
   }
 
-  private getDisplayName(firstName: string, lastName: string): string {
+  /**
+   * The name the thank-you greets (the C17 fix, as W3 applied it to
+   * group-details). It used to strip the comma from the picker's
+   * `Display_Name` ("Kehayias, Chris") and so read "Kehayias Chris"; and
+   * because it read the option *text*, choosing "Blank Form" greeted the
+   * donor as "Blank Form". Now: the chosen household member's Nickname, else
+   * First_Name — both already on the household read (`HouseholdMember`) and on
+   * the basic-contact read (`Nickname ?? First_Name`) — else the first name
+   * typed into the form, else a neutral "your household".
+   */
+  private getDisplayName(typedFirstName: string): string {
     const select = this.root.querySelector<HTMLSelectElement>("#pc-apply-as");
-    if (select && select.selectedIndex > 0) {
-      const text = select.options[select.selectedIndex]?.text ?? "";
-      if (text.trim()) return text.replace(/,/g, "").trim();
+    const chosen = Number(select?.value || 0);
+    if (chosen) {
+      const member = this.householdMembers.find((m) => m.contactId === chosen);
+      const fromMember = (member?.nickName || member?.firstName || "").trim();
+      if (fromMember) return fromMember;
+      if (this.contact?.contactId === chosen && this.contact.firstName?.trim()) {
+        return this.contact.firstName.trim();
+      }
     }
-    return `${firstName} ${lastName}`.trim() || this.t("pledgeCampaign.yourHousehold");
+    return typedFirstName.trim() || this.t("pledgeCampaign.yourHousehold");
   }
 
   // ── Total / installment math (port of CalculateTotalPledge) ─────────────

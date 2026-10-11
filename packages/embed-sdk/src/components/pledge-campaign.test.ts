@@ -345,6 +345,90 @@ describe("<next-pledge-campaign> registration window and capacity", () => {
     });
   });
 
+  describe("thank-you greeting (the C17 fix)", () => {
+    beforeEach(() => {
+      Element.prototype.scrollIntoView = vi.fn();
+    });
+
+    function member(id: number, first: string, nick: string | null) {
+      return {
+        contactId: id,
+        firstName: first,
+        lastName: "Kehayias",
+        nickName: nick,
+        displayName: `Kehayias, ${nick ?? first}`,
+        emailAddress: `${first.toLowerCase()}@example.com`,
+        mobilePhoneNumber: null,
+      };
+    }
+
+    async function mountSignedIn(): Promise<HTMLElement> {
+      const fn = mockFetch();
+      const base = fn.getMockImplementation()!;
+      fn.mockImplementation(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.includes("/pledge-campaign/basic-contact")) {
+          return jsonResponse({
+            contact: {
+              contactId: 98, firstName: "Chris", lastName: "Kehayias",
+              emailAddress: "chris@example.com", mobilePhoneNumber: null, householdId: 5,
+            },
+          });
+        }
+        if (url.includes("/api/embed/household")) {
+          return jsonResponse({
+            members: [member(98, "Christopher", "Chris"), member(99, "Ada", null)],
+          });
+        }
+        if (url.includes("/pledge-campaign/save")) return jsonResponse({ success: true, pledgeId: 1 });
+        return base(input);
+      });
+      document.body.innerHTML = `<next-pledge-campaign api-host="${HOST}" campaign-id="3"></next-pledge-campaign>`;
+      const el = document.body.firstElementChild as HTMLElement;
+      await vi.waitFor(() => expect(shadow(el).querySelector("#pc-apply-as")).not.toBeNull());
+      return el;
+    }
+
+    function set(el: HTMLElement, sel: string, v: string) {
+      const input = shadow(el).querySelector<HTMLInputElement | HTMLSelectElement>(sel)!;
+      input.value = v;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    async function submitAs(el: HTMLElement, contact: string) {
+      set(el, "#pc-apply-as", contact);
+      if (!contact) {
+        set(el, "#pc-first-name", "Grace");
+        set(el, "#pc-last-name", "Hopper");
+        set(el, "#pc-email", "grace@example.com");
+      }
+      set(el, "#pc-installment-amount", "10");
+      set(el, "#pc-frequency", "12");
+      shadow(el).querySelector<HTMLButtonElement>("#pc-submit")!.click();
+      await vi.waitFor(() => expect(banner(el)).toContain("has been received"));
+    }
+
+    it("greets a household member by first name, never surname-first", async () => {
+      const el = await mountSignedIn();
+      await submitAs(el, "99");
+      expect(banner(el)).toContain("Your response for Ada has been received");
+      expect(banner(el)).not.toContain("Kehayias");
+    });
+
+    it("prefers the Nickname", async () => {
+      const el = await mountSignedIn();
+      await submitAs(el, "98");
+      expect(banner(el)).toContain("Your response for Chris has been received");
+    });
+
+    it("greets a Blank Form pledger by the first name they typed, not 'Blank Form'", async () => {
+      const el = await mountSignedIn();
+      await submitAs(el, "");
+      expect(banner(el)).toContain("Your response for Grace has been received");
+    });
+  });
+
   describe("late attributes (C39)", () => {
     it("re-inits when campaign-id changes on a widget whose first load failed", async () => {
       const fn = mockFetch();
