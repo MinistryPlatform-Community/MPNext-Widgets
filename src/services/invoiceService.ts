@@ -484,7 +484,9 @@ export class InvoiceService {
       lineTotal: toCheckoutNumber(d.Line_Total),
       isSubItem: Boolean(d.Sub_Item),
       eventParticipantId: toCheckoutNumberOrNull(d.Event_Participant_ID),
+      eventId: toCheckoutNumberOrNull(d.Event_ID),
     }));
+    const eventId = lineItems.find((li) => li.eventId !== null)?.eventId ?? null;
 
     return {
       invoiceId: toCheckoutNumber(header.Invoice_ID),
@@ -510,6 +512,7 @@ export class InvoiceService {
         postalCode: header.Postal_Code ?? null,
       },
       lineItems,
+      eventId,
     };
   }
 }

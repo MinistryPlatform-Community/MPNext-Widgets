@@ -250,6 +250,51 @@ describe("single-use and overpay (C43)", () => {
   });
 });
 
+describe("<next-checkout> Make Changes link (C49)", () => {
+  beforeEach(() => {
+    setup();
+    window.history.replaceState(null, "", PAGE);
+  });
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  async function changesHref(attrs: string, over: Record<string, unknown>): Promise<string | null> {
+    mockFetch((url) =>
+      url.includes("/checkout/invoice") ? jsonResponse({ invoice: invoice(over) }) : undefined,
+    );
+    const el = await mountCheckout(attrs);
+    const a = shadow(el).querySelector<HTMLAnchorElement>(".nw-co-changes");
+    expect(a).toHaveTextContent("Make Changes");
+    return a?.getAttribute("href") ?? null;
+  }
+
+  it("carries the event id and invoice GUID, keeping an existing query", async () => {
+    const href = await changesHref('back-to-event-url="https://church.example/events?src=pay"', {
+      eventId: 16,
+    });
+    const url = new URL(href!);
+    expect(url.searchParams.get("src")).toBe("pay");
+    expect(url.searchParams.get("id")).toBe("16");
+    expect(url.searchParams.get("invoiceid")).toBe(GUID);
+  });
+
+  it("follows the destination's id parameter name", async () => {
+    const href = await changesHref(
+      'back-to-event-url="https://church.example/event" back-to-event-id-parameter-name="eventId"',
+      { eventId: 16 },
+    );
+    expect(new URL(href!).searchParams.get("eventId")).toBe("16");
+  });
+
+  it("falls back to the bare URL for a non-event invoice", async () => {
+    const href = await changesHref('back-to-event-url="/events"', { eventId: null });
+    expect(href).toBe("/events");
+  });
+});
+
 describe("<next-checkout> nothing-to-pay wording (C47)", () => {
   beforeEach(() => {
     setup();

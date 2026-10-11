@@ -89,3 +89,30 @@ Also worth aligning the label: legacy says "Back to Event Details", ours says "M
 Changes". Ours is arguably the clearer call to action, so this is a note rather than a
 request — but pick one deliberately, since C67 records that new widget copy is
 hardcoded and cannot be overridden by the church.
+
+## Resolution — 2026-10-11
+
+**Fixed (epic W1, branch `ws/w1-payments`).**
+
+- **Contract.** `CheckoutLineItemSchema.eventId` and `CheckoutInvoiceSchema.eventId`
+  (`packages/types/src/payment-token.ts`). `invoiceService.getCheckoutInvoiceByGuid` maps each
+  proc detail row's `Event_ID`, which it previously dropped, and sets the invoice's `eventId`
+  to the first non-null line. In practice one registration invoice is one event. `Event_ID` is
+  verified in the live proc's detail row set (see C80's resolution).
+- **Link.** `next-checkout` builds "Make Changes" with `URL` / `URLSearchParams` as
+  `<back-to-event-url>?id=<eventId>&invoiceid=<guid>`. That is legacy's shape and exactly
+  what `next-event-details` reads: `id-parameter-name`, default `id`, plus a fixed `invoiceid`.
+  A configured URL that already has a query string keeps it.
+- **Decision on parameter names:** the destination's event-id parameter name is configurable
+  through the new `back-to-event-id-parameter-name` attribute (default `id`), matching
+  `next-event-details`' `id-parameter-name`. The invoice parameter stays `invoiceid`, because
+  that is what `next-event-details` reads from the URL regardless of configuration.
+- **Fallback:** a non-event invoice (`eventId` null) gets the bare `back-to-event-url`. A
+  `javascript:` / `data:` URL is refused.
+- **Label kept: "Make Changes"**, deliberately. It is a clearer call to action than legacy's
+  "Back to Event Details", and churches can rename it with `MPNextEmbed.setMessages`.
+- The demo now points `back-to-event-url` at `demo-event-details.html` rather than the event
+  finder.
+- **Tests:** `invoiceService.test.ts` (Event_ID on lines and invoice), and `checkout.test.ts`
+  ("Make Changes link": both ids appended with an existing query preserved, the custom
+  parameter name, and the bare-URL fallback).

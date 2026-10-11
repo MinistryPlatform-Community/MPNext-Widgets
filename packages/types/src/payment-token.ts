@@ -107,6 +107,8 @@ export const CheckoutLineItemSchema = z.object({
   lineTotal: z.number(),
   isSubItem: z.boolean(),
   eventParticipantId: z.number().nullable(),
+  /** `Event_ID` from the proc's detail row (C49); null for a non-event line. */
+  eventId: z.number().nullable(),
 });
 export type CheckoutLineItem = z.infer<typeof CheckoutLineItemSchema>;
 
@@ -134,5 +136,11 @@ export const CheckoutInvoiceSchema = z.object({
     postalCode: z.string().nullable(),
   }),
   lineItems: z.array(CheckoutLineItemSchema),
+  /**
+   * The event this invoice registers for (C49): the first line's `Event_ID`.
+   * In practice one registration invoice is one event. Null for a non-event
+   * invoice, where "Make Changes" falls back to the bare URL.
+   */
+  eventId: z.number().nullable(),
 });
-export type CheckoutInvoice = z.infer<typeof CheckoutInvoiceSchema>;
+export type CheckoutInvoice= z.infer<typeof CheckoutInvoiceSchema>;

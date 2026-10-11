@@ -17,6 +17,7 @@ interface CheckoutLineItem {
   lineTotal: number;
   isSubItem: boolean;
   eventParticipantId: number | null;
+  eventId?: number | null;
 }
 
 interface CheckoutInvoice {
@@ -43,6 +44,8 @@ interface CheckoutInvoice {
     postalCode: string | null;
   };
   lineItems: CheckoutLineItem[];
+  /** The registration's event (C49); absent from an older server. */
+  eventId?: number | null;
 }
 
 type PayChoice = "full" | "deposit" | "other";
@@ -76,6 +79,7 @@ export class CheckoutWidget extends MPNextWidget {
       "api-host",
       "payment-processor-url",
       "back-to-event-url",
+      "back-to-event-id-parameter-name",
       "invoice-id-parameter-name",
       "invoice-id",
       "receipt-template-id",
@@ -514,6 +518,7 @@ export class CheckoutWidget extends MPNextWidget {
     // offering it would ask for more than the balance (C43).
     const hasDeposit =
       inv.depositDue != null && inv.depositDue > 0 && inv.depositDue < inv.balanceDue;
+    const changesHref = this.makeChangesHref(inv);
     return `
       <form id="nw-co-pay-form" class="nw-co-pay" novalidate>
         <div class="nw-co-pay-title">${this.escapeHtml(this.t("checkout.paymentAmount"))}</div>
@@ -558,8 +563,8 @@ export class CheckoutWidget extends MPNextWidget {
         </div>
         <button type="submit" class="nw-co-btn nw-co-btn--pay" data-action="pay">${this.escapeHtml(this.t("checkout.pay"))}</button>
         ${
-          this.getAttribute("back-to-event-url")
-            ? `<a class="nw-co-changes" href="${this.escapeAttr(this.getAttribute("back-to-event-url") as string)}">${this.escapeHtml(this.t("checkout.makeChanges"))}</a>`
+          changesHref
+            ? `<a class="nw-co-changes" href="${this.escapeAttr(changesHref)}">${this.escapeHtml(this.t("checkout.makeChanges"))}</a>`
             : ""
         }
       </form>`;
@@ -592,6 +597,35 @@ export class CheckoutWidget extends MPNextWidget {
       <div class="nw-co-status ${cls}" role="status">
         ${this.escapeHtml(label)}
       </div>`;
+  }
+
+  /**
+   * "Make Changes" (C49): back to the event's registration with this invoice
+   * re-opened — `<back-to-event-url>?id=<eventId>&invoiceid=<guid>`, legacy's
+   * shape and exactly what `next-event-details` reads (`id-parameter-name`,
+   * default `id`; `invoiceid`). The event-id parameter name follows the
+   * destination's: `back-to-event-id-parameter-name`, default `id`.
+   *
+   * Built with `URL` / `URLSearchParams`, so a configured URL that already has
+   * a query string keeps it. A non-event invoice gets the bare URL. A
+   * `javascript:` / `data:` URL is refused. The label stays "Make Changes":
+   * clearer than legacy's "Back to Event Details", and deliberate.
+   */
+  private makeChangesHref(inv: CheckoutInvoice): string | null {
+    const base = this.getAttribute("back-to-event-url")?.trim();
+    if (!base) return null;
+    let url: URL;
+    try {
+      url = new URL(base, window.location.href);
+    } catch {
+      return null;
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (inv.eventId == null) return base;
+    const idParam = this.getAttribute("back-to-event-id-parameter-name")?.trim() || "id";
+    url.searchParams.set(idParam, String(inv.eventId));
+    url.searchParams.set("invoiceid", inv.invoiceGuid);
+    return url.toString();
   }
 
   // ── Helpers ──

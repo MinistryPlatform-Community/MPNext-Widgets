@@ -75,6 +75,19 @@ describe('getCheckoutInvoiceByGuid (C80 / C42)', () => {
     expect(invoice?.payorContactId).toBe(1234);
   });
 
+  it('carries Event_ID onto the lines and the invoice (C49)', async () => {
+    mockExecuteProcedure.mockResolvedValueOnce(
+      procResult({}, [
+        { Invoice_Detail_ID: 1, Item_Name: 'Fee', Line_Total: 40, Item_Quantity: 1, Event_ID: null },
+        { Invoice_Detail_ID: 2, Item_Name: 'Camp', Line_Total: 0, Item_Quantity: 1, Event_ID: 16 },
+      ])
+    );
+    const service = await InvoiceService.getInstance();
+    const invoice = await service.getCheckoutInvoiceByGuid('inv-guid');
+    expect(invoice?.lineItems.map((li) => li.eventId)).toEqual([null, 16]);
+    expect(invoice?.eventId).toBe(16);
+  });
+
   it('returns null when the proc has no header row', async () => {
     mockExecuteProcedure.mockResolvedValueOnce([[], []]);
     const service = await InvoiceService.getInstance();
