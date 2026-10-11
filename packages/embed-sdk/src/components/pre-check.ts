@@ -738,37 +738,37 @@ export class PreCheckWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .pc {
         max-width: 640px;
         margin: 0 auto;
-        padding: 28px 24px;
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        color: #2D2926;
+        padding: 28px var(--_nw-space-6);
+        background: var(--_nw-color-surface);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius-lg);
+        color: var(--_nw-color-text);
         box-sizing: border-box;
       }
 
-      .pc-head { margin-bottom: 20px; }
+      .pc-head { margin-bottom: var(--_nw-space-5); }
 
       .pc-title {
         margin: 0 0 6px;
         font-size: 22px;
-        font-weight: 700;
-        color: #004C97;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-primary);
       }
 
       .pc-intro {
         margin: 0;
-        font-size: 14px;
-        color: #6b7280;
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-muted);
       }
 
       .pc-status {
-        padding: 16px 0;
+        padding: var(--_nw-space-4) 0;
         font-size: 15px;
       }
 
@@ -776,14 +776,14 @@ export class PreCheckWidget extends MPNextWidget {
         display: inline-flex;
         align-items: center;
         gap: 10px;
-        color: #6b7280;
+        color: var(--_nw-color-muted);
       }
 
       .pc-spinner {
         width: 20px;
         height: 20px;
         animation: pc-spin 1s linear infinite;
-        color: #004C97;
+        color: var(--_nw-color-primary);
       }
 
       @keyframes pc-spin { to { transform: rotate(360deg); } }
@@ -792,45 +792,45 @@ export class PreCheckWidget extends MPNextWidget {
         .pc-spinner { animation: none; }
       }
 
-      .pc-msg { margin: 0 0 8px; }
+      .pc-msg { margin: 0 0 var(--_nw-space-2); }
       .pc-msg:last-child { margin-bottom: 0; }
-      .pc-msg--warn { font-weight: 600; color: #2D2926; }
+      .pc-msg--warn { font-weight: 600; color: var(--_nw-color-text); }
 
       .pc-date-label {
-        margin: 0 0 16px;
+        margin: 0 0 var(--_nw-space-4);
         font-size: 15px;
         font-weight: 600;
-        color: #002855;
+        color: var(--_nw-color-secondary);
       }
 
-      .pc-datepick { margin-bottom: 16px; }
+      .pc-datepick { margin-bottom: var(--_nw-space-4); }
 
       .pc-label {
         display: block;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
         font-size: 13px;
         font-weight: 600;
-        color: #2D2926;
+        color: var(--_nw-color-text);
       }
 
       .pc-input {
         font: inherit;
-        padding: 8px 10px;
-        border: 1px solid #d1d5db;
+        padding: var(--_nw-space-2) 10px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border-strong);
         border-radius: 6px;
         color: inherit;
-        background: white;
+        background: var(--_nw-color-surface);
       }
 
       .pc-input:focus-visible {
-        outline: 2px solid #009CDE;
+        outline: var(--_nw-focus-ring);
         outline-offset: 1px;
       }
 
       .pc-qr {
-        margin-bottom: 20px;
-        padding: 16px;
-        border: 1px solid #e5e7eb;
+        margin-bottom: var(--_nw-space-5);
+        padding: var(--_nw-space-4);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
         border-radius: 10px;
         text-align: center;
       }
@@ -838,8 +838,8 @@ export class PreCheckWidget extends MPNextWidget {
       .pc-qr-title {
         margin: 0 0 10px;
         font-size: 15px;
-        font-weight: 700;
-        color: #002855;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
       }
 
       .pc-qr-code svg {
@@ -851,15 +851,15 @@ export class PreCheckWidget extends MPNextWidget {
       .pc-qr-help {
         margin: 10px 0 0;
         font-size: 13px;
-        color: #6b7280;
+        color: var(--_nw-color-muted);
       }
 
-      .pc-members { display: flex; flex-direction: column; gap: 16px; }
+      .pc-members { display: flex; flex-direction: column; gap: var(--_nw-space-4); }
 
       .pc-member {
         margin: 0;
-        padding: 12px 14px;
-        border: 1px solid #e5e7eb;
+        padding: var(--_nw-space-3) 14px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
         border-radius: 10px;
         min-width: 0;
       }
@@ -867,8 +867,8 @@ export class PreCheckWidget extends MPNextWidget {
       .pc-member-name {
         padding: 0 6px;
         font-size: 15px;
-        font-weight: 700;
-        color: #002855;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
       }
 
       .pc-rows { list-style: none; margin: 0; padding: 0; }
@@ -879,41 +879,41 @@ export class PreCheckWidget extends MPNextWidget {
         display: flex;
         align-items: baseline;
         flex-wrap: wrap;
-        gap: 8px;
-        padding: 6px 4px;
-        font-size: 14px;
+        gap: var(--_nw-space-2);
+        padding: 6px var(--_nw-space-1);
+        font-size: var(--_nw-font-size-base);
         border-radius: 6px;
       }
 
       .pc-check input { margin: 0; }
 
       .pc-when { font-variant-numeric: tabular-nums; font-weight: 600; }
-      .pc-event { color: #2D2926; }
-      .pc-group { color: #6b7280; }
+      .pc-event { color: var(--_nw-color-text); }
+      .pc-group { color: var(--_nw-color-muted); }
       .pc-group::before { content: "— "; }
-      .pc-role { color: #6b7280; }
+      .pc-role { color: var(--_nw-color-muted); }
       .pc-role::before { content: "("; }
       .pc-role::after { content: ")"; }
 
       .pc-locked {
         font-size: 12px;
         font-weight: 600;
-        color: #86AD3F;
+        color: var(--_nw-color-success);
         border: 1px solid currentColor;
         border-radius: 999px;
-        padding: 1px 8px;
+        padding: 1px var(--_nw-space-2);
       }
 
-      .pc-actions { margin-top: 12px; }
+      .pc-actions { margin-top: var(--_nw-space-3); }
 
       .pc-actions--bar {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         flex-wrap: wrap;
-        margin-top: 16px;
-        padding-top: 16px;
-        border-top: 1px solid #e5e7eb;
+        margin-top: var(--_nw-space-4);
+        padding-top: var(--_nw-space-4);
+        border-top: var(--_nw-border-width) solid var(--_nw-color-border);
       }
 
       .pc-actions--bar .pc-btn { margin-left: auto; }
@@ -923,8 +923,8 @@ export class PreCheckWidget extends MPNextWidget {
         font-size: 13px;
         background: none;
         border: 0;
-        padding: 4px 2px;
-        color: #004C97;
+        padding: var(--_nw-space-1) 2px;
+        color: var(--_nw-color-primary);
         text-decoration: underline;
         cursor: pointer;
       }
@@ -932,29 +932,29 @@ export class PreCheckWidget extends MPNextWidget {
       .pc-link:disabled { color: #9ca3af; cursor: default; }
 
       .pc-link:focus-visible {
-        outline: 2px solid #009CDE;
+        outline: var(--_nw-focus-ring);
         outline-offset: 2px;
       }
 
       .pc-btn:disabled { background: #9ca3af; cursor: default; }
 
       .pc-notice {
-        margin: 0 0 12px;
-        padding: 10px 12px;
-        border-radius: 8px;
-        font-size: 14px;
+        margin: 0 0 var(--_nw-space-3);
+        padding: 10px var(--_nw-space-3);
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
       }
 
       .pc-notice--ok {
         background: #f1f7e8;
-        border: 1px solid #86AD3F;
-        color: #2D2926;
+        border: var(--_nw-border-width) solid var(--_nw-color-success);
+        color: var(--_nw-color-text);
       }
 
       .pc-notice--warn {
         background: #fff1f1;
-        border: 1px solid #FF6D6A;
-        color: #2D2926;
+        border: var(--_nw-border-width) solid var(--_nw-color-error);
+        color: var(--_nw-color-text);
       }
 
       .pc-btn {
@@ -962,16 +962,16 @@ export class PreCheckWidget extends MPNextWidget {
         font-weight: 600;
         padding: 10px 18px;
         border: 0;
-        border-radius: 8px;
-        background: #004C97;
-        color: white;
+        border-radius: var(--_nw-button-radius);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         cursor: pointer;
       }
 
-      .pc-btn:hover { background: #002855; }
+      .pc-btn:hover { background: var(--_nw-button-bg-hover); }
 
       .pc-btn:focus-visible {
-        outline: 2px solid #009CDE;
+        outline: var(--_nw-focus-ring);
         outline-offset: 2px;
       }
     `;
