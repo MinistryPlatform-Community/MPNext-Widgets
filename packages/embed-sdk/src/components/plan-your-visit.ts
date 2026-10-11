@@ -4,6 +4,7 @@ import {
   bindLiveValidation,
   requiredStar,
   field,
+  fieldId,
   FORM_VALIDATION_STYLES,
   type CustomValidator,
 } from "../shared/form-validation";
@@ -56,9 +57,14 @@ interface VerifyResult {
   lastName: string;
   email: string;
 }
+/**
+ * One child row. `values` mirrors **every** `child-<key>-<field>` control,
+ * keyed by `<field>` (`firstName`, `lastName`, `dob`, `gender`, `ageGroup`),
+ * so a re-render can restore all of it (C82: it once kept only `dob`).
+ */
 interface ChildState {
   key: number;
-  dob: string;
+  values: Record<string, string>;
 }
 
 /**
@@ -373,31 +379,54 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   // ── Children state ──
 
+  /**
+   * Snapshot every rendered child control back into `childRows`, by iterating
+   * the row's controls rather than naming the fields to keep: a field added to
+   * the row later is preserved without touching this method (C82).
+   */
   private syncChildren() {
     for (const c of this.childRows) {
-      const dob = this.root.querySelector<HTMLInputElement>(`[name="child-${c.key}-dob"]`);
-      if (dob) c.dob = dob.value;
+      const prefix = `child-${c.key}-`;
+      this.root
+        .querySelectorAll<HTMLInputElement | HTMLSelectElement>(`#pyv-child-${c.key} [name^="${prefix}"]`)
+        .forEach((el) => {
+          c.values[el.name.slice(prefix.length)] = el.value;
+        });
     }
   }
 
+  /**
+   * Add a child by **appending** its row. Existing rows are never re-rendered,
+   * so nothing a visitor typed into them can be lost (C82).
+   */
   private addChild() {
-    this.syncChildren();
-    this.childRows.push({ key: this.childSeq++, dob: "" });
-    this.renderChildren();
+    const row: ChildState = { key: this.childSeq++, values: {} };
+    this.childRows.push(row);
+    const container = this.root.querySelector<HTMLElement>("#pyv-children");
+    if (!container) return;
+    container.insertAdjacentHTML("beforeend", this.renderChild(row));
+    this.root.querySelector<HTMLElement>(`[name="child-${row.key}-firstName"]`)?.focus();
   }
 
+  /** Remove one child's row node; the others are untouched (C82). */
   private deleteChild(key: number) {
     this.syncChildren();
     this.childRows = this.childRows.filter((c) => c.key !== key);
-    this.renderChildren();
+    this.root.querySelector(`#pyv-child-${key}`)?.remove();
+    this.root.querySelector<HTMLElement>('[data-action="add-child"]')?.focus();
   }
 
-  /** Re-render just the children container (preserves the rest of the form). */
-  private renderChildren() {
-    const container = this.root.querySelector<HTMLElement>("#pyv-children");
-    if (!container) return;
-    container.innerHTML = this.childRows.map((c) => this.renderChild(c)).join("");
-    this.attachChildListeners();
+  /**
+   * Congregation changed, so the age/grade groups did: rebuild each child's
+   * group `<select>` options in place, keeping its selection when the group is
+   * still offered. No row is re-rendered.
+   */
+  private refreshAgeGroupSelects() {
+    this.syncChildren();
+    for (const c of this.childRows) {
+      const sel = this.root.querySelector<HTMLSelectElement>(`[name="child-${c.key}-ageGroup"]`);
+      if (sel) sel.innerHTML = this.ageGroupOptions(c.values.dob ?? "", c.values.ageGroup ?? "");
+    }
   }
 
   // ── Listeners ──
@@ -427,7 +456,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
       if (cong) {
         cong.addEventListener("change", async () => {
           await this.loadAgeGroups(Number(cong.value) || 0);
-          this.renderChildren();
+          this.refreshAgeGroupSelects();
         });
       }
 
@@ -442,20 +471,26 @@ export class PlanYourVisitWidget extends MPNextWidget {
     }
   }
 
+  /**
+   * Delegated once on the children container, so rows appended later need no
+   * binding of their own (and existing rows are never bound twice).
+   */
   private attachChildListeners() {
-    this.root.querySelectorAll<HTMLElement>('[data-action="remove-child"]').forEach((el) => {
-      el.addEventListener("click", (e) => {
-        e.preventDefault();
-        this.deleteChild(Number(el.getAttribute("data-child-key")));
-      });
+    const container = this.root.querySelector<HTMLElement>("#pyv-children");
+    if (!container) return;
+    container.addEventListener("click", (e) => {
+      const btn = (e.target as Element | null)?.closest<HTMLElement>('[data-action="remove-child"]');
+      if (!btn) return;
+      e.preventDefault();
+      this.deleteChild(Number(btn.getAttribute("data-child-key")));
     });
     // Re-sort a child's age/grade options when its DOB changes.
-    this.root.querySelectorAll<HTMLInputElement>('[data-role="child-dob"]').forEach((el) => {
-      el.addEventListener("change", () => {
-        const key = Number(el.getAttribute("data-child-key"));
-        const sel = this.root.querySelector<HTMLSelectElement>(`[name="child-${key}-ageGroup"]`);
-        if (sel) sel.innerHTML = this.ageGroupOptions(el.value);
-      });
+    container.addEventListener("change", (e) => {
+      const el = e.target as HTMLInputElement | null;
+      if (!el || el.getAttribute("data-role") !== "child-dob") return;
+      const key = Number(el.getAttribute("data-child-key"));
+      const sel = this.root.querySelector<HTMLSelectElement>(`[name="child-${key}-ageGroup"]`);
+      if (sel) sel.innerHTML = this.ageGroupOptions(el.value, sel.value);
     });
   }
 
@@ -480,6 +515,9 @@ export class PlanYourVisitWidget extends MPNextWidget {
   // ── Render ──
 
   render() {
+    // A full repaint rebuilds the child rows from `childRows`; snapshot them
+    // first so a repaint can never cost a visitor what they typed (C82).
+    this.syncChildren();
     if (this.loading) {
       this.root.innerHTML = `<div class="pyv">${this.stateBlock(this.spinnerSvg(), this.t("common.loading"))}</div>`;
       return;
@@ -588,34 +626,44 @@ export class PlanYourVisitWidget extends MPNextWidget {
   }
 
   private renderChild(c: ChildState): string {
+    const v = c.values;
+    const name = (f: string) => `child-${c.key}-${f}`;
+    const base = { idPrefix: this.instanceId, wrapperClass: "pyv-field", inputClass: "pyv-input" };
     // The gender and age/grade *values* come from MP and stay as MP supplies
     // them; the empty first option is the widget's own placeholder.
-    const genderOptions = [
-      `<option value="">${this.escapeHtml(this.t("fields.gender"))}</option>`,
-    ]
-      .concat(this.config.genders.map((g) => `<option value="${g.id}">${this.escapeHtml(g.name)}</option>`))
-      .join("");
+    const genderOptions = [{ value: "", label: this.t("fields.gender") }].concat(
+      this.config.genders.map((g) => ({ value: String(g.id), label: g.name }))
+    );
     return `
       <fieldset class="pyv-fieldset" id="pyv-child-${c.key}">
         <legend>${this.escapeHtml(this.t("planYourVisit.child"))} <button type="button" class="pyv-remove" data-action="remove-child" data-child-key="${c.key}" aria-label="${this.escapeAttr(this.t("planYourVisit.removeChild"))}">&times;</button></legend>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="pyv-input" name="child-${c.key}-firstName" required></div>
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="pyv-input" name="child-${c.key}-lastName" value="${this.escapeAttr(this.verify?.lastName || "")}" required></div>
+          ${field({ ...base, name: name("firstName"), label: this.t("fields.firstName"), required: true, value: v.firstName })}
+          ${field({ ...base, name: name("lastName"), label: this.t("fields.lastName"), required: true, value: v.lastName ?? this.verify?.lastName ?? "" })}
         </div>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.dateOfBirth"))}${requiredStar()}</label><input class="pyv-input" type="date" name="child-${c.key}-dob" data-role="child-dob" data-child-key="${c.key}" value="${this.escapeAttr(c.dob || "")}" required></div>
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.gender"))}</label><select class="pyv-input" name="child-${c.key}-gender">${genderOptions}</select></div>
+          ${field({ ...base, name: name("dob"), label: this.t("fields.dateOfBirth"), type: "date", required: true, value: v.dob, attrs: { "data-role": "child-dob", "data-child-key": c.key } })}
+          ${field({ ...base, name: name("gender"), label: this.t("fields.gender"), type: "select", value: v.gender ?? "", options: genderOptions })}
         </div>
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("planYourVisit.ageOrGradeGroup"))}</label><select class="pyv-input" name="child-${c.key}-ageGroup">${this.ageGroupOptions(c.dob)}</select></div>
+        <div class="pyv-field" data-mpx-field>
+          <label for="${fieldId(name("ageGroup"), this.instanceId)}">${this.escapeHtml(this.t("planYourVisit.ageOrGradeGroup"))}</label>
+          <select id="${fieldId(name("ageGroup"), this.instanceId)}" class="pyv-input" name="${name("ageGroup")}">${this.ageGroupOptions(v.dob ?? "", v.ageGroup ?? "")}</select>
+        </div>
       </fieldset>`;
   }
 
-  private ageGroupOptions(dob: string): string {
+  /** Age/grade `<option>`s, nearest to the child's age first, keeping `selected`. */
+  private ageGroupOptions(dob: string, selected = ""): string {
     const groups = dob ? this.sortAgeGroups([...this.ageGroups], dob) : this.ageGroups;
     return [
       `<option value="">${this.escapeHtml(this.t("planYourVisit.selectGroup"))}</option>`,
     ]
-      .concat(groups.map((g) => `<option value="${g.id}">${this.escapeHtml(g.value)}</option>`))
+      .concat(
+        groups.map(
+          (g) =>
+            `<option value="${g.id}"${String(g.id) === selected ? " selected" : ""}>${this.escapeHtml(g.value)}</option>`
+        )
+      )
       .join("");
   }
 

@@ -167,6 +167,17 @@ describe("<next-plan-your-visit>", () => {
       expect(posted(fetchFn, "/plan-your-visit/register")).toHaveLength(0);
     });
 
+    it("still validates after a failed attempt is corrected", async () => {
+      const fetchFn = mockFetch();
+      const el = await mountDetails();
+      fillRequired(el, "abc");
+      submit(el);
+      await vi.waitFor(() => expect(shadow(el).querySelector(".mpx-field-error")).not.toBeNull());
+      set(el, "headMobilePhone", "321-555-0100");
+      submit(el);
+      await vi.waitFor(() => expect(posted(fetchFn, "/plan-your-visit/register")).toHaveLength(1));
+    });
+
     it("lets an empty optional spouse phone through but checks a filled one", async () => {
       const fetchFn = mockFetch();
       const el = await mountDetails();
@@ -179,6 +190,84 @@ describe("<next-plan-your-visit>", () => {
       set(el, "spousePhone", "");
       submit(el);
       await vi.waitFor(() => expect(posted(fetchFn, "/plan-your-visit/register")).toHaveLength(1));
+    });
+  });
+
+  describe("child rows (C82)", () => {
+    const addChild = (el: HTMLElement) =>
+      shadow(el).querySelector<HTMLButtonElement>('[data-action="add-child"]')!.click();
+    const removeChild = (el: HTMLElement, key: number) =>
+      shadow(el).querySelector<HTMLButtonElement>(`[data-action="remove-child"][data-child-key="${key}"]`)!.click();
+
+    function fillChild(el: HTMLElement, key: number, first: string, dob: string, gender: string, group: string) {
+      set(el, `child-${key}-firstName`, first);
+      set(el, `child-${key}-lastName`, `${first}-last`);
+      set(el, `child-${key}-dob`, dob);
+      set(el, `child-${key}-gender`, gender);
+      set(el, `child-${key}-ageGroup`, group);
+    }
+    function readChild(el: HTMLElement, key: number) {
+      return ["firstName", "lastName", "dob", "gender", "ageGroup"].map((f) => input(el, `child-${key}-${f}`).value);
+    }
+
+    it("keeps every typed field of earlier children when more are added", async () => {
+      mockFetch();
+      const el = await mountDetails();
+      addChild(el);
+      fillChild(el, 0, "Ann", "2020-01-01", "2", "10");
+      addChild(el);
+      fillChild(el, 1, "Ben", "2018-05-05", "1", "11");
+      addChild(el);
+
+      expect(readChild(el, 0)).toEqual(["Ann", "Ann-last", "2020-01-01", "2", "10"]);
+      expect(readChild(el, 1)).toEqual(["Ben", "Ben-last", "2018-05-05", "1", "11"]);
+      expect(input(el, "child-2-lastName").value).toBe("Lovelace");
+    });
+
+    it("keeps the other children when one is removed", async () => {
+      mockFetch();
+      const el = await mountDetails();
+      addChild(el);
+      fillChild(el, 0, "Ann", "2020-01-01", "2", "10");
+      addChild(el);
+      fillChild(el, 1, "Ben", "2018-05-05", "1", "11");
+      addChild(el);
+      fillChild(el, 2, "Cal", "2016-03-03", "1", "11");
+
+      removeChild(el, 1);
+      expect(shadow(el).querySelector("#pyv-child-1")).toBeNull();
+      expect(readChild(el, 0)).toEqual(["Ann", "Ann-last", "2020-01-01", "2", "10"]);
+      expect(readChild(el, 2)).toEqual(["Cal", "Cal-last", "2016-03-03", "1", "11"]);
+    });
+
+    it("keeps children and their group when the congregation changes", async () => {
+      mockFetch();
+      const el = await mountDetails();
+      addChild(el);
+      fillChild(el, 0, "Ann", "2020-01-01", "2", "10");
+      const cong = input(el, "congregationId");
+      cong.value = "1";
+      cong.dispatchEvent(new Event("change", { bubbles: true }));
+      await vi.waitFor(() =>
+        expect(input(el, "child-0-ageGroup").querySelectorAll("option").length).toBe(3)
+      );
+      expect(readChild(el, 0)).toEqual(["Ann", "Ann-last", "2020-01-01", "2", "10"]);
+    });
+
+    it("submits every child's fields", async () => {
+      const fetchFn = mockFetch();
+      const el = await mountDetails();
+      fillRequired(el, "321-555-0100");
+      addChild(el);
+      fillChild(el, 0, "Ann", "2020-01-01", "2", "10");
+      addChild(el);
+      fillChild(el, 1, "Ben", "2018-05-05", "1", "11");
+      submit(el);
+      await vi.waitFor(() => expect(posted(fetchFn, "/plan-your-visit/register")).toHaveLength(1));
+      expect(posted(fetchFn, "/plan-your-visit/register")[0].children).toEqual([
+        { firstName: "Ann", lastName: "Ann-last", dateOfBirth: "2020-01-01", genderId: 2, ageAndGradeGroup: 10 },
+        { firstName: "Ben", lastName: "Ben-last", dateOfBirth: "2018-05-05", genderId: 1, ageAndGradeGroup: 11 },
+      ]);
     });
   });
 });
