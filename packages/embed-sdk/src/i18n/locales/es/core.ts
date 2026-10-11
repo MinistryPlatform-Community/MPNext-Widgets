@@ -90,6 +90,7 @@ export const esCore = {
     generic: "Corrija este campo.",
     formIncomplete: "Complete los campos obligatorios.",
     phone: "Ingrese un número de teléfono válido.",
+    requiredField: "El campo {label} es obligatorio.",
   },
 
   errors: {

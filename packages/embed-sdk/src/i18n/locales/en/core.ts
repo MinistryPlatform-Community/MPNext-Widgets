@@ -105,6 +105,14 @@ export const core = {
     generic: "Please correct this field.",
     formIncomplete: "Please complete the required fields.",
     phone: "Enter a valid phone number.",
+    /**
+     * `required` with the field named (C19 row 10: "which field?"). Used when
+     * the control came from `field()`, which stamps its label on it; the bare
+     * `required` stays for hand-written markup. `{label}` is the visible label
+     * as rendered — so in Spanish/Portuguese the sentence is built around
+     * "the field" to stay correct whatever the label's grammatical gender.
+     */
+    requiredField: "{label} is required.",
   },
 
   /**

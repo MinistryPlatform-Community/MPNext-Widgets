@@ -90,6 +90,7 @@ export const ptBRCore = {
     generic: "Corrija este campo.",
     formIncomplete: "Preencha os campos obrigatórios.",
     phone: "Informe um telefone válido.",
+    requiredField: "O campo {label} é obrigatório.",
   },
 
   errors: {

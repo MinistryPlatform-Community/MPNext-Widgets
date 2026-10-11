@@ -741,6 +741,7 @@
   "validation.pattern": "64ede462",
   "validation.phone": "90eeb8ff",
   "validation.required": "68cadcee",
+  "validation.requiredField": "760bcf6e",
   "validation.tooLong": "9ef8db29",
   "validation.tooShort": "248ce67b",
   "validation.url": "cabf6d7c"

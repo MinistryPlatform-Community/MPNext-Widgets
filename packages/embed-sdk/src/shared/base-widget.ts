@@ -96,6 +96,9 @@ export const SIGN_IN_REQUIRED_STYLES = `
   .nw-signin-btn:focus-visible { outline: 2px solid #009CDE; outline-offset: 2px; }
 `;
 
+/** Source of `MPNextWidget.instanceId`. */
+let instanceCounter = 0;
+
 /** Read the `sub` claim of a JWT without verifying it. */
 function decodeJwtSub(token: string): string | null {
   try {
@@ -117,6 +120,13 @@ function decodeJwtSub(token: string): string | null {
 export abstract class MPNextWidget extends HTMLElement {
   protected root: ShadowRoot;
   protected apiHost: string;
+
+  /**
+   * A per-element prefix (`nw1`, `nw2`, …) for ids minted inside the shadow
+   * root — pass it as `field({ idPrefix: this.instanceId })` so two widgets of
+   * the same kind on one page can never produce the same id.
+   */
+  protected readonly instanceId = `nw${++instanceCounter}`;
   protected tokenProvider: () => Promise<string>;
 
   /**
