@@ -427,7 +427,7 @@ export class MyPledgesWidget extends MPNextWidget {
   }
 
   private heartSvg(): string {
-    return `<svg viewBox="0 0 24 24" fill="#004C97" class="heart-icon" role="img" aria-label="${this.escapeAttr(this.t("myPledges.iconLabel"))}">
+    return `<svg viewBox="0 0 24 24" class="heart-icon" role="img" aria-label="${this.escapeAttr(this.t("myPledges.iconLabel"))}">
       <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
     </svg>`;
   }
@@ -449,40 +449,40 @@ export class MyPledgesWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-pledges {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
+        background: var(--_nw-color-surface);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .header {
-        background: #002855;
-        color: white;
-        padding: 24px;
+        background: var(--_nw-color-secondary);
+        color: var(--_nw-color-on-primary);
+        padding: var(--_nw-space-6);
       }
       .title {
         font-size: 24px;
         font-weight: bold;
         text-align: center;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
       }
       .subtitle {
         text-align: center;
         opacity: 0.8;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         margin: 0;
       }
       .loading-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         font-size: 18px;
       }
 
@@ -496,14 +496,14 @@ export class MyPledgesWidget extends MPNextWidget {
       }
 
       .body {
-        padding: 20px;
+        padding: var(--_nw-space-5);
       }
 
       .message {
-        margin-bottom: 16px;
+        margin-bottom: var(--_nw-space-4);
         padding: 10px 14px;
-        border-radius: 8px;
-        font-size: 14px;
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
       }
       .message--success {
         background: rgba(134, 173, 63, 0.15);
@@ -512,28 +512,28 @@ export class MyPledgesWidget extends MPNextWidget {
       }
       .message--error {
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
         border: 1px solid rgba(255, 109, 106, 0.4);
       }
 
       .empty-state {
         text-align: center;
-        padding: 40px 20px;
+        padding: 40px var(--_nw-space-5);
         color: #9E9E9E;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
       }
 
       .pledge-grid {
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: var(--_nw-space-4);
       }
 
       .pledge-card {
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 16px;
-        background: white;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius-lg);
+        padding: var(--_nw-space-4);
+        background: var(--_nw-color-surface);
       }
       .pledge-card-top {
         display: flex;
@@ -546,7 +546,7 @@ export class MyPledgesWidget extends MPNextWidget {
         border-radius: 10px;
         object-fit: cover;
         flex-shrink: 0;
-        background: #f3f4f6;
+        background: var(--_nw-color-surface-muted);
       }
       .pledge-image--placeholder {
         display: flex;
@@ -557,6 +557,7 @@ export class MyPledgesWidget extends MPNextWidget {
       .heart-icon {
         width: 32px;
         height: 32px;
+        fill: var(--_nw-color-primary);
       }
       .pledge-card-head {
         flex: 1;
@@ -564,8 +565,8 @@ export class MyPledgesWidget extends MPNextWidget {
       }
       .pledge-name {
         font-size: 16px;
-        font-weight: 700;
-        color: #002855;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
         margin-top: 6px;
         line-height: 1.3;
       }
@@ -592,34 +593,34 @@ export class MyPledgesWidget extends MPNextWidget {
       }
       .badge-completed {
         background: rgba(0, 76, 151, 0.12);
-        color: #004C97;
+        color: var(--_nw-color-primary);
       }
       .badge-discontinued {
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
       }
       .badge-pending {
         background: rgba(241, 190, 72, 0.2);
         color: #92700c;
       }
       .badge-default {
-        background: #f3f4f6;
-        color: #474747;
+        background: var(--_nw-color-surface-muted);
+        color: var(--_nw-color-text-subtle);
       }
 
       .progress-section {
-        margin-top: 16px;
+        margin-top: var(--_nw-space-4);
       }
       .progress-track {
         width: 100%;
         height: 12px;
-        background: #f3f4f6;
+        background: var(--_nw-color-surface-muted);
         border-radius: 9999px;
         overflow: hidden;
       }
       .progress-fill {
         height: 100%;
-        background: #004C97;
+        background: var(--_nw-color-primary);
         border-radius: 9999px;
         transition: width 0.3s ease;
       }
@@ -627,33 +628,33 @@ export class MyPledgesWidget extends MPNextWidget {
         margin-top: 6px;
         font-size: 13px;
         font-weight: 600;
-        color: #002855;
+        color: var(--_nw-color-secondary);
       }
 
       .pledge-desc {
-        margin-top: 12px;
+        margin-top: var(--_nw-space-3);
         font-size: 13px;
         color: rgba(45, 41, 38, 0.7);
       }
 
       .cancel-area {
-        margin-top: 16px;
+        margin-top: var(--_nw-space-4);
         padding-top: 14px;
         border-top: 1px solid #f3f4f6;
       }
       .cancel-confirm {
-        margin-top: 16px;
+        margin-top: var(--_nw-space-4);
         padding: 14px;
         border-top: 1px solid #f3f4f6;
         background: rgba(255, 109, 106, 0.06);
-        border-radius: 8px;
+        border-radius: var(--_nw-radius);
       }
       .cancel-confirm-text {
         display: block;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
-        color: #2D2926;
-        margin-bottom: 12px;
+        color: var(--_nw-color-text);
+        margin-bottom: var(--_nw-space-3);
       }
       .cancel-confirm-actions {
         display: flex;
@@ -665,11 +666,11 @@ export class MyPledgesWidget extends MPNextWidget {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         padding: 9px 18px;
         font-size: 13px;
         font-weight: 600;
-        border-radius: 8px;
+        border-radius: var(--_nw-radius);
         cursor: pointer;
         font-family: inherit;
         transition: all 0.15s;
@@ -679,15 +680,15 @@ export class MyPledgesWidget extends MPNextWidget {
         cursor: not-allowed;
       }
       .cancel-btn--request {
-        background: white;
-        color: #b91c1c;
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-error-text);
         border: 1px solid rgba(255, 109, 106, 0.6);
       }
       .cancel-btn--request:hover {
         background: rgba(255, 109, 106, 0.1);
       }
       .cancel-btn--danger {
-        background: #FF6D6A;
+        background: var(--_nw-color-error);
         color: white;
         border: none;
       }
@@ -699,42 +700,42 @@ export class MyPledgesWidget extends MPNextWidget {
         height: 14px;
       }
       .cancel-btn--ghost {
-        background: white;
-        color: #004C97;
-        border: 1px solid #e5e7eb;
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-primary);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
       }
       .cancel-btn--ghost:hover:not(:disabled) {
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
         background: rgba(0, 76, 151, 0.04);
       }
 
       .retry-section {
-        padding: 20px;
+        padding: var(--_nw-space-5);
         text-align: center;
       }
       .retry-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .retry-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       @media (max-width: 640px) {
         .header, .body {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .pledge-card-top {
-          gap: 12px;
+          gap: var(--_nw-space-3);
         }
         .pledge-image {
           width: 52px;
