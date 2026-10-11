@@ -90,11 +90,11 @@ export interface SignInRequiredOptions {
  * own `className` / `buttonClass` styling.
  */
 export const SIGN_IN_REQUIRED_STYLES = `
-  .nw-signin { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px 16px; text-align: center; }
+  .nw-signin { display: flex; flex-direction: column; align-items: center; gap: var(--_nw-space-3); padding: var(--_nw-space-6) var(--_nw-space-4); text-align: center; }
   .nw-signin-msg { margin: 0; }
-  .nw-signin-btn { font: inherit; font-weight: 600; cursor: pointer; padding: 8px 20px; border: 0; border-radius: 6px; background: #004C97; color: #fff; }
-  .nw-signin-btn:hover { background: #002855; }
-  .nw-signin-btn:focus-visible { outline: 2px solid #009CDE; outline-offset: 2px; }
+  .nw-signin-btn { font: inherit; font-weight: 600; cursor: pointer; padding: var(--_nw-space-2) var(--_nw-space-5); border: 0; border-radius: 6px; background: var(--_nw-button-bg); color: var(--_nw-button-fg); }
+  .nw-signin-btn:hover { background: var(--_nw-button-bg-hover); }
+  .nw-signin-btn:focus-visible { outline: var(--_nw-focus-ring); outline-offset: 2px; }
 `;
 
 /** Source of `MPNextWidget.instanceId`. */
