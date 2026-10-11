@@ -244,8 +244,18 @@ export abstract class MPNextWidget extends HTMLElement {
       mode: "cors",
     });
 
-    // Handle token refresh on 401
-    if (res.status === 401 && window.__nextTokenProvider?.refresh) {
+    // Handle token refresh on 401 — but only for a token that carried a user.
+    // A public token is minted for "no one is signed in"; a refresh mints
+    // another public token, so the retry cannot change the answer and only
+    // doubles the round-trip (and a session-mint call) on every signed-out
+    // visit. The provider never hands out a token within 30s of its `exp`, so
+    // a public 401 is not an expiry the refresh could cure. An undecodable
+    // token (custom `MPNextEmbed.init()` provider) keeps the retry.
+    if (
+      res.status === 401 &&
+      this.lastTokenSub !== "public" &&
+      window.__nextTokenProvider?.refresh
+    ) {
       const newToken = await window.__nextTokenProvider.refresh();
       this.lastTokenSub = decodeJwtSub(newToken);
       return fetch(`${this.apiHost}${path}`, {
