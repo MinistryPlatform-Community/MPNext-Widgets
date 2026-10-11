@@ -212,7 +212,7 @@ const extras: Record<string, WidgetExtras> = {
   "my-household": {
     controls: [
       {
-        name: "hideAddHouseholdMember", label: "Add Member Button", type: "select", attribute: "hideaddhouseholdmember",
+        name: "hideAddHouseholdMember", label: "Add Member Button", type: "select", attribute: "hide-add-household-member",
         options: [
           { label: "Show", value: "false" },
           { label: "Hide", value: "true" },
@@ -273,7 +273,7 @@ const extras: Record<string, WidgetExtras> = {
   "my-groups": {
     controls: [
       {
-        name: "hideGroupLife", label: "Group Life Link", type: "select", attribute: "hidegrouplife",
+        name: "hideGroupLife", label: "Group Life Link", type: "select", attribute: "hide-group-life",
         options: [
           { label: "Show", value: "false" },
           { label: "Hide", value: "true" },

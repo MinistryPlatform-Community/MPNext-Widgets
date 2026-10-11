@@ -1377,8 +1377,8 @@ export class UserMenuWidget extends MPNextWidget {
         // statement widget bundled both into one), giving history, and pledges.
         // The entire Giving tab is now native — no legacy MP widgets remain.
         const statement = `<next-my-contribution-statement api-host="${host}"></next-my-contribution-statement><next-statement-preferences api-host="${host}"></next-statement-preferences>`;
-        const giving = `<next-my-giving hidesoftcredits="true" api-host="${host}"></next-my-giving>`;
-        const pledges = `<next-my-pledges hidecancelbuttonpledge="true" api-host="${host}"></next-my-pledges>`;
+        const giving = `<next-my-giving hide-soft-credits="true" api-host="${host}"></next-my-giving>`;
+        const pledges = `<next-my-pledges hide-cancel-button-pledge="true" api-host="${host}"></next-my-pledges>`;
 
         return statementOnTop
           ? `<div class="nw-tab-panel" data-panel="giving">${statement}${giving}${pledges}</div>`
