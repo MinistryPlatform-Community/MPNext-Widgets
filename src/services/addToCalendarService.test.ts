@@ -62,9 +62,30 @@ describe('AddToCalendarService', () => {
         table: 'Events',
         select:
           'Event_ID,Event_Title,Description,Event_Start_Date,Event_End_Date,Location_ID',
-        filter: 'Event_ID = 42',
+        filter: '(Event_ID = 42) AND Cancelled = 0 AND Visibility_Level_ID = 4',
         top: 1,
       });
+    });
+
+    // C06: the route is public, so the read itself must refuse non-public and
+    // cancelled rows. MP evaluates the $filter, so the unit-level contract is:
+    // the predicate is always sent, and an empty result is null (→ route 404).
+    it.each([
+      ['a Visibility_Level_ID = 2 (staff only) id', 759],
+      ['a cancelled id', 760],
+    ])('returns null for %s because MP filters it out', async (_label, id) => {
+      mockGetTableRecords.mockResolvedValueOnce([]);
+
+      const service = await AddToCalendarService.getInstance();
+      const result = await service.getEventForCalendar(id);
+
+      expect(result).toBeNull();
+      const filter = mockGetTableRecords.mock.calls[0][0].filter as string;
+      expect(filter).toContain(`Event_ID = ${id}`);
+      expect(filter).toContain('Visibility_Level_ID = 4');
+      expect(filter).toContain('Cancelled = 0');
+      // No follow-up Location/Address read for a refused event.
+      expect(mockGetTableRecords).toHaveBeenCalledTimes(1);
     });
 
     it('should return event data with null location/address when Location_ID is null', async () => {

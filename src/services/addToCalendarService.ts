@@ -1,5 +1,6 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
+import { publicEventFilter } from "@/services/_shared/public-events";
 import type { CalendarEventData } from "@mpnext/types";
 
 interface EventRecord {
@@ -48,12 +49,18 @@ export class AddToCalendarService {
   /**
    * Fetch event data suitable for rendering an add-to-calendar button.
    * Resolves Location and Address in sequential steps when IDs are present.
+   *
+   * Public, non-cancelled events only (C06): the route is reachable with the
+   * anonymous token the SDK mints on any allowlisted page, and ids are
+   * sequential, so an id-only filter handed out every staff-only event's title,
+   * description and venue. A non-public or cancelled id returns `null`, which
+   * the route answers with the same 404 as `/api/embed/event-details/:id`.
    */
   public async getEventForCalendar(eventId: number): Promise<CalendarEventData | null> {
     const events = await this.mp!.getTableRecords<EventRecord>({
       table: "Events",
       select: "Event_ID,Event_Title,Description,Event_Start_Date,Event_End_Date,Location_ID",
-      filter: `Event_ID = ${eventId}`,
+      filter: publicEventFilter(`Event_ID = ${eventId}`),
       top: 1,
     });
 

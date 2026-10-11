@@ -347,7 +347,7 @@ describe('FullCalendarService', () => {
       expect(result.event.Registration_Product_Name).toBeNull();
     });
 
-    it('should issue the Events query with Event_ID + Visibility_Level_ID filter', async () => {
+    it('should issue the Events query with Event_ID + the public-event predicate (C06: incl. Cancelled = 0)', async () => {
       mockGetTableRecords.mockResolvedValueOnce([]);
 
       const service = await FullCalendarService.getInstance();
@@ -355,7 +355,7 @@ describe('FullCalendarService', () => {
 
       const eventsCall = mockGetTableRecords.mock.calls[0][0];
       expect(eventsCall.table).toBe('Events');
-      expect(eventsCall.filter).toBe('Event_ID = 42 AND Visibility_Level_ID = 4');
+      expect(eventsCall.filter).toBe('(Event_ID = 42) AND Cancelled = 0 AND Visibility_Level_ID = 4');
       expect(eventsCall.top).toBe(1);
     });
   });

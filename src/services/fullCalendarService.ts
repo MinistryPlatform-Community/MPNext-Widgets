@@ -1,5 +1,6 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
+import { publicEventFilter } from "@/services/_shared/public-events";
 import type { CalendarEvent } from "@mpnext/types";
 
 // ── MP Record Types ──
@@ -121,7 +122,7 @@ export class FullCalendarService {
     const startDate = await tz.toMpSqlDatetime(start);
     const endDate = await tz.toMpSqlDatetime(end);
 
-    const filter = `Event_Start_Date >= '${startDate}' AND Event_End_Date <= '${endDate}' AND Cancelled = 0 AND Visibility_Level_ID = 4`;
+    const filter = publicEventFilter(`Event_Start_Date >= '${startDate}' AND Event_End_Date <= '${endDate}'`);
 
     const events = await this.mp!.getTableRecords<EventRecord>({
       table: "Events",
@@ -214,7 +215,7 @@ export class FullCalendarService {
         table: "Events",
         select:
           "Event_ID,Event_Title,Event_Start_Date,Event_End_Date,Event_Type_ID,Congregation_ID,Location_ID,Description,Featured_On_Calendar,Registration_Active,External_Registration_URL,Online_Registration_Product,Program_ID,Primary_Contact,Participants_Expected",
-        filter: `Event_ID = ${eventId} AND Visibility_Level_ID = 4`,
+        filter: publicEventFilter(`Event_ID = ${eventId}`),
         top: 1,
       }),
       userGuid ? this.checkCalendarAdmin(userGuid) : Promise.resolve(false),
