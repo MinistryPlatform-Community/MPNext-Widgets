@@ -84,6 +84,8 @@ export class UserMenuWidget extends MPNextWidget {
   private dropdownFocus: DialogFocusHandle | null = null;
   private modalFocus: DialogFocusHandle | null = null;
   /** A function, because every render replaces the avatar button. */
+  /** C56: warn once when signed-in child markup has nowhere to render. */
+  private unslottedWarned = false;
   private avatarTrigger = (): HTMLElement | null =>
     this.root.querySelector<HTMLElement>(".nw-avatar-btn");
   private storageHandler = () => this.render();
@@ -843,6 +845,27 @@ export class UserMenuWidget extends MPNextWidget {
     );
   }
 
+  /**
+   * C56. Signed in, the only place host markup renders is the dropdown's
+   * `<slot name="menu-items">` (a *named* slot, because the default light DOM
+   * carries the injected `<mpp-user-login>` in `legacy` mode). Any other child
+   * is painted nowhere, so say so once instead of dropping it silently.
+   */
+  private warnUnslottedChildren() {
+    if (this.unslottedWarned) return;
+    const stray = Array.from(this.childNodes).some((node) => {
+      if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").trim() !== "";
+      if (!(node instanceof Element)) return false;
+      if (node.localName === "mpp-user-login") return false;
+      return node.getAttribute("slot") !== "menu-items";
+    });
+    if (!stray) return;
+    this.unslottedWarned = true;
+    console.warn(
+      `[next-user-menu] child markup without slot="menu-items" is not rendered when signed in. To add links to the signed-in menu, write e.g. <a slot="menu-items" href="/give">Give</a>.`,
+    );
+  }
+
   private removeLightDOMLogin() {
     this.stopMpLoginWatch();
     const login = this.querySelector("mpp-user-login");
@@ -1109,6 +1132,7 @@ export class UserMenuWidget extends MPNextWidget {
           <svg class="nw-icon" style="stroke: #F1BE48;" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           ${this.escapeHtml(this.t("userMenu.contributionStatement"))}
         </button>` : ""}
+        <slot name="menu-items"></slot>
         <button class="nw-dropdown-item" data-action="logout">
           <svg class="nw-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           ${this.escapeHtml(this.t("common.signOut"))}
@@ -1134,6 +1158,12 @@ export class UserMenuWidget extends MPNextWidget {
   // ── Event Listeners ──────────────────────────────────────────
 
   private attachShadowListeners() {
+    this.warnUnslottedChildren();
+
+    // Choosing a host-authored item closes the dropdown like a built-in one.
+    const menuSlot = this.root.querySelector('slot[name="menu-items"]');
+    if (menuSlot) menuSlot.addEventListener("click", () => this.closeDropdown("programmatic"));
+
     const avatarBtn = this.root.querySelector(".nw-avatar-btn");
     if (avatarBtn) {
       avatarBtn.addEventListener("click", (e) => {
@@ -1627,6 +1657,30 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-dropdown-item:hover {
+        background: #f3f4f6;
+      }
+
+      /* C56: host-authored items (slot="menu-items") look like built-in ones. */
+      ::slotted(a),
+      ::slotted(button) {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        box-sizing: border-box;
+        width: 100%;
+        padding: 10px 16px;
+        border: none;
+        background: none;
+        font-size: 14px;
+        color: #1f2937;
+        text-decoration: none;
+        cursor: pointer;
+        text-align: left;
+        font-family: inherit;
+      }
+
+      ::slotted(a:hover),
+      ::slotted(button:hover) {
         background: #f3f4f6;
       }
 
