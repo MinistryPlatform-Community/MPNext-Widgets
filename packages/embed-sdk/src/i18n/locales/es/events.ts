@@ -117,6 +117,9 @@ export const esEvents = {
     participants: "Participantes",
     registration: "Inscripción",
     openInMinistryPlatform: "Abrir en Ministry Platform",
+    noEventsInMonth: "No hay eventos en {month}.",
+    noUpcomingEvents: "No hay próximos eventos.",
+    upcomingTitle: "Próximos eventos",
   },
 
   addToCalendar: {

@@ -86,3 +86,45 @@ public default must be public-only. Worth adding a case to
 `src/services/addToCalendarService.test.ts` asserting a `Visibility_Level_ID = 2` id
 returns `null`, and checking the same predicate on any other public-token route that
 reads `Events` by id.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W2, branch `ws/w2-events`).
+
+- New `src/services/_shared/public-events.ts`: `publicEventFilter(clause, prefix?)` and
+  `publicEventPredicate(prefix?)` are the single definition of "an event a public widget may
+  show": `Cancelled = 0 AND Visibility_Level_ID = 4`. The clause is parenthesised so an `OR`
+  inside it cannot bypass the predicate. `Visibility_Levels` re-verified live via MCP:
+  1 Private · 2 Staff Only · 3 Staff & Church · **4 Public** · 5 Hidden: URL Required (a
+  system lookup with fixed ids, so it is not resolved through `getIdByValue`).
+- `AddToCalendarService.getEventForCalendar` now reads through it, so a staff-only or
+  cancelled id returns `null` and the route answers 404, the same answer as a missing id,
+  so the id space cannot be probed.
+- `FullCalendarService.getEvents` and `getEventDetail` use the same helper.
+  **Sweep finding fixed:** `getEventDetail` (`GET /api/embed/full-calendar/:id`) filtered
+  `Visibility_Level_ID = 4` but not `Cancelled = 0`, so a cancelled event's modal still
+  opened by id.
+- Both routes' 404 bodies are now the wire code `event_not_found` (previously English prose,
+  `Event not found: <id>`), which the catalogue already translates.
+- Tests: `public-events.test.ts`; `addToCalendarService.test.ts` asserts the predicate is
+  sent and that a staff-only (759) or cancelled id resolves to `null` with no follow-up reads;
+  `fullCalendarService.test.ts` pins the detail filter including `Cancelled = 0`.
+
+**Sweep of every `Events` read reachable from `src/app/api/embed/*`:**
+
+| Reader | Token | Verdict |
+|---|---|---|
+| `addToCalendarService.getEventForCalendar` | public | **was leaking; fixed** |
+| `fullCalendarService.getEvents` | public | already public-only; now via the helper |
+| `fullCalendarService.getEventDetail` | public | **missing `Cancelled = 0`; fixed** |
+| `eventDetailsService.getEventById` (`api_MPPW_GetEventById`, `@IsStaffUser`) | public | the proc enforces visibility (759 → 404, measured in this item); no `$filter` to change. W1-owned. |
+| `eventDetailsService.checkPendingEventAvailability` | public | reads only `Participants_Expected` and returns a boolean; no event data leaves. W1-owned, left alone. |
+| `eventFinderService` (`api_MPPW_SearchEvents` → `api_MPPW_GetEvents`) | public | ids come from the search proc, which applies MP's own public rule; parity 34/34 with legacy. |
+| `productsService.buildIsHiddenResolver` | public | reads `Event_Start_Date` only, to hide price options; nothing returned. |
+| `preCheckService` (`api_MPPW_GetPreCheckEvents`) | **signed-in only** (route rejects `sub === "public"`) | n/a |
+| `opportunityDetailsService` (`Add_to_Event_Table.Event_ID`) | n/a | reads an id only |
+
+**Decided:** strict public-only now; no signed-in staff relaxation until someone asks for it
+(epic decision table). `Cache-Control: public, max-age=300` on add-to-calendar is kept, since
+the body now holds only public data. A `.ics` for an event cancelled after download remains
+out of scope.

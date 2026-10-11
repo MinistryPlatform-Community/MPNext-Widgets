@@ -1,3 +1,4 @@
+import type { DialogCloseReason } from "../shared/dialog-focus";
 import type { Formatters, Translator } from "../i18n";
 
 // ── Types (local, not imported) ──
@@ -31,7 +32,13 @@ interface RenderDetailModalOptions {
   event: CalendarEvent;
   fcEvent?: { start: Date | null; end: Date | null };
   isAdmin: boolean;
-  onClose: () => void;
+  /**
+   * Called once per close, with why it closed. The caller hands the reason to
+   * its `dialogFocus()` handle (C08): Escape and the close button return focus
+   * to the trigger; a backdrop click (`"outside"`) leaves it where the visitor
+   * clicked.
+   */
+  onClose: (reason: DialogCloseReason) => void;
   getEventColor: (typeId: number | null) => string;
   /**
    * Translator and formatters from `full-calendar.ts` — this module builds the
@@ -245,21 +252,31 @@ export function renderDetailModal(options: RenderDetailModalOptions): HTMLElemen
 
   // ── Event Handlers ──
 
+  // Every close path goes through here, so the document-level Escape listener
+  // is removed however the modal closed. It used to be removed only on
+  // Escape, so a modal closed by its button or backdrop left a listener behind
+  // that fired the next time the visitor pressed Escape anywhere on the page.
+  let closed = false;
+  const close = (reason: DialogCloseReason) => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener("keydown", onKeyDown);
+    onClose(reason);
+  };
+
   // Close on overlay click (outside modal)
   overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) onClose();
+    if (e.target === overlay) close("outside");
   });
 
   // Close button
   const closeBtn = overlay.querySelector<HTMLButtonElement>(".nw-fc-modal-close");
-  closeBtn?.addEventListener("click", () => onClose());
+  closeBtn?.addEventListener("click", () => close("programmatic"));
 
-  // Close on Escape key
+  // Close on Escape. On `document` rather than the dialog so it still works if
+  // focus was dropped onto the page by a click on non-focusable modal content.
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      onClose();
-      document.removeEventListener("keydown", onKeyDown);
-    }
+    if (e.key === "Escape") close("escape");
   };
   document.addEventListener("keydown", onKeyDown);
 

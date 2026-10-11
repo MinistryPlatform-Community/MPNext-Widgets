@@ -93,3 +93,54 @@ Do both, smallest first: add the opt-out to `MPNextWidget.fetch()` and pass it f
 `loadBasicContact()`, then short-circuit `loadBasicContact()` entirely for an
 anonymous session so the request is never made. The 401 branch in the widget stays as
 the belt-and-braces path for a token that goes stale mid-session.
+
+## Resolution — 2026-10-11
+
+**Fixed in the component** (W2, branch `ws/w2-events`), per the W2 brief. The shared
+`base-widget.ts` is W0's file and was not touched.
+
+**The gate.** `loadBasicContact()` now returns before making any request when the visitor is
+anonymous, so an anonymous view issues **no** `basic-contact` request. That removes three
+things:
+
+- the 401;
+- the refresh-and-retry, i.e. the second `POST /api/embed/session`;
+- both console errors.
+
+The existing 401 branch stays as the belt-and-braces path for a session that goes stale
+mid-visit.
+
+**Decided: how "anonymous" is judged.** The gate is not a bare
+`authSession.isAuthenticated()`. It reuses the W0 needs-auth primitive as
+`visitorIsAnonymous()`, which is `isNeedsAuth({ status: 401 })`. That asks "would a 401 on the
+event request this widget just made mean *sign in*?". The answer is true exactly when:
+
+- the token that request carried had `sub === "public"`; or
+- the token could not be read and `AuthSession` holds no session.
+
+`authSession.isAuthenticated()` on its own reports false under a custom `MPNextEmbed.init()`
+token provider that mints user tokens. Gating on it alone would have hidden registration from
+signed-in visitors on such pages. No JWT decoding is forked into the component.
+
+**Reconfigure (C39).** The `name === "event-id" && this.event` guard is gone. Changes to
+`event-id`, `invoice-id`, `id-parameter-name`, `invoice-id-parameter-name` or `api-host` go
+through `reconfigure()` → `reload()` → `init()`, with `painted` set after the first render.
+
+- `return-url`, `checkout-url` and `opportunity-finder-url` are read through getters when they
+  are used. They deliberately do not reload, because a reload would discard a half-filled
+  registration form.
+- An `initSeq` guard stops a superseded load from painting over a newer one.
+
+**Tests** (new `event-details.test.ts`):
+
+- a public token loads the event with zero `basic-contact` requests and no token refresh;
+- a signed-in token requests the contact exactly once;
+- setting `event-id` after an id-less first paint loads the event (the old guard ignored it);
+- `checkout-url` does not reload.
+
+**Reported, not fixed (W0 territory):** `MPNextWidget.fetch()` still refreshes and retries
+*any* 401, including one to a token that is already public, which no refresh can fix. After
+this gate, `next-event-details` no longer triggers it on an anonymous view. Any other widget
+that calls a user-scoped route with a public token will still double-request. The fix this
+item suggested belongs to the base class: skip the retry when `lastTokenSub === "public"`, or
+take a `{ retryOn401: false }` option. Handed to the integrator.

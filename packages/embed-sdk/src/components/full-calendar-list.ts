@@ -90,7 +90,9 @@ export function renderAgendaList(
    * functions, so there is no `this.t` to reach for.
    */
   t: Translator,
-  fmt: Formatters
+  fmt: Formatters,
+  /** Already-translated empty-state sentence; defaults to `fullCalendar.emptyPeriod`. */
+  emptyText?: string
 ): HTMLElement {
   const container = document.createElement("div");
   container.className = "nw-fc-agenda";
@@ -104,7 +106,7 @@ export function renderAgendaList(
           <line x1="8" y1="2" x2="8" y2="6"/>
           <line x1="3" y1="10" x2="21" y2="10"/>
         </svg>
-        <p>${escapeHtml(t("fullCalendar.emptyPeriod"))}</p>
+        <p>${escapeHtml(emptyText ?? t("fullCalendar.emptyPeriod"))}</p>
       </div>
     `;
     return container;

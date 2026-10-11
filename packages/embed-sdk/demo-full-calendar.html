@@ -290,8 +290,8 @@
 
       <!-- Locked cards view example -->
       <div class="demo-box">
-        <p class="section-label">Locked Cards View (no toolbar)</p>
-        <next-full-calendar api-host="__API_HOST__" view="cards" show-toolbar="false"></next-full-calendar>
+        <p class="section-label">Upcoming Events Strip (cards, rolling scope, no toolbar)</p>
+        <next-full-calendar api-host="__API_HOST__" view="cards" cards-scope="rolling" show-toolbar="false"></next-full-calendar>
       </div>
 
       <!-- Event log -->
@@ -314,8 +314,10 @@
         <pre><code id="widget-code">&lt;!-- Default: full calendar with all views --&gt;
 &lt;next-full-calendar&gt;&lt;/next-full-calendar&gt;
 
-&lt;!-- Cards view only, no toolbar --&gt;
-&lt;next-full-calendar view="cards" show-toolbar="false"&gt;&lt;/next-full-calendar&gt;
+&lt;!-- "What's coming up": the next three months of cards, no toolbar.
+     cards-scope="month" (the default) lists the month the toolbar names;
+     "rolling" applies to the cards and list views. --&gt;
+&lt;next-full-calendar view="cards" cards-scope="rolling" show-toolbar="false"&gt;&lt;/next-full-calendar&gt;
 
 &lt;!-- Calendar view (mini cal + cards) --&gt;
 &lt;next-full-calendar view="calendar"&gt;&lt;/next-full-calendar&gt;

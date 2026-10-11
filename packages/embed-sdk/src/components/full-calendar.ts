@@ -15,6 +15,7 @@ import {
   type EventCountMap,
 } from "./full-calendar-mini-cal";
 import { renderDetailModal } from "./full-calendar-modal";
+import { dialogFocus, type DialogCloseReason, type DialogFocusHandle } from "../shared/dialog-focus";
 import { renderAgendaList } from "./full-calendar-list";
 
 // ── Constants ──
@@ -93,6 +94,74 @@ type ViewType = (typeof VIEW_TYPES)[number];
 const isViewType = (v: string | null): v is ViewType =>
   v !== null && (VIEW_TYPES as readonly string[]).includes(v);
 
+/**
+ * What the `cards` and `list` views cover (C02).
+ *
+ * - `month` (default): the month the toolbar names, like every other view.
+ * - `rolling`: "what's coming up", from today forward over
+ *   {@link ROLLING_MONTHS} months. The toolbar drops its month navigation
+ *   and reads "Upcoming events", so the header never claims a scope the list
+ *   does not have.
+ *
+ * `month` and `calendar` always follow the month: their cards sit under a
+ * mini calendar, which is month-scoped by nature.
+ */
+type CardsScope = "month" | "rolling";
+const ROLLING_MONTHS = 3;
+
+const readCardsScope = (v: string | null): CardsScope => (v === "rolling" ? "rolling" : "month");
+
+interface RangeData {
+  events: CalendarEvent[];
+  isAdmin: boolean;
+  filters: { campuses: CalendarFilter[]; ministries: CalendarFilter[] };
+}
+
+/** Local `YYYY-MM-DD` — the same key the mini calendar and MP wall-clock strings use. */
+function dateKey(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return [d.getFullYear(), m, day].join("-");
+}
+
+/**
+ * `[start, end)` for a month as the mini calendar draws it: padded back to the
+ * Sunday on or before the 1st and forward to the Saturday on or after the last
+ * day, so the grey edge cells get their dots too. `end` is exclusive.
+ */
+export function monthGridRange(month: Date): { start: Date; end: Date } {
+  const first = new Date(month.getFullYear(), month.getMonth(), 1);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+  const last = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+  const end = new Date(last);
+  end.setDate(last.getDate() + (6 - last.getDay()) + 1);
+  return { start, end };
+}
+
+/** `[today 00:00, +ROLLING_MONTHS months)` for `cards-scope="rolling"`. */
+export function rollingRange(today: Date): { start: Date; end: Date } {
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + ROLLING_MONTHS);
+  return { start, end };
+}
+
+/**
+ * Does the event occupy any part of the days `[fromKey, toKey]` (inclusive
+ * date keys)? Overlap, not start date, so a retreat that began last month
+ * still lists in the month it ends in — the client half of C03.
+ */
+export function eventOverlapsDays(
+  e: { Event_Start_Date: string; Event_End_Date: string },
+  fromKey: string,
+  toKey: string,
+): boolean {
+  const startKey = e.Event_Start_Date.slice(0, 10);
+  const endKey = (e.Event_End_Date || e.Event_Start_Date).slice(0, 10);
+  return startKey <= toKey && endKey >= fromKey;
+}
+
 // ── Widget ──
 
 export class FullCalendarWidget extends MPNextWidget {
@@ -118,18 +187,23 @@ export class FullCalendarWidget extends MPNextWidget {
   };
   private fcLoaded = false;
   private stylesInjected = false;
+  private cardsScope: CardsScope = "month";
   /**
-   * False until connectedCallback has finished its one and only initialisation
-   * pass. Attributes present in the markup are delivered to
-   * attributeChangedCallback during upgrade — *before* connectedCallback runs —
-   * so acting on them there would initialise the widget a second time.
-   * connectedCallback reads `view` and `show-toolbar` off the element itself,
-   * so nothing is lost by ignoring those pre-connection callbacks.
+   * One promise per requested `[start, end)` (C02), so paging back and forth
+   * between months is free after the first visit and the prefetched
+   * neighbours are shared with the navigation that later asks for them. A
+   * failed fetch evicts itself, so Try Again really retries.
    */
-  private connectedOnce = false;
+  private rangeCache = new Map<string, Promise<RangeData>>();
+  /** Bumped per cards-data load; a response for a superseded month is dropped. */
+  private loadSeq = 0;
+  private cardsLoading = false;
+  private cardsError: string | null = null;
+  /** Focus contract of the open event modal (C08); null when none is open. */
+  private modalFocus: DialogFocusHandle | null = null;
 
   static get observedAttributes() {
-    return ["api-host", "view", "show-toolbar"];
+    return ["api-host", "view", "show-toolbar", "cards-scope"];
   }
 
   async connectedCallback() {
@@ -139,9 +213,8 @@ export class FullCalendarWidget extends MPNextWidget {
       this.currentView = viewAttr;
     }
     const toolbarAttr = this.getAttribute("show-toolbar");
-    if (toolbarAttr === "false") {
-      this.showToolbar = false;
-    }
+    this.showToolbar = toolbarAttr !== "false";
+    this.cardsScope = readCardsScope(this.getAttribute("cards-scope"));
 
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees the toolbar and loading line in English first. Free in practice:
@@ -180,17 +253,23 @@ export class FullCalendarWidget extends MPNextWidget {
   }
 
   /**
-   * End of the single initialisation pass: start honouring
-   * attributeChangedCallback, and replay anything that changed during the
-   * awaits above (the CDN load / first fetch), which was suppressed while the
-   * widget was still initialising. In the common case both attributes still
-   * match the state we initialised with and this does no work.
+   * End of the single initialisation pass: set the base class's `painted`
+   * flag (the W0 reconfigure convention, C39), and replay anything that
+   * changed during the awaits above (the CDN load / first fetch), which
+   * `reconfigure()` ignored while the widget was still initialising. In the
+   * common case every attribute still matches the state we initialised with
+   * and this does no work.
    */
   private openAttributeCallbacks(): void {
     // Removed again before the init pass finished — disconnectedCallback has
-    // already re-armed the guard and a future re-insert owns the next read.
+    // already re-armed the flag and a future re-insert owns the next read.
     if (!this.isConnected) return;
-    this.connectedOnce = true;
+    this.painted = true;
+
+    const scope = readCardsScope(this.getAttribute("cards-scope"));
+    if (scope !== this.cardsScope) {
+      this.reload();
+    }
 
     const showToolbar = this.getAttribute("show-toolbar") !== "false";
     if (showToolbar !== this.showToolbar) {
@@ -207,28 +286,48 @@ export class FullCalendarWidget extends MPNextWidget {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.destroyCalendar();
-    // Re-arm the guard: a re-inserted element runs connectedCallback again, so
-    // it owns the attribute read again. Attribute changes made while detached
-    // are picked up by that pass rather than acted on off-document.
-    this.connectedOnce = false;
+    this.modalFocus?.release("programmatic");
+    this.modalFocus = null;
+    // Re-arm: a re-inserted element runs connectedCallback again, so it owns
+    // the attribute read again. Attribute changes made while detached are
+    // picked up by that pass rather than acted on off-document.
+    this.painted = false;
   }
 
-  attributeChangedCallback(name: string, _old: string | null, next: string | null) {
-    // Markup attributes arrive here during upgrade, before connectedCallback.
-    // connectedCallback owns the initial read of every attribute, so anything
-    // delivered before it has finished is not ours to act on — doing so built a
-    // whole second FullCalendar and leaked it.
-    if (!this.connectedOnce) return;
+  /**
+   * Markup attributes arrive during upgrade, before connectedCallback, and the
+   * base class's `reconfigure()` is a no-op until `painted` — which is what
+   * stops a second FullCalendar being built and leaked (TODO 32). After that,
+   * `view` and `show-toolbar` are re-renders, not reloads, so they are routed
+   * here; everything else (`cards-scope`, `api-host`) is a real reconfigure.
+   */
+  override attributeChangedCallback(name: string, old: string | null, next: string | null) {
+    if (old === next || !this.painted || !this.isConnected) return;
 
     if (name === "view") {
       if (isViewType(next)) {
-        this.switchView(next);
+        void this.switchView(next);
       }
     } else if (name === "show-toolbar") {
       this.showToolbar = next !== "false";
       // rebuildCurrentView() owns the render() — on the FullCalendar views the
       // render has to be bracketed by destroy/init, so it cannot happen here.
       this.rebuildCurrentView();
+    } else {
+      this.reconfigure();
+    }
+  }
+
+  /** `cards-scope` / `api-host` changed: drop cached ranges and load afresh. */
+  protected override reload(): void {
+    this.apiHost = this.getAttribute("api-host") || this.apiHost;
+    this.cardsScope = readCardsScope(this.getAttribute("cards-scope"));
+    this.rangeCache.clear();
+    if (this.needsFullCalendar()) {
+      this.calendarInstance?.refetchEvents?.();
+    } else {
+      this.paint();
+      void this.loadCardsData();
     }
   }
 
@@ -322,9 +421,12 @@ export class FullCalendarWidget extends MPNextWidget {
       this.calendarInstance?.changeView(fcViewMap[view]);
       this.updateToolbarActiveState();
     } else {
-      // Switching between cards/calendar
+      // Switching between the non-FullCalendar views. Re-load rather than
+      // re-render: under `cards-scope="rolling"`, `cards`/`list` and
+      // `month`/`calendar` cover different ranges. A cached range makes this
+      // synchronous in effect.
       this.paint();
-      this.renderCardsOrCalendarView();
+      await this.loadCardsData();
     }
 
     this.emit("viewChanged", { view });
@@ -483,45 +585,127 @@ export class FullCalendarWidget extends MPNextWidget {
     }));
   }
 
-  private async loadCardsData(): Promise<void> {
-    try {
-      // Fetch current month + 2 months ahead
-      const start = new Date();
-      start.setDate(1);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(start);
-      end.setMonth(end.getMonth() + 3);
+  /** True when the active view lists a rolling window rather than a month. */
+  private isRolling(): boolean {
+    return (
+      this.cardsScope === "rolling" &&
+      (this.currentView === "cards" || this.currentView === "list")
+    );
+  }
 
-      const params = new URLSearchParams({
-        start: start.toISOString(),
-        end: end.toISOString(),
-      });
+  /** The `[start, end)` the non-FullCalendar views need right now. */
+  private currentRange(): { start: Date; end: Date } {
+    return this.isRolling() ? rollingRange(new Date()) : monthGridRange(this.miniCalMonth);
+  }
 
+  /**
+   * Fetch one range, through the per-range cache. Rejections evict their own
+   * entry, so a failed month is retried on the next visit (or Try Again)
+   * rather than failing from cache forever.
+   */
+  private fetchRange(start: Date, end: Date): Promise<RangeData> {
+    const startIso = start.toISOString();
+    const endIso = end.toISOString();
+    const key = [startIso, endIso].join("|");
+    const hit = this.rangeCache.get(key);
+    if (hit) return hit;
+
+    const pending = (async (): Promise<RangeData> => {
+      const params = new URLSearchParams({ start: startIso, end: endIso });
       const res = await this.fetch(`/api/embed/full-calendar?${params}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(this.errorText(body));
       }
-
       const data = await res.json();
-      this.allEvents = data.events || [];
-      this.isAdmin = data.isAdmin || false;
-      if (data.filters) {
-        this.filters = data.filters;
-      }
-      this.eventCountsByDate = buildEventCountMap(this.allEvents);
+      return {
+        events: data.events || [],
+        isAdmin: data.isAdmin || false,
+        filters: data.filters || { campuses: [], ministries: [] },
+      };
+    })();
+    this.rangeCache.set(key, pending);
+    pending.catch(() => {
+      if (this.rangeCache.get(key) === pending) this.rangeCache.delete(key);
+    });
+    return pending;
+  }
 
-      this.emit("calendarLoaded", { count: this.allEvents.length });
+  /**
+   * Load the data the `month` / `calendar` / `cards` / `list` views show, for
+   * the range they currently claim (C02) — the displayed month padded to whole
+   * weeks, or the rolling window. Every month change goes through here, so the
+   * toolbar title and the cards below it can never describe different periods.
+   */
+  private async loadCardsData(): Promise<void> {
+    const seq = ++this.loadSeq;
+    const { start, end } = this.currentRange();
+    const pending = this.fetchRange(start, end);
+
+    // Paint a loading line in the cards area (the toolbar and mini calendar
+    // stay usable) unless the range is already settled in the cache. Showing
+    // the previous month's cards, or an empty "No events" for a month that
+    // simply has not arrived yet, is the ambiguity C02 was filed about.
+    let settled = false;
+    void pending.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await Promise.resolve();
+    if (!settled && seq === this.loadSeq) {
+      this.cardsLoading = true;
       this.renderCardsOrCalendarView();
-    } catch (err) {
-      console.error("FullCalendarWidget: Failed to load cards data:", err);
-      this.emit("fullCalendarError", {
-        // `errorText` has already turned an API machine code into a translated
-        // sentence; anything else (a dropped connection) becomes the generic
-        // network message rather than leaking English.
-        error: err instanceof Error ? err.message : this.t("errors.network"),
-      });
     }
+
+    try {
+      const data = await pending;
+      if (seq !== this.loadSeq) return;
+      this.allEvents = data.events;
+      this.isAdmin = data.isAdmin;
+      this.filters = data.filters;
+      this.eventCountsByDate = buildEventCountMap(this.allEvents);
+      this.cardsError = null;
+      this.emit("calendarLoaded", { count: this.allEvents.length });
+    } catch (err) {
+      if (seq !== this.loadSeq) return;
+      console.error("FullCalendarWidget: Failed to load cards data:", err);
+      // `errorText` has already turned an API machine code into a translated
+      // sentence; anything else (a dropped connection) becomes the generic
+      // network message rather than leaking English.
+      this.cardsError =
+        err instanceof Error && err.message ? err.message : this.t("errors.network");
+      this.emit("fullCalendarError", { error: this.cardsError });
+    }
+
+    this.cardsLoading = false;
+    this.renderCardsOrCalendarView();
+    if (!this.cardsError) this.prefetchAdjacentMonths();
+  }
+
+  /**
+   * Warm the cache for the months either side, so `‹` / `›` paint at once.
+   * Fire-and-forget: a failure here is retried by the navigation that needs it.
+   */
+  private prefetchAdjacentMonths(): void {
+    if (this.isRolling()) return;
+    const y = this.miniCalMonth.getFullYear();
+    const m = this.miniCalMonth.getMonth();
+    for (const month of [new Date(y, m - 1, 1), new Date(y, m + 1, 1)]) {
+      const { start, end } = monthGridRange(month);
+      this.fetchRange(start, end).catch(() => {});
+    }
+  }
+
+  /** Every month change — toolbar, mini calendar, Today — lands here. */
+  private goToMonth(month: Date): void {
+    this.miniCalMonth = new Date(month.getFullYear(), month.getMonth(), 1);
+    // A day picked in another month would leave the list empty under a header
+    // naming this one.
+    if (this.selectedDate && this.selectedDate.slice(0, 7) !== dateKey(this.miniCalMonth).slice(0, 7)) {
+      this.selectedDate = null;
+    }
+    this.cardsPage = 1;
+    void this.loadCardsData();
   }
 
   // ── Event Color Coding ──
@@ -544,6 +728,12 @@ export class FullCalendarWidget extends MPNextWidget {
       eventId: raw.Event_ID,
       title: raw.Event_Title,
     });
+
+    // Capture the trigger now, before the admin fetch below can let focus
+    // drift: a card's LEARN MORE, a list row, or a FullCalendar event chip.
+    // Focus returns here when the modal closes (C08).
+    const active = this.root.activeElement;
+    const trigger = active instanceof HTMLElement ? active : null;
 
     // For admin users, fetch fresh detail with admin enrichment
     let event = raw;
@@ -574,22 +764,33 @@ export class FullCalendarWidget extends MPNextWidget {
     // Remove existing modal if present
     const existing = this.root.querySelector(".nw-fc-modal-overlay");
     if (existing) existing.remove();
+    this.modalFocus?.release("programmatic");
+    this.modalFocus = null;
 
     const modal = renderDetailModal({
       event,
       fcEvent: fcEventObj,
       isAdmin,
-      onClose: () => this.closeModal(),
+      onClose: (reason) => this.closeModal(reason),
       getEventColor: (typeId) => this.getEventColor(typeId),
       t: this.t,
       fmt: this.fmt,
     });
 
     this.root.appendChild(modal);
+    // `role="dialog" aria-modal="true"` promises assistive tech that the page
+    // behind is inert, which only holds if focus is inside (C08): move it to
+    // the close button, keep Tab inside, and give it back to the trigger on
+    // close. Escape is handled by the modal itself (it reports "escape").
+    this.modalFocus = dialogFocus(modal, () => trigger, {
+      initialFocus: ".nw-fc-modal-close",
+    });
     requestAnimationFrame(() => modal.classList.add("nw-fc-modal-visible"));
   }
 
-  private closeModal(): void {
+  private closeModal(reason: DialogCloseReason = "programmatic"): void {
+    this.modalFocus?.release(reason);
+    this.modalFocus = null;
     const overlay = this.root.querySelector<HTMLElement>(".nw-fc-modal-overlay");
     if (overlay) {
       overlay.classList.remove("nw-fc-modal-visible");
@@ -618,16 +819,22 @@ export class FullCalendarWidget extends MPNextWidget {
       )
       .join("");
 
-    return `
-      <div class="nw-fc-toolbar">
-        <div class="nw-fc-toolbar-left">
+    // A rolling digest has no month to step through, so it has no month
+    // navigation; the title reads "Upcoming events" instead (C02).
+    const nav = this.isRolling()
+      ? ""
+      : `
           <button class="nw-fc-toolbar-nav" data-action="prev" aria-label="${this.escapeHtml(this.t("common.previous"))}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <button class="nw-fc-toolbar-nav" data-action="next" aria-label="${this.escapeHtml(this.t("common.next"))}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
-          <button class="nw-fc-toolbar-btn" data-action="today">${this.escapeHtml(this.t("fullCalendar.today"))}</button>
+          <button class="nw-fc-toolbar-btn" data-action="today">${this.escapeHtml(this.t("fullCalendar.today"))}</button>`;
+
+    return `
+      <div class="nw-fc-toolbar">
+        <div class="nw-fc-toolbar-left">${nav}
         </div>
         <div class="nw-fc-toolbar-center" id="nw-fc-title"></div>
         <div class="nw-fc-toolbar-right">
@@ -659,12 +866,9 @@ export class FullCalendarWidget extends MPNextWidget {
     if (this.needsFullCalendar() && this.calendarInstance) {
       this.calendarInstance.prev();
     } else {
-      this.miniCalMonth = new Date(
-        this.miniCalMonth.getFullYear(),
-        this.miniCalMonth.getMonth() - 1,
-        1
+      this.goToMonth(
+        new Date(this.miniCalMonth.getFullYear(), this.miniCalMonth.getMonth() - 1, 1)
       );
-      this.renderCardsOrCalendarView();
     }
   }
 
@@ -672,12 +876,9 @@ export class FullCalendarWidget extends MPNextWidget {
     if (this.needsFullCalendar() && this.calendarInstance) {
       this.calendarInstance.next();
     } else {
-      this.miniCalMonth = new Date(
-        this.miniCalMonth.getFullYear(),
-        this.miniCalMonth.getMonth() + 1,
-        1
+      this.goToMonth(
+        new Date(this.miniCalMonth.getFullYear(), this.miniCalMonth.getMonth() + 1, 1)
       );
-      this.renderCardsOrCalendarView();
     }
   }
 
@@ -685,9 +886,8 @@ export class FullCalendarWidget extends MPNextWidget {
     if (this.needsFullCalendar() && this.calendarInstance) {
       this.calendarInstance.today();
     } else {
-      this.miniCalMonth = new Date();
       this.selectedDate = null;
-      this.renderCardsOrCalendarView();
+      this.goToMonth(new Date());
     }
   }
 
@@ -716,196 +916,159 @@ export class FullCalendarWidget extends MPNextWidget {
     const area = document.createElement("div");
     area.id = "nw-fc-cards-area";
 
-    // Get filtered events
-    const filtered = filterEvents(this.allEvents, this.activeFilters);
+    const rolling = this.isRolling();
+    const monthLabel = this.fmt.date(this.miniCalMonth, "monthYear");
 
-    // Further filter by selected date if applicable
+    // Scope what is listed to what the header names (C02). The fetched range
+    // is padded to whole weeks for the mini calendar's edge cells, so it is
+    // wider than the month; a clicked day narrows further. Overlap, not start
+    // date, so a multi-day event lists on every day and month it occupies.
+    const filtered = filterEvents(this.allEvents, this.activeFilters);
     let displayEvents = filtered;
+    let emptyText: string | undefined;
     if (this.selectedDate) {
-      displayEvents = filtered.filter((e) => {
-        const eventDate = e.Event_Start_Date.slice(0, 10);
-        return eventDate === this.selectedDate;
-      });
+      const day = this.selectedDate;
+      displayEvents = filtered.filter((e) => eventOverlapsDays(e, day, day));
+    } else if (!rolling) {
+      const y = this.miniCalMonth.getFullYear();
+      const m = this.miniCalMonth.getMonth();
+      const from = dateKey(new Date(y, m, 1));
+      const to = dateKey(new Date(y, m + 1, 0));
+      displayEvents = filtered.filter((e) => eventOverlapsDays(e, from, to));
+      // "No events in December" is information; a bare blank is ambiguous
+      // with a failed load — which is what C02's symptom looked like.
+      emptyText = this.t("fullCalendar.noEventsInMonth", { month: monthLabel });
+    } else {
+      emptyText = this.t("fullCalendar.noUpcomingEvents");
     }
 
-    // Update title for cards views
-    this.updateToolbarTitle(this.fmt.date(this.miniCalMonth, "monthYear"));
+    this.updateToolbarTitle(rolling ? this.t("fullCalendar.upcomingTitle") : monthLabel);
+
+    const miniCalendar = (): HTMLElement =>
+      renderMiniCalendar({
+        currentMonth: this.miniCalMonth,
+        eventsByDate: this.eventCountsByDate,
+        selectedDate: this.selectedDate,
+        onDateClick: (key) => {
+          this.selectedDate = this.selectedDate === key ? null : key;
+          this.cardsPage = 1;
+          this.renderCardsOrCalendarView();
+        },
+        onMonthChange: (newMonth) => this.goToMonth(newMonth),
+        t: this.t,
+        fmt: this.fmt,
+      });
+
+    const filterChips = (): HTMLElement | null =>
+      this.filters.campuses.length > 0 || this.filters.ministries.length > 0
+        ? renderFilterChips(
+            this.filters,
+            this.activeFilters,
+            (newFilters) => {
+              this.activeFilters = newFilters;
+              this.cardsPage = 1;
+              this.renderCardsOrCalendarView();
+            },
+            this.t
+          )
+        : null;
+
+    /** The listing itself, or its loading / error state. */
+    const listing = (kind: "cards" | "list"): HTMLElement => {
+      if (this.cardsLoading) return this.renderCardsState("loading");
+      if (this.cardsError) return this.renderCardsState("error");
+      if (kind === "list") {
+        return renderAgendaList(
+          displayEvents,
+          (event) => this.showEventModal(event),
+          (typeId) => this.getEventColor(typeId),
+          this.t,
+          this.fmt,
+          emptyText
+        );
+      }
+      return renderCardsGrid(
+        displayEvents,
+        this.cardsPage,
+        (event) => this.showEventModal(event),
+        () => {
+          this.cardsPage++;
+          this.renderCardsOrCalendarView();
+        },
+        this.t,
+        this.fmt,
+        emptyText
+      );
+    };
+
+    const append = (parent: HTMLElement, child: HTMLElement | null) => {
+      if (child) parent.appendChild(child);
+    };
 
     if (this.currentView === "month") {
       // Full-width mini calendar + card grid below
       const monthPanel = document.createElement("div");
       monthPanel.className = "nw-fc-month-layout";
-
-      monthPanel.appendChild(
-        renderMiniCalendar({
-          currentMonth: this.miniCalMonth,
-          eventsByDate: this.eventCountsByDate,
-          selectedDate: this.selectedDate,
-          onDateClick: (dateKey) => {
-            this.selectedDate = this.selectedDate === dateKey ? null : dateKey;
-            this.cardsPage = 1;
-            this.renderCardsOrCalendarView();
-          },
-          onMonthChange: (newMonth) => {
-            this.miniCalMonth = newMonth;
-            this.renderCardsOrCalendarView();
-          },
-          t: this.t,
-          fmt: this.fmt,
-        })
-      );
-
-      if (this.filters.campuses.length > 0 || this.filters.ministries.length > 0) {
-        monthPanel.appendChild(
-          renderFilterChips(
-            this.filters,
-            this.activeFilters,
-            (newFilters) => {
-              this.activeFilters = newFilters;
-              this.cardsPage = 1;
-              this.renderCardsOrCalendarView();
-            },
-            this.t
-          )
-        );
-      }
-
-      monthPanel.appendChild(
-        renderCardsGrid(
-          displayEvents,
-          this.cardsPage,
-          (event) => this.showEventModal(event),
-          () => {
-            this.cardsPage++;
-            this.renderCardsOrCalendarView();
-          },
-          this.t,
-          this.fmt
-        )
-      );
-
+      append(monthPanel, miniCalendar());
+      append(monthPanel, filterChips());
+      append(monthPanel, listing("cards"));
       area.appendChild(monthPanel);
     } else if (this.currentView === "list") {
       // Custom agenda list view — events grouped by date
-      if (this.filters.campuses.length > 0 || this.filters.ministries.length > 0) {
-        area.appendChild(
-          renderFilterChips(
-            this.filters,
-            this.activeFilters,
-            (newFilters) => {
-              this.activeFilters = newFilters;
-              this.renderCardsOrCalendarView();
-            },
-            this.t
-          )
-        );
-      }
-
-      area.appendChild(
-        renderAgendaList(
-          displayEvents,
-          (event) => this.showEventModal(event),
-          (typeId) => this.getEventColor(typeId),
-          this.t,
-          this.fmt
-        )
-      );
+      append(area, filterChips());
+      append(area, listing("list"));
     } else if (this.currentView === "cards") {
-      // Filter chips + card grid
-      if (this.filters.campuses.length > 0 || this.filters.ministries.length > 0) {
-        area.appendChild(
-          renderFilterChips(
-            this.filters,
-            this.activeFilters,
-            (newFilters) => {
-              this.activeFilters = newFilters;
-              this.cardsPage = 1;
-              this.renderCardsOrCalendarView();
-            },
-            this.t
-          )
-        );
-      }
-
-      area.appendChild(
-        renderCardsGrid(
-          displayEvents,
-          this.cardsPage,
-          (event) => this.showEventModal(event),
-          () => {
-            this.cardsPage++;
-            this.renderCardsOrCalendarView();
-          },
-          this.t,
-          this.fmt
-        )
-      );
+      append(area, filterChips());
+      append(area, listing("cards"));
     } else if (this.currentView === "calendar") {
       // Split layout: mini calendar + cards
       const layout = document.createElement("div");
       layout.className = "nw-fc-split-layout";
 
-      // Mini calendar panel
       const miniPanel = document.createElement("div");
       miniPanel.className = "nw-fc-mini-cal-panel";
-      miniPanel.appendChild(
-        renderMiniCalendar({
-          currentMonth: this.miniCalMonth,
-          eventsByDate: this.eventCountsByDate,
-          selectedDate: this.selectedDate,
-          onDateClick: (dateKey) => {
-            this.selectedDate = this.selectedDate === dateKey ? null : dateKey;
-            this.cardsPage = 1;
-            this.renderCardsOrCalendarView();
-          },
-          onMonthChange: (newMonth) => {
-            this.miniCalMonth = newMonth;
-            this.renderCardsOrCalendarView();
-          },
-          t: this.t,
-          fmt: this.fmt,
-        })
-      );
+      append(miniPanel, miniCalendar());
       layout.appendChild(miniPanel);
 
-      // Cards panel with filters
       const cardsPanel = document.createElement("div");
       cardsPanel.className = "nw-fc-cards-panel";
-
-      if (this.filters.campuses.length > 0 || this.filters.ministries.length > 0) {
-        cardsPanel.appendChild(
-          renderFilterChips(
-            this.filters,
-            this.activeFilters,
-            (newFilters) => {
-              this.activeFilters = newFilters;
-              this.cardsPage = 1;
-              this.renderCardsOrCalendarView();
-            },
-            this.t
-          )
-        );
-      }
-
-      cardsPanel.appendChild(
-        renderCardsGrid(
-          displayEvents,
-          this.cardsPage,
-          (event) => this.showEventModal(event),
-          () => {
-            this.cardsPage++;
-            this.renderCardsOrCalendarView();
-          },
-          this.t,
-          this.fmt
-        )
-      );
+      append(cardsPanel, filterChips());
+      append(cardsPanel, listing("cards"));
       layout.appendChild(cardsPanel);
 
       area.appendChild(layout);
     }
 
     container.appendChild(area);
+  }
+
+  /**
+   * Loading / error panel for the cards area. The toolbar and mini calendar
+   * stay live around it, so a visitor can keep navigating; Try Again re-runs
+   * the load (the failed range has already evicted itself from the cache).
+   */
+  private renderCardsState(kind: "loading" | "error"): HTMLElement {
+    const el = document.createElement("div");
+    if (kind === "loading") {
+      el.className = "nw-fc-state nw-fc-loading";
+      el.setAttribute("role", "status");
+      el.innerHTML = [
+        `<div class="nw-fc-spinner"></div>`,
+        `<p>${this.escapeHtml(this.t("fullCalendar.loading"))}</p>`,
+      ].join("");
+      return el;
+    }
+    el.className = "nw-fc-state nw-fc-error";
+    el.setAttribute("role", "alert");
+    el.innerHTML = [
+      `<p>${this.escapeHtml(this.cardsError ?? this.t("errors.generic"))}</p>`,
+      `<button type="button" class="nw-fc-toolbar-btn" data-action="retry-cards">${this.escapeHtml(this.t("common.retry"))}</button>`,
+    ].join("");
+    el.querySelector("button")?.addEventListener("click", () => {
+      this.cardsError = null;
+      void this.loadCardsData();
+    });
+    return el;
   }
 
   /**

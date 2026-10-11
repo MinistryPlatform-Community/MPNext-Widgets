@@ -94,3 +94,28 @@ from the start's year, for the cross-year range branch at `:402-404`). Always-on
 width is acceptable. `next-full-calendar`'s modal already prints
 `Tue, Sep 1, 2026, 9:00 AM – …` with the year, and `next-event-details` prints
 `Saturday, September 12, 2026, …`, so the finder is the outlier inside our own stack.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W2, branch `ws/w2-events`).
+
+**The change:** `renderCard` now picks the date preset per card through a new
+`cardDateStyle(e)`:
+
+- `weekdayShort` ("Sat, Sep 12") when both endpoints fall in the current year;
+- `weekdayMedium` ("Sun, Jan 3, 2027") otherwise.
+
+The cross-year range branch is covered because `fmt.dateRange` formats both endpoints with the
+same style. The "C09 tracks…" comment is removed.
+
+**Decided:** include the year only when it differs from the current year, rather than always.
+This keeps the common case short and makes the ambiguous case unambiguous. The choice is made
+in the component; `formatters.ts` (W0) is unchanged. The year is read from MP's wall-clock
+string, so no time zone is involved, and "this year" is the visitor's clock.
+
+**Not done:** the month/year separator rows the plan suggests as "better than parity". Those
+are a design change and are not needed to remove the ambiguity. The copy rows in this item's
+table remain folded into C67 / CROSS-5, as filed.
+
+**Test** (`event-finder.test.ts`, "card dates (C09)"): with the clock pinned to 8 Sep 2026, the
+Sep 12 2026 card has no year and the Jan 3 2027 card reads "Sun, Jan 3, 2027".

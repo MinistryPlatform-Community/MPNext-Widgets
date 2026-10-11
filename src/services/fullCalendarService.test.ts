@@ -166,7 +166,8 @@ describe('FullCalendarService', () => {
       const eventsCall = mockGetTableRecords.mock.calls[0][0];
       expect(eventsCall.table).toBe('Events');
       // Should include date filter, cancelled, visibility
-      expect(eventsCall.filter).toContain('Event_Start_Date >=');
+      expect(eventsCall.filter).toContain('Event_Start_Date <');
+      expect(eventsCall.filter).toContain('Event_End_Date >=');
       expect(eventsCall.filter).toContain('Cancelled = 0');
       expect(eventsCall.filter).toContain('Visibility_Level_ID = 4');
       expect(eventsCall.orderBy).toBe('Event_Start_Date ASC');
@@ -272,8 +273,8 @@ describe('FullCalendarService', () => {
 
       const filter = mockGetTableRecords.mock.calls[0][0].filter as string;
       // 2026-05-01T00:00:00Z → 2026-04-30 20:00:00 in America/New_York (EDT, UTC-4)
-      expect(filter).toContain(`Event_Start_Date >= '2026-04-30 20:00:00'`);
-      expect(filter).toContain(`Event_End_Date <= '2026-05-31 19:59:59'`);
+      expect(filter).toContain(`Event_End_Date >= '2026-04-30 20:00:00'`);
+      expect(filter).toContain(`Event_Start_Date < '2026-05-31 19:59:59'`);
     });
 
     it('regression: repeating the same getEvents call produces the same filter (no drift)', async () => {
@@ -288,9 +289,60 @@ describe('FullCalendarService', () => {
       // regardless of how many times getDomainInfo is hit or what TZ the
       // node process is running in.
       const filters = mockGetTableRecords.mock.calls.map((c) => c[0].filter as string);
-      expect(filters[0]).toContain(`Event_Start_Date >= '2026-04-30 20:00:00'`);
+      expect(filters[0]).toContain(`Event_End_Date >= '2026-04-30 20:00:00'`);
       expect(filters[1]).toBe(filters[0]);
       expect(filters[2]).toBe(filters[0]);
+    });
+  });
+
+  // C03. MP evaluates the $filter, and the live dataset has no public
+  // multi-day event, so the suite proves the predicate itself: it parses the
+  // two bounds out of the filter getEvents actually sends and applies them to
+  // fixture events. 'YYYY-MM-DD HH:MM:SS' literals order lexicographically.
+  describe('getEvents range predicate (C03: overlap, not containment)', () => {
+    async function admits(startIso: string, endIso: string) {
+      mockGetDomainInfo.mockResolvedValue({ TimeZoneName: 'UTC' });
+      mockGetTableRecords.mockResolvedValueOnce([]);
+      const service = await FullCalendarService.getInstance();
+      await service.getEvents(startIso, endIso);
+      const filter = mockGetTableRecords.mock.calls[0][0].filter as string;
+      const lt = /Event_Start_Date < '([^']+)'/.exec(filter)?.[1];
+      const ge = /Event_End_Date >= '([^']+)'/.exec(filter)?.[1];
+      expect(lt).toBeDefined();
+      expect(ge).toBeDefined();
+      expect(filter).not.toMatch(/Event_Start_Date >=|Event_End_Date <=/);
+      return (evStart: string, evEnd: string) => evStart < lt! && evEnd >= ge!;
+    }
+
+    // November 2026 grid range, as FullCalendar requests it.
+    const novStart = '2026-11-01T00:00:00Z';
+    const novEnd = '2026-12-13T00:00:00Z';
+
+    it('admits a retreat that starts before the window and ends inside it', async () => {
+      const inWindow = await admits(novStart, novEnd);
+      expect(inWindow('2026-10-30 09:00:00', '2026-11-02 17:00:00')).toBe(true);
+    });
+
+    it('admits an event that starts inside the window and ends after it', async () => {
+      const inWindow = await admits(novStart, novEnd);
+      expect(inWindow('2026-12-12 09:00:00', '2026-12-15 17:00:00')).toBe(true);
+    });
+
+    it('admits an event that spans the entire window', async () => {
+      const inWindow = await admits(novStart, novEnd);
+      expect(inWindow('2026-10-01 00:00:00', '2027-01-31 00:00:00')).toBe(true);
+    });
+
+    it('still admits a contained event and rejects ones wholly outside', async () => {
+      const inWindow = await admits(novStart, novEnd);
+      expect(inWindow('2026-11-15 10:00:00', '2026-11-15 11:00:00')).toBe(true);
+      expect(inWindow('2026-10-25 10:00:00', '2026-10-25 11:00:00')).toBe(false);
+      expect(inWindow('2026-12-13 00:00:00', '2026-12-13 01:00:00')).toBe(false);
+    });
+
+    it('keeps a zero-length event stamped exactly at the window start', async () => {
+      const inWindow = await admits(novStart, novEnd);
+      expect(inWindow('2026-11-01 00:00:00', '2026-11-01 00:00:00')).toBe(true);
     });
   });
 
@@ -347,7 +399,7 @@ describe('FullCalendarService', () => {
       expect(result.event.Registration_Product_Name).toBeNull();
     });
 
-    it('should issue the Events query with Event_ID + Visibility_Level_ID filter', async () => {
+    it('should issue the Events query with Event_ID + the public-event predicate (C06: incl. Cancelled = 0)', async () => {
       mockGetTableRecords.mockResolvedValueOnce([]);
 
       const service = await FullCalendarService.getInstance();
@@ -355,7 +407,7 @@ describe('FullCalendarService', () => {
 
       const eventsCall = mockGetTableRecords.mock.calls[0][0];
       expect(eventsCall.table).toBe('Events');
-      expect(eventsCall.filter).toBe('Event_ID = 42 AND Visibility_Level_ID = 4');
+      expect(eventsCall.filter).toBe('(Event_ID = 42) AND Cancelled = 0 AND Visibility_Level_ID = 4');
       expect(eventsCall.top).toBe(1);
     });
   });

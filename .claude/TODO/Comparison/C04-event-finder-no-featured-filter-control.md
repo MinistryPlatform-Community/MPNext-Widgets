@@ -83,3 +83,43 @@ state over the raw attribute (the same seed-then-mutate pattern the other four f
 already use, so the attribute keeps working as a default rather than a lock). While
 there, consider promoting Congregation back to the visible row to match the legacy
 layout.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W2, branch `ws/w2-events`).
+
+**The control:**
+
+- A **Featured** checkbox (`#ef-featured`, labelled by the existing `eventFinder.featured`
+  key) sits in the Advanced grid next to the four selects.
+- Filter state gained a `featured` field. It is seeded from the `featured` attribute in
+  `seedFromAttributes()` and read back in `readFormState()`.
+- `buildQuery()` now sends `isFeatured=true` from that state, not from the raw attribute. The
+  attribute is therefore a default the visitor can untick, not a lock.
+
+**Decided:**
+
+- When the page pre-sets any Advanced filter (`featured`, `congregation-id`, `ministry-id`,
+  `month-id`, `signup-type`), the Advanced panel opens on first paint. Otherwise a
+  `featured="true"` page would silently narrow the results, and the visitor could see neither
+  why nor how to undo it.
+- Congregation was **not** promoted back to the always-visible row. That is a layout change
+  beyond this item, and it is left for the CROSS-5 copy/layout pass.
+
+**Reconfigure (C39):**
+
+- The widget's own `attributeChangedCallback` is deleted. Its `events.length || !loading`
+  guard dropped any change that arrived while the first search was in flight.
+- The base default now routes changes through `reconfigure()` → `reload()` (re-seed and
+  re-search), with `painted` set after the first render.
+- A `searchSeq` guard drops responses from superseded searches.
+
+**Parity:** the query parameters are unchanged. Featured unticked sends no `isFeatured`, as
+before, so the six filter-parity checks are unaffected.
+
+**Tests** (`event-finder.test.ts`, "Featured filter (C04)"):
+
+- the checkbox is present and labelled;
+- tick, then search, sends `isFeatured=true`;
+- `featured="true"` seeds the box, opens the panel, and can be unticked to drop the filter;
+- setting `featured` after first paint re-searches.
