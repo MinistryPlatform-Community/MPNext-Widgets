@@ -147,5 +147,5 @@ export const CARD_LINK_STYLES = `
   :where(a.nw-card-link) { display: block; color: inherit; text-decoration: none; }
   :where(button.nw-card-button) { display: block; width: 100%; margin: 0; font: inherit; color: inherit; text-align: inherit; background: none; border: 0; cursor: pointer; }
   a.nw-card-link:focus-visible,
-  button.nw-card-button:focus-visible { outline: 2px solid #009CDE; outline-offset: 2px; }
+  button.nw-card-button:focus-visible { outline: var(--_nw-focus-ring); outline-offset: 2px; }
 `;

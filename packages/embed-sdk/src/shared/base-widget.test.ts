@@ -402,6 +402,26 @@ describe("MPNextWidget", () => {
         CSSStyleSheet.prototype.replaceSync = original;
       }
     });
+
+    // W7a: the `--nw-*` token block leads every widget sheet, so a widget's
+    // own rules can read `var(--_nw-…)` without including it.
+    it("prepends the theme-token block ahead of the widget's own CSS", () => {
+      const widget = makeWidget();
+      const spy = vi
+        .spyOn(CSSStyleSheet.prototype, "replaceSync")
+        .mockImplementation(() => {
+          throw new Error("force the <style> path so the text is inspectable");
+        });
+      try {
+        widget.callInjectStyles(".mine { color: var(--_nw-color-primary); }");
+        const text = widget.getRoot().querySelector("style")?.textContent ?? "";
+        const tokens = text.indexOf("--_nw-color-primary: var(--nw-color-primary, #004C97);");
+        expect(tokens).toBeGreaterThanOrEqual(0);
+        expect(text.indexOf(".mine")).toBeGreaterThan(tokens);
+      } finally {
+        spy.mockRestore();
+      }
+    });
   });
 
   describe("emit()", () => {

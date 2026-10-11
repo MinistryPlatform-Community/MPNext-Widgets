@@ -37,6 +37,7 @@ Embeddable Web Component widgets for [Ministry Platform](https://www.ministrypla
   - [Cutover Runbook](#cutover-runbook)
   - [Troubleshooting Widget Auth](#troubleshooting-widget-auth)
 - [Widget Languages](#widget-languages)
+- [Theming](#theming)
 - [Widget Unsubscribe Links](#widget-unsubscribe-links)
 - [Prayer & Feedback Intake](#prayer--feedback-intake)
 - [Newsletter Sign-Up](#newsletter-sign-up)
@@ -953,6 +954,93 @@ MPNextEmbed.disablePseudoLocale()
 
 Everything still rendering in plain English is a string that was never
 translated; anything overflowing its container will overflow in Spanish too.
+
+
+## Theming
+
+Every `next-*` widget renders inside Shadow DOM, so your site's selectors cannot
+reach into it. CSS custom properties *do* cross that boundary, and the widgets
+read a published set of them: the `--nw-*` **theme tokens**. Set them anywhere
+on your page, and every widget picks them up. You don't need a stylesheet
+URL or an attribute, and nothing needs re-applying after a widget re-renders.
+
+```css
+/* Re-brand every widget on the site */
+:root {
+  --nw-color-primary: #7a1f2b;
+  --nw-font-family: "Lato", system-ui, sans-serif;
+  --nw-radius: 4px;
+}
+
+/* …or just one widget, or one page section */
+next-event-finder { --nw-color-accent: #e0a100; }
+.sidebar { --nw-space-4: 12px; }
+```
+
+**Tokens are a supported, versioned API.** A token's name and what it controls
+stay stable across SDK releases. New tokens may be added in a minor release.
+Renaming or removing a token, or changing what it controls, is a breaking change,
+and it will be called out in the release notes. Anything *not* listed here
+(class names, the widgets' internal `--_nw-*` properties, element structure) is
+internal and may change without notice.
+
+With nothing set, each default below is the widget's own look, unchanged.
+Defaults that name another token follow it: set `--nw-color-primary` and
+buttons follow unless you also set `--nw-button-bg`.
+
+| Token | Default | Controls |
+|---|---|---|
+| **Colour** | | |
+| `--nw-color-primary` | `#004C97` | Buttons, links, focused inputs, dates, spinners, selected states |
+| `--nw-color-secondary` | `#002855` | Headings and card titles, button hover |
+| `--nw-color-accent` | `#F1BE48` | Badges (e.g. *Featured*) and highlights |
+| `--nw-color-info` | `#009CDE` | Informational accents; the focus-ring colour |
+| `--nw-color-success` | `#86AD3F` | Success states and confirmations |
+| `--nw-color-error` | `#FF6D6A` | Invalid-field borders, required markers, error icons |
+| `--nw-color-text` | `#2D2926` | Body text |
+| `--nw-color-text-subtle` | `#474747` | Secondary body text, such as descriptions |
+| `--nw-color-muted` | `#6b7280` | Field labels, metadata, empty and loading states |
+| `--nw-color-on-primary` | `#ffffff` | Text and icons on a primary-coloured background |
+| `--nw-color-surface` | `#ffffff` | Card, panel and input background |
+| `--nw-color-surface-muted` | `#f3f4f6` | Subdued backgrounds: image placeholders, inactive chips |
+| `--nw-color-border` | `#e5e7eb` | Card and panel borders, dividers |
+| `--nw-color-border-strong` | `#d1d5db` | Form-control borders |
+| `--nw-color-error-text` | `#b91c1c` | Error message text |
+| **Type** | | |
+| `--nw-font-family` | `ui-sans-serif, system-ui, -apple-system, sans-serif` | Font stack for every widget |
+| `--nw-font-size-base` | `14px` | Body and form-control text size |
+| `--nw-line-height` | `1.5` | Line height of running text |
+| `--nw-font-weight-heading` | `700` | Weight of headings and card titles |
+| **Shape** | | |
+| `--nw-radius` | `8px` | Corners of buttons, inputs and small surfaces |
+| `--nw-radius-lg` | `12px` | Corners of cards and panels |
+| `--nw-border-width` | `1px` | Card, panel and control borders |
+| `--nw-shadow` | `0 1px 2px rgba(0,0,0,0.05)` | Resting shadow of cards and panels |
+| `--nw-shadow-hover` | `0 4px 10px rgba(0,0,0,0.08)` | Shadow of a card under the pointer |
+| **Space** | | |
+| `--nw-space-1` … `--nw-space-6` | `4px` `8px` `12px` `16px` `20px` `24px` | The spacing scale used for gaps, padding and margins |
+| **Controls** | | |
+| `--nw-button-bg` | `--nw-color-primary` | Primary button background |
+| `--nw-button-bg-hover` | `--nw-color-secondary` | Primary button background on hover |
+| `--nw-button-fg` | `--nw-color-on-primary` | Primary button text |
+| `--nw-button-radius` | `--nw-radius` | Primary button corners |
+| `--nw-focus-ring` | `2px solid` `--nw-color-info` | Keyboard focus outline (an `outline` value) |
+
+The spacing scale, in full: `--nw-space-1` (4px), `--nw-space-2` (8px),
+`--nw-space-3` (12px), `--nw-space-4` (16px), `--nw-space-5` (20px),
+`--nw-space-6` (24px).
+
+**Conversion status.** `next-event-finder` reads every token. The other widgets
+are being converted in the next release train. Until a widget is converted it
+keeps the default look and ignores the tokens. It does not break.
+`next-full-calendar` already takes its brand colours (primary, secondary,
+error, text) from the tokens.
+
+**Not available yet**, and tracked under C68: `::part()` hooks for repositioning
+structural elements, a per-element `custom-css` stylesheet attribute, and a
+domain-wide stylesheet applied to every widget automatically (legacy
+`GetCustomStyles`). A stylesheet adopted into a widget's open shadow root does
+survive re-renders and wins on equal specificity, but that route is unsupported.
 
 
 ## Widget Unsubscribe Links
