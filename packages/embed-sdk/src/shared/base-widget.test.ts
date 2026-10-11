@@ -623,6 +623,50 @@ describe("MPNextWidget", () => {
     });
   });
 
+  describe("readAttr() (C79)", () => {
+    class AliasWidget extends MPNextWidget {
+      static readonly attributeAliases = { "hide-soft-credits": "hidesoftcredits" };
+      render(): void {}
+      connectedCallback(): void {}
+      public read(name: string, alias?: string): string | null {
+        return this.readAttr(name, alias);
+      }
+    }
+    class OtherAliasWidget extends AliasWidget {}
+    const ATAG = "test-alias-widget";
+    const OTAG = "test-other-alias-widget";
+    if (!customElements.get(ATAG)) customElements.define(ATAG, AliasWidget);
+    if (!customElements.get(OTAG)) customElements.define(OTAG, OtherAliasWidget);
+
+    it("prefers the kebab-case name and does not warn", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      document.body.innerHTML = `<${ATAG} hide-soft-credits="true" hidesoftcredits="false"></${ATAG}>`;
+      const el = document.body.firstElementChild as AliasWidget;
+      expect(el.read("hide-soft-credits")).toBe("true");
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the class's declared alias, warning once per element class", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      document.body.innerHTML = `<${OTAG} hidesoftcredits="true"></${OTAG}><${OTAG} hidesoftcredits="false"></${OTAG}>`;
+      const [a, b] = Array.from(document.body.children) as AliasWidget[];
+      expect(a.read("hide-soft-credits")).toBe("true");
+      expect(a.read("hide-soft-credits")).toBe("true");
+      expect(b.read("hide-soft-credits")).toBe("false");
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain('"hidesoftcredits" is deprecated; use "hide-soft-credits"');
+    });
+
+    it("accepts an explicit alias argument, and returns null when neither is set", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      document.body.innerHTML = `<${ATAG} hidegrouplife="true"></${ATAG}>`;
+      const el = document.body.firstElementChild as AliasWidget;
+      expect(el.read("hide-group-life", "hidegrouplife")).toBe("true");
+      expect(el.read("hide-address")).toBeNull();
+      expect(el.read("hide-address", "hideaddress")).toBeNull();
+    });
+  });
+
   describe("reconfigure() convention (C39)", () => {
     class ReconfigWidget extends MPNextWidget {
       static get observedAttributes() {

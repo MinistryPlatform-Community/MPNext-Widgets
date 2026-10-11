@@ -99,6 +99,9 @@ export const SIGN_IN_REQUIRED_STYLES = `
 /** Source of `MPNextWidget.instanceId`. */
 let instanceCounter = 0;
 
+/** Legacy attribute spellings already warned about, per element class. */
+const warnedAliases = new WeakMap<object, Set<string>>();
+
 /** Read the `sub` claim of a JWT without verifying it. */
 function decodeJwtSub(token: string): string | null {
   try {
@@ -537,6 +540,57 @@ export abstract class MPNextWidget extends HTMLElement {
     if (!handled && mode !== null && mode !== "legacy") {
       this.authSession.login({ wid });
     }
+  }
+
+  // ── Attributes (C79 / CROSS-4) ───────────────────────────────────────────
+
+  /**
+   * Legacy attribute spellings still accepted, as `{ "kebab-name": "oldname" }`.
+   * **Widget attributes are kebab-case**; a renamed attribute keeps its old
+   * spelling here for one release. List both spellings in
+   * `observedAttributes` so a late set of either reconfigures:
+   *
+   * ```ts
+   * static readonly attributeAliases = { "hide-soft-credits": "hidesoftcredits" };
+   * static get observedAttributes() {
+   *   return ["api-host", "hide-soft-credits", ...Object.values(this.attributeAliases)];
+   * }
+   * ```
+   *
+   * `observed-attributes.test.ts` exempts exactly these values from the
+   * kebab-case guard.
+   */
+  static readonly attributeAliases: Readonly<Record<string, string>> = {};
+
+  /**
+   * Read an attribute by its kebab-case name, falling back to a legacy
+   * spelling — `legacyAlias`, or else this class's `attributeAliases` entry.
+   * The fallback `console.warn`s **once per element class** so a host still
+   * on the old spelling finds out, without flooding the console on every
+   * render. Returns `null` when neither is present.
+   */
+  protected readAttr(name: string, legacyAlias?: string): string | null {
+    const value = this.getAttribute(name);
+    if (value !== null) return value;
+
+    const ctor = this.constructor as typeof MPNextWidget;
+    const alias = legacyAlias ?? ctor.attributeAliases?.[name];
+    if (!alias) return null;
+    const legacy = this.getAttribute(alias);
+    if (legacy === null) return null;
+
+    let seen = warnedAliases.get(ctor);
+    if (!seen) {
+      seen = new Set();
+      warnedAliases.set(ctor, seen);
+    }
+    if (!seen.has(alias)) {
+      seen.add(alias);
+      console.warn(
+        `[mpnext] <${this.localName}> attribute "${alias}" is deprecated; use "${name}". The old spelling is read for one release only.`,
+      );
+    }
+    return legacy;
   }
 
   // ── Reconfiguration (C39 / CROSS-4 §1, §4) ───────────────────────────────

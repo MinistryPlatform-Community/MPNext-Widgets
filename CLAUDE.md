@@ -377,6 +377,7 @@ See **[Date/Time Handling Reference](.claude/references/ministryplatform.datetim
 - **React Server Components** by default; `"use client"` only when needed
 - **TypeScript strict mode**; path alias `@/*` = `src/*`
 - **Naming**: PascalCase (types/components), camelCase (functions), kebab-case (files), snake_case (MP fields). Exception: `src/services/*Service.ts` is camelCase.
+- **Widget attributes are kebab-case** (`hide-soft-credits`, never `hidesoftcredits`). A renamed attribute keeps its legacy spelling for one release: declare it in the class's `static attributeAliases`, observe both spellings, and read it via `this.readAttr(...)`, which warns once. `components/observed-attributes.test.ts` enforces this with a ratchet over the five pre-rule spellings.
 - **No hardcoded user-facing copy in a widget** - route it through `this.t(...)` and the catalogue. A per-file ratchet test fails on new literals; see Widget Localisation.
 - **No `+` between template literals** — one literal, or an array and `.join(...)`. The production minifier folds those chains and drops text (see Toolchain above); a guard test enforces it.
 
