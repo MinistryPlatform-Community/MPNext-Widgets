@@ -158,4 +158,27 @@ export const ptBRPeople = {
       other: "restam {count} caracteres",
     },
   },
+
+  /**
+   * `next-contact-attributes` (C52).
+   *
+   * Authored here, not imported: MP's `mpp-about-me.json` carries
+   * `portuguese: null` on all nine labels, so there is no wording churches have
+   * already seen to preserve.
+   *
+   * "Sobre mim" rather than a literal "Acerca de mim", which reads as European
+   * Portuguese; "atributos" matches the noun the Platform uses for `Attributes`.
+   */
+  contactAttributes: {
+    title: "Sobre mim",
+    loading: "Carregando seus atributos…",
+    intro:
+      "Conte para nós quais atributos combinam com você. Confira suas escolhas atuais e atualize quando quiser.",
+    signedOut: "Entre na sua conta para ver seus dons e talentos.",
+    notConfigured:
+      "Sua igreja ainda não disponibilizou nenhum atributo on-line.",
+    emptyIntro:
+      "Você ainda não escolheu nenhum atributo. Marque os que combinam com você.",
+    saved: "Suas alterações foram salvas.",
+  },
 } satisfies Partial<Messages>;

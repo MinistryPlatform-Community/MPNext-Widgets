@@ -98,6 +98,11 @@ export const esGiving = {
     blankForm: "Formulario en blanco",
     submit: "Crear compromiso",
     submitAnother: "Crear otro compromiso",
+    full: "Esta campaña está completa. Ya no quedan lugares disponibles.",
+    registrationNotOpen: "El registro aún no está abierto.",
+    registrationOpensOn: "El registro abre el {date}.",
+    registrationClosed: "El registro para esta campaña ya está cerrado.",
+    registrationClosedOn: "El registro para esta campaña cerró el {date}.",
   },
 
   contributionStatement: {
@@ -242,5 +247,68 @@ export const esGiving = {
     privacyNote:
       "Solo le enviaremos {title}, y puede cancelar la suscripción en cualquier mensaje.",
     managePreferences: "Administrar todas sus preferencias de correo electrónico",
+  },
+
+  /**
+   * Seeded from MP's `mpp-mission-trip-finder.json`, which ships a vetted
+   * Spanish value for all 12 of its labels. Two were reworded rather than
+   * copied: MP's empty state opens with a literal "0" ("0 Viajes de misión
+   * encontrados…"), which is a template artefact rather than a sentence, and
+   * MP's title case ("Buscar Viajes") is an English convention that Spanish
+   * does not use.
+   */
+  missionTripFinder: {
+    title: "Viajes misioneros",
+    loading: "Cargando viajes misioneros…",
+    empty:
+      "No se encontraron viajes misioneros. Inténtelo de nuevo con otros criterios de búsqueda.",
+    searchPlaceholder: "Buscar viajes misioneros…",
+    searchLabel: "Buscar viajes misioneros",
+    full: "Viaje completo",
+    openForRegistration: "Abierto para registro",
+    registrationOpens: "El registro abre el {date}",
+    registrationCloses: "El registro cierra el {date}",
+    registrationClosed: "Registro cerrado",
+    tripDates: "Fechas del viaje: {dates}",
+    spotsLeft: {
+      one: "Queda {count} lugar",
+      other: "Quedan {count} lugares",
+      // CLDR gives Spanish a `many` category (whole millions). No trip has a
+      // million seats, but a two-branch plural fails `catalogue-parity`.
+      many: "Quedan {count} lugares",
+    },
+    resultsCount: {
+      one: "{count} viaje misionero",
+      other: "{count} viajes misioneros",
+      many: "{count} viajes misioneros",
+    },
+  },
+
+  /**
+   * Seeded from MP's `mpp-my-mission-trips.json`. Its Spanish is `tú`
+   * throughout ("inicia sesión", "tus viajes"); ours is `usted`, so
+   * `signInPrompt` is re-registered rather than copied. The four pledge-status
+   * labels MP repeats here are not adopted at all — they are already
+   * `myPledges.status.*`.
+   */
+  myMissionTrips: {
+    title: "Mis viajes misioneros",
+    loading: "Cargando viajes misioneros…",
+    empty: "No se encontraron viajes misioneros.",
+    signInPrompt: "Inicie sesión para ver sus viajes misioneros.",
+    familyTitle: "Viajes misioneros familiares",
+    leader: "Líder del viaje",
+    tripDates: "Fechas del viaje: {dates}",
+    supportProgress: "Mi progreso de recaudación",
+    donorsTitle: "Mis donantes",
+    donorsEmpty:
+      "Cuando las personas comiencen a donar, su información de contacto aparecerá aquí para que pueda agradecerles su apoyo.",
+    anonymousDonor: "Donante anónimo",
+    teamTitle: "Progreso del equipo",
+    teamEmpty: "Todavía no hay miembros en el equipo.",
+    pledgeStatus: "Estado del compromiso",
+    supportGoal: "Meta de recaudación",
+    amountRaised: "Monto recaudado",
+    progress: "Progreso",
   },
 } satisfies Partial<Messages>;

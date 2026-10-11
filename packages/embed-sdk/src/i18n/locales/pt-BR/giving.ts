@@ -96,6 +96,11 @@ export const ptBRGiving = {
     blankForm: "Formulário em branco",
     submit: "Criar promessa",
     submitAnother: "Criar outra promessa",
+    full: "Esta campanha está lotada. Não há mais vagas disponíveis.",
+    registrationNotOpen: "As inscrições ainda não estão abertas.",
+    registrationOpensOn: "As inscrições abrem em {date}.",
+    registrationClosed: "As inscrições para esta campanha estão encerradas.",
+    registrationClosedOn: "As inscrições para esta campanha encerraram em {date}.",
   },
 
   contributionStatement: {
@@ -234,5 +239,66 @@ export const ptBRGiving = {
     privacyNote:
       "Enviaremos apenas {title}, e você pode cancelar a assinatura em qualquer mensagem.",
     managePreferences: "Gerenciar todas as suas preferências de e-mail",
+  },
+
+  /**
+   * Seeded from MP's `mpp-mission-trip-finder.json`, reconciled to pt-BR.
+   * MP's own empty state for this tag is not even about trips — it reads "0
+   * eventos encontrados", a copy-paste from the event finder — so it is
+   * rewritten here rather than adopted, and its leading literal "0" dropped.
+   */
+  missionTripFinder: {
+    title: "Viagens missionárias",
+    loading: "Carregando viagens missionárias…",
+    empty:
+      "Nenhuma viagem missionária encontrada. Tente novamente com outros critérios de pesquisa.",
+    searchPlaceholder: "Pesquisar viagens missionárias…",
+    searchLabel: "Pesquisar viagens missionárias",
+    full: "Viagem lotada",
+    openForRegistration: "Aberto para inscrição",
+    registrationOpens: "As inscrições abrem em {date}",
+    registrationCloses: "As inscrições encerram em {date}",
+    registrationClosed: "Inscrições encerradas",
+    tripDates: "Datas da viagem: {dates}",
+    spotsLeft: {
+      one: "Resta {count} vaga",
+      other: "Restam {count} vagas",
+      // pt-BR reports `many` (whole millions) like Spanish does; a two-branch
+      // plural fails `catalogue-parity` for this locale.
+      many: "Restam {count} vagas",
+    },
+    resultsCount: {
+      one: "{count} viagem missionária",
+      other: "{count} viagens missionárias",
+      many: "{count} viagens missionárias",
+    },
+  },
+
+  /**
+   * Seeded from MP's `mpp-my-mission-trips.json`, whose Portuguese is European
+   * in exactly the places this widget uses it — "entra para ver as tuas
+   * viagens" is `tu`, not the `você` this catalogue is written in — so
+   * `signInPrompt` is re-registered. MP's four pledge-status labels are not
+   * adopted: they are already `myPledges.status.*`.
+   */
+  myMissionTrips: {
+    title: "Minhas viagens missionárias",
+    loading: "Carregando viagens missionárias…",
+    empty: "Nenhuma viagem missionária encontrada.",
+    signInPrompt: "Entre para ver suas viagens missionárias.",
+    familyTitle: "Viagens missionárias da família",
+    leader: "Líder da viagem",
+    tripDates: "Datas da viagem: {dates}",
+    supportProgress: "Meu progresso de arrecadação",
+    donorsTitle: "Meus doadores",
+    donorsEmpty:
+      "Quando as pessoas começarem a doar, os dados de contato delas aparecerão aqui para que você possa agradecer o apoio.",
+    anonymousDonor: "Doador anônimo",
+    teamTitle: "Progresso da equipe",
+    teamEmpty: "Ainda não há integrantes na equipe.",
+    pledgeStatus: "Situação do compromisso",
+    supportGoal: "Meta de arrecadação",
+    amountRaised: "Valor arrecadado",
+    progress: "Progresso",
   },
 } satisfies Partial<Messages>;

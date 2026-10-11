@@ -160,6 +160,17 @@ export const widgetRegistry: WidgetMeta[] = [
     events: ["opportunitiesLoaded", "opportunitySelected", "opportunityFinderError"],
   },
   {
+    slug: "mission-trip-finder",
+    tag: "next-mission-trip-finder",
+    title: "Mission Trip Finder",
+    description:
+      "Public, filterable mission-trip search over Pledge Campaigns, with cards that deep-link to a trip details page.",
+    category: "Public",
+    needsUserMenu: false,
+    needsMpWidgets: false,
+    events: ["missionTripsLoaded", "missionTripSelected", "missionTripFinderError"],
+  },
+  {
     slug: "opportunity-details",
     tag: "next-opportunity-details",
     title: "Opportunity Details & Response",
@@ -355,6 +366,17 @@ export const widgetRegistry: WidgetMeta[] = [
     needsMpWidgets: true,
     events: ["subscriptionsLoaded", "subscriptionChanged", "subscriptionError"],
   },
+  {
+    slug: "contact-attributes",
+    tag: "next-contact-attributes",
+    title: "About Me",
+    description:
+      "Self-service skills, talents and spiritual gifts — the attribute types a church has marked available online.",
+    category: "Profile",
+    needsUserMenu: true,
+    needsMpWidgets: true,
+    events: ["contactAttributesLoaded", "contactAttributesSaved", "contactAttributesError"],
+  },
 
   // ── Stewardship ──────────────────────────────────────────
   {
@@ -396,6 +418,17 @@ export const widgetRegistry: WidgetMeta[] = [
     needsUserMenu: true,
     needsMpWidgets: true,
     events: ["pledgesLoaded", "pledgeCanceled", "pledgeError"],
+  },
+  {
+    slug: "my-mission-trips",
+    tag: "next-my-mission-trips",
+    title: "My Mission Trips",
+    description:
+      "A participant's trips with fundraising progress, their donor list, and — for trip leaders only — the team's progress.",
+    category: "Stewardship",
+    needsUserMenu: true,
+    needsMpWidgets: true,
+    events: ["myMissionTripsLoaded", "myMissionTripsError"],
   },
   {
     slug: "pledge-campaign",

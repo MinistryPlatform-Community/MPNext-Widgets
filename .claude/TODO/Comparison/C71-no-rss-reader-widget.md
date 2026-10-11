@@ -71,3 +71,32 @@ query, and that decision shapes the whole item. I have not established which it 
 
 Lower priority than C70 and C72, which are the two publication gaps that block a flow
 rather than a page.
+
+## Resolution — WON'T PORT, decided 2026-09-11
+
+`mpp-rss-reader` is **not being carried into the new catalogue.** Recorded as a deliberate
+scope decision alongside the rest of Tier 2 in
+`Plans/ROADMAP-missing-widgets.md` (items 5, 6 and 7 were decided together).
+
+**The open question in *Suggested fix* above is now moot and should not be investigated.**
+Whether MP publishes an actual RSS/Atom document or the widget reads `dp_Publications` rows
+does not matter if nothing is built; anyone picking this file up later should not spend time
+disassembling `RssReader.js` to find out.
+
+This does not change the finding's severity or its accuracy — a documented legacy capability
+still has no replacement, which is what `functional` records. What changes is that the gap is
+now intentional and permanent rather than pending.
+
+**Customer migration note required**, and it should be prominent rather than a footnote:
+
+> *"The RSS reader has no replacement. A church using it keeps MPWidgets.js on that page, or
+> renders the feed from its own CMS."*
+
+Prominent because of the one detail in *Why it matters* that makes this different from the
+other won't-ports: it is **MP's own sample home page**, so an evaluating church is likely to
+meet this gap before it meets any of the widgets that were built. A church that discovers it
+at cutover will have discovered it on their front page.
+
+Keeping MPWidgets.js on that page carries the usual dual-stack cost — both login models on
+one site — so where the feed is simple enough to render from the church's own CMS, that is
+the better advice.

@@ -1,4 +1,5 @@
 export * from "./add-to-calendar";
+export * from "./contact-attributes";
 export * from "./contribution-statements";
 export * from "./custom-form";
 export * from "./events";
@@ -8,6 +9,7 @@ export * from "./household";
 export * from "./invoices";
 export * from "./my-giving";
 export * from "./my-groups";
+export * from "./mission-trips";
 export * from "./my-pledges";
 export * from "./online-directory";
 export * from "./opportunities";

@@ -16,19 +16,21 @@ ls packages/embed-sdk/demo-*.html | wc -l
 ls src/app/api/embed/ ; ls src/services/*.ts | grep -v '\.test\.'
 ```
 
-Snapshot at 2026-09-09 (re-measured): **30** registered `next-*` elements, 29 demo
-pages, 31 `src/app/api/embed/` route directories, 30 services. The counts diverge on
+Snapshot at 2026-09-11 (re-measured): **33** registered `next-*` elements, 32 demo
+pages, 33 `src/app/api/embed/` route directories, 32 services. The counts diverge on
 purpose: `next-locale-selector` has no demo page, because it needs no API, no token and
 no configuration to demonstrate — `<html lang="es">` on any existing demo page exercises
 the whole localisation path. The service count no longer moves with the widget count
 either: `next-subscribe-to-publication` extends `subscriptionService.ts` rather than
 forking a second file for the same two MP tables, and `src/services/_shared/` is a
-directory the `ls src/services/*.ts` glob does not reach. The route-directory count runs
-one *ahead* of the element count for the opposite reason — `auth/` and `session/` are
-route directories with no widget, while `next-pre-check` owns one directory holding two
-routes (`pre-check/` and `pre-check/qr/`). (An earlier snapshot said 26/25/27/27 and had
-already fallen behind `next-unsubscribe`, which is exactly why the paragraph above says
-not to trust the number over the disk.)
+directory the `ls src/services/*.ts` glob does not reach. Route directories no longer run
+*ahead* of elements: `auth/` and `session/` are route directories with no widget, and
+`next-pre-check` owns one directory holding two routes (`pre-check/` and `pre-check/qr/`),
+but `next-mission-trip-finder` and `next-my-mission-trips` now **share** one `mission-trips/`
+directory holding four routes, which cancels the surplus out. That is the clearest
+illustration of why the numbers are measured rather than reasoned about. (Earlier snapshots
+said 26/25/27/27 and 30/29/31/30, each having already fallen behind — which is exactly why
+the paragraph above says not to trust the number over the disk.)
 
 ## Structure
 
@@ -189,17 +191,28 @@ returns. Full incident and the "grep the built chunk" diagnostic:
 
 **Design**: Web Components + Shadow DOM (no framework deps), JWT+CORS auth, multi-tenant origin allowlists, MP tokens only in the encrypted server session (never in the JWT or host-page storage in `hardened`). Widget forms use the shared `packages/embed-sdk/src/shared/form-validation.ts` (no native `reportValidity` popup).
 
-**The element roster** (30 as of 2026-09-09 — this is the one place it is listed; re-measure with the command in Overview rather than trusting it):
-`next-add-to-calendar`, `next-checkout`, `next-checkout-complete`, `next-custom-form`,
+**The element roster** (33 as of 2026-09-11 — this is the one place it is listed; re-measure with the command in Overview rather than trusting it):
+`next-add-to-calendar`, `next-checkout`, `next-checkout-complete`, `next-contact-attributes`,
+`next-custom-form`,
 `next-event-details`, `next-event-finder`, `next-full-calendar`, `next-group-details`,
-`next-group-finder`, `next-my-contribution-statement`, `next-my-giving`,
-`next-my-groups`, `next-my-household`, `next-my-invoices`, `next-my-pledges`,
+`next-group-finder`, `next-mission-trip-finder`,
+`next-my-contribution-statement`, `next-my-giving`,
+`next-my-groups`, `next-my-household`, `next-my-invoices`, `next-my-mission-trips`,
+`next-my-pledges`,
 `next-locale-selector`, `next-online-directory`, `next-opportunity-details`,
 `next-opportunity-finder`,
 `next-pay`, `next-plan-your-visit`, `next-prayer-feedback`, `next-pre-check`,
 `next-pledge-campaign`,
 `next-profile`, `next-statement-preferences`, `next-subscribe-to-publication`,
 `next-subscriptions`, `next-unsubscribe`, `next-user-menu`.
+
+**There is no `next-mission-trip` element, and that is deliberate.** Legacy's
+`mpp-mission-trip` has no distinct behaviour: `api_MPPW_GetPledgeCampaign` declares an
+`@IsMissionTrip bit` parameter and never references it in the body, and the two legacy
+clients share the household "apply as" picker, the custom form, the has-pledged check and
+the confirmation email. `next-pledge-campaign` is the mission-trip details page — the finder
+links to it through the `id-parameter-name` attribute both elements share. See
+`.claude/TODO/Comparison/Plans/mission-trips.md`.
 
 **MP widget styling**: `public/embed-sdk/mp-widget-overrides.css` injected into MP Shadow DOM widgets via `customcss` attribute. User-menu applies this automatically.
 
@@ -286,8 +299,10 @@ duplicated across three catalogues.
 
 **MP-authored content is not translated and cannot be** by a file-based catalogue: event
 titles and descriptions, group/opportunity names, congregation and ministry names, **MP
-Custom Form field labels**, product and fund names, statement PDFs, and MP's notification
-emails. Legacy `GetLabels` did not solve this either - it translated labels, not content.
+Custom Form field labels**, product and fund names, statement PDFs, MP's notification
+emails, **`Attribute_Types` and `Attributes` names** (so `next-contact-attributes` renders
+"Spiritual Gifts" as staff typed it on a Spanish page), and **`Pledge_Campaigns` campaign
+names and descriptions** (so a mission trip keeps its MP title everywhere). Legacy `GetLabels` did not solve this either - it translated labels, not content.
 Say so in customer migration notes.
 
 **Tooling**
@@ -481,6 +496,8 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `src/lib/no-template-concat.test.ts` | Repo-wide guard: fails if any source file joins two template literals with `+` |
 | `src/services/_shared/mp-lookup.ts` | `sqlLiteral` / `clean` / `toNumberOrNull` / `cap` / `getIdByValue` — the helpers three MP-writing services each had a byte-identical copy of |
 | `src/services/domainTimezoneService.ts` | Singleton: MP domain TZ → IANA, `toMpSqlDatetime`, `parseMpDatetime` |
+| `src/services/contactAttributeService.ts` | `Contact_Attributes` read/write for `next-contact-attributes`. Visibility is `Attribute_Types.Available_Online` (a **type**-level flag; there is no `Attribute_Categories` table). Full-set PUT: the requested ids must be a subset of the visible universe or it throws **before any MP call** — legacy validated nothing there. Removal end-dates every active row (the table has no uniqueness constraint and real domains hold duplicates); re-selection reactivates the lowest `Contact_Attribute_ID` rather than inserting a second row |
+| `src/services/missionTripService.ts` | The mission-trip domain. `visibleContactIds` is legacy's household rule (head of household sees the household); `mine()` is the single visibility source and its window therefore bounds `donors()` and `team()`. **`team()` throws unless a *visible* pledge on the campaign has `Trip_Leader = 1`** — "visible", not "the caller's own", so a head of household managing a child's trip is not locked out. Legacy's roster procedure has no leader predicate at all and both its gates ran in the browser. Per-procedure availability probe over one memoised `getProcedures()` call, because MP registers the four procs across two script eras |
 | `src/app/actions/domain.ts` | `getMpTimezone()` server action for client-side `Intl.DateTimeFormat` rendering |
 
 <!-- BEGIN:nextjs-agent-rules -->

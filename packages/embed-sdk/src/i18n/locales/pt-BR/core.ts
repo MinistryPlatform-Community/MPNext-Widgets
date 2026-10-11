@@ -131,6 +131,12 @@ export const ptBRCore = {
     publication_not_found: "Não encontramos essa publicação.",
     precheck_unavailable:
       "O check-in ainda não está configurado neste site. Entre em contato com a igreja.",
+    invalid_attribute:
+      "Algumas dessas opções não estão mais disponíveis. Recarregue a página e tente de novo.",
+    not_trip_leader: "Somente o líder da viagem pode ver o progresso da equipe.",
+    not_a_participant: "Você não está inscrito nessa viagem.",
+    mission_trips_unavailable:
+      "As viagens missionárias ainda não estão configuradas neste site. Entre em contato com a igreja.",
     invalid_pre_check_selection:
       "Suas escolhas de check-in estão desatualizadas. Confira-as e tente de novo.",
     pre_check_closed: "O check-in não está aberto para essa data.",

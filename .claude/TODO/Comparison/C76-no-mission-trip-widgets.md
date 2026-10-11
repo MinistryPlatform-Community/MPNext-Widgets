@@ -124,3 +124,121 @@ client-side.
 
 Either way, say so explicitly in the customer migration notes: a church running trips needs
 to know before cutover that these three pages stay on MPWidgets.js.
+
+## Resolution — BUILT, 2026-09-11
+
+The mission-trip domain ships on `feature/tier2-about-me-mission-trips` as **two** elements,
+not three. Plan: `Plans/mission-trips.md`.
+
+- `packages/embed-sdk/src/components/mission-trip-finder.ts` → `next-mission-trip-finder`
+- `packages/embed-sdk/src/components/my-mission-trips.ts` → `next-my-mission-trips`
+- `src/services/missionTripService.ts`; four routes under
+  `src/app/api/embed/mission-trips/` (finder, `mine`, `donors`, `team`)
+- `packages/types/src/mission-trips.ts`; two demo pages; complete `en` / `es` / `pt-BR`
+- 46 service tests + 55 component tests
+
+### Why two elements and not three: `@IsMissionTrip` is a dead parameter
+
+This finding filed the domain as one item covering three tags, and that was the right call —
+but the sizing assumed three widgets. It is two.
+
+`api_MPPW_GetPledgeCampaign` declares `@IsMissionTrip bit` on line 20 of its parameter list
+and **never references it in the body**. `mpp-mission-trip` and `mpp-pledge-campaign` call
+that same procedure and receive byte-identical data. The two legacy clients also share the
+household "apply as" picker (`HouseholdApiService`), the `CustomFormBuilder` application
+form, the `HasPledged` check on picker change, and a confirmation email driven by a template
+id attribute. `mpp-mission-trip` even declares `missiontripcampaignid` in
+`observedAttributes` and never reads it — `loadAttributes()` reads only `pledgecampaignid`
+and `applicantemailtemplate`.
+
+`next-pledge-campaign` already implemented every one of those. It is the mission-trip details
+page; the finder links to it through the `id-parameter-name` attribute both elements share.
+What it needed was four fields the procedure already returned and the service simply dropped
+— `Maximum_Registrants`, `PledgeCount`, `Registration_Start`, `Registration_End` — so that a
+full or out-of-window campaign blocks the form. That was never trip-specific: a capital
+campaign with a registrant cap had the same defect and accepted pledges indefinitely.
+
+### The authorisation rule this finding asked for — and the leak it turned out to be
+
+*Suggested fix* said `showdonors` and `showteamprogress` "need an authorisation rule decided
+up front rather than an attribute that merely hides a section client-side". That was exactly
+right, and understated.
+
+`api_MPPW_GetMyMissionTripTeamProgress` has **no `Trip_Leader` predicate at all**. It scopes
+to campaigns the caller's household has a pledge on, then returns *every* pledge on those
+campaigns — each teammate's `Email_Address`, `Mobile_Phone`, `Total_Pledge`, `Campaign_Goal`
+and amount raised. Both gates ran in the browser: `showteamprogress` is host-page markup
+(`mpp-my-mission-trips.js:120`) and the leader test is an array filter on data the browser
+already holds (`:216`). Any signed-in participant could call the endpoint directly and read
+the roster — on a youth trip, a list of minors' mobile numbers.
+
+Decided with the owner and enforced server-side: the roster requires a **visible** pledge on
+the campaign with `Trip_Leader = 1`, answering `403 not_trip_leader` otherwise. "Visible",
+not "the caller's own" — legacy's household rule exists precisely so a head of household can
+manage a teenager's trip, and the child holds the pledge, so a caller-only check would 403
+the very person the rule serves. A dedicated test covers that case.
+
+A second privacy defect came with it: the roster procedure selects `Email_Address` and
+`Mobile_Phone` raw, while the donors procedure carefully honours `Home_Address_Unlisted`,
+`Mobile_Phone_Unlisted` and `Email_Unlisted` — two different answers about the same person's
+privacy inside one widget. The roster now honours them too. A trip leader is not staff.
+
+Household scope and donor-list detail were kept at legacy parity, both by explicit decision.
+
+### Other legacy defects deliberately not ported
+
+- **`showfulltrips="false"` was inverted.** The SQL keeps
+  `Current_Registrants >= Maximum_Registrants` — the definition of *full* — so asking to hide
+  full trips returned uncapped trips plus exactly the full ones, and hid every trip with
+  space. Fixed in TypeScript rather than by shipping corrected SQL every church would have to
+  install.
+- **The donors endpoint had no campaign scope and no date window**, unlike the sibling
+  procedures; it returned every donor of every trip the caller ever pledged to. Now scoped to
+  one campaign and to the same window.
+- **Donors were de-duplicated by `(Contact_ID, Pledge_ID)`** (`MissionTripManager.cs:141`),
+  silently dropping a donor's second gift to the same participant. Every distribution row now
+  survives.
+- **`apiRecord["ForeignCountry"]` never matched the procedure's `Foreign_Country` alias**, so
+  that field was always null in the legacy widget.
+- Suppressed fields are `null`, not legacy's `"--"` / `""` sentinels — a display concern that
+  had leaked into the data layer.
+
+### Two things found during the build that outlive this item
+
+- **`api_MPPW_GetPledgeCampaign` aliases `Registration_Start` and `Registration_End` twice**
+  in one `SELECT` — once from `Pledge_Campaigns` (lines 42–43), once from the linked `Events`
+  row (55–56), the latter wrapped in a `CASE` that yields `NULL` when the event's congregation
+  has no time zone. Duplicate keys collapse in the JSON row, so which one arrives is not ours
+  to control. Not fixed: correcting it means shipping a changed procedure to every church, and
+  the two windows are normally identical on a trip. The failure mode is benign — a null bound
+  reads as "no bound", so the form falls open rather than wrongly refusing. Documented in
+  README.
+- **MP registers the four procedures across two script eras**: `GetMyMissionTrips` and
+  `GetMyMissionTripDonors` in `001-Changes.sql`, `SearchMissionTrips` and
+  `GetMyMissionTripTeamProgress` in the later `099-StoredProcMetaData.sql`. A domain on an
+  older revision genuinely has half of them, so availability is probed **per procedure** over
+  one memoised `getProcedures()` call, and each panel degrades on its own.
+
+### The migration note this finding asked for is now the opposite one
+
+*"Churches running mission trips must keep MPWidgets.js on those three pages"* is deleted —
+this was the largest remaining dual-stack obligation in the catalogue. It is replaced by
+setup instructions plus one warning: the team roster is now trip-leaders-only and enforced on
+the server, so participants used to seeing each other's totals will stop. That is the fix for
+the leak above, not a regression, but it should not arrive as a surprise.
+
+### Not reproducible on the reference domain
+
+Neither the finder nor the roster can be demonstrated there. All three type-2 campaigns have
+events that ended (2018, 2018, 2024) and the 2024 one also lacks a Program and has
+`Allow_Online_Pledge = 0`; campaign 4 is the only one with a genuine `Trip_Leader` and
+several household members, and its `End_Date` puts it outside the 180-day window. Household 1
+does have a live trip via campaign 3. The demo pages say all of this on the page rather than
+rendering an empty widget that reads as broken. The shared domain was not edited. Both
+authorisation rules are covered by fixture-driven tests regardless.
+
+### The BRIEF correction in this finding stands
+
+`next-opportunity-finder` does **not** cover `mpp-mission-trip-finder`: one filters
+Opportunities, the other filters Pledge Campaigns. Confirmed against both sources during the
+build.

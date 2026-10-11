@@ -31,7 +31,25 @@ interface PledgeCampaign {
   eventId: number | null;
   customFormId: number | null;
   customFormGuid: string | null;
+
+  // ── Registration window and capacity (C76 phase 1) ──
+  // Wall-clock strings from MP, like `startDate` / `endDate` above. Optional
+  // on the wire shape only so an older cached response cannot break a render.
+  maximumRegistrants?: number | null;
+  currentRegistrants?: number | null;
+  registrationStart?: string | null;
+  registrationEnd?: string | null;
 }
+
+/**
+ * Why the pledge form is not being shown.
+ *
+ * `null` means it is. Before C76 this was a boolean (`isAcceptingPledges`) and
+ * every closed state produced the same sentence, so a full trip and a campaign
+ * whose registration opens next month were indistinguishable — and a capped
+ * campaign was not blocked at all.
+ */
+type BlockedReason = "closed" | "full" | "notOpenYet" | "registrationClosed";
 
 interface PledgeFrequency {
   id: number;
@@ -258,11 +276,9 @@ export class PledgeCampaignWidget extends MPNextWidget {
   private evaluateCampaignState() {
     const c = this.campaign;
     if (!c) return;
-    if (!this.isAcceptingPledges()) {
-      this.message = {
-        type: "warning",
-        text: this.t("pledgeCampaign.closed"),
-      };
+    const blocked = this.blockedReason();
+    if (blocked) {
+      this.message = { type: "warning", text: this.blockedText(blocked) };
     } else if (this.userHasAlreadyPledged) {
       this.message = {
         type: "warning",
@@ -271,14 +287,78 @@ export class PledgeCampaignWidget extends MPNextWidget {
     }
   }
 
-  private isAcceptingPledges(): boolean {
+  /**
+   * The reason the form is hidden, or `null` when it is shown.
+   *
+   * Order matters: capacity is checked before the window, because a full
+   * campaign inside an open window is full, and "registration is open" would
+   * be a lie a visitor could act on.
+   */
+  private blockedReason(): BlockedReason | null {
     const c = this.campaign;
-    if (!c || !c.allowOnlinePledge) return false;
+    if (!c) return "closed";
+    if (!c.allowOnlinePledge) return "closed";
     if (c.endDate) {
       const end = this.parseMpDate(c.endDate);
-      if (end && Date.now() > end.getTime()) return false;
+      if (end && Date.now() > end.getTime()) return "closed";
     }
-    return true;
+
+    // A seat cap. `null` and `0` both mean uncapped — `Maximum_Registrants` is
+    // nullable in MP and churches leave it at 0 as often as at null, so
+    // treating 0 as "no seats" would close every uncapped campaign.
+    const max = c.maximumRegistrants ?? 0;
+    const current = c.currentRegistrants ?? 0;
+    if (max > 0 && current >= max) return "full";
+
+    // The registration window. Compared as whole days against the local
+    // calendar, because MP's value is a wall clock: a window that opens
+    // "today" is open all of today.
+    const today = this.startOfToday();
+    const start = c.registrationStart ? this.parseMpDate(c.registrationStart) : null;
+    if (start && this.startOfDay(start).getTime() > today.getTime()) return "notOpenYet";
+    const end = c.registrationEnd ? this.parseMpDate(c.registrationEnd) : null;
+    if (end && this.startOfDay(end).getTime() < today.getTime()) {
+      return "registrationClosed";
+    }
+
+    return null;
+  }
+
+  /** The sentence for a blocked state, dated where a date exists. */
+  private blockedText(reason: BlockedReason): string {
+    const c = this.campaign;
+    if (reason === "full") return this.t("pledgeCampaign.full");
+    if (reason === "notOpenYet") {
+      const d = c?.registrationStart ? this.parseMpDate(c.registrationStart) : null;
+      return d
+        ? this.t("pledgeCampaign.registrationOpensOn", {
+            date: this.fmt.date(d, "long"),
+          })
+        : this.t("pledgeCampaign.registrationNotOpen");
+    }
+    if (reason === "registrationClosed") {
+      const d = c?.registrationEnd ? this.parseMpDate(c.registrationEnd) : null;
+      return d
+        ? this.t("pledgeCampaign.registrationClosedOn", {
+            date: this.fmt.date(d, "long"),
+          })
+        : this.t("pledgeCampaign.registrationClosed");
+    }
+    return this.t("pledgeCampaign.closed");
+  }
+
+  private isAcceptingPledges(): boolean {
+    return this.blockedReason() === null;
+  }
+
+  private startOfDay(d: Date): Date {
+    const copy = new Date(d);
+    copy.setHours(0, 0, 0, 0);
+    return copy;
+  }
+
+  private startOfToday(): Date {
+    return this.startOfDay(new Date());
   }
 
   // ── Submit ────────────────────────────────────────────────────────────
