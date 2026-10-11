@@ -1,4 +1,4 @@
-import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -194,7 +194,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body));
+        throw new WidgetError(this.errorText(body));
       }
       const data: HouseholdData = await res.json();
       this.data = data;
@@ -206,7 +206,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       // `errorText` has already translated an API code; anything else (a
       // dropped connection) becomes the generic network message.
       this.error =
-        err instanceof Error ? err.message : this.t("errors.network");
+        this.caughtText(err, "errors.network");
       this.render(); // render() re-binds its own listeners
       this.emit("householdError", { error: this.error });
     }
@@ -1174,7 +1174,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
 
       if (this.data && data.household) {
@@ -1194,7 +1194,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       this.householdAlert = {
         kind: "error",
         text:
-          err instanceof Error ? err.message : this.t("errors.saveFailed"),
+          this.caughtText(err, "errors.saveFailed"),
       };
       this.render();
       this.emit("householdError", { error: this.householdAlert.text });
@@ -1271,7 +1271,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
 
       const returnedContactId: number | undefined = data.contactId;
@@ -1312,7 +1312,7 @@ export class MyHouseholdWidget extends MPNextWidget {
       this.memberAlert = {
         kind: "error",
         text:
-          err instanceof Error ? err.message : this.t("errors.saveFailed"),
+          this.caughtText(err, "errors.saveFailed"),
       };
       this.render();
       this.emit("householdError", { error: this.memberAlert.text });

@@ -208,7 +208,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
     } catch (err) {
       this.message = {
         type: "danger",
-        text: err instanceof Error ? err.message : this.t("errors.generic"),
+        text: this.caughtText(err, "errors.generic"),
       };
     } finally {
       this.loading = false;
@@ -310,7 +310,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
     } catch (err) {
       this.setMessage(
         "danger",
-        err instanceof Error ? err.message : this.t("errors.submitFailed")
+        this.caughtText(err, "errors.submitFailed")
       );
     } finally {
       this.setButtonsDisabled(false);
@@ -411,7 +411,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
     } catch (err) {
       this.setMessage(
         "danger",
-        err instanceof Error ? err.message : this.t("errors.submitFailed")
+        this.caughtText(err, "errors.submitFailed")
       );
       this.setButtonsDisabled(false);
     }

@@ -1,4 +1,4 @@
-import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import {
   GIVING_SIGNED_OUT_STYLES,
   HEADING_RESET_STYLES,
@@ -128,13 +128,13 @@ export class MyPledgesWidget extends MPNextWidget {
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { pledges: Pledge[] } = await res.json();
       this.pledges = data.pledges || [];
       this.emit("pledgesLoaded", { count: this.pledges.length });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("pledgeError", { error: this.error });
     } finally {
       this.loading = false;
@@ -165,7 +165,7 @@ export class MyPledgesWidget extends MPNextWidget {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
 
       const data: { pledges: Pledge[] } = await res.json();
@@ -173,7 +173,7 @@ export class MyPledgesWidget extends MPNextWidget {
       this.message = { type: "success", text: this.t("myPledges.canceled") };
       this.emit("pledgeCanceled", { pledgeId });
     } catch (err) {
-      const errorText = err instanceof Error ? err.message : this.t("errors.network");
+      const errorText = this.caughtText(err, "errors.network");
       this.message = {
         type: "error",
         text: this.t("myPledges.cancelFailed"),

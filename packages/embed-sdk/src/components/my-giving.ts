@@ -1,4 +1,4 @@
-import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import {
   GIVING_SIGNED_OUT_STYLES,
   HEADING_RESET_STYLES,
@@ -106,7 +106,7 @@ export class MyGivingWidget extends MPNextWidget {
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { donations: DonationRecord[] } = await res.json();
       this.donations = data.donations || [];
@@ -123,7 +123,7 @@ export class MyGivingWidget extends MPNextWidget {
     } catch (err) {
       // `errorText` has already turned an API machine code into a translated
       // sentence; anything else becomes the generic network message.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("givingError", { error: this.error });
     } finally {
       this.loading = false;

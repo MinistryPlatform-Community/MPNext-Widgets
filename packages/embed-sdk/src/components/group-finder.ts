@@ -1,4 +1,4 @@
-import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import { parseWallClock } from "../i18n";
 import {
   validateForm,
@@ -234,7 +234,7 @@ export class GroupFinderWidget extends MPNextWidget {
       const res = await this.fetch(`/api/embed/group-finder${this.buildQuery()}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { groups: GroupCard[] } = await res.json();
       this.groups = data.groups || [];
@@ -243,7 +243,7 @@ export class GroupFinderWidget extends MPNextWidget {
       // `errorText` has already turned an API machine code into a translated
       // sentence; anything else (a thrown TypeError from a dropped connection)
       // becomes the generic network message rather than leaking English.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("groupFinderError", { error: this.error });
     } finally {
       this.loading = false;
@@ -466,7 +466,7 @@ export class GroupFinderWidget extends MPNextWidget {
     } catch (err) {
       this.setSuggestMessage(
         "danger",
-        err instanceof Error ? err.message : this.t("errors.submitFailed")
+        this.caughtText(err, "errors.submitFailed")
       );
       if (submitBtn) submitBtn.disabled = false;
     }

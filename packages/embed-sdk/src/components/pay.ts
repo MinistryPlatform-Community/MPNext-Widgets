@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -177,13 +177,13 @@ export class PayWidget extends MPNextWidget {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         if (this.isLinkState(data)) return;
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { request: PaymentRequestToken } = await res.json();
       this.request = data.request;
     } catch (err) {
       this.error =
-        err instanceof Error ? err.message : this.t("pay.decodeFailed");
+        this.caughtText(err, "pay.decodeFailed");
     } finally {
       this.loading = false;
       this.render();
@@ -229,7 +229,7 @@ export class PayWidget extends MPNextWidget {
           this.render();
           return;
         }
-        throw new Error(this.errorText(data, "errors.payment_declined"));
+        throw new WidgetError(this.errorText(data, "errors.payment_declined"));
       }
       const data: { token: string } = await res.json();
 
@@ -240,7 +240,7 @@ export class PayWidget extends MPNextWidget {
     } catch (err) {
       this.submitting = false;
       this.formError =
-        err instanceof Error ? err.message : this.t("pay.submitFailed");
+        this.caughtText(err, "pay.submitFailed");
       this.render();
     }
   }

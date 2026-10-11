@@ -1,4 +1,4 @@
-import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import { parseWallClock } from "../i18n";
 
 interface GroupAddress {
@@ -95,7 +95,7 @@ export class MyGroupsWidget extends MPNextWidget {
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { groups: Group[]; cloudUrlPrefix: string | null } = await res.json();
       this.groups = data.groups || [];
@@ -105,7 +105,7 @@ export class MyGroupsWidget extends MPNextWidget {
       // `errorText` has already produced a translated sentence; a thrown
       // non-Error (a dropped connection) becomes the generic network message
       // rather than leaking English.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("groupError", { error: this.error });
     } finally {
       this.loading = false;

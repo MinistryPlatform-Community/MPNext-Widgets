@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import { cardButton, CARD_LINK_STYLES } from "../shared/card-link";
 
 interface InvoiceListItem {
@@ -177,7 +177,7 @@ export class MyInvoicesWidget extends MPNextWidget {
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { invoices: InvoiceListItem[] } = await res.json();
       this.invoices = data.invoices;
@@ -186,7 +186,7 @@ export class MyInvoicesWidget extends MPNextWidget {
       // `errorText` has already turned an API machine code into a translated
       // sentence; anything else (a dropped connection) becomes the generic
       // network message rather than leaking English.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("invoiceError", { error: this.error });
     } finally {
       this.loading = false;
@@ -211,13 +211,13 @@ export class MyInvoicesWidget extends MPNextWidget {
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data, "errors.invoice_not_found"));
+        throw new WidgetError(this.errorText(data, "errors.invoice_not_found"));
       }
       const data: InvoiceDetailResponse = await res.json();
       this.selectedDetail = data;
       this.emit("invoiceSelected", { invoiceId });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("invoiceError", { error: this.error });
     } finally {
       this.detailLoading = false;

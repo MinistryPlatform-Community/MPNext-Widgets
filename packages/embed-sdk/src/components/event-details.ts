@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import {
   renderCustomFormFields,
   bindCustomFormDependsOn,
@@ -367,11 +367,11 @@ export class EventDetailsWidget extends MPNextWidget {
       const res = await this.fetch(`/api/embed/event-details/${encodeURIComponent(eventId)}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body, "errors.event_not_found"));
+        throw new WidgetError(this.errorText(body, "errors.event_not_found"));
       }
       const data: { event: EventDetail; isUserStaff: boolean } = await res.json();
       if (!data || !data.event) {
-        throw new Error(this.t("eventDetails.notAvailable"));
+        throw new WidgetError(this.t("eventDetails.notAvailable"));
       }
       if (seq !== this.initSeq) return;
       this.event = data.event;
@@ -402,7 +402,7 @@ export class EventDetailsWidget extends MPNextWidget {
       // `errorText` has already turned an API machine code into a translated
       // sentence; anything else (a dropped connection) becomes the generic
       // network message rather than leaking English.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.event = null;
       this.loading = false;
       this.render();
@@ -702,7 +702,7 @@ export class EventDetailsWidget extends MPNextWidget {
       this.render();
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : this.t("eventDetails.registrationFailed");
+        this.caughtText(err, "eventDetails.registrationFailed");
       this.setMessage("danger", msg);
       this.emit("registrationError", { error: msg });
       this.setSubmitDisabled(false);

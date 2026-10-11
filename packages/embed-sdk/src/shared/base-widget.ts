@@ -14,6 +14,24 @@ import {
 import { THEME_TOKENS_CSS } from "./theme-tokens";
 
 /**
+ * An error whose `message` is **already a sentence for the visitor**, in the
+ * visitor's language: thrown as `new WidgetError(this.errorText(body))` or
+ * `new WidgetError(this.t(...))`.
+ *
+ * It exists so a `catch` can tell that apart from everything else that lands
+ * there — the browser's `TypeError: Failed to fetch` (untranslated, and worded
+ * per browser), a JSON `SyntaxError`, an auth-session or token-provider
+ * failure carrying server prose. Only a `WidgetError`'s message is rendered;
+ * see {@link MPNextWidget.caughtText}.
+ */
+export class WidgetError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WidgetError";
+  }
+}
+
+/**
  * Wire error codes whose catalogue key is spelled differently, plus the ones
  * that deliberately share a sentence.
  *
@@ -519,6 +537,26 @@ export abstract class MPNextWidget extends HTMLElement {
         );
       }
     }
+    return this.t(fallbackKey);
+  }
+
+  /**
+   * Turn whatever a `catch` caught into a sentence for the visitor.
+   *
+   * A {@link WidgetError} carries a sentence the widget already translated, and
+   * is returned as is. Anything else — above all the browser's own
+   * `TypeError: Failed to fetch` when the network or CORS fails, which no
+   * catalogue translates — is logged with `console.error` and replaced by
+   * `fallbackKey` (normally `errors.network`). **Never render `err.message`
+   * directly**; `components/no-raw-error-message.test.ts` fails the run if a
+   * component does.
+   */
+  protected caughtText(
+    err: unknown,
+    fallbackKey: MessageKey = "errors.generic",
+  ): string {
+    if (err instanceof WidgetError && err.message) return err.message;
+    console.error(`[mpnext] <${this.localName}>`, err);
     return this.t(fallbackKey);
   }
 

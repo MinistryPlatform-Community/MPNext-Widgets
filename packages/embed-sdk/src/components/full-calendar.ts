@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import { injectExternalCSS, loadScript } from "../shared/cdn-loader";
 import { ALL_STYLES } from "./full-calendar-styles";
 import {
@@ -551,7 +551,7 @@ export class FullCalendarWidget extends MPNextWidget {
       const body = await res.json().catch(() => ({}));
       const msg = this.errorText(body);
       this.emit("fullCalendarError", { error: msg });
-      throw new Error(msg);
+      throw new WidgetError(msg);
     }
 
     const data = await res.json();
@@ -616,7 +616,7 @@ export class FullCalendarWidget extends MPNextWidget {
       const res = await this.fetch(`/api/embed/full-calendar?${params}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body));
+        throw new WidgetError(this.errorText(body));
       }
       const data = await res.json();
       return {
@@ -669,12 +669,10 @@ export class FullCalendarWidget extends MPNextWidget {
       this.emit("calendarLoaded", { count: this.allEvents.length });
     } catch (err) {
       if (seq !== this.loadSeq) return;
-      console.error("FullCalendarWidget: Failed to load cards data:", err);
       // `errorText` has already turned an API machine code into a translated
-      // sentence; anything else (a dropped connection) becomes the generic
-      // network message rather than leaking English.
-      this.cardsError =
-        err instanceof Error && err.message ? err.message : this.t("errors.network");
+      // sentence (a WidgetError); anything else (a dropped connection) is
+      // logged and becomes the network message rather than leaking English.
+      this.cardsError = this.caughtText(err, "errors.network");
       this.emit("fullCalendarError", { error: this.cardsError });
     }
 

@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import type { MessageKey } from "../i18n";
 import { paymentOutcomeView, type PaymentTone } from "./checkout-status";
 
@@ -69,7 +69,7 @@ export class CheckoutCompleteWidget extends MPNextWidget {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { invoiceId?: number | null; status?: unknown } = await res.json();
 
@@ -92,9 +92,7 @@ export class CheckoutCompleteWidget extends MPNextWidget {
       // is safe — the server de-duplicates on the transaction code.
       this.canRetry = true;
       this.message =
-        err instanceof Error
-          ? err.message
-          : this.t("checkoutComplete.unconfirmed");
+        this.caughtText(err, "checkoutComplete.unconfirmed");
       this.emit("paymentComplete", {
         invoiceId: null,
         paymentReceived: false,

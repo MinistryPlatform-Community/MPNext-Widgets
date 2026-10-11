@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import { bindCardSelect, cardLink, CARD_LINK_STYLES } from "../shared/card-link";
 
 interface EventSearchResult {
@@ -173,7 +173,7 @@ export class EventFinderWidget extends MPNextWidget {
       const res = await this.fetch(`/api/embed/event-finder${this.buildQuery()}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { events: EventSearchResult[] } = await res.json();
       if (seq !== this.searchSeq) return;
@@ -184,7 +184,7 @@ export class EventFinderWidget extends MPNextWidget {
       // `errorText` has already turned an API machine code into a translated
       // sentence; anything else (a thrown TypeError from a dropped connection)
       // becomes the generic network message rather than leaking English.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("eventFinderError", { error: this.error });
     }
     this.loading = false;

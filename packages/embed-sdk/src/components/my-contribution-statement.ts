@@ -1,4 +1,4 @@
-import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import { escapeAttr } from "../shared/html";
 import {
   GIVING_SIGNED_OUT_STYLES,
@@ -83,7 +83,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { groups: ContributionStatementGroup[] } = await res.json();
       this.groups = data.groups || [];
@@ -101,7 +101,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
 
       this.emit("statementsLoaded", { count: total });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("statementError", { error: this.error });
     } finally {
       this.loading = false;

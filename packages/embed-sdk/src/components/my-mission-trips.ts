@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 
 /**
  * Local mirrors of `@mpnext/types` (`mission-trips.ts`). This package does not
@@ -169,7 +169,7 @@ export class MyMissionTripsWidget extends MPNextWidget {
       }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body));
+        throw new WidgetError(this.errorText(body));
       }
       const data: { trips?: MyMissionTrip[] } = await res.json();
       this.trips = data.trips || [];
@@ -177,7 +177,7 @@ export class MyMissionTripsWidget extends MPNextWidget {
 
       await this.loadPanels();
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.trips = [];
       this.emit("myMissionTripsError", { error: this.error });
     } finally {
