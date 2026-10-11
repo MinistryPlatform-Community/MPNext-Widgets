@@ -77,3 +77,53 @@ Add `googleMapsApiKey` to the PYV config payload, then call the shared
 `initGooglePlaces()` pattern after the details form renders. The helper is already
 written to fail closed (`loadGoogleMaps` resolves `false` on any error), so manual
 entry stays intact when the key is missing or blocked — no new failure mode.
+
+## Resolution — 2026-10-11
+
+**Fixed** (W4, branch `ws/w4-serving-forms`). Both routes were built: the MP key is used
+by default, and a `google-maps-api-key` attribute overrides it.
+
+### Investigation: is MP's key usable off the church's MP domain?
+
+The live answer could not be obtained from this environment:
+- the MinistryPlatform MCP connector refuses `dp_Configuration_Settings` ("restricted by
+  your organization's administrator");
+- a read-only probe through the app's own `ConfigSettingsService` could not reach the
+  MP host (the sandbox network blocks outbound connections).
+
+The probe is kept out of the repo. It reads the key and calls Google's Geocoding and
+Places (New) endpoints with three `Referer`s (the MP domain, a church site and localhost),
+printing only verdicts, never the key.
+
+One piece of evidence exists: the error this item recorded on `localhost:5173` is
+`ApiTargetBlockedMapError`. That is Google's **API-restriction** error (the key is not
+authorised for the Maps JavaScript API). It is not `RefererNotAllowedMapError`, the
+referrer error. So on the reference domain the key is at least API-restricted, and it
+fails on *every* origin, not just embedding ones, until the church enables Maps
+JavaScript API + Places on it. A referrer restriction on top of that cannot be ruled out.
+
+**Decision (the plan's fallback, since evidence was incomplete):** support both channels.
+
+### What shipped
+
+- `planYourVisitService.getConfigurations()` returns `googleMapsApiKey` (MP
+  `COMMON/GoogleMapsAPIKey`, through the same `ConfigSettingsService` that `custom-form`
+  and `my-household` use). `PlanYourVisitConfigSchema` declares it.
+- `next-plan-your-visit` observes `google-maps-api-key`. The attribute wins over MP's key,
+  so a church whose MP key is domain- or API-restricted can supply a browser key
+  restricted to its own site.
+- After the details form renders (with `collect-address="true"`), the shared
+  `loadGoogleMaps` / `attachAddressAutocomplete` are bound to Address Line 1. A chosen
+  place fills line 1, city, state, postal code and the Country select (only when MP's
+  `Countries` list has that code).
+- **Manual entry is untouched on every failure path:** no key, a blocked key or a script
+  error. `loadGoogleMaps` resolves `false`, and nothing touches the inputs until a place
+  is chosen.
+- Documented in `demo-plan-your-visit.html`'s code sample.
+- Tests (`plan-your-visit.test.ts`, "address autocomplete (C23)"):
+  - no key loads no script;
+  - the attribute key is the one loaded;
+  - after a script `error`, a hand-typed address still submits.
+- **Follow-up for W9 / migration notes:** churches should check that their MP
+  `GoogleMapsAPIKey` allows Maps JavaScript API + Places and their embedding origins.
+  The same applies to `next-custom-form` and `next-my-household`, which use the same key.

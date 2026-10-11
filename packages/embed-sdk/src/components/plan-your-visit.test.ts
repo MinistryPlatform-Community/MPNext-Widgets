@@ -38,6 +38,7 @@ const CONFIG = {
   countries: [{ code: "US", name: "United States of America" }],
   phoneMask: "xxx-xxx-xxxx",
 };
+const CONFIG_OVERRIDES: { googleMapsApiKey?: string } = {};
 const AGE_GROUPS = [
   { id: 10, value: "Nursery", ageInMonthsToPromote: 24 },
   { id: 11, value: "Kindergarten", ageInMonthsToPromote: 72 },
@@ -52,7 +53,7 @@ function mockFetch() {
     if (url.includes("/plan-your-visit/verify")) {
       return jsonResponse({ success: true, firstName: "Ada", lastName: "Lovelace", email: "ada@example.com" });
     }
-    if (url.includes("/plan-your-visit/config")) return jsonResponse(CONFIG);
+    if (url.includes("/plan-your-visit/config")) return jsonResponse({ ...CONFIG, ...CONFIG_OVERRIDES });
     if (url.includes("/plan-your-visit/age-groups")) return jsonResponse({ ageOrGradeGroups: AGE_GROUPS });
     if (url.includes("/plan-your-visit/register")) return jsonResponse({ success: true });
     return jsonResponse({ error: "not_found" }, 404);
@@ -191,6 +192,45 @@ describe("<next-plan-your-visit>", () => {
       set(el, "spousePhone", "");
       submit(el);
       await vi.waitFor(() => expect(posted(fetchFn, "/plan-your-visit/register")).toHaveLength(1));
+    });
+  });
+
+  describe("address autocomplete (C23)", () => {
+    const mapsScript = () => document.head.querySelector<HTMLScriptElement>('script[data-next-google-maps="1"]');
+
+    afterEach(() => {
+      document.head.querySelectorAll('script[data-next-google-maps="1"]').forEach((s) => s.remove());
+      delete CONFIG_OVERRIDES.googleMapsApiKey;
+    });
+
+    it("loads nothing without a key", async () => {
+      mockFetch();
+      await mountDetails('collect-address="true"');
+      expect(mapsScript()).toBeNull();
+    });
+
+    // One test, because `loadGoogleMaps` memoises its script promise for the
+    // page's lifetime (by design: one Maps script per page).
+    it("loads Places with the attribute key over MP's, and manual entry survives a failed script", async () => {
+      CONFIG_OVERRIDES.googleMapsApiKey = "mp-key";
+      const fetchFn = mockFetch();
+      const el = await mountDetails('collect-address="true" google-maps-api-key="site-key"');
+      await vi.waitFor(() => expect(mapsScript()).not.toBeNull());
+      expect(mapsScript()!.src).toContain("key=site-key");
+      mapsScript()!.dispatchEvent(new Event("error"));
+
+      fillRequired(el, "321-555-0100");
+      set(el, "addressLine1", "1 Main St");
+      set(el, "addressCity", "Melbourne");
+      set(el, "addressState", "FL");
+      set(el, "addressPostal", "32901");
+      submit(el);
+      await vi.waitFor(() => expect(posted(fetchFn, "/plan-your-visit/register")).toHaveLength(1));
+      expect(posted(fetchFn, "/plan-your-visit/register")[0].address).toMatchObject({
+        addressLine1: "1 Main St",
+        city: "Melbourne",
+        countryCode: "US",
+      });
     });
   });
 

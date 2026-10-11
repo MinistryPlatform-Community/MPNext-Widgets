@@ -2,6 +2,7 @@ import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { MessageTemplateService } from "@/services/messageTemplateService";
+import { ConfigSettingsService } from "@/services/configSettingsService";
 import {
   clean,
   getIdByValue,
@@ -74,7 +75,8 @@ export class PlanYourVisitService {
   // ── Configuration ──
 
   public async getConfigurations(): Promise<PlanYourVisitConfig> {
-    const [congregationRows, genderRows, countryRows, phoneMask] = await Promise.all([
+    const config = await ConfigSettingsService.getInstance();
+    const [congregationRows, genderRows, countryRows, phoneMask, googleMapsApiKey] = await Promise.all([
       this.mp!.getTableRecords<{ Id: number | string; Name: string | null }>({
         table: "Congregations",
         select: "Congregation_ID AS Id, Congregation_Name AS Name",
@@ -98,6 +100,11 @@ export class PlanYourVisitService {
       // placeholder only. It is not a validation rule: used as an HTML
       // `pattern` it matched nothing but its own literal text (C24).
       this.getConfigValue("PhoneMask"),
+      // C23: the same COMMON/GoogleMapsAPIKey custom-form and my-household
+      // already hand to the browser. A `google-maps-api-key` widget attribute
+      // overrides it, for churches whose MP key is restricted to their MP
+      // domain. Null on any failure (the setting read is graceful).
+      config.getGoogleMapsApiKey(),
     ]);
 
     const toOptions = (rows: { Id: number | string; Name: string | null }[]): PyvOption[] =>
@@ -114,6 +121,7 @@ export class PlanYourVisitService {
       genders: toOptions(genderRows),
       countries,
       phoneMask: phoneMask ?? null,
+      googleMapsApiKey: googleMapsApiKey ?? null,
     };
   }
 

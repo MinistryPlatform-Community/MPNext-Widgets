@@ -8,6 +8,7 @@ import {
   type CustomValidator,
   type FieldOptions,
 } from "../shared/form-validation";
+import { loadGoogleMaps, attachAddressAutocomplete } from "../shared/google-places";
 
 interface PyvOption {
   id: number;
@@ -26,6 +27,8 @@ interface Config {
    * phone placeholder and never as a `pattern` (C24).
    */
   phoneMask: string | null;
+  /** MP's `GoogleMapsAPIKey`; the `google-maps-api-key` attribute overrides it (C23). */
+  googleMapsApiKey: string | null;
 }
 
 /** Fewest / most digits a phone number may carry (E.164 caps at 15). */
@@ -80,7 +83,8 @@ interface ChildState {
  *      creates the household + members and sends notification emails.
  *
  * Simplifications relative to legacy (noted inline):
- *  - Address entry is plain fields (no Google Places autocomplete in v1).
+ *  - Address Line 1 gets Google Places autocomplete when a Maps key is
+ *    available (attribute, else MP config); manual entry always works (C23).
  *  - MP's `PhoneMask` is only the phone placeholder; phones validate by digit
  *    count (`isPlausiblePhone`), never by a `pattern` built from the mask (C24).
  */
@@ -94,7 +98,13 @@ export class PlanYourVisitWidget extends MPNextWidget {
   private verify: VerifyResult | null = null;
   private verifyFailed: string | null = null;
 
-  private config: Config = { congregations: [], genders: [], countries: [], phoneMask: null };
+  private config: Config = {
+    congregations: [],
+    genders: [],
+    countries: [],
+    phoneMask: null,
+    googleMapsApiKey: null,
+  };
   private ageGroups: AgeGroup[] = [];
   private childRows: ChildState[] = [];
   private childSeq = 0;
@@ -110,6 +120,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
       "milestone-to-assign-id",
       "milestone-program-id",
       "verify-param-name",
+      "google-maps-api-key",
     ];
   }
 
@@ -205,6 +216,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
       genders: data.genders || [],
       countries: data.countries || [],
       phoneMask: data.phoneMask ?? null,
+      googleMapsApiKey: data.googleMapsApiKey ?? null,
     };
   }
 
@@ -456,6 +468,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
         e.preventDefault();
         this.submitDetails(detForm);
       });
+      void this.initAddressAutocomplete();
 
       const cong = this.root.querySelector<HTMLSelectElement>('[name="congregationId"]');
       if (cong) {
@@ -704,6 +717,49 @@ export class PlanYourVisitWidget extends MPNextWidget {
         ${this.pf({ name: "addressPostal", label: this.t("planYourVisit.zipPostalCode"), required: true, autocomplete: "postal-code" })}
         ${this.pf({ name: "addressCountry", label: this.t("fields.country"), type: "select", autocomplete: "country", value: us?.code ?? "", options: countryOptions })}
       </div>`;
+  }
+
+  /**
+   * Google Places on Address Line 1 (C23). The key is the widget's
+   * `google-maps-api-key` attribute when set, else MP's `GoogleMapsAPIKey`.
+   *
+   * The attribute exists because an MP key may be restricted (by HTTP
+   * referrer or by API) to the church's MP domain, and then fails on every
+   * embedding site; the church supplies a key restricted to its own site.
+   * Every failure (no key, blocked key, script error) leaves manual entry
+   * exactly as it was: `loadGoogleMaps` resolves `false`, and nothing here
+   * touches the inputs until a place is actually chosen.
+   */
+  private async initAddressAutocomplete(): Promise<void> {
+    if (!this.collectAddress) return;
+    const key = (this.getAttribute("google-maps-api-key") || this.config.googleMapsApiKey || "").trim();
+    if (!key) return;
+    const line1 = this.root.querySelector<HTMLInputElement>('[name="addressLine1"]');
+    if (!line1) return;
+
+    let loaded = false;
+    try {
+      loaded = await loadGoogleMaps(key);
+    } catch {
+      loaded = false;
+    }
+    // The form may have been re-rendered while the script loaded.
+    if (!loaded || !line1.isConnected) return;
+
+    attachAddressAutocomplete(line1, (addr) => {
+      const set = (name: string, value: string) => {
+        const el = this.root.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${name}"]`);
+        if (!el || !value) return;
+        if (el instanceof HTMLSelectElement && !Array.from(el.options).some((o) => o.value === value)) return;
+        el.value = value;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      set("addressLine1", addr.line1);
+      set("addressCity", addr.city);
+      set("addressState", addr.state);
+      set("addressPostal", addr.postalCode);
+      set("addressCountry", addr.countryCode);
+    });
   }
 
   /** `field()` with this widget's id prefix and classes (C28). */

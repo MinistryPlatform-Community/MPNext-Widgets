@@ -108,6 +108,12 @@
   milestone-to-assign-id="50"
   milestone-program-id="3"&gt;&lt;/next-plan-your-visit&gt;
 
+&lt;!-- Address autocomplete uses MP's GoogleMapsAPIKey. If that key is restricted
+     to your MP domain, supply a Maps JavaScript API + Places key restricted to
+     THIS site instead. Without a working key the address is typed by hand. --&gt;
+&lt;next-plan-your-visit collect-address="true"
+  google-maps-api-key="YOUR-BROWSER-KEY"&gt;&lt;/next-plan-your-visit&gt;
+
 &lt;script&gt;
   const w = document.querySelector("next-plan-your-visit");
   w.addEventListener("verificationSent", (e) =&gt; console.log("Email sent:", e.detail));
