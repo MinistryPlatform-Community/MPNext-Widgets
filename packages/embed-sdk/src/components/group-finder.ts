@@ -6,6 +6,7 @@ import {
   requiredStar,
   FORM_VALIDATION_STYLES,
 } from "../shared/form-validation";
+import { cardLink, bindCardSelect, CARD_LINK_STYLES } from "../shared/card-link";
 
 interface GroupCard {
   id: number;
@@ -105,7 +106,7 @@ export class GroupFinderWidget extends MPNextWidget {
   }
 
   connectedCallback() {
-    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
+    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES + CARD_LINK_STYLES);
     this.seedFromAttributes();
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish. Free in practice: the fetch lands inside
@@ -294,14 +295,10 @@ export class GroupFinderWidget extends MPNextWidget {
       });
     }
 
-    // Card navigation / selection.
-    this.root.querySelectorAll<HTMLElement>("[data-group-id]").forEach((el) => {
-      el.addEventListener("click", () => {
-        const id = Number(el.getAttribute("data-group-id"));
-        this.emit("groupSelected", { groupId: id });
-        const url = this.buildDetailUrl(id);
-        if (url) window.location.href = url;
-      });
+    // Cards are real links (C10): the anchor navigates — Enter, middle-click
+    // and Ctrl-click included — and this only announces the selection.
+    bindCardSelect(this.root, ".nw-gf-card", (card) => {
+      this.emit("groupSelected", { groupId: Number(card.dataset.groupId) });
     });
   }
 
@@ -556,7 +553,8 @@ export class GroupFinderWidget extends MPNextWidget {
   }
 
   private renderCard(g: GroupCard): string {
-    const hasLink = !!this.getAttribute("target-url");
+    const href = this.buildDetailUrl(g.id);
+    const hasLink = !!href;
     const img = g.imageUrl
       ? `<img class="nw-gf-card-img" src="${this.escapeAttr(g.imageUrl)}" alt="" loading="lazy">`
       : `<div class="nw-gf-card-img nw-gf-card-img--placeholder">${this.escapeHtml(g.noImageText || this.t("groupFinder.imagePlaceholder"))}</div>`;
@@ -591,16 +589,22 @@ export class GroupFinderWidget extends MPNextWidget {
       ? `<div class="nw-gf-card-desc">${this.escapeHtml(this.truncate(g.description, 160))}</div>`
       : "";
 
-    return `
-      <div class="nw-gf-card" data-group-id="${g.id}" role="${hasLink ? "link" : "article"}" ${hasLink ? 'tabindex="0"' : ""}>
+    // Phrasing-safe body: an <a> may wrap flow content, but it must not hold
+    // another interactive element — the CTA is a span, not a link.
+    const body = `
         <div class="nw-gf-card-imgwrap">${img}<div class="nw-gf-badges">${badges.join("")}</div></div>
         <div class="nw-gf-card-body">
           <h3 class="nw-gf-card-title">${this.escapeHtml(g.title)}</h3>
           ${subtitleHtml}
           ${description}
-          ${hasLink ? `<span class="nw-gf-card-cta">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
-        </div>
-      </div>`;
+          ${hasLink ? `<span class="nw-gf-card-cta" aria-hidden="true">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
+        </div>`;
+    return cardLink({
+      href,
+      className: "nw-gf-card",
+      body,
+      attrs: { "data-group-id": g.id },
+    });
   }
 
   private capacityLabel(g: GroupCard): string {
@@ -761,9 +765,7 @@ export class GroupFinderWidget extends MPNextWidget {
 
       .nw-gf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
       .nw-gf-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: border-color 0.15s, box-shadow 0.15s; }
-      .nw-gf-card[role="link"] { cursor: pointer; }
-      .nw-gf-card[role="link"]:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
-      .nw-gf-card[role="link"]:focus-visible { outline: 2px solid #004C97; outline-offset: 2px; }
+      a.nw-gf-card:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
       .nw-gf-card-imgwrap { position: relative; }
       .nw-gf-card-img { width: 100%; height: 160px; object-fit: cover; display: block; }
       .nw-gf-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #6b7280; font-weight: 600; font-size: 14px; text-align: center; padding: 8px; }
