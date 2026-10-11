@@ -1,3 +1,5 @@
+import { HEADING_RESET_STYLES } from "../shared/heading-level";
+
 // ────────────────────────────────────────────────────────────────────────────
 // full-calendar-styles.ts
 // All CSS style constants for the <next-full-calendar> widget.
@@ -168,6 +170,22 @@ export const BASE_STYLES = `
 
 export const TOOLBAR_STYLES = `
   /* ── Custom Toolbar ── */
+
+  /*
+   * The title is a heading (CROSS-3). With show-toolbar="false" it is still
+   * rendered, visually hidden, so the widget keeps a heading in every view.
+   */
+  .nw-fc-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 
   .nw-fc-toolbar {
     display: flex;
@@ -1312,4 +1330,4 @@ export const MONTH_LAYOUT_STYLES = `
 // Single constant that concatenates every section for convenient one-shot
 // injection into the Shadow DOM.
 
-export const ALL_STYLES = BASE_STYLES + TOOLBAR_STYLES + CARDS_STYLES + FILTER_STYLES + MINI_CAL_STYLES + MODAL_STYLES + LIST_STYLES + MONTH_LAYOUT_STYLES;
+export const ALL_STYLES = HEADING_RESET_STYLES + BASE_STYLES + TOOLBAR_STYLES + CARDS_STYLES + FILTER_STYLES + MINI_CAL_STYLES + MODAL_STYLES + LIST_STYLES + MONTH_LAYOUT_STYLES;

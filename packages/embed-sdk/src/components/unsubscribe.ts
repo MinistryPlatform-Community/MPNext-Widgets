@@ -1,4 +1,5 @@
 import { MPNextWidget } from "../shared/base-widget";
+import { headingTag, HEADING_RESET_STYLES } from "../shared/heading-level";
 
 /**
  * `<next-unsubscribe>` — the landing page for the unsubscribe link in a bulk
@@ -316,6 +317,9 @@ export class UnsubscribeWidget extends MPNextWidget {
   }
 
   private paintMarkup(): void {
+    // Every settled state's headline is the widget's heading (CROSS-3), placed
+    // in the host outline by `heading-level` (C35 convention, default h2).
+    const h = headingTag(this.getAttribute("heading-level"));
     const manage = this.manageUrl();
     const manageMarkup = manage
       ? `<a class="manage" href="${this.escapeAttr(manage)}">${this.escapeHtml(
@@ -339,9 +343,9 @@ export class UnsubscribeWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-unsub">
           ${this.statusRegion(
-            `<p class="headline headline--warn">${this.escapeHtml(
+            `<${h} class="headline headline--warn">${this.escapeHtml(
               this.t("unsubscribe.badLink"),
-            )}</p>`,
+            )}</${h}>`,
           )}
           ${manageMarkup}
         </div>`;
@@ -352,9 +356,9 @@ export class UnsubscribeWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-unsub">
           ${this.statusRegion(
-            `<p class="headline headline--warn">${this.escapeHtml(
+            `<${h} class="headline headline--warn">${this.escapeHtml(
               this.errorText(this.errorPayload),
-            )}</p>`,
+            )}</${h}>`,
           )}
           <button class="btn" type="button" data-action="retry">${this.escapeHtml(
             this.t("common.retry"),
@@ -368,7 +372,7 @@ export class UnsubscribeWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-unsub">
           ${this.statusRegion(
-            `<p class="headline">${this.escapeHtml(this.t("unsubscribe.undone"))}</p>`,
+            `<${h} class="headline">${this.escapeHtml(this.t("unsubscribe.undone"))}</${h}>`,
           )}
           ${manageMarkup}
         </div>`;
@@ -406,7 +410,7 @@ export class UnsubscribeWidget extends MPNextWidget {
     this.root.innerHTML = `
       <div class="nw-unsub">
         ${this.statusRegion(
-          `<p class="headline">${this.escapeHtml(this.t(headlineKey))}</p>`,
+          `<${h} class="headline">${this.escapeHtml(this.t(headlineKey))}</${h}>`,
         )}
         ${emailLine}
         ${inline}
@@ -446,7 +450,7 @@ export class UnsubscribeWidget extends MPNextWidget {
   }
 
   private getStyles(): string {
-    return `
+    return `${HEADING_RESET_STYLES}
       :host {
         all: initial;
         display: block;

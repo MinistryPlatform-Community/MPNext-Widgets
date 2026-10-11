@@ -6,6 +6,7 @@ import {
   FORM_VALIDATION_STYLES,
   type ValidateOptions,
 } from "../shared/form-validation";
+import { headingTag, HEADING_RESET_STYLES } from "../shared/heading-level";
 
 interface PaymentRequestToken {
   invoiceId: string;
@@ -361,9 +362,12 @@ export class PayWidget extends MPNextWidget {
   }
 
   private shell(body: string): string {
+    // The title is a real heading (CROSS-3); `heading-level` places it in the
+    // host page's outline (C35 convention, default h2).
+    const h = headingTag(this.getAttribute("heading-level"));
     return `
       <div class="nw-pay">
-        <div class="nw-pay-header">${this.escapeHtml(this.t("pay.header"))}</div>
+        <${h} class="nw-pay-header">${this.escapeHtml(this.t("pay.header"))}</${h}>
         <div class="nw-pay-sandbox">
           ${this.escapeHtml(this.t("pay.sandboxNotice", { card: TEST_CARD }))}
         </div>
@@ -470,7 +474,7 @@ export class PayWidget extends MPNextWidget {
   }
 
   private getStyles(): string {
-    return `
+    return `${HEADING_RESET_STYLES}
       :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .nw-pay { max-width: 480px; margin: 0 auto; background: var(--_nw-color-surface); border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
       .nw-pay-header { background: var(--_nw-color-secondary); color: var(--_nw-color-on-primary); padding: var(--_nw-space-6); font-size: 22px; font-weight: var(--_nw-font-weight-heading); text-align: center; }

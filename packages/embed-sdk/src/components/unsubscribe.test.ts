@@ -173,6 +173,21 @@ describe("<next-unsubscribe>", () => {
     });
   });
 
+  describe("the headline is a heading (CROSS-3, C35 heading-level)", () => {
+    it("is an h2 by default in the done state", async () => {
+      const el = await mountSettled(`?cg=${CG}&pubid=4`);
+      expect(shadow(el).querySelector("h2.headline")).toHaveTextContent(
+        "You have been unsubscribed.",
+      );
+    });
+
+    it("follows heading-level, including the bad-link state", async () => {
+      const el = await mountSettled("", 'heading-level="3"');
+      expect(shadow(el).querySelector("h3.headline")).not.toBeNull();
+      expect(shadow(el).querySelector("p.headline")).toBeNull();
+    });
+  });
+
   describe("bad-link", () => {
     it("renders badLink with zero fetches when no capability is present", async () => {
       const fn = mockFetch(() => jsonResponse(OK_BODY));

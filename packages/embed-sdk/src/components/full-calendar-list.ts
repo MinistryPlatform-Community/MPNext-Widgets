@@ -92,7 +92,13 @@ export function renderAgendaList(
   t: Translator,
   fmt: Formatters,
   /** Already-translated empty-state sentence; defaults to `fullCalendar.emptyPeriod`. */
-  emptyText?: string
+  emptyText?: string,
+  /**
+   * Tag for each date header (`h3` under the default `h2` widget title). The
+   * event titles cannot be headings: each row is a `<button>`, which admits
+   * phrasing content only.
+   */
+  headingTag = "h3"
 ): HTMLElement {
   const container = document.createElement("div");
   container.className = "nw-fc-agenda";
@@ -134,7 +140,7 @@ export function renderAgendaList(
       header.classList.add("nw-fc-agenda-today");
     }
 
-    const dateLabel = document.createElement("span");
+    const dateLabel = document.createElement(headingTag);
     dateLabel.className = "nw-fc-agenda-date-label";
     dateLabel.textContent = formatDateHeader(dateKey, t, fmt);
     header.appendChild(dateLabel);

@@ -17,6 +17,7 @@ import {
 import { renderDetailModal } from "./full-calendar-modal";
 import { dialogFocus, type DialogCloseReason, type DialogFocusHandle } from "../shared/dialog-focus";
 import { renderAgendaList } from "./full-calendar-list";
+import { headingTag } from "../shared/heading-level";
 
 // ── Constants ──
 
@@ -808,7 +809,11 @@ export class FullCalendarWidget extends MPNextWidget {
   // ── Toolbar ──
 
   private renderToolbar(): string {
-    if (!this.showToolbar) return "";
+    // The title is the widget's heading (CROSS-3), placed in the host outline
+    // by `heading-level` (C35 convention, default h2). Without a toolbar it is
+    // kept, visually hidden, so every view still has one.
+    const h = headingTag(this.getAttribute("heading-level"));
+    if (!this.showToolbar) return `<${h} class="nw-fc-sr-only" id="nw-fc-title"></${h}>`;
 
     const views: { key: ViewType; label: string }[] = [
       { key: "month", label: this.t("fullCalendar.viewMonth") },
@@ -843,7 +848,7 @@ export class FullCalendarWidget extends MPNextWidget {
       <div class="nw-fc-toolbar">
         <div class="nw-fc-toolbar-left">${nav}
         </div>
-        <div class="nw-fc-toolbar-center" id="nw-fc-title"></div>
+        <${h} class="nw-fc-toolbar-center" id="nw-fc-title"></${h}>
         <div class="nw-fc-toolbar-right">
           ${viewButtons}
         </div>
@@ -980,6 +985,9 @@ export class FullCalendarWidget extends MPNextWidget {
           )
         : null;
 
+    /** Card titles / agenda dates sit one level under the widget title. */
+    const itemHeading = headingTag(this.getAttribute("heading-level"), 1);
+
     /** The listing itself, or its loading / error state. */
     const listing = (kind: "cards" | "list"): HTMLElement => {
       if (this.cardsLoading) return this.renderCardsState("loading");
@@ -991,7 +999,8 @@ export class FullCalendarWidget extends MPNextWidget {
           (typeId) => this.getEventColor(typeId),
           this.t,
           this.fmt,
-          emptyText
+          emptyText,
+          itemHeading
         );
       }
       return renderCardsGrid(
@@ -1004,7 +1013,8 @@ export class FullCalendarWidget extends MPNextWidget {
         },
         this.t,
         this.fmt,
-        emptyText
+        emptyText,
+        itemHeading
       );
     };
 

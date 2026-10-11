@@ -470,3 +470,40 @@ describe("payment widgets: locale switch keeps listeners bound, once", () => {
     });
   });
 });
+
+describe("payment widgets: the title is a heading (CROSS-3, C35 heading-level)", () => {
+  beforeEach(() => {
+    setup();
+    window.history.replaceState(null, "", PAGE);
+  });
+  afterEach(() => {
+    document.body.innerHTML = "";
+    window.history.replaceState(null, "", PAGE);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("next-checkout renders its header as an h2 by default, h3 under heading-level=3", async () => {
+    mockFetch((url) =>
+      url.includes("/checkout/invoice") ? jsonResponse({ invoice: invoice() }) : undefined,
+    );
+    let el = await mountCheckout();
+    expect(shadow(el).querySelector("h2.nw-co-header")).toHaveTextContent("Invoice Details");
+    el = await mountCheckout('heading-level="3"');
+    expect(shadow(el).querySelector("h3.nw-co-header")).not.toBeNull();
+    expect(shadow(el).querySelector("h2")).toBeNull();
+  });
+
+  it("next-pay renders its header as a heading even in the 'already used' state", async () => {
+    window.history.replaceState(null, "", "/pay?token=spent");
+    mockFetch((url) =>
+      url.includes("/pay/unpack")
+        ? jsonResponse({ error: "verification_used", message: "used" }, 409)
+        : undefined,
+    );
+    document.body.innerHTML = `<next-pay api-host="${HOST}" heading-level="4"></next-pay>`;
+    const el = document.body.firstElementChild as HTMLElement;
+    await vi.waitFor(() => expect(shadow(el).querySelector(".nw-pay-link")).not.toBeNull());
+    expect(shadow(el).querySelector("h4.nw-pay-header")).toHaveTextContent("Secure Payment");
+  });
+});
