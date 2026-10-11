@@ -19,7 +19,7 @@ import {
   buildOptionsResponse,
   buildFallbackCorsHeaders,
 } from "@/lib/embed/auth";
-import { GroupsService } from "@/services/groupsService";
+import { GroupsService, NotHouseholdMemberError } from "@/services/groupsService";
 import type { GroupInquiryRequest } from "@mpnext/types";
 
 export async function POST(req: NextRequest) {
@@ -68,7 +68,17 @@ export async function POST(req: NextRequest) {
       payload.contactId = user.Contact_ID;
     }
 
-    await service.signUp(payload, user.User_ID);
+    try {
+      await service.signUp(payload, { userId: user.User_ID, contactId: user.Contact_ID });
+    } catch (err) {
+      if (err instanceof NotHouseholdMemberError) {
+        return NextResponse.json(
+          { success: false, error: "not_household_member", message: err.message },
+          { status: 403, headers: getCorsHeaders(origin) }
+        );
+      }
+      throw err;
+    }
 
     return NextResponse.json(
       { success: true },

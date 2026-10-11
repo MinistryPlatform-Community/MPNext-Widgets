@@ -1,7 +1,7 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
-import { clean } from "@/services/_shared/mp-lookup";
+import { cap, clean } from "@/services/_shared/mp-lookup";
 import type {
   GroupCard,
   GroupConfigurations,
@@ -105,6 +105,44 @@ function toNumberOrNull(value: number | string | null | undefined): number | nul
 function toNumber(value: number | string | null | undefined, fallback = 0): number {
   const n = toNumberOrNull(value);
   return n === null ? fallback : n;
+}
+
+function capOrNull(value: string | null, max: number): string | null {
+  return value == null ? null : cap(value, max);
+}
+
+/** A contact's identity columns, as read from MP. */
+export interface ContactIdentity {
+  contactId: number;
+  firstName: string | null;
+  nickname: string | null;
+  lastName: string | null;
+  displayName: string | null;
+  emailAddress: string | null;
+  mobilePhoneNumber: string | null;
+  householdId: number | null;
+}
+
+/** Who an inquiry or sign-up was written for — the recipient of its confirmation. */
+export interface InquirerDetails {
+  contactId: number | null;
+  firstName: string | null;
+  nickname: string | null;
+  lastName: string | null;
+  emailAddress: string | null;
+  mobilePhoneNumber: string | null;
+}
+
+/**
+ * The request named a contact the caller may not act for: an anonymous caller
+ * naming any contact, or a signed-in one naming a contact outside their own
+ * household. Routes answer `not_household_member` (403).
+ */
+export class NotHouseholdMemberError extends Error {
+  constructor(public readonly contactId: number) {
+    super(`Contact ${contactId} is not in the caller's household.`);
+    this.name = "NotHouseholdMemberError";
+  }
 }
 
 export class GroupsService {
@@ -429,44 +467,140 @@ export class GroupsService {
       .filter((m) => m.contactId > 0 && m.displayName);
   }
 
+  // ── Acting-as contact resolution (C12) ──
+
+  /** Read one contact's identity columns. */
+  private async getContactIdentity(contactId: number): Promise<ContactIdentity | null> {
+    const rows = await this.mp!.getTableRecords<{
+      Contact_ID: number | string;
+      First_Name: string | null;
+      Nickname: string | null;
+      Last_Name: string | null;
+      Display_Name: string | null;
+      Email_Address: string | null;
+      Mobile_Phone: string | null;
+      Household_ID: number | string | null;
+    }>({
+      table: "Contacts",
+      select:
+        "Contact_ID,First_Name,Nickname,Last_Name,Display_Name,Email_Address,Mobile_Phone,Household_ID",
+      filter: `Contact_ID = ${contactId}`,
+      top: 1,
+    });
+    const c = rows[0];
+    if (!c) return null;
+    return {
+      contactId: toNumber(c.Contact_ID),
+      firstName: clean(c.First_Name),
+      nickname: clean(c.Nickname),
+      lastName: clean(c.Last_Name),
+      displayName: clean(c.Display_Name),
+      emailAddress: clean(c.Email_Address),
+      mobilePhoneNumber: clean(c.Mobile_Phone),
+      householdId: toNumberOrNull(c.Household_ID),
+    };
+  }
+
+  /**
+   * Resolve the contact a signed-in user picked from the "as" picker, and
+   * prove they may act for it: it must be the user's own contact, or share the
+   * user's (non-null) household. Everything about the chosen person — name,
+   * email, phone — then comes from MP, **never from the request**: the client
+   * only ever knew the member's display name, and accepting a client-supplied
+   * email for a contact picked from a list would let a caller attach an
+   * address of their choosing to someone else's record (C12).
+   *
+   * Throws {@link NotHouseholdMemberError} for an anonymous caller naming a
+   * contact at all, or a signed-in caller naming one outside their household.
+   */
+  public async resolveActingContact(
+    selectedContactId: number,
+    actorContactId: number | null
+  ): Promise<ContactIdentity> {
+    if (actorContactId == null) throw new NotHouseholdMemberError(selectedContactId);
+    const selected = await this.getContactIdentity(selectedContactId);
+    if (!selected) throw new NotHouseholdMemberError(selectedContactId);
+    if (selected.contactId === actorContactId) return selected;
+
+    const actor = await this.getContactIdentity(actorContactId);
+    const sameHousehold =
+      actor?.householdId != null && actor.householdId === selected.householdId;
+    if (!sameHousehold) throw new NotHouseholdMemberError(selectedContactId);
+    return selected;
+  }
+
   // ── Inquiry ──
 
+  /**
+   * Write a `Group_Inquiries` row and return who it was written for.
+   *
+   * With a `contactId`, the four denormalised columns are **back-filled from
+   * MP** (C12) — the picker hides those inputs, so the client sends nulls, and
+   * legacy stored the contact's real details there. Without one (an anonymous
+   * visitor, or "Someone else…"), the typed fields are the only source.
+   */
   public async createInquiry(
     form: GroupInquiryRequest,
-    userId: number | null
-  ): Promise<void> {
+    actor: { userId: number | null; contactId: number | null }
+  ): Promise<InquirerDetails> {
     const tz = DomainTimezoneService.getInstance();
     const inquiryDate = await tz.toMpSqlDatetime(new Date().toISOString());
-    const contactId = form.contactId && form.contactId > 0 ? form.contactId : null;
+    const selectedId = form.contactId && form.contactId > 0 ? form.contactId : null;
     const message = clean(form.message);
+
+    let who: InquirerDetails;
+    if (selectedId != null) {
+      const c = await this.resolveActingContact(selectedId, actor.contactId);
+      who = {
+        contactId: c.contactId,
+        firstName: c.firstName,
+        nickname: c.nickname,
+        lastName: c.lastName,
+        emailAddress: c.emailAddress,
+        mobilePhoneNumber: c.mobilePhoneNumber,
+      };
+    } else {
+      who = {
+        contactId: null,
+        firstName: clean(form.firstName),
+        nickname: null,
+        lastName: clean(form.lastName),
+        emailAddress: clean(form.emailAddress),
+        mobilePhoneNumber: clean(form.mobilePhoneNumber),
+      };
+    }
 
     const record: Record<string, unknown> = {
       Inquiry_Date: inquiryDate,
-      First_name: clean(form.firstName),
-      Last_name: clean(form.lastName),
-      Phone: clean(form.mobilePhoneNumber),
-      Email: clean(form.emailAddress),
+      First_Name: capOrNull(who.firstName, 50),
+      Last_Name: capOrNull(who.lastName, 50),
+      Phone: who.mobilePhoneNumber,
+      Email: capOrNull(who.emailAddress, 254),
       Comments: message && message.length > 500 ? message.slice(0, 500) : message,
       Group_ID: form.targetId,
-      Contact_ID: contactId,
-      _From_Group_Finder: true,
+      Contact_ID: who.contactId,
     };
 
     await this.mp!.createTableRecords("Group_Inquiries", [record], {
-      ...(userId != null ? { $userId: userId } : {}),
+      ...(actor.userId != null ? { $userId: actor.userId } : {}),
     });
+    return who;
   }
 
   // ── Sign-up ──
 
   public async signUp(
     form: GroupInquiryRequest,
-    userId: number | null
+    actor: { userId: number | null; contactId: number | null }
   ): Promise<void> {
-    const contactId = form.contactId && form.contactId > 0 ? form.contactId : null;
-    if (contactId == null) {
+    const userId = actor.userId;
+    const selectedId = form.contactId && form.contactId > 0 ? form.contactId : null;
+    if (selectedId == null) {
       throw new Error("A contact is required to sign up for a group.");
     }
+    // The same household rule as an inquiry: a caller may sign up themselves
+    // or a member of their own household, never an arbitrary Contact_ID.
+    const contactId = (await this.resolveActingContact(selectedId, actor.contactId)).contactId;
 
     const participantId = await this.resolveParticipantId(contactId, userId);
     const defaultRoleId = await this.getDefaultGroupRole(form.targetId);

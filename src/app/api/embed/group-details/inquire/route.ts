@@ -3,7 +3,10 @@
  * POST /api/embed/group-details/inquire
  *
  * Public-allowed: an anonymous inquiry stores the supplied name/email/phone with
- * no Contact_ID; a signed-in inquiry attaches the selected household contact.
+ * no Contact_ID; a signed-in inquiry attaches the selected household contact,
+ * whose name/email/phone are read from MP rather than taken from the request
+ * (C12). A contact outside the caller's household is refused with
+ * `not_household_member`.
  *
  * NOTE: the legacy widget could also fire an optional confirmation email via an
  * MP message template. That email send is intentionally not ported in v1 — the
@@ -18,7 +21,7 @@ import {
   buildOptionsResponse,
   buildFallbackCorsHeaders,
 } from "@/lib/embed/auth";
-import { GroupsService } from "@/services/groupsService";
+import { GroupsService, NotHouseholdMemberError } from "@/services/groupsService";
 import type { GroupInquiryRequest } from "@mpnext/types";
 
 export async function POST(req: NextRequest) {
@@ -49,12 +52,24 @@ export async function POST(req: NextRequest) {
     const service = await GroupsService.getInstance();
 
     let userId: number | null = null;
+    let actorContactId: number | null = null;
     if (claims.sub !== "public") {
       const user = await service.getUserByGuid(claims.sub);
       userId = user?.User_ID ?? null;
+      actorContactId = user?.Contact_ID ?? null;
     }
 
-    await service.createInquiry(payload, userId);
+    try {
+      await service.createInquiry(payload, { userId, contactId: actorContactId });
+    } catch (err) {
+      if (err instanceof NotHouseholdMemberError) {
+        return NextResponse.json(
+          { success: false, error: "not_household_member", message: err.message },
+          { status: 403, headers: getCorsHeaders(origin) }
+        );
+      }
+      throw err;
+    }
 
     return NextResponse.json(
       { success: true },

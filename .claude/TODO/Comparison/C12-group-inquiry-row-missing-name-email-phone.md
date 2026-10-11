@@ -122,3 +122,30 @@ someone else's contact row with an address of their choosing.
 
 Keep the client's null-coalescing as is — with the server back-fill, the anonymous and
 member paths then converge on the same shape as legacy.
+
+## Resolution — 2026-10-11
+
+**Fixed (W3, `ws/w3-groups`).** Back-filled on the server, as suggested.
+
+- `GroupsService.createInquiry(form, actor)` now resolves a picked `contactId` through the
+  new `resolveActingContact(selectedId, actorContactId)` and writes `First_Name`,
+  `Last_Name`, `Email` and `Phone` **from the `Contacts` row**, never from the request. The
+  typed fields are used only when no contact is picked (anonymous, or "Someone else…").
+- **Decided: the household rule is enforced, not just the back-fill.** Before this change
+  the route attached *any* `Contact_ID` the client sent, signed in or not. A picked contact
+  must now be the caller's own contact or share the caller's (non-null) household;
+  anything else, including an anonymous caller naming a contact at all, is refused with
+  `403 not_household_member` before any MP write. `signUp` applies the same rule — it had
+  the same hole, with a `Group_Participants` row as the payload.
+- Column names corrected to the live spelling `First_Name` / `Last_Name` (the service
+  wrote `First_name` / `Last_name`; verified against the live `Group_Inquiries` schema).
+  The read-only `_From_Group_Finder` is no longer written.
+- Found and fixed in passing: `GET /api/embed/group-details/me` passed `User_ID` to
+  `getCurrentContact`, which takes a `Contact_ID`, so the picker only worked on domains
+  where the two ids coincide.
+- Tests: `src/services/groupsService.test.ts` (member back-fill, household member
+  back-fill, client-supplied identity ignored, foreign contact refused with no write,
+  anonymous contact refused, blank form stored as typed).
+
+Left open: `has-inquired` / `has-signed-up` still answer a boolean for any `contactId` in
+the query string. It discloses one bit per (group, contact) pair; recorded, not changed.
