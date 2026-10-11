@@ -39,7 +39,8 @@ export const groups = {
     afternoon: "Afternoon",
     evening: "Evening",
     loading: "Loading groups…",
-    empty: "No groups found.",
+    /** C18: legacy's meaning — say what to do next — in our voice. */
+    empty: "No groups found. Try different search criteria.",
     /** Shown when the result set was capped rather than exhausted. */
     truncated:
       "Showing the first results — refine your search to narrow them down.",

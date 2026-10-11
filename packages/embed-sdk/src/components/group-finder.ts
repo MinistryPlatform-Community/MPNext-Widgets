@@ -603,7 +603,9 @@ export class GroupFinderWidget extends MPNextWidget {
         </div>`;
     }
     if (this.groups.length === 0) {
-      return `<div class="nw-gf-state nw-gf-empty">${this.escapeHtml(this.t("groupFinder.empty"))}</div>`;
+      // C18 row 13: an alert the visitor will notice, saying what to do next
+      // — not a bare sentence in grey.
+      return `<div class="nw-gf-empty" role="status">${this.infoSvg()}<span>${this.escapeHtml(this.t("groupFinder.empty"))}</span></div>`;
     }
     const grid = `<div class="nw-gf-grid">${this.groups.map((g) => this.renderCard(g)).join("")}</div>`;
     // Mirror the legacy "showing first results" hint when many groups match.
@@ -617,9 +619,12 @@ export class GroupFinderWidget extends MPNextWidget {
   private renderCard(g: GroupCard): string {
     const href = this.buildDetailUrl(g.id);
     const hasLink = !!href;
+    // C18 row 12: no photo → a neutral group icon, as legacy showed. The
+    // proc's NoImageText (the group type, e.g. "Small Group") becomes the
+    // icon's accessible name instead of body text that looked like a failure.
     const img = g.imageUrl
       ? `<img class="nw-gf-card-img" src="${this.escapeAttr(g.imageUrl)}" alt="" loading="lazy">`
-      : `<div class="nw-gf-card-img nw-gf-card-img--placeholder">${this.escapeHtml(g.noImageText || this.t("groupFinder.imagePlaceholder"))}</div>`;
+      : `<div class="nw-gf-card-img nw-gf-card-img--placeholder">${this.groupSvg(g.noImageText || this.t("groupFinder.imagePlaceholder"))}</div>`;
 
     const badges: string[] = [];
     if (g.isFull) {
@@ -800,6 +805,19 @@ export class GroupFinderWidget extends MPNextWidget {
     return this.escapeHtml(text).replace(/"/g, "&quot;");
   }
 
+  /** Same glyph as `next-my-groups`' no-photo placeholder. */
+  private groupSvg(label: string): string {
+    return `<svg viewBox="0 0 24 24" fill="#004C97" class="nw-gf-group-icon" role="img" aria-label="${this.escapeAttr(label)}">
+      <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+    </svg>`;
+  }
+
+  private infoSvg(): string {
+    return `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" class="nw-gf-empty-icon">
+      <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+    </svg>`;
+  }
+
   private spinnerSvg(): string {
     return `<svg class="nw-gf-spinner" viewBox="0 0 24 24" fill="none" width="20" height="20">
       <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -839,7 +857,10 @@ export class GroupFinderWidget extends MPNextWidget {
       a.nw-gf-card:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
       .nw-gf-card-imgwrap { position: relative; }
       .nw-gf-card-img { width: 100%; height: 160px; object-fit: cover; display: block; }
-      .nw-gf-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #6b7280; font-weight: 600; font-size: 14px; text-align: center; padding: 8px; }
+      .nw-gf-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: rgba(0, 76, 151, 0.08); }
+      .nw-gf-group-icon { width: 56px; height: 56px; }
+      .nw-gf-empty { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 8px; background: #fdf6e3; color: #8a6d3b; font-size: 14px; border: 1px solid #f1be48; }
+      .nw-gf-empty-icon { flex-shrink: 0; color: #c99a1d; }
       .nw-gf-badges { position: absolute; top: 10px; left: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
       .nw-gf-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.03em; }
       .nw-gf-badge--full { background: #FF6D6A; color: white; }

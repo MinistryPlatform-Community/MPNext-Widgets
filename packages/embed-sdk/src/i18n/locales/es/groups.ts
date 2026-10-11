@@ -31,7 +31,7 @@ export const esGroups = {
     afternoon: "Tarde",
     evening: "Noche",
     loading: "Cargando los grupos…",
-    empty: "No se encontraron grupos.",
+    empty: "No se encontraron grupos. Pruebe con otros criterios de búsqueda.",
     truncated:
       "Se muestran los primeros resultados: refine su búsqueda para reducirlos.",
     imagePlaceholder: "Grupo",

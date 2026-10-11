@@ -248,4 +248,22 @@ describe("<next-group-finder>", () => {
       await vi.waitFor(() => expect(searchUrls(fetchFn).at(-1)).toContain("cityPostalCode=32801"));
     });
   });
+
+  describe("empty state and no-photo placeholder (C18)", () => {
+    it("renders a styled alert that says what to do next", async () => {
+      mockFetch({ search: jsonResponse({ groups: [] }) });
+      const el = await mountSettled();
+      const empty = shadow(el).querySelector<HTMLElement>(".nw-gf-empty")!;
+      expect(empty.getAttribute("role")).toBe("status");
+      expect(empty.textContent).toContain("No groups found. Try different search criteria.");
+    });
+
+    it("shows a group icon, not the NoImageText as body text", async () => {
+      const el = await mountSettled();
+      const placeholder = shadow(el).querySelector(".nw-gf-card-img--placeholder")!;
+      const icon = placeholder.querySelector('svg[role="img"]')!;
+      expect(icon.getAttribute("aria-label")).toBe("Small Group");
+      expect(placeholder.textContent?.trim()).toBe("");
+    });
+  });
 });

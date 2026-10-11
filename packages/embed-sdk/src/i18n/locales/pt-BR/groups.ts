@@ -31,7 +31,7 @@ export const ptBRGroups = {
     afternoon: "Tarde",
     evening: "Noite",
     loading: "Carregando os grupos…",
-    empty: "Nenhum grupo encontrado.",
+    empty: "Nenhum grupo encontrado. Tente outros critérios de busca.",
     truncated:
       "Exibindo os primeiros resultados — refine sua busca para reduzi-los.",
     imagePlaceholder: "Grupo",
