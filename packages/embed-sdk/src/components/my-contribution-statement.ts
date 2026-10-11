@@ -457,40 +457,40 @@ export class MyContributionStatementWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-statements {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
+        background: var(--_nw-color-surface);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .header {
-        background: #002855;
-        color: white;
-        padding: 24px;
+        background: var(--_nw-color-secondary);
+        color: var(--_nw-color-on-primary);
+        padding: var(--_nw-space-6);
       }
       .title {
         font-size: 24px;
         font-weight: bold;
         text-align: center;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
       }
       .subtitle {
         text-align: center;
         opacity: 0.8;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         margin: 0;
       }
       .loading-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         font-size: 18px;
       }
 
@@ -505,38 +505,38 @@ export class MyContributionStatementWidget extends MPNextWidget {
 
       .nw-extras {
         display: block;
-        margin-top: 16px;
+        margin-top: var(--_nw-space-4);
       }
       .nw-extras[hidden] {
         display: none;
       }
 
       .list-body {
-        padding: 20px;
+        padding: var(--_nw-space-5);
       }
 
       .empty-state {
         text-align: center;
-        padding: 40px 20px;
+        padding: 40px var(--_nw-space-5);
         color: #9E9E9E;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
       }
 
       .company-section {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 16px;
-        border-left: 3px solid #F1BE48;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
+        padding: var(--_nw-space-5);
+        margin-bottom: var(--_nw-space-4);
+        border-left: 3px solid var(--_nw-color-accent);
       }
       .company-section:last-child {
         margin-bottom: 0;
       }
       .company-name {
         font-size: 18px;
-        font-weight: 700;
-        color: #002855;
-        margin-bottom: 16px;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
+        margin-bottom: var(--_nw-space-4);
       }
       .year-label {
         font-size: 12px;
@@ -544,76 +544,76 @@ export class MyContributionStatementWidget extends MPNextWidget {
         color: rgba(45, 41, 38, 0.7);
         text-transform: uppercase;
         letter-spacing: 0.03em;
-        margin-bottom: 8px;
+        margin-bottom: var(--_nw-space-2);
       }
       .year-row {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 20px;
+        gap: var(--_nw-space-2);
+        margin-bottom: var(--_nw-space-5);
       }
       .year-btn {
-        padding: 8px 18px;
-        background: white;
-        color: #004C97;
-        font-size: 14px;
+        padding: var(--_nw-space-2) 18px;
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-primary);
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
-        border: 1px solid #e5e7eb;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
         border-radius: 9999px;
         cursor: pointer;
         font-family: inherit;
         transition: all 0.15s;
       }
       .year-btn:hover {
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
         background: rgba(0, 76, 151, 0.04);
       }
       .year-btn--active {
-        background: #004C97;
-        color: white;
-        border-color: #004C97;
+        background: var(--_nw-color-primary);
+        color: var(--_nw-color-on-primary);
+        border-color: var(--_nw-color-primary);
       }
       .year-btn--active:hover {
-        background: #002855;
-        border-color: #002855;
+        background: var(--_nw-color-secondary);
+        border-color: var(--_nw-color-secondary);
       }
 
       .download-section {
-        border-top: 1px solid #e5e7eb;
-        padding-top: 16px;
+        border-top: var(--_nw-border-width) solid var(--_nw-color-border);
+        padding-top: var(--_nw-space-4);
       }
       .download-btn {
         display: inline-block;
-        padding: 12px 28px;
-        background: #004C97;
-        color: white;
+        padding: var(--_nw-space-3) 28px;
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: bold;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .download-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
       .download-btn:disabled {
         opacity: 0.6;
         cursor: progress;
       }
       .download-fallback {
-        margin: 12px 0 0;
-        font-size: 14px;
-        color: #2D2926;
+        margin: var(--_nw-space-3) 0 0;
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text);
       }
       .footer-links {
-        padding: 0 20px 20px;
+        padding: 0 var(--_nw-space-5) var(--_nw-space-5);
         text-align: right;
       }
       .my-giving-link {
-        color: #004C97;
-        font-size: 14px;
+        color: var(--_nw-color-primary);
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
         text-decoration: none;
       }
@@ -621,42 +621,42 @@ export class MyContributionStatementWidget extends MPNextWidget {
         text-decoration: underline;
       }
       .my-giving-link:focus-visible {
-        outline: 2px solid #009CDE;
+        outline: var(--_nw-focus-ring);
         outline-offset: 2px;
         border-radius: 2px;
       }
       .download-fallback a {
-        color: #004C97;
+        color: var(--_nw-color-primary);
         font-weight: 600;
       }
 
       .retry-section {
-        padding: 20px;
+        padding: var(--_nw-space-5);
         text-align: center;
       }
       .retry-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .retry-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       @media (max-width: 640px) {
         .header, .list-body {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .company-section {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .download-btn {
           display: block;

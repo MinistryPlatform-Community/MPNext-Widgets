@@ -80,7 +80,6 @@ const BUDGET: Record<string, Partial<Record<ValueClass, number>>> = {
   "components/group-finder.ts": { brandHex: 21, fontStack: 1 },
   "components/locale-selector.ts": { brandHex: 9, fontStack: 1 },
   "components/mission-trip-finder.ts": { brandHex: 15, fontStack: 1 },
-  "components/my-contribution-statement.ts": { brandHex: 17, fontStack: 1 },
   // The two SVG chart-label rules write `ui-sans-serif, system-ui, sans-serif`
   // (no `-apple-system`): not the token's exact stack, so they stay literal.
   "components/my-giving.ts": { fontStack: 2 },
