@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import { parseWallClock } from "../i18n";
 import {
   validateForm,
@@ -6,6 +6,7 @@ import {
   requiredStar,
   FORM_VALIDATION_STYLES,
 } from "../shared/form-validation";
+import { cardLink, bindCardSelect, CARD_LINK_STYLES } from "../shared/card-link";
 
 interface GroupCard {
   id: number;
@@ -62,6 +63,9 @@ export class GroupFinderWidget extends MPNextWidget {
   // Suggest-a-group view state.
   private suggestOpen = false;
   private suggestMessage: { type: string; text: string } | null = null;
+  /** C15: the sign-in check runs when the button is pressed, before any field is drawn. */
+  private suggestChecking = false;
+  private suggestNeedsAuth = false;
 
   // Filter state (seeded from attributes, mutated by the form).
   private keyword = "";
@@ -82,6 +86,7 @@ export class GroupFinderWidget extends MPNextWidget {
       "congregation-id",
       "ministry-id",
       "parent-group-id",
+      "city-postal-code",
       "group-focus-id",
       "life-stage-id",
       "group-type-id",
@@ -96,23 +101,31 @@ export class GroupFinderWidget extends MPNextWidget {
     ];
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    if (this.groups.length || !this.loading) {
-      this.seedFromAttributes();
-      this.search();
-    }
+  /**
+   * An observed attribute changed after the first paint (the base class's
+   * `reconfigure()` rule, C39): re-seed the filters and search again. The old
+   * guard (`groups.length || !loading`) dropped a change that landed while the
+   * first search was still in flight.
+   */
+  protected override reload(): void {
+    this.seedFromAttributes();
+    void this.search();
   }
 
   connectedCallback() {
-    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
-    this.seedFromAttributes();
+    this.injectStyles(
+      this.getStyles() + FORM_VALIDATION_STYLES + CARD_LINK_STYLES + SIGN_IN_REQUIRED_STYLES
+    );
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish. Free in practice: the fetch lands inside
     // the loading state this widget already paints while it queries the API.
     void this.initLocale().then(() => {
+      // Seeded here, not before the await, so an attribute set while the
+      // catalogue loads is not missed (reconfigure is a no-op until painted).
+      this.seedFromAttributes();
       this.render();
-      this.init();
+      this.painted = true;
+      void this.init();
     });
   }
 
@@ -147,6 +160,9 @@ export class GroupFinderWidget extends MPNextWidget {
     this.keyword = this.getAttribute("keyword") || "";
     this.congregationId = this.getAttribute("congregation-id") || "";
     this.parentGroupId = this.getAttribute("parent-group-id") || "";
+    // C64: legacy's `citypostalcode`. Pre-fills the field and stays editable,
+    // like every other filter attribute here (legacy locked it).
+    this.cityPostalCode = this.getAttribute("city-postal-code") || "";
     this.groupFocusId = this.getAttribute("group-focus-id") || "";
     this.lifeStageId = this.getAttribute("life-stage-id") || "";
     this.meetsOnline = this.getAttribute("meets-online") === "true";
@@ -218,7 +234,7 @@ export class GroupFinderWidget extends MPNextWidget {
       const res = await this.fetch(`/api/embed/group-finder${this.buildQuery()}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { groups: GroupCard[] } = await res.json();
       this.groups = data.groups || [];
@@ -227,12 +243,11 @@ export class GroupFinderWidget extends MPNextWidget {
       // `errorText` has already turned an API machine code into a translated
       // sentence; anything else (a thrown TypeError from a dropped connection)
       // becomes the generic network message rather than leaking English.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("groupFinderError", { error: this.error });
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -276,7 +291,6 @@ export class GroupFinderWidget extends MPNextWidget {
         this.readFormState();
         this.advancedOpen = !this.advancedOpen;
         this.render();
-        this.attachListeners();
       });
     }
 
@@ -287,21 +301,14 @@ export class GroupFinderWidget extends MPNextWidget {
     if (suggestBtn) {
       suggestBtn.addEventListener("click", (e) => {
         e.preventDefault();
-        this.suggestOpen = true;
-        this.suggestMessage = null;
-        this.render();
-        this.attachListeners();
+        void this.openSuggest();
       });
     }
 
-    // Card navigation / selection.
-    this.root.querySelectorAll<HTMLElement>("[data-group-id]").forEach((el) => {
-      el.addEventListener("click", () => {
-        const id = Number(el.getAttribute("data-group-id"));
-        this.emit("groupSelected", { groupId: id });
-        const url = this.buildDetailUrl(id);
-        if (url) window.location.href = url;
-      });
+    // Cards are real links (C10): the anchor navigates — Enter, middle-click
+    // and Ctrl-click included — and this only announces the selection.
+    bindCardSelect(this.root, ".nw-gf-card", (card) => {
+      this.emit("groupSelected", { groupId: Number(card.dataset.groupId) });
     });
   }
 
@@ -312,7 +319,6 @@ export class GroupFinderWidget extends MPNextWidget {
         e.preventDefault();
         this.suggestOpen = false;
         this.render();
-        this.attachListeners();
       });
     }
 
@@ -354,6 +360,47 @@ export class GroupFinderWidget extends MPNextWidget {
 
   // ── Suggest a group ──
 
+  /**
+   * Open Suggest-a-Group, deciding sign-in **before** the visitor types
+   * (C15). Legacy gated at this click too; ours used to draw the whole form
+   * and only discover the 401 on submit, losing the visitor's work.
+   *
+   * The check is a cheap identity read rather than a guess from local
+   * storage, so it agrees with what the server will decide on submit — and
+   * `isNeedsAuth()` reads the token the request actually carried, so a host
+   * with its own token provider is judged correctly too. A network fault does
+   * not gate: the form opens and the submit-time backstop still applies.
+   */
+  private async openSuggest() {
+    this.suggestOpen = true;
+    this.suggestMessage = null;
+    this.suggestChecking = true;
+    this.suggestNeedsAuth = false;
+    this.render(); // "Back to results" works while the check runs
+    try {
+      const res = await this.fetch(`/api/embed/group-details/me`);
+      this.suggestNeedsAuth = this.isNeedsAuth(res);
+    } catch {
+      this.suggestNeedsAuth = false;
+    }
+    this.suggestChecking = false;
+    if (!this.suggestOpen) return; // the visitor went back meanwhile
+    this.render();
+  }
+
+  /**
+   * The sign-in panel, mode-aware (W0): a Sign In button where the SDK can
+   * start a sign-in, instructional copy naming the page's own sign-in link in
+   * `legacy`. The base class binds the button.
+   */
+  private suggestSignIn(): string {
+    return this.renderSignInRequired({
+      subject: "group-finder",
+      message: this.t("groupFinder.signInToSuggest"),
+      buttonClass: "nw-gf-btn",
+    });
+  }
+
   private async submitSuggestion(form: HTMLFormElement) {
     if (!validateForm(form).valid) {
       this.setSuggestMessage("danger", this.t("validation.formIncomplete"));
@@ -387,9 +434,16 @@ export class GroupFinderWidget extends MPNextWidget {
         .json()
         .catch(() => ({ success: false }));
 
-      if (res.status === 401) {
-        this.setSuggestMessage("warning", this.t("groupFinder.signInToSuggest"));
-        this.requestLogin("group-finder");
+      if (this.isNeedsAuth(res)) {
+        // Backstop for a session that lapsed while the form was open. Non-
+        // destructive: only the message slot changes, so every typed value
+        // survives and the visitor can submit again once signed in.
+        const el = this.root.querySelector<HTMLElement>("#gf-suggest-message");
+        if (el) {
+          el.className = "gf-message gf-message--warning";
+          el.innerHTML = this.suggestSignIn();
+          el.style.display = "";
+        }
         if (submitBtn) submitBtn.disabled = false;
         return;
       }
@@ -412,7 +466,7 @@ export class GroupFinderWidget extends MPNextWidget {
     } catch (err) {
       this.setSuggestMessage(
         "danger",
-        err instanceof Error ? err.message : this.t("errors.submitFailed")
+        this.caughtText(err, "errors.submitFailed")
       );
       if (submitBtn) submitBtn.disabled = false;
     }
@@ -427,13 +481,23 @@ export class GroupFinderWidget extends MPNextWidget {
       el.style.display = "";
     } else {
       this.render();
-      this.attachListeners();
     }
   }
 
   // ── Render ──
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.suggestOpen) {
       this.root.innerHTML = `<div class="nw-gf">${this.renderSuggestForm()}</div>`;
       return;
@@ -544,7 +608,9 @@ export class GroupFinderWidget extends MPNextWidget {
         </div>`;
     }
     if (this.groups.length === 0) {
-      return `<div class="nw-gf-state nw-gf-empty">${this.escapeHtml(this.t("groupFinder.empty"))}</div>`;
+      // C18 row 13: an alert the visitor will notice, saying what to do next
+      // — not a bare sentence in grey.
+      return `<div class="nw-gf-empty" role="status">${this.infoSvg()}<span>${this.escapeHtml(this.t("groupFinder.empty"))}</span></div>`;
     }
     const grid = `<div class="nw-gf-grid">${this.groups.map((g) => this.renderCard(g)).join("")}</div>`;
     // Mirror the legacy "showing first results" hint when many groups match.
@@ -556,10 +622,14 @@ export class GroupFinderWidget extends MPNextWidget {
   }
 
   private renderCard(g: GroupCard): string {
-    const hasLink = !!this.getAttribute("target-url");
+    const href = this.buildDetailUrl(g.id);
+    const hasLink = !!href;
+    // C18 row 12: no photo → a neutral group icon, as legacy showed. The
+    // proc's NoImageText (the group type, e.g. "Small Group") becomes the
+    // icon's accessible name instead of body text that looked like a failure.
     const img = g.imageUrl
       ? `<img class="nw-gf-card-img" src="${this.escapeAttr(g.imageUrl)}" alt="" loading="lazy">`
-      : `<div class="nw-gf-card-img nw-gf-card-img--placeholder">${this.escapeHtml(g.noImageText || this.t("groupFinder.imagePlaceholder"))}</div>`;
+      : `<div class="nw-gf-card-img nw-gf-card-img--placeholder">${this.groupSvg(g.noImageText || this.t("groupFinder.imagePlaceholder"))}</div>`;
 
     const badges: string[] = [];
     if (g.isFull) {
@@ -591,16 +661,22 @@ export class GroupFinderWidget extends MPNextWidget {
       ? `<div class="nw-gf-card-desc">${this.escapeHtml(this.truncate(g.description, 160))}</div>`
       : "";
 
-    return `
-      <div class="nw-gf-card" data-group-id="${g.id}" role="${hasLink ? "link" : "article"}" ${hasLink ? 'tabindex="0"' : ""}>
+    // Phrasing-safe body: an <a> may wrap flow content, but it must not hold
+    // another interactive element — the CTA is a span, not a link.
+    const body = `
         <div class="nw-gf-card-imgwrap">${img}<div class="nw-gf-badges">${badges.join("")}</div></div>
         <div class="nw-gf-card-body">
           <h3 class="nw-gf-card-title">${this.escapeHtml(g.title)}</h3>
           ${subtitleHtml}
           ${description}
-          ${hasLink ? `<span class="nw-gf-card-cta">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
-        </div>
-      </div>`;
+          ${hasLink ? `<span class="nw-gf-card-cta" aria-hidden="true">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
+        </div>`;
+    return cardLink({
+      href,
+      className: "nw-gf-card",
+      body,
+      attrs: { "data-group-id": g.id },
+    });
   }
 
   private capacityLabel(g: GroupCard): string {
@@ -626,6 +702,16 @@ export class GroupFinderWidget extends MPNextWidget {
   }
 
   private renderSuggestForm(): string {
+    const header = `
+      <a href="#" class="nw-gf-advanced-link" data-action="suggest-back">&larr; ${this.escapeHtml(this.t("groupFinder.backToResults"))}</a>
+      <h2 class="nw-gf-suggest-title">${this.escapeHtml(this.t("groupFinder.suggestGroup"))}</h2>`;
+    if (this.suggestChecking) {
+      return `${header}<div class="nw-gf-state">${this.spinnerSvg()}</div>`;
+    }
+    if (this.suggestNeedsAuth) {
+      return `${header}<div class="nw-gf-suggest">${this.suggestSignIn()}</div>`;
+    }
+
     const message = this.suggestMessage
       ? `<div id="gf-suggest-message" class="gf-message gf-message--${this.escapeAttr(this.suggestMessage.type)}">${this.escapeHtml(this.suggestMessage.text)}</div>`
       : `<div id="gf-suggest-message" class="gf-message" style="display:none"></div>`;
@@ -641,8 +727,7 @@ export class GroupFinderWidget extends MPNextWidget {
       .join("");
 
     return `
-      <a href="#" class="nw-gf-advanced-link" data-action="suggest-back">&larr; ${this.escapeHtml(this.t("groupFinder.backToResults"))}</a>
-      <h2 class="nw-gf-suggest-title">${this.escapeHtml(this.t("groupFinder.suggestGroup"))}</h2>
+      ${header}
       ${message}
       <form id="gf-suggest-form" class="nw-gf-suggest" novalidate>
         <div class="nw-gf-field">
@@ -725,6 +810,19 @@ export class GroupFinderWidget extends MPNextWidget {
     return this.escapeHtml(text).replace(/"/g, "&quot;");
   }
 
+  /** Same glyph as `next-my-groups`' no-photo placeholder. */
+  private groupSvg(label: string): string {
+    return `<svg viewBox="0 0 24 24" class="nw-gf-group-icon" role="img" aria-label="${this.escapeAttr(label)}">
+      <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+    </svg>`;
+  }
+
+  private infoSvg(): string {
+    return `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" class="nw-gf-empty-icon">
+      <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+    </svg>`;
+  }
+
   private spinnerSvg(): string {
     return `<svg class="nw-gf-spinner" viewBox="0 0 24 24" fill="none" width="20" height="20">
       <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -734,65 +832,66 @@ export class GroupFinderWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .nw-gf { max-width: 1024px; margin: 0 auto; }
 
-      .nw-gf-form { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      .nw-gf-search-row { display: flex; gap: 8px; }
-      .nw-gf-input { flex: 1; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; outline: none; }
-      .nw-gf-input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
+      .nw-gf-form { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-4); margin-bottom: var(--_nw-space-5); box-shadow: var(--_nw-shadow); }
+      .nw-gf-search-row { display: flex; gap: var(--_nw-space-2); }
+      .nw-gf-input { flex: 1; padding: 10px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); outline: none; }
+      .nw-gf-input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
       textarea.nw-gf-input { min-height: 80px; resize: vertical; }
-      .nw-gf-btn { padding: 10px 20px; background: #004C97; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
-      .nw-gf-btn:hover { background: #002855; }
+      .nw-gf-btn { padding: 10px var(--_nw-space-5); background: var(--_nw-button-bg); color: var(--_nw-button-fg); border: none; border-radius: var(--_nw-button-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+      .nw-gf-btn:hover { background: var(--_nw-button-bg-hover); }
       .nw-gf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-      .nw-gf-btn--secondary { background: #009CDE; }
+      .nw-gf-btn--secondary { background: var(--_nw-color-info); }
       .nw-gf-btn--secondary:hover { background: #007bb0; }
-      .nw-gf-advanced-link { display: inline-block; margin-top: 12px; font-size: 13px; color: #004C97; text-decoration: none; cursor: pointer; font-weight: 600; }
+      .nw-gf-advanced-link { display: inline-block; margin-top: var(--_nw-space-3); font-size: 13px; color: var(--_nw-color-primary); text-decoration: none; cursor: pointer; font-weight: 600; }
       .nw-gf-advanced-link:hover { text-decoration: underline; }
-      .nw-gf-advanced { margin-top: 16px; gap: 12px; grid-template-columns: repeat(2, 1fr); }
-      .nw-gf-field { display: flex; flex-direction: column; gap: 4px; }
+      .nw-gf-advanced { margin-top: var(--_nw-space-4); gap: var(--_nw-space-3); grid-template-columns: repeat(2, 1fr); }
+      .nw-gf-field { display: flex; flex-direction: column; gap: var(--_nw-space-1); }
       .nw-gf-field--full { grid-column: 1 / -1; }
-      .nw-gf-field label { font-size: 12px; font-weight: 600; color: #6b7280; }
-      .nw-gf-select { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; background: white; outline: none; cursor: pointer; }
-      .nw-gf-select:focus { border-color: #004C97; }
-      .nw-gf-checks { display: flex; flex-wrap: wrap; gap: 8px 16px; }
-      .nw-gf-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #2D2926; font-weight: 500; }
+      .nw-gf-field label { font-size: 12px; font-weight: 600; color: var(--_nw-color-muted); }
+      .nw-gf-select { padding: 9px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); background: var(--_nw-color-surface); outline: none; cursor: pointer; }
+      .nw-gf-select:focus { border-color: var(--_nw-color-primary); }
+      .nw-gf-checks { display: flex; flex-wrap: wrap; gap: var(--_nw-space-2) var(--_nw-space-4); }
+      .nw-gf-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--_nw-color-text); font-weight: 500; }
       .nw-gf-check input { width: auto; }
 
-      .nw-gf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-      .nw-gf-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: border-color 0.15s, box-shadow 0.15s; }
-      .nw-gf-card[role="link"] { cursor: pointer; }
-      .nw-gf-card[role="link"]:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
-      .nw-gf-card[role="link"]:focus-visible { outline: 2px solid #004C97; outline-offset: 2px; }
+      .nw-gf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--_nw-space-4); }
+      .nw-gf-card { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--_nw-shadow); transition: border-color 0.15s, box-shadow 0.15s; }
+      a.nw-gf-card:hover { border-color: var(--_nw-color-primary); box-shadow: var(--_nw-shadow-hover); }
       .nw-gf-card-imgwrap { position: relative; }
       .nw-gf-card-img { width: 100%; height: 160px; object-fit: cover; display: block; }
-      .nw-gf-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #6b7280; font-weight: 600; font-size: 14px; text-align: center; padding: 8px; }
+      .nw-gf-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: rgba(0, 76, 151, 0.08); }
+      .nw-gf-group-icon { width: 56px; height: 56px; fill: var(--_nw-color-primary); }
+      .nw-gf-empty { display: flex; align-items: center; gap: 10px; padding: 14px var(--_nw-space-4); border-radius: var(--_nw-radius); background: #fdf6e3; color: #8a6d3b; font-size: var(--_nw-font-size-base); border: var(--_nw-border-width) solid var(--_nw-color-accent); }
+      .nw-gf-empty-icon { flex-shrink: 0; color: #c99a1d; }
       .nw-gf-badges { position: absolute; top: 10px; left: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
       .nw-gf-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.03em; }
-      .nw-gf-badge--full { background: #FF6D6A; color: white; }
-      .nw-gf-badge--online { background: #009CDE; color: white; }
-      .nw-gf-card-body { padding: 16px; display: flex; flex-direction: column; flex: 1; }
-      .nw-gf-card-title { font-size: 16px; font-weight: 700; color: #002855; margin: 0 0 6px; }
-      .nw-gf-card-sub { font-size: 13px; color: #004C97; font-weight: 600; margin-bottom: 2px; }
-      .nw-gf-card-desc { font-size: 13px; color: #474747; line-height: 1.5; flex: 1; margin-top: 6px; }
-      .nw-gf-card-cta { margin-top: 12px; font-size: 13px; font-weight: 600; color: #004C97; }
+      .nw-gf-badge--full { background: var(--_nw-color-error); color: white; }
+      .nw-gf-badge--online { background: var(--_nw-color-info); color: white; }
+      .nw-gf-card-body { padding: var(--_nw-space-4); display: flex; flex-direction: column; flex: 1; }
+      .nw-gf-card-title { font-size: 16px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: 0 0 6px; }
+      .nw-gf-card-sub { font-size: 13px; color: var(--_nw-color-primary); font-weight: 600; margin-bottom: 2px; }
+      .nw-gf-card-desc { font-size: 13px; color: var(--_nw-color-text-subtle); line-height: var(--_nw-line-height); flex: 1; margin-top: 6px; }
+      .nw-gf-card-cta { margin-top: var(--_nw-space-3); font-size: 13px; font-weight: 600; color: var(--_nw-color-primary); }
 
-      .nw-gf-more { text-align: center; color: #6b7280; font-size: 13px; margin-top: 16px; }
-      .nw-gf-suggest-cta { text-align: center; margin-top: 24px; }
+      .nw-gf-more { text-align: center; color: var(--_nw-color-muted); font-size: 13px; margin-top: var(--_nw-space-4); }
+      .nw-gf-suggest-cta { text-align: center; margin-top: var(--_nw-space-6); }
 
-      .nw-gf-suggest-title { font-size: 22px; font-weight: 800; color: #002855; margin: 12px 0 16px; }
-      .nw-gf-suggest { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      .nw-gf-suggest-actions { margin-top: 4px; }
+      .nw-gf-suggest-title { font-size: 22px; font-weight: 800; color: var(--_nw-color-secondary); margin: var(--_nw-space-3) 0 var(--_nw-space-4); }
+      .nw-gf-suggest { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-5); display: flex; flex-direction: column; gap: 14px; box-shadow: var(--_nw-shadow); }
+      .nw-gf-suggest-actions { margin-top: var(--_nw-space-1); }
 
-      .gf-message { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
+      .gf-message { padding: var(--_nw-space-3) var(--_nw-space-4); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); margin-bottom: var(--_nw-space-4); }
       .gf-message--success { background: #ecf6e0; color: #4d6b1f; }
       .gf-message--warning { background: #fdf6e3; color: #8a6d3b; }
-      .gf-message--danger { background: #ffe9e9; color: #b91c1c; }
+      .gf-message--danger { background: #ffe9e9; color: var(--_nw-color-error-text); }
 
-      .nw-gf-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; font-size: 15px; flex-direction: column; text-align: center; }
-      .nw-gf-spinner { animation: nw-gf-spin 1s linear infinite; color: #004C97; }
+      .nw-gf-state { display: flex; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 48px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; flex-direction: column; text-align: center; }
+      .nw-gf-spinner { animation: nw-gf-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes nw-gf-spin { to { transform: rotate(360deg); } }
-      .nw-gf-error p { color: #b91c1c; margin: 0; }
+      .nw-gf-error p { color: var(--_nw-color-error-text); margin: 0; }
 
       @media (max-width: 1024px) { .nw-gf-grid { grid-template-columns: repeat(2, 1fr); } }
       @media (max-width: 640px) {

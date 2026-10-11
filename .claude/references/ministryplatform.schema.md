@@ -2,10 +2,20 @@
 
 This document provides a summary of Ministry Platform database tables for LLM assistants working on this project.
 
-**Generated:** 2026-03-25T14:07:09.466Z
-**Tables:** 301
+**Generated:** 2026-10-11T20:24:59.783Z
+**Tables:** 307
 
 ---
+
+### _Deployment_Logs
+
+Access: ReadWriteAssignDelete | Permissions: None
+
+- **Primary Key:** `Log_ID`
+- **Type:** `src/lib/providers/ministry-platform/models/DeploymentLogs.ts`
+- **Schema:** `src/lib/providers/ministry-platform/models/DeploymentLogsSchema.ts`
+- **Foreign Keys:**
+  - `Deployment_ID` -> `_Deployments.Deployment_ID`
 
 ### _Deployments
 
@@ -733,7 +743,7 @@ Access: ReadWriteAssignDelete | Permissions: None
 
 ### dp_API_Clients
 
-Access: ReadWriteAssignDelete | Permissions: FileAttach, DataExport
+Access: ReadWriteAssignDelete | Permissions: FileAttach, DataExport, SecureRecord
 
 - **Primary Key:** `API_Client_ID`
 - **Type:** `src/lib/providers/ministry-platform/models/DpApiClients.ts`
@@ -773,6 +783,14 @@ Access: ReadWriteAssignDelete | Permissions: FileAttach, DataExport
   - `Retention_Type_ID` -> `dp_Audit_Retention_Types.Audit_Retention_Type_ID`
   - `Audit_Type_ID` -> `dp_Audit_Types.Audit_Type_ID`
 
+### dp_Audit_Retention_Runs
+
+Access: ReadWriteAssignDelete | Permissions: DataExport
+
+- **Primary Key:** `Audit_Retention_Run_ID`
+- **Type:** `src/lib/providers/ministry-platform/models/DpAuditRetentionRuns.ts`
+- **Schema:** `src/lib/providers/ministry-platform/models/DpAuditRetentionRunsSchema.ts`
+
 ### dp_Authentication_Log
 
 Access: ReadWriteAssignDelete | Permissions: FileAttach, DataExport, SecureRecord
@@ -789,6 +807,18 @@ Access: ReadWriteAssignDelete | Permissions: FileAttach, DataExport
 - **Type:** `src/lib/providers/ministry-platform/models/DpBookmarks.ts`
 - **Schema:** `src/lib/providers/ministry-platform/models/DpBookmarksSchema.ts`
 
+### dp_Charts
+
+Access: Read | Permissions: None
+
+- **Primary Key:** `Chart_ID`
+- **Type:** `src/lib/providers/ministry-platform/models/DpCharts.ts`
+- **Schema:** `src/lib/providers/ministry-platform/models/DpChartsSchema.ts`
+- **Foreign Keys:**
+  - `Page_ID` -> `dp_Pages.Page_ID`
+  - `Aggregation_Type_ID` -> `dp_Aggregation_Types.Aggregation_Type_ID`
+  - `Default_Chart_Type_ID` -> `dp_Chart_Types.Chart_Type_ID`
+
 ### dp_Communication_Messages
 
 Access: ReadWriteAssign | Permissions: DataExport
@@ -798,6 +828,18 @@ Access: ReadWriteAssign | Permissions: DataExport
 - **Schema:** `src/lib/providers/ministry-platform/models/DpCommunicationMessagesSchema.ts`
 - **Foreign Keys:**
   - `Communication_ID` -> `dp_Communications.Communication_ID`
+  - `Action_Status_ID` -> `dp_Communication_Action_Statuses.Action_Status_ID`
+  - `Contact_ID` -> `Contacts.Contact_ID`
+
+### dp_Communication_Messages_Archived
+
+Access: ReadWriteAssign | Permissions: DataExport
+
+- **Primary Key:** `Communication_Message_Archived_ID`
+- **Type:** `src/lib/providers/ministry-platform/models/DpCommunicationMessagesArchived.ts`
+- **Schema:** `src/lib/providers/ministry-platform/models/DpCommunicationMessagesArchivedSchema.ts`
+- **Foreign Keys:**
+  - `Original_Communication_ID` -> `dp_Communications.Communication_ID`
   - `Action_Status_ID` -> `dp_Communication_Action_Statuses.Action_Status_ID`
   - `Contact_ID` -> `Contacts.Contact_ID`
 
@@ -1496,6 +1538,8 @@ Access: ReadWriteAssignDelete | Permissions: FileAttach, DataExport, SecureRecor
   - `Congregation_ID` -> `Congregations.Congregation_ID`
   - `Primary_Contact` -> `Contacts.Contact_ID`
   - `Response_Message` -> `dp_Communication_Templates.Communication_Template_ID`
+  - `Product_ID` -> `Products.Product_ID`
+  - `Program_ID` -> `Programs.Program_ID`
 
 ### Frequencies
 
@@ -1797,6 +1841,7 @@ Access: ReadWriteAssignDelete | Permissions: FileAttach, DataExport, SecureRecor
   - `Invoice_Status_ID` -> `Invoice_Statuses.Invoice_Status_ID`
   - `Congregation_ID` -> `Congregations.Congregation_ID`
   - `Invoice_Source` -> `Invoice_Sources.Invoice_Source_ID`
+  - `Form_Response_ID` -> `Form_Responses.Form_Response_ID`
 
 ### Item_Priorities
 
@@ -2514,6 +2559,14 @@ Access: Read | Permissions: None
 - **Type:** `src/lib/providers/ministry-platform/models/PocketPlatformMigrations.ts`
 - **Schema:** `src/lib/providers/ministry-platform/models/PocketPlatformMigrationsSchema.ts`
 
+### Pocket_Platform_Social_Media_Providers
+
+Access: Read | Permissions: None
+
+- **Primary Key:** `Social_Media_Provider_ID`
+- **Type:** `src/lib/providers/ministry-platform/models/PocketPlatformSocialMediaProviders.ts`
+- **Schema:** `src/lib/providers/ministry-platform/models/PocketPlatformSocialMediaProvidersSchema.ts`
+
 ### Prefixes
 
 Access: Read | Permissions: None
@@ -2941,6 +2994,14 @@ Access: Read | Permissions: None
 - **Type:** `src/lib/providers/ministry-platform/models/StatementTypes.ts`
 - **Schema:** `src/lib/providers/ministry-platform/models/StatementTypesSchema.ts`
 
+### Statistics_Logs
+
+Access: Read | Permissions: None
+
+- **Primary Key:** `Log_ID`
+- **Type:** `src/lib/providers/ministry-platform/models/StatisticsLogs.ts`
+- **Schema:** `src/lib/providers/ministry-platform/models/StatisticsLogsSchema.ts`
+
 ### Suffixes
 
 Access: Read | Permissions: None
@@ -3026,13 +3087,13 @@ Access: Read | Permissions: DataExport
 - **Type:** `src/lib/providers/ministry-platform/models/VwMpContactMailName.ts`
 - **Schema:** `src/lib/providers/ministry-platform/models/VwMpContactMailNameSchema.ts`
 
-### vw_mp_giving_unit_summary
+### vw_mp_giving_unit_summary_standard
 
 Access: Read | Permissions: DataExport
 
 - **Primary Key:** `Household_ID`
-- **Type:** `src/lib/providers/ministry-platform/models/VwMpGivingUnitSummary.ts`
-- **Schema:** `src/lib/providers/ministry-platform/models/VwMpGivingUnitSummarySchema.ts`
+- **Type:** `src/lib/providers/ministry-platform/models/VwMpGivingUnitSummaryStandard.ts`
+- **Schema:** `src/lib/providers/ministry-platform/models/VwMpGivingUnitSummaryStandardSchema.ts`
 - **Foreign Keys:**
   - `Household_ID` -> `Households.Household_ID`
   - `Contact_ID` -> `Contacts.Contact_ID`
@@ -3127,6 +3188,30 @@ Access: Read | Permissions: DataExport
   - `Contact_ID` -> `Contacts.Contact_ID`
   - `User_ID` -> `dp_Users.User_ID`
 
+### Wait_Stats_Baseline
+
+Access: Read | Permissions: None
+
+- **Primary Key:** `WaitType`
+- **Type:** `src/lib/providers/ministry-platform/models/WaitStatsBaseline.ts`
+- **Schema:** `src/lib/providers/ministry-platform/models/WaitStatsBaselineSchema.ts`
+
+### Wait_Stats_History
+
+Access: Read | Permissions: None
+
+- **Primary Key:** `WaitStatsID`
+- **Type:** `src/lib/providers/ministry-platform/models/WaitStatsHistory.ts`
+- **Schema:** `src/lib/providers/ministry-platform/models/WaitStatsHistorySchema.ts`
+
+### Wait_Types
+
+Access: Read | Permissions: None
+
+- **Primary Key:** `Wait_Type_ID`
+- **Type:** `src/lib/providers/ministry-platform/models/WaitTypes.ts`
+- **Schema:** `src/lib/providers/ministry-platform/models/WaitTypesSchema.ts`
+
 ### Weekly_Snapshots
 
 Access: Read | Permissions: None
@@ -3156,28 +3241,4 @@ Access: ReadWriteAssignDelete | Permissions: None
 - **Schema:** `src/lib/providers/ministry-platform/models/WifiDevicesSchema.ts`
 - **Foreign Keys:**
   - `Contact_ID` -> `Contacts.Contact_ID`
-
-### Z_Event_Notifications
-
-Access: Read | Permissions: None
-
-- **Primary Key:** `Z_Event_Notifications_ID`
-- **Type:** `src/lib/providers/ministry-platform/models/ZEventNotifications.ts`
-- **Schema:** `src/lib/providers/ministry-platform/models/ZEventNotificationsSchema.ts`
-
-### Z_Form_Notifications
-
-Access: Read | Permissions: None
-
-- **Primary Key:** `Z_Form_Notifications_ID`
-- **Type:** `src/lib/providers/ministry-platform/models/ZFormNotifications.ts`
-- **Schema:** `src/lib/providers/ministry-platform/models/ZFormNotificationsSchema.ts`
-
-### Z_Opp_Notifications
-
-Access: Read | Permissions: None
-
-- **Primary Key:** `Z_Opp_Notifications_ID`
-- **Type:** `src/lib/providers/ministry-platform/models/ZOppNotifications.ts`
-- **Schema:** `src/lib/providers/ministry-platform/models/ZOppNotificationsSchema.ts`
 

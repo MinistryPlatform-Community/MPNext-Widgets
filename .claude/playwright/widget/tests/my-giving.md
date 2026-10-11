@@ -6,6 +6,8 @@
 - **Auth state(s) tested**: signed out (clean context) / signed in as PLAYWRIGHT_MP_USERNAME (MP user 98, Contact_ID 98, Donor_ID 6)
 - **Script**: `.claude/playwright/widget/scripts/giving/new-baseline.mjs`, `giving-deep.mjs`, `giving-old-deep.mjs`, `old-deep2.mjs`, `signedout.mjs`, `kbd.mjs`
 - **Config parity**: legacy page sets `hidesoftcredits="false"`; the new widget accepts the identical attribute name and `false` is its default, so the demo page is like-for-like as shipped (CONFIG-MAP §2.13, §4.11). No attribute mirroring needed.
+  - *Updated 2026-10-11 (C79):* the canonical spelling is now `hide-soft-credits`.
+    `hidesoftcredits` is read as a one-release alias.
 
 ## What I tested
 

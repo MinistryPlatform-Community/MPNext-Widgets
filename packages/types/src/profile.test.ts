@@ -242,3 +242,32 @@ describe('ChangePasswordSchema', () => {
     });
   });
 });
+
+describe('ProfileUpdateSchema phones (C51)', () => {
+  it('leaves an absent phone absent, so the update does not touch it', () => {
+    const result = ProfileUpdateSchema.safeParse({ First_Name: 'Chris' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect('Mobile_Phone' in result.data).toBe(false);
+      expect('Company_Phone' in result.data).toBe(false);
+    }
+  });
+
+  it('rejects letters instead of storing or clearing', () => {
+    const result = ProfileUpdateSchema.safeParse({ Mobile_Phone: 'ZZTEST-abc' });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues[0].path).toEqual(['Mobile_Phone']);
+  });
+
+  it('treats an empty string as an explicit clear', () => {
+    const result = ProfileUpdateSchema.safeParse({ Company_Phone: '  ' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.Company_Phone).toBeNull();
+  });
+
+  it('accepts and trims a formatted number', () => {
+    const result = ProfileUpdateSchema.safeParse({ Mobile_Phone: ' 321-794-1376 ' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.Mobile_Phone).toBe('321-794-1376');
+  });
+});

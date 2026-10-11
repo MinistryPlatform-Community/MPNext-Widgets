@@ -52,6 +52,7 @@ export const ptBRPeople = {
     fixHighlighted: "Corrija os campos destacados.",
     householdSaved: "A família foi salva com sucesso.",
     memberSaved: "O membro foi salvo com sucesso.",
+    signInPrompt: "Entre para ver os dados da sua família.",
   },
 
   profile: {
@@ -69,7 +70,6 @@ export const ptBRPeople = {
     orgFallback: "nossa organização",
     smsRates:
       "Podem ser aplicadas tarifas de mensagens e dados. A frequência das mensagens varia e você pode cancelar o recebimento quando quiser.",
-    bulkEmailOptOut: "Não quero receber e-mails em massa",
     saveProfile: "Salvar o perfil",
     saved: "O perfil foi salvo com sucesso.",
     changePassword: "Alterar a senha",
@@ -84,6 +84,7 @@ export const ptBRPeople = {
     // an attribute-adjacent context by the validation layer.
     firstNameOnly: "Digite apenas o seu primeiro nome (sem «&» nem «and»)",
     phoneFormat: "Use o formato: 999-999-9999",
+    signInPrompt: "Entre para ver seu perfil.",
   },
 
   onlineDirectory: {

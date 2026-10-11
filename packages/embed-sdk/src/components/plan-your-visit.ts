@@ -2,9 +2,13 @@ import { MPNextWidget } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
-  requiredStar,
+  field,
+  fieldId,
   FORM_VALIDATION_STYLES,
+  type CustomValidator,
+  type FieldOptions,
 } from "../shared/form-validation";
+import { loadGoogleMaps, attachAddressAutocomplete } from "../shared/google-places";
 
 interface PyvOption {
   id: number;
@@ -18,7 +22,33 @@ interface Config {
   congregations: PyvOption[];
   genders: PyvOption[];
   countries: PyvCountry[];
+  /**
+   * MP's `PhoneMask` (`xxx-xxx-xxxx`). A **display** hint, rendered as the
+   * phone placeholder and never as a `pattern` (C24).
+   */
   phoneMask: string | null;
+  /** MP's `GoogleMapsAPIKey`; the `google-maps-api-key` attribute overrides it (C23). */
+  googleMapsApiKey: string | null;
+}
+
+/** Fewest / most digits a phone number may carry (E.164 caps at 15). */
+const PHONE_MIN_DIGITS = 7;
+const PHONE_MAX_DIGITS = 15;
+
+/**
+ * True when `value` is a plausible phone number: 7-15 digits once separators
+ * (`-`, spaces, parentheses, dots, slashes, a leading `+`) are ignored.
+ *
+ * C24: this widget once used MP's *display* mask `xxx-xxx-xxxx` as an HTML
+ * `pattern` (an anchored regex matching only that literal text), so no real
+ * number validated and the form could not be submitted. Counting digits accepts
+ * every way a person writes their number and still rejects `abc`.
+ */
+export function isPlausiblePhone(value: string): boolean {
+  const v = value.trim();
+  if (!/^\+?[0-9\s().\-/]+$/.test(v)) return false;
+  const digits = v.replace(/\D/g, "").length;
+  return digits >= PHONE_MIN_DIGITS && digits <= PHONE_MAX_DIGITS;
 }
 interface AgeGroup {
   id: number;
@@ -30,9 +60,14 @@ interface VerifyResult {
   lastName: string;
   email: string;
 }
+/**
+ * One child row. `values` mirrors **every** `child-<key>-<field>` control,
+ * keyed by `<field>` (`firstName`, `lastName`, `dob`, `gender`, `ageGroup`),
+ * so a re-render can restore all of it (C82: it once kept only `dob`).
+ */
 interface ChildState {
   key: number;
-  dob: string;
+  values: Record<string, string>;
 }
 
 /**
@@ -48,8 +83,10 @@ interface ChildState {
  *      creates the household + members and sends notification emails.
  *
  * Simplifications relative to legacy (noted inline):
- *  - Address entry is plain fields (no Google Places autocomplete in v1).
- *  - Phone-mask config is fetched but applied only as an input hint.
+ *  - Address Line 1 gets Google Places autocomplete when a Maps key is
+ *    available (attribute, else MP config); manual entry always works (C23).
+ *  - MP's `PhoneMask` is only the phone placeholder; phones validate by digit
+ *    count (`isPlausiblePhone`), never by a `pattern` built from the mask (C24).
  */
 export class PlanYourVisitWidget extends MPNextWidget {
   private loading = true;
@@ -61,7 +98,13 @@ export class PlanYourVisitWidget extends MPNextWidget {
   private verify: VerifyResult | null = null;
   private verifyFailed: string | null = null;
 
-  private config: Config = { congregations: [], genders: [], countries: [], phoneMask: null };
+  private config: Config = {
+    congregations: [],
+    genders: [],
+    countries: [],
+    phoneMask: null,
+    googleMapsApiKey: null,
+  };
   private ageGroups: AgeGroup[] = [];
   private childRows: ChildState[] = [];
   private childSeq = 0;
@@ -72,10 +115,12 @@ export class PlanYourVisitWidget extends MPNextWidget {
       "return-url",
       "verification-email-template-id",
       "church-notification-email-template-id",
+      "user-notification-email-template-id",
       "collect-address",
       "milestone-to-assign-id",
       "milestone-program-id",
       "verify-param-name",
+      "google-maps-api-key",
     ];
   }
 
@@ -86,8 +131,33 @@ export class PlanYourVisitWidget extends MPNextWidget {
     // this widget already paints while it verifies the token.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  /**
+   * Attributes that change what is *rendered or loaded*. C39: this widget had
+   * no `attributeChangedCallback` at all, so a host that set
+   * `collect-address` after insertion never saw the address block. The rest
+   * (`return-url`, the three template ids, the two milestone ids,
+   * `api-host`) are read when used, at submit time, so changing them needs
+   * no reload and costs a visitor nothing they typed.
+   */
+  private static readonly RELOAD_ATTRIBUTES = new Set([
+    "collect-address",
+    "verify-param-name",
+    "google-maps-api-key",
+  ]);
+
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
+    if (oldValue === newValue) return;
+    if (PlanYourVisitWidget.RELOAD_ATTRIBUTES.has(name)) this.reconfigure();
+  }
+
+  protected override reload(): void {
+    this.message = null;
+    void this.init();
   }
 
   // ── Attribute helpers ──
@@ -138,12 +208,11 @@ export class PlanYourVisitWidget extends MPNextWidget {
     } catch (err) {
       this.message = {
         type: "danger",
-        text: err instanceof Error ? err.message : this.t("errors.generic"),
+        text: this.caughtText(err, "errors.generic"),
       };
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -171,6 +240,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
       genders: data.genders || [],
       countries: data.countries || [],
       phoneMask: data.phoneMask ?? null,
+      googleMapsApiKey: data.googleMapsApiKey ?? null,
     };
   }
 
@@ -188,7 +258,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
   }
 
   private selectedCongregationId(): number {
-    const sel = this.root.querySelector<HTMLSelectElement>("#pyv-congregation");
+    const sel = this.root.querySelector<HTMLSelectElement>('[name="congregationId"]');
     if (sel && sel.value) return Number(sel.value);
     return this.config.congregations[0]?.id ?? 0;
   }
@@ -196,7 +266,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
   // ── Step 1: verification email ──
 
   private async submitVerification(form: HTMLFormElement) {
-    if (!validateForm(form).valid) return;
+    if (!validateForm(form, { t: this.t }).valid) return;
     const fd = new FormData(form);
     const payload = {
       firstName: String(fd.get("firstName") || "").trim(),
@@ -223,7 +293,6 @@ export class PlanYourVisitWidget extends MPNextWidget {
         // translated sentence instead.
         this.setMessage("warning", this.t("planYourVisit.accountExists"));
         this.render();
-        this.attachListeners();
         return;
       }
       if (!data.success) {
@@ -241,7 +310,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
     } catch (err) {
       this.setMessage(
         "danger",
-        err instanceof Error ? err.message : this.t("errors.submitFailed")
+        this.caughtText(err, "errors.submitFailed")
       );
     } finally {
       this.setButtonsDisabled(false);
@@ -250,8 +319,15 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   // ── Step 2: visit details ──
 
+  /** Digit-count check on both phones; an empty optional phone passes (C24). */
+  private phoneValidators(): Record<string, CustomValidator> {
+    const check: CustomValidator = (value) =>
+      value.trim() && !isPlausiblePhone(value) ? this.t("validation.phone") : null;
+    return { headMobilePhone: check, spousePhone: check };
+  }
+
   private async submitDetails(form: HTMLFormElement) {
-    if (!validateForm(form).valid) {
+    if (!validateForm(form, { t: this.t, customValidators: this.phoneValidators() }).valid) {
       this.setMessage("warning", this.t("validation.formIncomplete"));
       return;
     }
@@ -263,6 +339,10 @@ export class PlanYourVisitWidget extends MPNextWidget {
     const numOrNull = (k: string): number | null => {
       const v = str(k);
       return v ? Number(v) : null;
+    };
+    const attrNum = (name: string): number | null => {
+      const n = Number((this.getAttribute(name) || "").trim());
+      return Number.isFinite(n) && n > 0 ? n : null;
     };
 
     const spouseFirst = str("spouseFirstName");
@@ -290,10 +370,15 @@ export class PlanYourVisitWidget extends MPNextWidget {
         genderId: numOrNull(`child-${c.key}-gender`),
         ageAndGradeGroup: numOrNull(`child-${c.key}-ageGroup`),
       })),
-      milestoneToAssignId: numOrNull("__milestoneToAssignId"),
-      milestoneProgramId: numOrNull("__milestoneProgramId"),
+      // Read at submit time (C39), not baked into hidden inputs at render.
+      milestoneToAssignId: attrNum("milestone-to-assign-id"),
+      milestoneProgramId: attrNum("milestone-program-id"),
       churchNotificationEmailTemplate:
         this.getAttribute("church-notification-email-template-id") || null,
+      // C63: the visitor's own confirmation. Absent, the server falls back to
+      // the congregation's Plan_A_Visit_Template.
+      userNotificationEmailTemplate:
+        this.getAttribute("user-notification-email-template-id") || null,
     };
 
     if (this.collectAddress) {
@@ -326,7 +411,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
     } catch (err) {
       this.setMessage(
         "danger",
-        err instanceof Error ? err.message : this.t("errors.submitFailed")
+        this.caughtText(err, "errors.submitFailed")
       );
       this.setButtonsDisabled(false);
     }
@@ -339,31 +424,54 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   // ── Children state ──
 
+  /**
+   * Snapshot every rendered child control back into `childRows`, by iterating
+   * the row's controls rather than naming the fields to keep: a field added to
+   * the row later is preserved without touching this method (C82).
+   */
   private syncChildren() {
     for (const c of this.childRows) {
-      const dob = this.root.querySelector<HTMLInputElement>(`[name="child-${c.key}-dob"]`);
-      if (dob) c.dob = dob.value;
+      const prefix = `child-${c.key}-`;
+      this.root
+        .querySelectorAll<HTMLInputElement | HTMLSelectElement>(`#pyv-child-${c.key} [name^="${prefix}"]`)
+        .forEach((el) => {
+          c.values[el.name.slice(prefix.length)] = el.value;
+        });
     }
   }
 
+  /**
+   * Add a child by **appending** its row. Existing rows are never re-rendered,
+   * so nothing a visitor typed into them can be lost (C82).
+   */
   private addChild() {
-    this.syncChildren();
-    this.childRows.push({ key: this.childSeq++, dob: "" });
-    this.renderChildren();
+    const row: ChildState = { key: this.childSeq++, values: {} };
+    this.childRows.push(row);
+    const container = this.root.querySelector<HTMLElement>("#pyv-children");
+    if (!container) return;
+    container.insertAdjacentHTML("beforeend", this.renderChild(row));
+    this.root.querySelector<HTMLElement>(`[name="child-${row.key}-firstName"]`)?.focus();
   }
 
+  /** Remove one child's row node; the others are untouched (C82). */
   private deleteChild(key: number) {
     this.syncChildren();
     this.childRows = this.childRows.filter((c) => c.key !== key);
-    this.renderChildren();
+    this.root.querySelector(`#pyv-child-${key}`)?.remove();
+    this.root.querySelector<HTMLElement>('[data-action="add-child"]')?.focus();
   }
 
-  /** Re-render just the children container (preserves the rest of the form). */
-  private renderChildren() {
-    const container = this.root.querySelector<HTMLElement>("#pyv-children");
-    if (!container) return;
-    container.innerHTML = this.childRows.map((c) => this.renderChild(c)).join("");
-    this.attachChildListeners();
+  /**
+   * Congregation changed, so the age/grade groups did: rebuild each child's
+   * group `<select>` options in place, keeping its selection when the group is
+   * still offered. No row is re-rendered.
+   */
+  private refreshAgeGroupSelects() {
+    this.syncChildren();
+    for (const c of this.childRows) {
+      const sel = this.root.querySelector<HTMLSelectElement>(`[name="child-${c.key}-ageGroup"]`);
+      if (sel) sel.innerHTML = this.ageGroupOptions(c.values.dob ?? "", c.values.ageGroup ?? "");
+    }
   }
 
   // ── Listeners ──
@@ -374,7 +482,7 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
     const verForm = this.root.querySelector<HTMLFormElement>("#pyv-verify-form");
     if (verForm) {
-      bindLiveValidation(verForm);
+      bindLiveValidation(verForm, { t: this.t });
       verForm.addEventListener("submit", (e) => {
         e.preventDefault();
         this.submitVerification(verForm);
@@ -383,17 +491,18 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
     const detForm = this.root.querySelector<HTMLFormElement>("#pyv-details-form");
     if (detForm) {
-      bindLiveValidation(detForm);
+      bindLiveValidation(detForm, { t: this.t, customValidators: this.phoneValidators() });
       detForm.addEventListener("submit", (e) => {
         e.preventDefault();
         this.submitDetails(detForm);
       });
+      void this.initAddressAutocomplete();
 
-      const cong = this.root.querySelector<HTMLSelectElement>("#pyv-congregation");
+      const cong = this.root.querySelector<HTMLSelectElement>('[name="congregationId"]');
       if (cong) {
         cong.addEventListener("change", async () => {
           await this.loadAgeGroups(Number(cong.value) || 0);
-          this.renderChildren();
+          this.refreshAgeGroupSelects();
         });
       }
 
@@ -408,20 +517,26 @@ export class PlanYourVisitWidget extends MPNextWidget {
     }
   }
 
+  /**
+   * Delegated once on the children container, so rows appended later need no
+   * binding of their own (and existing rows are never bound twice).
+   */
   private attachChildListeners() {
-    this.root.querySelectorAll<HTMLElement>('[data-action="remove-child"]').forEach((el) => {
-      el.addEventListener("click", (e) => {
-        e.preventDefault();
-        this.deleteChild(Number(el.getAttribute("data-child-key")));
-      });
+    const container = this.root.querySelector<HTMLElement>("#pyv-children");
+    if (!container) return;
+    container.addEventListener("click", (e) => {
+      const btn = (e.target as Element | null)?.closest<HTMLElement>('[data-action="remove-child"]');
+      if (!btn) return;
+      e.preventDefault();
+      this.deleteChild(Number(btn.getAttribute("data-child-key")));
     });
     // Re-sort a child's age/grade options when its DOB changes.
-    this.root.querySelectorAll<HTMLInputElement>('[data-role="child-dob"]').forEach((el) => {
-      el.addEventListener("change", () => {
-        const key = Number(el.getAttribute("data-child-key"));
-        const sel = this.root.querySelector<HTMLSelectElement>(`[name="child-${key}-ageGroup"]`);
-        if (sel) sel.innerHTML = this.ageGroupOptions(el.value);
-      });
+    container.addEventListener("change", (e) => {
+      const el = e.target as HTMLInputElement | null;
+      if (!el || el.getAttribute("data-role") !== "child-dob") return;
+      const key = Number(el.getAttribute("data-child-key"));
+      const sel = this.root.querySelector<HTMLSelectElement>(`[name="child-${key}-ageGroup"]`);
+      if (sel) sel.innerHTML = this.ageGroupOptions(el.value, sel.value);
     });
   }
 
@@ -439,13 +554,26 @@ export class PlanYourVisitWidget extends MPNextWidget {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
     } else {
       this.render();
-      this.attachListeners();
     }
   }
 
   // ── Render ──
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
+    // A full repaint rebuilds the child rows from `childRows`; snapshot them
+    // first so a repaint can never cost a visitor what they typed (C82).
+    this.syncChildren();
     if (this.loading) {
       this.root.innerHTML = `<div class="pyv">${this.stateBlock(this.spinnerSvg(), this.t("common.loading"))}</div>`;
       return;
@@ -471,10 +599,10 @@ export class PlanYourVisitWidget extends MPNextWidget {
       <p class="pyv-lead">${this.escapeHtml(this.t("planYourVisit.lead"))}</p>
       <form id="pyv-verify-form" class="pyv-form" novalidate>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="pyv-input" name="firstName" required></div>
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="pyv-input" name="lastName" required></div>
+          ${this.pf({ name: "firstName", label: this.t("fields.firstName"), required: true, autocomplete: "given-name" })}
+          ${this.pf({ name: "lastName", label: this.t("fields.lastName"), required: true, autocomplete: "family-name" })}
         </div>
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="pyv-input" type="email" name="email" required></div>
+        ${this.pf({ name: "email", label: this.t("fields.email"), type: "email", required: true, autocomplete: "email" })}
         <div class="pyv-actions">
           <button type="submit" class="pyv-btn pyv-btn--primary pyv-submit">${this.escapeHtml(this.t("planYourVisit.sendVerification"))}</button>
         </div>
@@ -500,32 +628,26 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   private renderDetailsForm(): string {
     const v = this.verify!;
-    const congOptions = this.config.congregations
-      .map((c) => `<option value="${c.id}">${this.escapeHtml(c.name)}</option>`)
-      .join("");
+    const congOptions = [{ value: "", label: this.t("planYourVisit.selectCongregation") }].concat(
+      this.config.congregations.map((c) => ({ value: String(c.id), label: c.name }))
+    );
 
     return `
       <h2 class="pyv-title">${this.escapeHtml(this.t("planYourVisit.title"))}</h2>
       <p class="pyv-lead">${this.escapeHtml(this.t("planYourVisit.detailsLead"))}</p>
       <form id="pyv-details-form" class="pyv-form" novalidate>
         <h3 class="pyv-section">${this.escapeHtml(this.t("planYourVisit.visitDetails"))}</h3>
-        <div class="pyv-field">
-          <label for="pyv-congregation">${this.escapeHtml(this.t("fields.congregation"))}${requiredStar()}</label>
-          <select id="pyv-congregation" class="pyv-input" name="congregationId" required>
-            <option value="">${this.escapeHtml(this.t("planYourVisit.selectCongregation"))}</option>
-            ${congOptions}
-          </select>
-        </div>
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("planYourVisit.whenCanWeExpectYou"))}${requiredStar()}</label><input class="pyv-input" name="whenCanWeExpectYou" required></div>
+        ${this.pf({ name: "congregationId", label: this.t("fields.congregation"), type: "select", required: true, options: congOptions })}
+        ${this.pf({ name: "whenCanWeExpectYou", label: this.t("planYourVisit.whenCanWeExpectYou"), required: true })}
 
         <h3 class="pyv-section">${this.escapeHtml(this.t("planYourVisit.yourDetails"))}</h3>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="pyv-input" name="headFirstName" value="${this.escapeAttr(v.firstName || "")}" required></div>
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="pyv-input" name="headLastName" value="${this.escapeAttr(v.lastName || "")}" required></div>
+          ${this.pf({ name: "headFirstName", label: this.t("fields.firstName"), required: true, autocomplete: "given-name", value: v.firstName || "" })}
+          ${this.pf({ name: "headLastName", label: this.t("fields.lastName"), required: true, autocomplete: "family-name", value: v.lastName || "" })}
         </div>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.email"))}</label><input class="pyv-input pyv-readonly" type="email" value="${this.escapeAttr(v.email || "")}" readonly></div>
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}${requiredStar()}</label><input class="pyv-input" type="tel" name="headMobilePhone" ${this.phonePattern()} required></div>
+          ${this.pf({ name: "headEmail", label: this.t("fields.email"), type: "email", value: v.email || "", inputClass: "pyv-input pyv-readonly", attrs: { readonly: true } })}
+          ${this.phoneField("headMobilePhone", true)}
         </div>
         ${this.renderAddress()}
 
@@ -534,7 +656,6 @@ export class PlanYourVisitWidget extends MPNextWidget {
         <div id="pyv-children">${this.childRows.map((c) => this.renderChild(c)).join("")}</div>
         <div class="pyv-add-child"><button type="button" class="pyv-link" data-action="add-child">+ ${this.escapeHtml(this.t("planYourVisit.addChild"))}</button></div>
 
-        ${this.hiddenMilestones()}
         <div class="pyv-actions">
           <button type="submit" class="pyv-btn pyv-btn--primary pyv-submit">${this.escapeHtml(this.t("common.submit"))}</button>
         </div>
@@ -545,43 +666,52 @@ export class PlanYourVisitWidget extends MPNextWidget {
     return `
       <fieldset class="pyv-fieldset">
         <legend>${this.escapeHtml(this.t("planYourVisit.spouse"))}</legend>
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.firstName"))}</label><input class="pyv-input" name="spouseFirstName"></div>
+        ${this.pf({ name: "spouseFirstName", label: this.t("fields.firstName") })}
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.email"))}</label><input class="pyv-input" type="email" name="spouseEmail"></div>
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}</label><input class="pyv-input" type="tel" name="spousePhone" ${this.phonePattern()}></div>
+          ${this.pf({ name: "spouseEmail", label: this.t("fields.email"), type: "email" })}
+          ${this.phoneField("spousePhone", false)}
         </div>
       </fieldset>`;
   }
 
   private renderChild(c: ChildState): string {
+    const v = c.values;
+    const name = (f: string) => `child-${c.key}-${f}`;
     // The gender and age/grade *values* come from MP and stay as MP supplies
     // them; the empty first option is the widget's own placeholder.
-    const genderOptions = [
-      `<option value="">${this.escapeHtml(this.t("fields.gender"))}</option>`,
-    ]
-      .concat(this.config.genders.map((g) => `<option value="${g.id}">${this.escapeHtml(g.name)}</option>`))
-      .join("");
+    const genderOptions = [{ value: "", label: this.t("fields.gender") }].concat(
+      this.config.genders.map((g) => ({ value: String(g.id), label: g.name }))
+    );
     return `
       <fieldset class="pyv-fieldset" id="pyv-child-${c.key}">
         <legend>${this.escapeHtml(this.t("planYourVisit.child"))} <button type="button" class="pyv-remove" data-action="remove-child" data-child-key="${c.key}" aria-label="${this.escapeAttr(this.t("planYourVisit.removeChild"))}">&times;</button></legend>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="pyv-input" name="child-${c.key}-firstName" required></div>
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="pyv-input" name="child-${c.key}-lastName" value="${this.escapeAttr(this.verify?.lastName || "")}" required></div>
+          ${this.pf({ name: name("firstName"), label: this.t("fields.firstName"), required: true, value: v.firstName })}
+          ${this.pf({ name: name("lastName"), label: this.t("fields.lastName"), required: true, value: v.lastName ?? this.verify?.lastName ?? "" })}
         </div>
         <div class="pyv-grid2">
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.dateOfBirth"))}${requiredStar()}</label><input class="pyv-input" type="date" name="child-${c.key}-dob" data-role="child-dob" data-child-key="${c.key}" value="${this.escapeAttr(c.dob || "")}" required></div>
-          <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.gender"))}</label><select class="pyv-input" name="child-${c.key}-gender">${genderOptions}</select></div>
+          ${this.pf({ name: name("dob"), label: this.t("fields.dateOfBirth"), type: "date", required: true, value: v.dob, attrs: { "data-role": "child-dob", "data-child-key": c.key } })}
+          ${this.pf({ name: name("gender"), label: this.t("fields.gender"), type: "select", value: v.gender ?? "", options: genderOptions })}
         </div>
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("planYourVisit.ageOrGradeGroup"))}</label><select class="pyv-input" name="child-${c.key}-ageGroup">${this.ageGroupOptions(c.dob)}</select></div>
+        <div class="pyv-field" data-mpx-field>
+          <label for="${fieldId(name("ageGroup"), this.instanceId)}">${this.escapeHtml(this.t("planYourVisit.ageOrGradeGroup"))}</label>
+          <select id="${fieldId(name("ageGroup"), this.instanceId)}" class="pyv-input" name="${name("ageGroup")}">${this.ageGroupOptions(v.dob ?? "", v.ageGroup ?? "")}</select>
+        </div>
       </fieldset>`;
   }
 
-  private ageGroupOptions(dob: string): string {
+  /** Age/grade `<option>`s, nearest to the child's age first, keeping `selected`. */
+  private ageGroupOptions(dob: string, selected = ""): string {
     const groups = dob ? this.sortAgeGroups([...this.ageGroups], dob) : this.ageGroups;
     return [
       `<option value="">${this.escapeHtml(this.t("planYourVisit.selectGroup"))}</option>`,
     ]
-      .concat(groups.map((g) => `<option value="${g.id}">${this.escapeHtml(g.value)}</option>`))
+      .concat(
+        groups.map(
+          (g) =>
+            `<option value="${g.id}"${String(g.id) === selected ? " selected" : ""}>${this.escapeHtml(g.value)}</option>`
+        )
+      )
       .join("");
   }
 
@@ -603,40 +733,94 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   private renderAddress(): string {
     if (!this.collectAddress) return "";
-    const countryOptions = [
-      `<option value="">${this.escapeHtml(this.t("fields.country"))}</option>`,
-    ]
-      .concat(
-        this.config.countries.map(
-          (c) =>
-            `<option value="${this.escapeAttr(c.code)}" ${/united states/i.test(c.name) ? "selected" : ""}>${this.escapeHtml(c.name)}</option>`
-        )
-      )
-      .join("");
+    // Default to the United States entry, chosen once: a name regex alone also
+    // marks "United States Minor Outlying Islands" selected, and the browser
+    // then keeps the *last* selected option.
+    const countries = this.config.countries;
+    const us =
+      countries.find((c) => c.code.toUpperCase() === "US") ??
+      countries.find((c) => /^united states/i.test(c.name));
+    const countryOptions = [{ value: "", label: this.t("fields.country") }].concat(
+      countries.map((c) => ({ value: c.code, label: c.name }))
+    );
     return `
       <h3 class="pyv-section">${this.escapeHtml(this.t("fields.address"))}</h3>
-      <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.address"))}${requiredStar()}</label><input class="pyv-input" name="addressLine1" required></div>
+      ${this.pf({ name: "addressLine1", label: this.t("fields.address"), required: true, autocomplete: "address-line1" })}
       <div class="pyv-grid2">
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.city"))}${requiredStar()}</label><input class="pyv-input" name="addressCity" required></div>
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("planYourVisit.stateProvince"))}${requiredStar()}</label><input class="pyv-input" name="addressState" required></div>
+        ${this.pf({ name: "addressCity", label: this.t("fields.city"), required: true, autocomplete: "address-level2" })}
+        ${this.pf({ name: "addressState", label: this.t("planYourVisit.stateProvince"), required: true, autocomplete: "address-level1" })}
       </div>
       <div class="pyv-grid2">
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("planYourVisit.zipPostalCode"))}${requiredStar()}</label><input class="pyv-input" name="addressPostal" required></div>
-        <div class="pyv-field"><label>${this.escapeHtml(this.t("fields.country"))}</label><select class="pyv-input" name="addressCountry">${countryOptions}</select></div>
+        ${this.pf({ name: "addressPostal", label: this.t("planYourVisit.zipPostalCode"), required: true, autocomplete: "postal-code" })}
+        ${this.pf({ name: "addressCountry", label: this.t("fields.country"), type: "select", autocomplete: "country", value: us?.code ?? "", options: countryOptions })}
       </div>`;
   }
 
-  private hiddenMilestones(): string {
-    const milestone = this.getAttribute("milestone-to-assign-id") || "";
-    const program = this.getAttribute("milestone-program-id") || "";
-    return `
-      <input type="hidden" name="__milestoneToAssignId" value="${this.escapeAttr(milestone)}">
-      <input type="hidden" name="__milestoneProgramId" value="${this.escapeAttr(program)}">`;
+  /**
+   * Google Places on Address Line 1 (C23). The key is the widget's
+   * `google-maps-api-key` attribute when set, else MP's `GoogleMapsAPIKey`.
+   *
+   * The attribute exists because an MP key may be restricted (by HTTP
+   * referrer or by API) to the church's MP domain, and then fails on every
+   * embedding site; the church supplies a key restricted to its own site.
+   * Every failure (no key, blocked key, script error) leaves manual entry
+   * exactly as it was: `loadGoogleMaps` resolves `false`, and nothing here
+   * touches the inputs until a place is actually chosen.
+   */
+  private async initAddressAutocomplete(): Promise<void> {
+    if (!this.collectAddress) return;
+    const key = (this.getAttribute("google-maps-api-key") || this.config.googleMapsApiKey || "").trim();
+    if (!key) return;
+    const line1 = this.root.querySelector<HTMLInputElement>('[name="addressLine1"]');
+    if (!line1) return;
+
+    let loaded = false;
+    try {
+      loaded = await loadGoogleMaps(key);
+    } catch {
+      loaded = false;
+    }
+    // The form may have been re-rendered while the script loaded.
+    if (!loaded || !line1.isConnected) return;
+
+    attachAddressAutocomplete(line1, (addr) => {
+      const set = (name: string, value: string) => {
+        const el = this.root.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${name}"]`);
+        if (!el || !value) return;
+        if (el instanceof HTMLSelectElement && !Array.from(el.options).some((o) => o.value === value)) return;
+        el.value = value;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      set("addressLine1", addr.line1);
+      set("addressCity", addr.city);
+      set("addressState", addr.state);
+      set("addressPostal", addr.postalCode);
+      set("addressCountry", addr.countryCode);
+    });
   }
 
-  private phonePattern(): string {
-    const mask = this.config.phoneMask;
-    return mask ? `pattern="${this.escapeAttr(mask)}"` : "";
+  /** `field()` with this widget's id prefix and classes (C28). */
+  private pf(opts: FieldOptions): string {
+    return field({ idPrefix: this.instanceId, wrapperClass: "pyv-field", inputClass: "pyv-input", ...opts });
+  }
+
+
+  /**
+   * A phone control: `type="tel"` (keypad, `autocomplete="tel"`) with MP's
+   * display mask as the placeholder only. **Never a `pattern`**: see
+   * `isPlausiblePhone` and C24.
+   */
+  private phoneField(name: string, required: boolean): string {
+    return field({
+      name,
+      label: this.t("fields.mobilePhone"),
+      type: "tel",
+      required,
+      placeholder: this.config.phoneMask || undefined,
+      idPrefix: this.instanceId,
+      wrapperClass: "pyv-field",
+      inputClass: "pyv-input",
+    });
   }
 
   private stateBlock(icon: string, text: string): string {
@@ -663,45 +847,45 @@ export class PlanYourVisitWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .pyv { max-width: 640px; margin: 0 auto; }
-      .pyv-title { font-size: 24px; font-weight: 800; color: #002855; margin: 0 0 6px; }
-      .pyv-lead { font-size: 15px; color: #474747; margin: 0 0 18px; line-height: 1.5; }
-      .pyv-section { font-size: 15px; font-weight: 700; color: #002855; margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #e5e7eb; }
+      .pyv-title { font-size: 24px; font-weight: 800; color: var(--_nw-color-secondary); margin: 0 0 6px; }
+      .pyv-lead { font-size: 15px; color: var(--_nw-color-text-subtle); margin: 0 0 18px; line-height: var(--_nw-line-height); }
+      .pyv-section { font-size: 15px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: var(--_nw-space-5) 0 10px; padding-bottom: 6px; border-bottom: var(--_nw-border-width) solid var(--_nw-color-border); }
 
-      .pyv-message { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
+      .pyv-message { padding: var(--_nw-space-3) var(--_nw-space-4); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); margin-bottom: var(--_nw-space-4); }
       .pyv-message--success { background: #ecf6e0; color: #4d6b1f; }
       .pyv-message--warning { background: #fdf6e3; color: #8a6d3b; }
       .pyv-message--info { background: #e6f6fc; color: #015a7a; }
-      .pyv-message--danger { background: #ffe9e9; color: #b91c1c; }
+      .pyv-message--danger { background: #ffe9e9; color: var(--_nw-color-error-text); }
 
-      .pyv-form { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      .pyv-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-      .pyv-field label { font-size: 13px; font-weight: 600; color: #6b7280; }
-      .pyv-input { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; background: white; outline: none; }
-      .pyv-input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
-      .pyv-readonly { background: #f3f4f6; color: #6b7280; }
-      .pyv-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .pyv-form { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-5); box-shadow: var(--_nw-shadow); }
+      .pyv-field { display: flex; flex-direction: column; gap: var(--_nw-space-1); margin-bottom: var(--_nw-space-3); }
+      .pyv-field label { font-size: 13px; font-weight: 600; color: var(--_nw-color-muted); }
+      .pyv-input { padding: 9px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); background: var(--_nw-color-surface); outline: none; }
+      .pyv-input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
+      .pyv-readonly { background: var(--_nw-color-surface-muted); color: var(--_nw-color-muted); }
+      .pyv-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--_nw-space-3); }
 
-      .pyv-fieldset { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px 4px; margin: 0 0 12px; }
-      .pyv-fieldset legend { font-size: 13px; font-weight: 700; color: #002855; padding: 0 6px; display: flex; align-items: center; gap: 8px; }
-      .pyv-remove { background: none; border: none; color: #FF6D6A; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px; }
+      .pyv-fieldset { border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius); padding: var(--_nw-space-3) var(--_nw-space-4) var(--_nw-space-1); margin: 0 0 var(--_nw-space-3); }
+      .pyv-fieldset legend { font-size: 13px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); padding: 0 6px; display: flex; align-items: center; gap: var(--_nw-space-2); }
+      .pyv-remove { background: none; border: none; color: var(--_nw-color-error); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 var(--_nw-space-1); }
 
-      .pyv-add-child { margin-bottom: 12px; }
-      .pyv-link { background: none; border: none; color: #004C97; font-weight: 600; font-size: 14px; cursor: pointer; font-family: inherit; padding: 0; }
+      .pyv-add-child { margin-bottom: var(--_nw-space-3); }
+      .pyv-link { background: none; border: none; color: var(--_nw-color-primary); font-weight: 600; font-size: var(--_nw-font-size-base); cursor: pointer; font-family: inherit; padding: 0; }
       .pyv-link:hover { text-decoration: underline; }
 
-      .pyv-actions { margin-top: 8px; }
-      .pyv-signin { margin-top: 12px; }
-      .pyv-btn { padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
-      .pyv-btn--primary { background: #004C97; color: white; }
-      .pyv-btn--primary:hover { background: #002855; }
-      .pyv-btn--ghost { background: white; color: #004C97; border: 1px solid #004C97; }
+      .pyv-actions { margin-top: var(--_nw-space-2); }
+      .pyv-signin { margin-top: var(--_nw-space-3); }
+      .pyv-btn { padding: 10px 18px; border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
+      .pyv-btn--primary { background: var(--_nw-button-bg); color: var(--_nw-button-fg); border-radius: var(--_nw-button-radius); }
+      .pyv-btn--primary:hover { background: var(--_nw-button-bg-hover); }
+      .pyv-btn--ghost { background: var(--_nw-color-surface); color: var(--_nw-color-primary); border: var(--_nw-border-width) solid var(--_nw-color-primary); }
       .pyv-btn--ghost:hover { background: #f0f6fc; }
       .pyv-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-      .pyv-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; font-size: 15px; }
-      .pyv-spinner { animation: pyv-spin 1s linear infinite; color: #004C97; }
+      .pyv-state { display: flex; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 48px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; }
+      .pyv-spinner { animation: pyv-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes pyv-spin { to { transform: rotate(360deg); } }
 
       @media (max-width: 640px) { .pyv-grid2 { grid-template-columns: 1fr; } }

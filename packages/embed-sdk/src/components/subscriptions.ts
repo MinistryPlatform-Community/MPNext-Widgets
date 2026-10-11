@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 
 interface SubscriptionItem {
   Publication_ID: number;
@@ -12,21 +12,61 @@ interface SubscriptionItem {
 const SEARCH_THRESHOLD = 6;
 
 export class SubscriptionsWidget extends MPNextWidget {
+  /**
+   * C61: `congregation-id` scopes the publication list (legacy `congregationid`,
+   * its one supported option). An attribute for the embedding page, not a
+   * visitor-facing campus dropdown.
+   */
+  static get observedAttributes() {
+    return ["congregation-id"];
+  }
+
+  /** A positive integer, or null (unscoped). Anything else is ignored. */
+  private get congregationId(): number | null {
+    const raw = (this.readAttr("congregation-id") ?? "").trim();
+    if (!/^\d+$/.test(raw)) return null;
+    const n = Number(raw);
+    return n > 0 ? n : null;
+  }
+
   private items: SubscriptionItem[] = [];
   private loading = true;
+  /** Signed out: a prompt with Sign In, never "Unable to Load" + Try Again (C53). */
+  private needsAuth = false;
   private error: string | null = null;
   private savingIds = new Set<number>();
   private message: { type: "success" | "error"; text: string } | null = null;
   private searchQuery = "";
+  /**
+   * C55: `Contacts.Bulk_Email_Opt_Out`, or null when the server did not send it
+   * (the toggle is then not drawn rather than guessed).
+   */
+  private bulkEmailOptOut: boolean | null = null;
+  private savingBulk = false;
+  /** Keeps a `next-profile` on the same page from showing stale state (C55). */
+  private onProfileSaved = (e: Event) => {
+    const value = (e as CustomEvent).detail?.Bulk_Email_Opt_Out;
+    if (typeof value !== "boolean" || value === this.bulkEmailOptOut || this.loading) return;
+    this.bulkEmailOptOut = value;
+    this.render();
+  };
 
   connectedCallback() {
-    this.injectStyles(this.getStyles());
+    // The shared sign-in sheet goes first so this widget's own button classes win.
+    this.injectStyles(SIGN_IN_REQUIRED_STYLES + this.getStyles());
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.loadSubscriptions();
     });
+    document.addEventListener("profileSaved", this.onProfileSaved);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    document.removeEventListener("profileSaved", this.onProfileSaved);
   }
 
   public retryLoad() {
@@ -34,27 +74,46 @@ export class SubscriptionsWidget extends MPNextWidget {
     this.loadSubscriptions();
   }
 
+  /** C39: a late or changed `congregation-id` re-scopes the list. */
+  protected override reload(): void {
+    this.items = [];
+    this.message = null;
+    this.searchQuery = "";
+    this.loadSubscriptions();
+  }
+
   private async loadSubscriptions() {
     this.loading = true;
+    this.needsAuth = false;
     this.error = null;
     this.render();
 
     try {
-      const res = await this.fetch("/api/embed/subscriptions");
+      const congregationId = this.congregationId;
+      const res = await this.fetch(
+        congregationId === null
+          ? "/api/embed/subscriptions"
+          : `/api/embed/subscriptions?congregationId=${congregationId}`
+      );
+      if (this.isNeedsAuth(res)) {
+        this.needsAuth = true;
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
-      const data: { subscriptions: SubscriptionItem[] } = await res.json();
+      const data: { subscriptions: SubscriptionItem[]; bulkEmailOptOut?: boolean } = await res.json();
       this.items = data.subscriptions || [];
+      this.bulkEmailOptOut =
+        typeof data.bulkEmailOptOut === "boolean" ? data.bulkEmailOptOut : null;
       this.emit("subscriptionsLoaded", { count: this.items.length });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("subscriptionError", { error: this.error });
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -70,7 +129,6 @@ export class SubscriptionsWidget extends MPNextWidget {
     this.savingIds.add(pubId);
     this.message = null;
     this.render();
-    this.attachListeners();
 
     try {
       // The endpoint is idempotent and diffs against existing state, so we send
@@ -82,16 +140,18 @@ export class SubscriptionsWidget extends MPNextWidget {
       const res = await this.fetch("/api/embed/subscriptions", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subscribedIds }),
+        // The same scope the list was read with, so the server diffs against
+        // the publications this page showed and nothing else (C61).
+        body: JSON.stringify({ subscribedIds, congregationId: this.congregationId }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
       const data: { success: boolean; error?: string } = await res.json();
       if (!data.success) {
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
 
       // The publication title is MP-authored, so only the sentence around it
@@ -112,16 +172,58 @@ export class SubscriptionsWidget extends MPNextWidget {
         type: "error",
         text: this.t("subscriptions.updateFailed"),
       };
-      const errText = err instanceof Error ? err.message : this.t("errors.network");
+      const errText = this.caughtText(err, "errors.network");
       this.emit("subscriptionError", { error: errText });
     } finally {
       this.savingIds.delete(pubId);
       this.render();
-      this.attachListeners();
+    }
+  }
+
+  /**
+   * C55. Saved per toggle like a publication, with no submit button. The
+   * control is phrased positively ("Send me general church emails"), so
+   * checked means *not* opted out.
+   */
+  private async toggleBulkEmail(sendEmail: boolean) {
+    if (this.savingBulk || this.bulkEmailOptOut === null) return;
+    const previous = this.bulkEmailOptOut;
+    const optOut = !sendEmail;
+    this.bulkEmailOptOut = optOut;
+    this.savingBulk = true;
+    this.message = null;
+    this.render();
+
+    try {
+      const res = await this.fetch("/api/embed/subscriptions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bulkEmailOptOut: optOut }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
+      }
+      this.message = {
+        type: "success",
+        text: this.t(optOut ? "subscriptions.bulkEmailOff" : "subscriptions.bulkEmailOn"),
+      };
+      this.emit("bulkEmailChanged", { bulkEmailOptOut: optOut });
+    } catch (err) {
+      this.bulkEmailOptOut = previous;
+      this.message = { type: "error", text: this.t("subscriptions.updateFailed") };
+      const errText = this.caughtText(err, "errors.network");
+      this.emit("subscriptionError", { error: errText });
+    } finally {
+      this.savingBulk = false;
+      this.render();
     }
   }
 
   private attachListeners() {
+    const bulk = this.root.querySelector<HTMLInputElement>("#sub-bulk-email");
+    if (bulk) bulk.addEventListener("change", () => void this.toggleBulkEmail(bulk.checked));
+
     const retryBtn = this.root.querySelector('[data-action="retry"]');
     if (retryBtn) {
       retryBtn.addEventListener("click", () => this.retryLoad());
@@ -132,7 +234,6 @@ export class SubscriptionsWidget extends MPNextWidget {
       searchInput.addEventListener("input", () => {
         this.searchQuery = searchInput.value;
         this.render();
-        this.attachListeners();
         const newInput = this.root.querySelector<HTMLInputElement>("#sub-search");
         if (newInput) {
           newInput.focus();
@@ -150,7 +251,18 @@ export class SubscriptionsWidget extends MPNextWidget {
     });
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `
         <div class="nw-subscriptions">
@@ -160,6 +272,21 @@ export class SubscriptionsWidget extends MPNextWidget {
               <span>${this.escapeHtml(this.t("subscriptions.loading"))}</span>
             </div>
           </div>
+        </div>`;
+      return;
+    }
+
+    if (this.needsAuth) {
+      this.root.innerHTML = `
+        <div class="nw-subscriptions">
+          <div class="header">
+            <div class="title">${this.escapeHtml(this.t("subscriptions.title"))}</div>
+          </div>
+          <div class="body">${this.renderSignInRequired({
+            subject: "subscriptions",
+            message: this.t("subscriptions.signInPrompt"),
+            buttonClass: "retry-btn",
+          })}</div>
         </div>`;
       return;
     }
@@ -213,7 +340,27 @@ export class SubscriptionsWidget extends MPNextWidget {
               </div>`
             : ""}
           ${list}
+          ${this.renderBulkEmail()}
         </div>
+      </div>`;
+  }
+
+  /** Below the list and visually apart: it is global, not another publication. */
+  private renderBulkEmail(): string {
+    if (this.bulkEmailOptOut === null) return "";
+    return `
+      <div class="bulk">
+        <div class="bulk-title">${this.escapeHtml(this.t("subscriptions.bulkEmailTitle"))}</div>
+        <label class="sub-row bulk-row">
+          <input type="checkbox" class="sub-check" id="sub-bulk-email"
+            ${this.bulkEmailOptOut ? "" : "checked"} ${this.savingBulk ? "disabled" : ""}
+            aria-describedby="sub-bulk-hint">
+          <span class="sub-text">
+            <span class="sub-title">${this.escapeHtml(this.t("subscriptions.sendBulkEmail"))}</span>
+            <span class="sub-desc" id="sub-bulk-hint">${this.escapeHtml(this.t("subscriptions.bulkEmailHint"))}</span>
+          </span>
+          ${this.savingBulk ? `<span class="sub-saving">${this.spinnerSvg()}</span>` : ""}
+        </label>
       </div>`;
   }
 
@@ -267,40 +414,40 @@ export class SubscriptionsWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-subscriptions {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
+        background: var(--_nw-color-surface);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .header {
-        background: #002855;
-        color: white;
-        padding: 24px;
+        background: var(--_nw-color-secondary);
+        color: var(--_nw-color-on-primary);
+        padding: var(--_nw-space-6);
       }
       .title {
         font-size: 24px;
         font-weight: bold;
         text-align: center;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
       }
       .subtitle {
         text-align: center;
         opacity: 0.8;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         margin: 0;
       }
       .loading-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         font-size: 18px;
       }
 
@@ -314,36 +461,36 @@ export class SubscriptionsWidget extends MPNextWidget {
       }
 
       .body {
-        padding: 20px;
+        padding: var(--_nw-space-5);
       }
 
       .search-bar {
-        margin-bottom: 16px;
+        margin-bottom: var(--_nw-space-4);
       }
       .search-bar input {
         width: 100%;
         padding: 10px 14px;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        font-size: 14px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
         font-family: inherit;
         outline: none;
         transition: border-color 0.15s;
       }
       .search-bar input:focus {
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
       }
 
       .sub-list {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
         overflow: hidden;
       }
       .sub-row {
         display: flex;
         align-items: center;
         gap: 14px;
-        padding: 16px;
+        padding: var(--_nw-space-4);
         border-bottom: 1px solid #f3f4f6;
         cursor: pointer;
         transition: background 0.15s;
@@ -358,7 +505,7 @@ export class SubscriptionsWidget extends MPNextWidget {
         width: 24px;
         height: 24px;
         flex-shrink: 0;
-        accent-color: #004C97;
+        accent-color: var(--_nw-color-primary);
         cursor: pointer;
         margin: 0;
       }
@@ -376,24 +523,24 @@ export class SubscriptionsWidget extends MPNextWidget {
       .sub-title {
         font-size: 15px;
         font-weight: 600;
-        color: #2D2926;
+        color: var(--_nw-color-text);
       }
       .sub-desc {
         font-size: 13px;
-        color: #6b7280;
+        color: var(--_nw-color-muted);
         line-height: 1.4;
       }
       .sub-saving {
         flex-shrink: 0;
-        color: #004C97;
+        color: var(--_nw-color-primary);
         display: inline-flex;
       }
 
       .message {
-        margin-bottom: 16px;
+        margin-bottom: var(--_nw-space-4);
         padding: 10px 14px;
-        border-radius: 8px;
-        font-size: 14px;
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
       }
       .message--success {
         background: rgba(134, 173, 63, 0.15);
@@ -402,44 +549,62 @@ export class SubscriptionsWidget extends MPNextWidget {
       }
       .message--error {
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
         border: 1px solid rgba(255, 109, 106, 0.4);
+      }
+
+      .bulk {
+        margin-top: var(--_nw-space-6);
+        padding-top: var(--_nw-space-4);
+        border-top: var(--_nw-border-width) solid var(--_nw-color-border);
+      }
+      .bulk-title {
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--_nw-color-muted);
+        margin-bottom: var(--_nw-space-2);
+      }
+      .bulk-row {
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
       }
 
       .empty-state {
         text-align: center;
-        padding: 40px 20px;
+        padding: 40px var(--_nw-space-5);
         color: #9E9E9E;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
       }
 
       .retry-section {
-        padding: 20px;
+        padding: var(--_nw-space-5);
         text-align: center;
       }
       .retry-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .retry-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       @media (max-width: 640px) {
         .header, .body {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .sub-row {
-          padding: 14px 12px;
+          padding: 14px var(--_nw-space-3);
         }
       }
     `;

@@ -2,6 +2,7 @@ import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { MessageTemplateService } from "@/services/messageTemplateService";
+import { ConfigSettingsService } from "@/services/configSettingsService";
 import {
   clean,
   getIdByValue,
@@ -74,7 +75,8 @@ export class PlanYourVisitService {
   // ── Configuration ──
 
   public async getConfigurations(): Promise<PlanYourVisitConfig> {
-    const [congregationRows, genderRows, countryRows, phoneMask] = await Promise.all([
+    const config = await ConfigSettingsService.getInstance();
+    const [congregationRows, genderRows, countryRows, phoneMask, googleMapsApiKey] = await Promise.all([
       this.mp!.getTableRecords<{ Id: number | string; Name: string | null }>({
         table: "Congregations",
         select: "Congregation_ID AS Id, Congregation_Name AS Name",
@@ -94,7 +96,15 @@ export class PlanYourVisitService {
         orderBy: "Country",
         top: 300,
       }),
+      // MP's *display* mask (`xxx-xxx-xxxx`). The widget renders it as a
+      // placeholder only. It is not a validation rule: used as an HTML
+      // `pattern` it matched nothing but its own literal text (C24).
       this.getConfigValue("PhoneMask"),
+      // C23: the same COMMON/GoogleMapsAPIKey custom-form and my-household
+      // already hand to the browser. A `google-maps-api-key` widget attribute
+      // overrides it, for churches whose MP key is restricted to their MP
+      // domain. Null on any failure (the setting read is graceful).
+      config.getGoogleMapsApiKey(),
     ]);
 
     const toOptions = (rows: { Id: number | string; Name: string | null }[]): PyvOption[] =>
@@ -111,6 +121,7 @@ export class PlanYourVisitService {
       genders: toOptions(genderRows),
       countries,
       phoneMask: phoneMask ?? null,
+      googleMapsApiKey: googleMapsApiKey ?? null,
     };
   }
 
@@ -386,7 +397,7 @@ export class PlanYourVisitService {
       // `ContactManager.CreateContact` writes `{"Status", …}` and this service
       // was ported from it faithfully — but MP has no `Status` column on
       // `Contacts`, so the Active id resolved just above was being computed and
-      // then discarded. See `.claude/TODO/Comparison/C83-*`.
+      // then discarded. See comparison finding C83.
       Contact_Status_ID: c.statusId,
       Household_Position_ID: c.positionId,
       Mobile_Phone: c.mobilePhone,
@@ -605,6 +616,21 @@ export class PlanYourVisitService {
     );
   }
 
+  /**
+   * One `dp_Configuration_Settings` value, or null when unset **or unreadable**.
+   *
+   * A failed read is logged and then treated like an unset setting, rather
+   * than thrown. Decided per caller:
+   *  - `PhoneMask` is a placeholder only; the form works without it.
+   *  - `GlobalCongregationID` falls back to 0, so the age/grade list shows the
+   *    visitor's own campus groups without the global ones -- degraded, not
+   *    broken, and throwing would empty the whole list instead.
+   *  - `defaultParticipantType` has no fallback, and `createParticipant`
+   *    already throws on null, so the submission fails loudly either way.
+   * No caller needs "failed" distinguished from "unset" to behave correctly;
+   * what was missing was the evidence, so the log line is the fix (C20 class)
+   * and is what tells "not configured" apart from "MP read failed".
+   */
   private async getConfigValue(keyName: string): Promise<string | null> {
     const rows = await this.mp!
       .getTableRecords<{ Value: string | null }>({
@@ -613,7 +639,13 @@ export class PlanYourVisitService {
         filter: `Key_Name = '${sqlLiteral(keyName)}'`,
         top: 1,
       })
-      .catch(() => [] as { Value: string | null }[]);
+      .catch((err: unknown) => {
+        console.warn(
+          `PlanYourVisitService: dp_Configuration_Settings read for ${keyName} failed; treating it as unset:`,
+          err instanceof Error ? err.message : String(err)
+        );
+        return [] as { Value: string | null }[];
+      });
     return clean(rows[0]?.Value ?? null);
   }
 

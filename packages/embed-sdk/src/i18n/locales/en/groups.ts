@@ -39,7 +39,8 @@ export const groups = {
     afternoon: "Afternoon",
     evening: "Evening",
     loading: "Loading groups…",
-    empty: "No groups found.",
+    /** C18: legacy's meaning — say what to do next — in our voice. */
+    empty: "No groups found. Try different search criteria.",
     /** Shown when the result set was capped rather than exhausted. */
     truncated:
       "Showing the first results — refine your search to narrow them down.",
@@ -92,12 +93,13 @@ export const groups = {
     someoneElse: "Someone else…",
     /** Fallback name for the signed-in contact when MP has no display name. */
     myInfo: "My Info",
-    chooseSignup: "Please choose who is signing up.",
     inquirySent: "Thanks! Your message has been sent to the group.",
     inquirySentNamed: "Thanks, {name}! Your message has been sent to the group.",
     signedUp: "You're signed up! The group leader will be in touch.",
     signedUpNamed:
       "You're signed up, {name}! The group leader will be in touch.",
+    /** Appended to the success sentence when the configured email failed (C11). */
+    emailNotSent: "We could not send the confirmation email, but your request was saved.",
   },
 
   myGroups: {
@@ -116,6 +118,7 @@ export const groups = {
     /** MinistryPlatform product names — intentionally the same in every locale. */
     groupConnect: "Group Connect",
     volunteerConnect: "Volunteer Connect",
+    signInPrompt: "Please sign in to view your groups.",
   },
 
   opportunityFinder: {
@@ -136,9 +139,14 @@ export const groups = {
     attributes: "Attributes",
     loading: "Loading opportunities…",
     empty: "No opportunities found.",
-    featured: "Featured",
-    /** Weekly recurrence around an MP-authored day name ("Mondays"). */
-    everyDay: "{day}s",
+    /**
+     * Weekly recurrence around a weekday the widget localises with `Intl`
+     * ("Every Friday"). Replaces `everyDay: "{day}s"`, a string-append plural
+     * that no other language can copy (C25).
+     */
+    everyWeekday: "Every {day}",
+    /** A dated opportunity with a real start time: "Fri, Dec 31, 2027, 6:00 PM". */
+    dateAtTime: "{date}, {time}",
   },
 
   opportunityDetails: {
@@ -146,8 +154,6 @@ export const groups = {
     backToOpportunities: "Back to opportunities",
     noOpportunitySpecified: "No opportunity specified.",
     ongoing: "Ongoing",
-    /** Weekly recurrence around an MP-authored day name ("Mondays"). */
-    everyDay: "{day}s",
     volunteersNeeded: "Volunteers Needed",
     mapTitle: "Opportunity location map",
     respondTitle: "Respond",
@@ -167,6 +173,8 @@ export const groups = {
     responseFailed: "Unable to save your response.",
     responseReceived: "Thank you! Your response has been received.",
     responseReceivedNamed: "Thank you, {name}! Your response has been received.",
+    /** Weekly recurrence around an `Intl`-localised weekday (C25). */
+    everyWeekday: "Every {day}",
   },
 
   planYourVisit: {
@@ -212,5 +220,13 @@ export const groups = {
     /** Empty first option of an MP dropdown field. */
     selectOption: "-- Select --",
     fileUploadUnsupported: "File uploads are not submitted in this version.",
+    /** The household picker (legacy "Complete Form As", C26). */
+    completeAs: "Who is this form for?",
+    /** Last picker option: file the response against nobody. */
+    someoneElse: "Someone else (blank form)",
+    /** Fallback name for a household member MP has no name for. */
+    myInfo: "Me",
+    /** Under the completion message: who the response was filed against. */
+    submittedFor: "Submitted for {name}.",
   },
 } as const;

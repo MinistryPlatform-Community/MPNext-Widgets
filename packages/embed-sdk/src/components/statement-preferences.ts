@@ -1,4 +1,10 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import {
+  GIVING_SIGNED_OUT_STYLES,
+  HEADING_RESET_STYLES,
+  givingSignedOut,
+  headingTag,
+} from "./giving-shared";
 
 interface StatementPreference {
   donorId: number;
@@ -10,9 +16,15 @@ export class StatementPreferencesWidget extends MPNextWidget {
   private loading = true;
   private saving = false;
   private error: string | null = null;
+  /** Signed out is a state, not an error (C30 / CROSS-1). */
+  private signedOut = false;
   private paperless = false;
   private hasDonor = true;
   private message: { type: "success" | "error"; text: string } | null = null;
+
+  static get observedAttributes() {
+    return ["heading-level"];
+  }
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
@@ -20,8 +32,18 @@ export class StatementPreferencesWidget extends MPNextWidget {
     // sees English swap to Spanish.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.loadPreference();
     });
+  }
+
+  /**
+   * An observed attribute changed after the first paint (C39 convention).
+   * `heading-level` only changes markup, so a re-render is enough.
+   */
+  protected override reload(): void {
+    if (this.loading) return;
+    this.render();
   }
 
   public retryLoad() {
@@ -34,10 +56,19 @@ export class StatementPreferencesWidget extends MPNextWidget {
   private async loadPreference() {
     this.loading = true;
     this.error = null;
+    this.signedOut = false;
     this.render();
 
     try {
       const res = await this.fetch("/api/embed/statement-preferences");
+      if (this.isNeedsAuth(res)) {
+        // An anonymous visitor: offer sign-in, never "Unable to Load" + a
+        // Try Again that can only fail again. A 401 reaching a signed-in
+        // visitor is not this state and falls through to the error.
+        this.signedOut = true;
+        this.hasDonor = true;
+        return;
+      }
 
       if (res.status === 404) {
         this.hasDonor = false;
@@ -46,7 +77,7 @@ export class StatementPreferencesWidget extends MPNextWidget {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
 
       const data: StatementPreference = await res.json();
@@ -54,12 +85,11 @@ export class StatementPreferencesWidget extends MPNextWidget {
       this.paperless = data.paperless;
       this.emit("preferenceLoaded", { paperless: this.paperless });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("preferenceError", { error: this.error });
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -70,7 +100,6 @@ export class StatementPreferencesWidget extends MPNextWidget {
     // Optimistically reflect the new value while saving.
     this.paperless = newValue;
     this.render();
-    this.attachListeners();
 
     try {
       const res = await this.fetch("/api/embed/statement-preferences", {
@@ -81,7 +110,7 @@ export class StatementPreferencesWidget extends MPNextWidget {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
 
       const data: StatementPreference = await res.json();
@@ -95,12 +124,11 @@ export class StatementPreferencesWidget extends MPNextWidget {
         type: "error",
         text: this.t("statementPreferences.updateFailed"),
       };
-      const errorText = err instanceof Error ? err.message : this.t("errors.network");
+      const errorText = this.caughtText(err, "errors.network");
       this.emit("preferenceError", { error: errorText });
     } finally {
       this.saving = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -119,7 +147,18 @@ export class StatementPreferencesWidget extends MPNextWidget {
     }
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `
         <div class="nw-statement">
@@ -128,6 +167,25 @@ export class StatementPreferencesWidget extends MPNextWidget {
               ${this.spinnerSvg()}
               <span>${this.escapeHtml(this.t("statementPreferences.loading"))}</span>
             </div>
+          </div>
+        </div>`;
+      return;
+    }
+
+    if (this.signedOut) {
+      this.root.innerHTML = `
+        <div class="nw-statement">
+          <div class="header">
+            <${this.h(0)} class="title">${this.escapeHtml(this.t("statementPreferences.title"))}</${this.h(0)}>
+          </div>
+          <div class="card-body">
+            ${givingSignedOut(
+              this.renderSignInRequired({
+                subject: "statement-preferences",
+                message: this.t("statementPreferences.signInPrompt"),
+              }),
+              1,
+            )}
           </div>
         </div>`;
       return;
@@ -151,7 +209,7 @@ export class StatementPreferencesWidget extends MPNextWidget {
       this.root.innerHTML = `
         <div class="nw-statement">
           <div class="header">
-            <div class="title">${this.escapeHtml(this.t("statementPreferences.title"))}</div>
+            <${this.h(0)} class="title">${this.escapeHtml(this.t("statementPreferences.title"))}</${this.h(0)}>
           </div>
           <div class="card-body">
             <div class="empty-state">${this.escapeHtml(this.t("errors.donor_not_found"))}</div>
@@ -163,7 +221,7 @@ export class StatementPreferencesWidget extends MPNextWidget {
     this.root.innerHTML = `
       <div class="nw-statement">
         <div class="header">
-          <div class="title">${this.escapeHtml(this.t("statementPreferences.title"))}</div>
+          <${this.h(0)} class="title">${this.escapeHtml(this.t("statementPreferences.title"))}</${this.h(0)}>
         </div>
         <div class="card-body">
           <label class="toggle-row" for="paperless-toggle">
@@ -195,45 +253,50 @@ export class StatementPreferencesWidget extends MPNextWidget {
     </svg>`;
   }
 
+  /** Heading tag `offset` levels below this widget's `heading-level` (C35). */
+  private h(offset = 0): string {
+    return headingTag(this.getAttribute("heading-level"), offset);
+  }
+
   private getStyles(): string {
-    return `
+    return `${HEADING_RESET_STYLES}${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-statement {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
+        background: var(--_nw-color-surface);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .header {
-        background: #002855;
-        color: white;
-        padding: 24px;
+        background: var(--_nw-color-secondary);
+        color: var(--_nw-color-on-primary);
+        padding: var(--_nw-space-6);
       }
       .title {
         font-size: 24px;
         font-weight: bold;
         text-align: center;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
       }
       .subtitle {
         text-align: center;
         opacity: 0.8;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         margin: 0;
       }
       .loading-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         font-size: 18px;
       }
 
@@ -247,27 +310,27 @@ export class StatementPreferencesWidget extends MPNextWidget {
       }
 
       .card-body {
-        padding: 24px;
+        padding: var(--_nw-space-6);
       }
 
       .empty-state {
         text-align: center;
-        padding: 40px 20px;
+        padding: 40px var(--_nw-space-5);
         color: #9E9E9E;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
       }
 
       .toggle-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 16px;
+        gap: var(--_nw-space-4);
         cursor: pointer;
       }
       .toggle-label {
         font-size: 15px;
-        color: #2D2926;
-        line-height: 1.5;
+        color: var(--_nw-color-text);
+        line-height: var(--_nw-line-height);
         font-weight: 500;
       }
 
@@ -305,12 +368,16 @@ export class StatementPreferencesWidget extends MPNextWidget {
         transition: transform 0.2s;
       }
       .switch input:checked + .slider {
-        background: #86AD3F;
+        background: var(--_nw-color-success);
       }
       .switch input:checked + .slider::before {
         transform: translateX(24px);
       }
+      /* C35: the checkbox is visually hidden, so its focus ring is drawn on
+         the slider it is paired with. */
       .switch input:focus-visible + .slider {
+        outline: var(--_nw-focus-ring);
+        outline-offset: 2px;
         box-shadow: 0 0 0 3px rgba(0, 76, 151, 0.4);
       }
       .switch input:disabled + .slider {
@@ -319,10 +386,10 @@ export class StatementPreferencesWidget extends MPNextWidget {
       }
 
       .message {
-        margin-top: 16px;
+        margin-top: var(--_nw-space-4);
         padding: 10px 14px;
-        border-radius: 8px;
-        font-size: 14px;
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
       }
       .message--success {
         background: rgba(134, 173, 63, 0.15);
@@ -331,40 +398,40 @@ export class StatementPreferencesWidget extends MPNextWidget {
       }
       .message--error {
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
         border: 1px solid rgba(255, 109, 106, 0.4);
       }
 
       .retry-section {
-        padding: 20px;
+        padding: var(--_nw-space-5);
         text-align: center;
       }
       .retry-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .retry-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       @media (max-width: 640px) {
         .header, .card-body {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .toggle-row {
-          gap: 12px;
+          gap: var(--_nw-space-3);
         }
         .toggle-label {
-          font-size: 14px;
+          font-size: var(--_nw-font-size-base);
         }
       }
     `;

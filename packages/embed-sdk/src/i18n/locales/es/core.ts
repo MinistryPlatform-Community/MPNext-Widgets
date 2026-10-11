@@ -42,6 +42,7 @@ export const esCore = {
     getDirections: "Cómo llegar",
     signInPrompt: "Inicie sesión para continuar.",
     dismiss: "Descartar",
+    signInViaPage: "Use el enlace de inicio de sesión de esta página.",
   },
 
   fields: {
@@ -89,6 +90,7 @@ export const esCore = {
     generic: "Corrija este campo.",
     formIncomplete: "Complete los campos obligatorios.",
     phone: "Ingrese un número de teléfono válido.",
+    requiredField: "El campo {label} es obligatorio.",
   },
 
   errors: {
@@ -153,6 +155,8 @@ export const esCore = {
     no_file: "Primero elija un archivo.",
     invalid_file_type: "Suba una imagen JPEG, PNG, GIF o WebP.",
     file_too_large: "Ese archivo es demasiado grande. Elija una imagen más pequeña.",
+    mp_unavailable:
+      "Este servicio no está disponible en este momento. Inténtelo de nuevo en unos minutos.",
   },
 
   localeSelector: {

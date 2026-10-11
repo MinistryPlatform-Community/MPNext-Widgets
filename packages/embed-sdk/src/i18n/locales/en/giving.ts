@@ -29,7 +29,7 @@ export const giving = {
     disclaimer:
       "The following list of Donations is informational and should not be used for tax purposes.",
     softCreditDisclaimer:
-      "Soft credit donations are included below and reflect gifts you are credited with but did not personally contribute.",
+      "Soft credit donations are gifts you are credited with but did not personally contribute. Their amounts are excluded from your Total Giving and will not appear on your tax statement.",
     donations: "Donations",
     empty: "No donations",
     showMore: "SHOW MORE DONATIONS",
@@ -41,6 +41,15 @@ export const giving = {
     badgeSpouse: "Spouse",
     badgeSoftCredit: "Soft credit",
     badgeNonDeductible: "Non-deductible",
+    /** Signed-out prompt (C30); legacy: "Please login to view your giving information." */
+    signInPrompt: "Please sign in to view your giving information.",
+    // ── By Month chart readout (C33) ──
+    /** Column header of the hidden data table behind the By Month chart. */
+    month: "Month",
+    /** A month with its year: "March 2026". Also the month picker's options (C37). */
+    monthYear: "{month} {year}",
+    /** Native tooltip on a By Month bar: "March 2026: $1,250.00". */
+    barTooltip: "{label}: {amount}",
   },
 
   myPledges: {
@@ -72,6 +81,8 @@ export const giving = {
       discontinued: "Discontinued",
       pending: "Pending",
     },
+    /** Signed-out prompt (C30); legacy: "Please login to view your pledges". */
+    signInPrompt: "Please sign in to view your pledges.",
   },
 
   pledgeCampaign: {
@@ -128,6 +139,16 @@ export const giving = {
     registrationOpensOn: "Registration opens on {date}.",
     registrationClosed: "Registration for this campaign has closed.",
     registrationClosedOn: "Registration for this campaign closed on {date}.",
+    // ── Amount limits (C32) ──
+    //
+    // `{amount}` is a formatted currency value: $0.00 for the floor, the flat
+    // ceiling (MAX_PLEDGE_AMOUNT) for the two upper bounds.
+    amountTooLow: "Enter a pledge amount greater than {amount}.",
+    amountTooHigh: "Enter a pledge amount of {amount} or less.",
+    totalTooHigh: "Your total pledge cannot be more than {amount}. Check the amount and the schedule.",
+    /** The dates and frequency chosen yield no installment, so the total is $0.00. */
+    scheduleEmpty:
+      "This schedule has no installments. Choose a later end date or a different frequency.",
   },
 
   contributionStatement: {
@@ -136,6 +157,15 @@ export const giving = {
     empty: "No statements currently available.",
     selectYear: "Select statement year",
     savePdf: "Save as PDF",
+    /** Signed-out prompt (C30); legacy: "Please login to view your contribution statements." */
+    signInPrompt: "Please sign in to view your contribution statements.",
+    // ── Save as PDF fallback (C34) ──
+    // Shown only when MP's file host refused the direct download and the
+    // browser then blocked the new tab: a real link the donor can press.
+    popupBlocked: "Your browser blocked the statement from opening.",
+    openStatement: "Open the statement",
+    /** Link across to the page hosting My Giving (C62, `my-giving-url`); legacy: "See My Giving Page >". */
+    myGivingLink: "See my giving →",
   },
 
   statementPreferences: {
@@ -144,6 +174,8 @@ export const giving = {
     goPaperless: "Go Paperless! Get statements online/via email.",
     updated: "Statement method updated",
     updateFailed: "Error updating the statement method, please try again.",
+    /** Signed-out prompt (C30). */
+    signInPrompt: "Please sign in to manage how you receive your contribution statements.",
   },
 
   checkout: {
@@ -174,6 +206,11 @@ export const giving = {
       "Your payment is being processed. This invoice will update once the payment clears.",
     paymentUnconfirmed: "We could not confirm your payment.",
     paymentUnconfirmedDetail: "We could not confirm your payment: {detail}",
+    paymentDeclined: "Your payment was declined and nothing was charged. Please try another card.",
+    paymentError: "We could not record your payment. Please contact us before trying again, so you are not charged twice.",
+    amountTooHigh: "The amount cannot be more than the balance due ({amount}).",
+    balanceChanged: "The balance on this invoice has changed. Please review it and try again.",
+    registrationComplete: "Your registration is complete.",
   },
 
   checkoutComplete: {
@@ -185,8 +222,10 @@ export const giving = {
     received: "Thank you! Your payment was received.",
     processing:
       "Thank you! Your payment is being processed and will be confirmed shortly.",
-    failed: "We were unable to confirm your payment. Please try again or contact us.",
     unconfirmed: "We were unable to confirm your payment.",
+    titleDeclined: "Payment Declined",
+    declined: "Your payment was declined and nothing was charged. Please return to your invoice and try another card.",
+    error: "We could not record your payment. Please contact us before trying again, so you are not charged twice.",
   },
 
   pay: {
@@ -214,6 +253,15 @@ export const giving = {
     enterCard: "Please enter a card number.",
     enterExpiry: "Please enter the expiry date.",
     enterCvv: "Please enter the CVV.",
+    linkUsedTitle: "This payment link has already been used",
+    linkUsed: "Nothing more has been charged. Return to your invoice to see its current balance.",
+    linkExpiredTitle: "This payment link has expired",
+    linkExpired: "Nothing has been charged. Return to your invoice and start the payment again.",
+    returnToInvoice: "Return to invoice",
+    invalidCard: "Please enter a valid card number.",
+    invalidExpiry: "Please enter the expiry date as MM/YY.",
+    expiredCard: "This card has expired.",
+    invalidCvv: "Please enter the 3- or 4-digit security code.",
   },
 
   subscriptions: {
@@ -226,6 +274,17 @@ export const giving = {
     subscribed: "Subscribed to {title}",
     unsubscribed: "Unsubscribed from {title}",
     updateFailed: "Could not update subscription, please try again.",
+    signInPrompt: "Please sign in to view your subscriptions.",
+    /**
+     * C55. One string for the bulk-email control in both `next-subscriptions` and
+     * `next-profile`, phrased positively (checked = receives email) instead of
+     * legacy's double negative; the widgets invert it onto `Bulk_Email_Opt_Out`.
+     */
+    bulkEmailTitle: "All church email",
+    sendBulkEmail: "Send me general church emails",
+    bulkEmailHint: "Turn this off to stop all bulk email from the church.",
+    bulkEmailOn: "You'll receive general church emails again.",
+    bulkEmailOff: "You won't receive bulk email from the church.",
   },
   /**
    * `next-subscribe-to-publication` (C70) — the anonymous, email-verified

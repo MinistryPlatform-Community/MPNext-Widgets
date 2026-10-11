@@ -240,7 +240,7 @@ Relative paths, one line each with a caption.
 
 ## Deliverable 2 — one TODO item per discovery
 
-`.claude/TODO/Comparison/C<NN>-<kebab-slug>.md`, using **only the number block your
+`C<NN>-<kebab-slug>.md` (the comparison folder has since been removed; see git history), using **only the number block your
 prompt reserved for you** so parallel agents do not collide. One file per discovery —
 do not bundle two differences into one item.
 

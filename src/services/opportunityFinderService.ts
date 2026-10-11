@@ -42,7 +42,8 @@ interface SearchRow {
   MeetingDay: string | null;
   MeetingTime: string | null;
   StartDate: string | null;
-  Featured: boolean | number | null;
+  /** Commitment-size text ("1 hour"). The proc has no `Featured` column (C25). */
+  RibbonText: string | null;
   RequiredGender: string | null;
   MinimumAge: string | null;
   MaximumNeeded: number | string | null;
@@ -66,6 +67,20 @@ interface AttributeRow {
 }
 
 const MAX_RESULTS = 100;
+
+/**
+ * A lookup that fails degrades its dropdown to empty, but always logs: the
+ * C20 lesson is that a swallowed error makes a filter vanish invisibly.
+ */
+function lookupFailed(table: string) {
+  return (err: unknown): LookupRow[] => {
+    console.error(
+      `OpportunityFinderService: ${table} lookup failed; that filter will be empty:`,
+      err instanceof Error ? err.message : err
+    );
+    return [];
+  };
+}
 
 function toNumberOrNull(value: number | string | null | undefined): number | null {
   if (value === null || value === undefined || value === "") return null;
@@ -113,20 +128,20 @@ export class OpportunityFinderService {
         filter: "Available_Online = 1 AND (End_Date IS NULL OR End_Date >= GETDATE())",
         orderBy: "Congregation_Name",
         top: 1000,
-      }).catch(() => [] as LookupRow[]),
+      }).catch(lookupFailed("Congregations")),
       this.mp!.getTableRecords<LookupRow>({
         table: "Ministries",
         select: "Ministry_ID AS Id, Ministry_Name AS Name",
         filter: "Available_Online = 1 AND (End_Date IS NULL OR End_Date >= GETDATE())",
         orderBy: "Ministry_Name",
         top: 100,
-      }).catch(() => [] as LookupRow[]),
+      }).catch(lookupFailed("Ministries")),
       this.mp!.getTableRecords<LookupRow>({
         table: "Genders",
         select: "Gender_ID AS Id, Gender AS Name",
         orderBy: "Gender",
         top: 100,
-      }).catch(() => [] as LookupRow[]),
+      }).catch(lookupFailed("Genders")),
       this.getAttributeTypes(),
     ]);
 
@@ -138,14 +153,23 @@ export class OpportunityFinderService {
     };
   }
 
-  /** Attribute types with their selectable attributes (grouped optgroups). */
+  /**
+   * Attribute types with their selectable attributes (grouped optgroups).
+   *
+   * C20: visibility is the **type**-level flag `Attribute_Types.Available_Online`
+   * (the same rule `contactAttributeService` uses). `Attributes` has no such
+   * column; filtering on it 500'd and the filter vanished for the widget's
+   * whole life. On the reference domain this yields exactly legacy's set:
+   * types 2 (Occupation) and 3 (Spiritual Gifts), and never Personal
+   * Characteristics, Group Tags or Persona.
+   */
   private async getAttributeTypes(): Promise<OpportunityAttributeType[]> {
     try {
       const rows = await this.mp!.getTableRecords<AttributeRow>({
         table: "Attributes",
         select:
           "Attributes.Attribute_ID, Attributes.Attribute_Name, Attribute_Type_ID_Table.Attribute_Type_ID AS Attribute_Type_ID, Attribute_Type_ID_Table.Attribute_Type AS Attribute_Type",
-        filter: "ISNULL(Attributes.Available_Online, 1) = 1",
+        filter: "Attribute_Type_ID_Table.Available_Online = 1",
         orderBy: "Attribute_Type_ID_Table.Attribute_Type, Attributes.Attribute_Name",
         top: 1000,
       });
@@ -165,7 +189,13 @@ export class OpportunityFinderService {
         });
       }
       return Array.from(byType.values());
-    } catch {
+    } catch (err) {
+      // Degrade to "no Attributes filter", but never silently: a bare
+      // `catch { return []; }` here hid a 500 for the widget's whole life (C20).
+      console.error(
+        "OpportunityFinderService.getAttributeTypes failed; the Attributes filter will not render:",
+        err instanceof Error ? err.message : err
+      );
       return [];
     }
   }
@@ -226,7 +256,7 @@ export class OpportunityFinderService {
         meetingDay: row.MeetingDay ?? null,
         // MP returns wall-clock datetimes; pass through verbatim (no Z-shift).
         meetingTime: row.MeetingTime ? String(row.MeetingTime) : row.StartDate ?? null,
-        featured: Boolean(row.Featured),
+        ribbonText: row.RibbonText?.trim() || null,
         attributes,
       });
     }
@@ -248,9 +278,13 @@ export class OpportunityFinderService {
         const oppId = Number(r.Opportunity_ID);
         counts.set(oppId, (counts.get(oppId) ?? 0) + 1);
       }
-    } catch {
+    } catch (err) {
       // On failure, leave counts empty — opportunities are shown rather than
       // hidden, matching the legacy "show when count unknown" behavior.
+      console.error(
+        "OpportunityFinderService: response counts failed; full opportunities may show:",
+        err instanceof Error ? err.message : err
+      );
     }
     return counts;
   }

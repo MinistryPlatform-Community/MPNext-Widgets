@@ -47,7 +47,6 @@ export class LocaleSelectorWidget extends MPNextWidget {
     // widgets that get this wrong).
     if (oldValue === newValue || !this.isConnected) return;
     this.render();
-    this.attachListeners();
   }
 
   connectedCallback() {
@@ -58,7 +57,6 @@ export class LocaleSelectorWidget extends MPNextWidget {
     // sibling widget or another tab changes the language.
     void this.initLocale().then(() => {
       this.render();
-      this.attachListeners();
     });
   }
 
@@ -79,7 +77,18 @@ export class LocaleSelectorWidget extends MPNextWidget {
     return filtered.length ? filtered : [...LOCALE_CODES];
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     const locales = this.offered();
     const current = this.locale;
     const hideLabel = this.hasAttribute("hide-label");
@@ -189,9 +198,9 @@ export class LocaleSelectorWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: inline-block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
-      .nw-ls { display: inline-flex; align-items: center; gap: 8px; }
-      .nw-ls-label { font-size: 13px; font-weight: 600; color: #6b7280; }
+      :host { all: initial; display: inline-block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
+      .nw-ls { display: inline-flex; align-items: center; gap: var(--_nw-space-2); }
+      .nw-ls-label { font-size: 13px; font-weight: 600; color: var(--_nw-color-muted); }
 
       /* Visually hidden but still announced — not display:none, which would
          remove the label from the accessibility tree entirely. */
@@ -201,21 +210,21 @@ export class LocaleSelectorWidget extends MPNextWidget {
       }
 
       .nw-ls-select {
-        padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px;
-        font-size: 14px; font-family: inherit; color: #2D2926; background: white;
+        padding: var(--_nw-space-2) 10px; border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); background: var(--_nw-color-surface);
         outline: none; cursor: pointer;
       }
-      .nw-ls-select:focus-visible { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
+      .nw-ls-select:focus-visible { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
 
-      .nw-ls-inline { display: inline-flex; gap: 4px; }
+      .nw-ls-inline { display: inline-flex; gap: var(--_nw-space-1); }
       .nw-ls-btn {
-        padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 8px;
-        background: white; font-size: 13px; font-family: inherit; font-weight: 600;
-        color: #004C97; cursor: pointer;
+        padding: 6px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius);
+        background: var(--_nw-color-surface); font-size: 13px; font-family: inherit; font-weight: 600;
+        color: var(--_nw-color-primary); cursor: pointer;
       }
-      .nw-ls-btn:hover { border-color: #004C97; }
-      .nw-ls-btn:focus-visible { outline: 2px solid #004C97; outline-offset: 2px; }
-      .nw-ls-btn--active { background: #004C97; border-color: #004C97; color: white; cursor: default; }
+      .nw-ls-btn:hover { border-color: var(--_nw-color-primary); }
+      .nw-ls-btn:focus-visible { outline: 2px solid var(--_nw-color-primary); outline-offset: 2px; }
+      .nw-ls-btn--active { background: var(--_nw-color-primary); border-color: var(--_nw-color-primary); color: var(--_nw-color-on-primary); cursor: default; }
     `;
   }
 }

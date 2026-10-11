@@ -22,6 +22,7 @@ export const PledgesSchema = z.object({
   _Original_Amount: z.number().nullable(),
   _Last_Installment_Date: z.iso.datetime().nullable(),
   Batch_ID: z.number().int().nullable(),
+  _Vendor_Pledge_Code: z.string().max(16).nullable(),
 });
 
 export type PledgesInput = z.infer<typeof PledgesSchema>;

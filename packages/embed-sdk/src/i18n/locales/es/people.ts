@@ -53,6 +53,7 @@ export const esPeople = {
     fixHighlighted: "Corrija los campos marcados.",
     householdSaved: "El hogar se guardó correctamente.",
     memberSaved: "El miembro se guardó correctamente.",
+    signInPrompt: "Inicie sesión para ver los datos de su familia.",
   },
 
   profile: {
@@ -70,7 +71,6 @@ export const esPeople = {
     orgFallback: "nuestra organización",
     smsRates:
       "Se pueden aplicar tarifas de mensajes y datos. La frecuencia de los mensajes varía y usted puede cancelar la suscripción en cualquier momento.",
-    bulkEmailOptOut: "No deseo recibir correos electrónicos masivos",
     saveProfile: "Guardar el perfil",
     saved: "El perfil se guardó correctamente.",
     changePassword: "Cambiar la contraseña",
@@ -85,6 +85,7 @@ export const esPeople = {
     // an attribute-adjacent context by the validation layer.
     firstNameOnly: "Escriba solo su primer nombre (sin «&» ni «and»)",
     phoneFormat: "Use el formato: 999-999-9999",
+    signInPrompt: "Inicie sesión para ver su perfil.",
   },
 
   onlineDirectory: {

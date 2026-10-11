@@ -31,7 +31,7 @@ export const ptBRGroups = {
     afternoon: "Tarde",
     evening: "Noite",
     loading: "Carregando os grupos…",
-    empty: "Nenhum grupo encontrado.",
+    empty: "Nenhum grupo encontrado. Tente outros critérios de busca.",
     truncated:
       "Exibindo os primeiros resultados — refine sua busca para reduzi-los.",
     imagePlaceholder: "Grupo",
@@ -80,12 +80,13 @@ export const ptBRGroups = {
     signUpAs: "Inscrever",
     someoneElse: "Outra pessoa…",
     myInfo: "Minhas informações",
-    chooseSignup: "Escolha quem vai se inscrever.",
     inquirySent: "Obrigado! Sua mensagem foi enviada ao grupo.",
     inquirySentNamed: "Obrigado, {name}! Sua mensagem foi enviada ao grupo.",
     signedUp: "Você está inscrito! O líder do grupo entrará em contato.",
     signedUpNamed:
       "Você está inscrito, {name}! O líder do grupo entrará em contato.",
+    emailNotSent:
+      "Não foi possível enviar o e-mail de confirmação, mas sua solicitação foi salva.",
   },
 
   myGroups: {
@@ -101,6 +102,7 @@ export const ptBRGroups = {
     startsOn: "Começa: {date}",
     groupConnect: "Group Connect",
     volunteerConnect: "Volunteer Connect",
+    signInPrompt: "Entre para ver seus grupos.",
   },
 
   opportunityFinder: {
@@ -120,8 +122,8 @@ export const ptBRGroups = {
     attributes: "Atributos",
     loading: "Carregando as oportunidades…",
     empty: "Nenhuma oportunidade encontrada.",
-    featured: "Destaque",
-    everyDay: "toda semana, {day}",
+    everyWeekday: "Toda semana, {day}",
+    dateAtTime: "{date}, {time}",
   },
 
   opportunityDetails: {
@@ -129,7 +131,6 @@ export const ptBRGroups = {
     backToOpportunities: "Voltar às oportunidades",
     noOpportunitySpecified: "Nenhuma oportunidade especificada.",
     ongoing: "Contínua",
-    everyDay: "toda semana, {day}",
     volunteersNeeded: "Voluntários necessários",
     mapTitle: "Mapa da localização da oportunidade",
     respondTitle: "Responder",
@@ -148,6 +149,7 @@ export const ptBRGroups = {
     responseFailed: "Não foi possível salvar sua resposta.",
     responseReceived: "Obrigado! Recebemos sua resposta.",
     responseReceivedNamed: "Obrigado, {name}! Recebemos sua resposta.",
+    everyWeekday: "Toda semana, {day}",
   },
 
   planYourVisit: {
@@ -191,5 +193,9 @@ export const ptBRGroups = {
     selectOption: "-- Selecione --",
     fileUploadUnsupported:
       "Nesta versão, os arquivos anexados não são enviados.",
+    completeAs: "Para quem é este formulário?",
+    someoneElse: "Outra pessoa (formulário em branco)",
+    myInfo: "Eu",
+    submittedFor: "Enviado para {name}.",
   },
 } satisfies Partial<Messages>;

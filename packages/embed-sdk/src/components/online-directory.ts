@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -88,7 +88,8 @@ export class OnlineDirectoryWidget extends MPNextWidget {
   }
 
   connectedCallback() {
-    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
+    // The shared sign-in sheet goes first so this widget's own button classes win.
+    this.injectStyles(SIGN_IN_REQUIRED_STYLES + this.getStyles() + FORM_VALIDATION_STYLES);
     this.seedFromAttributes();
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish; it hides inside the access check this
@@ -137,14 +138,14 @@ export class OnlineDirectoryWidget extends MPNextWidget {
 
     try {
       const res = await this.fetch(`/api/embed/online-directory/access`);
-      if (res.status === 401) {
+      if (this.isNeedsAuth(res)) {
         this.access = "login";
         this.render();
         return;
       }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body, "onlineDirectory.loadFailed"));
+        throw new WidgetError(this.errorText(body, "onlineDirectory.loadFailed"));
       }
       const data: { canAccess: boolean } = await res.json();
       if (!data.canAccess) {
@@ -157,9 +158,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       // `errorText` has already translated an API code; anything else (a
       // dropped connection) becomes this widget's own load message.
       this.error =
-        err instanceof Error
-          ? err.message
-          : this.t("onlineDirectory.loadFailed");
+        this.caughtText(err, "onlineDirectory.loadFailed");
       this.render();
       this.emit("directoryError", { error: this.error });
       return;
@@ -238,16 +237,14 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       const res = await this.fetch(`/api/embed/online-directory?${params.toString()}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data, "onlineDirectory.searchFailed"));
+        throw new WidgetError(this.errorText(data, "onlineDirectory.searchFailed"));
       }
       const data: { members: DirectoryMember[] } = await res.json();
       this.members = data.members || [];
       this.emit("directorySearched", { count: this.members.length });
     } catch (err) {
       const msg =
-        err instanceof Error
-          ? err.message
-          : this.t("onlineDirectory.searchFailed");
+        this.caughtText(err, "onlineDirectory.searchFailed");
       this.emit("directoryError", { error: msg });
       this.showResultsMessage("warning", msg);
       this.searching = false;
@@ -263,8 +260,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
   // ── Listeners ──
 
   private attachShellListeners() {
-    const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.requestLogin("online-directory"));
+    // `[data-action="login"]` is delegated by the base class (renderSignInRequired).
     const retry = this.root.querySelector('[data-action="retry"]');
     if (retry) retry.addEventListener("click", () => this.retryLoad());
   }
@@ -363,7 +359,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       const data: { success: boolean; error?: string; message?: string } =
         await res.json().catch(() => ({ success: false }));
       if (!data.success) {
-        throw new Error(this.errorText(data, "onlineDirectory.sendFailed"));
+        throw new WidgetError(this.errorText(data, "onlineDirectory.sendFailed"));
       }
       this.emailSentFor.add(contactId);
       this.composeFor = null;
@@ -373,9 +369,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       const errEl = form.querySelector<HTMLElement>(".nw-od-email-error");
       if (errEl) {
         errEl.textContent =
-          err instanceof Error
-            ? err.message
-            : this.t("onlineDirectory.sendFailed");
+          this.caughtText(err, "onlineDirectory.sendFailed");
       }
       if (sendBtn) sendBtn.disabled = false;
     }
@@ -389,13 +383,12 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       return;
     }
     if (this.access === "login") {
-      this.root.innerHTML = `
-        <div class="nw-od">
-          <div class="nw-od-panel">
-            <p>${this.escapeHtml(this.t("onlineDirectory.signInRequired"))}</p>
-            <button class="nw-od-btn" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button>
-          </div>
-        </div>`;
+      this.root.innerHTML = `<div class="nw-od">${this.renderSignInRequired({
+        subject: "online-directory",
+        message: this.t("onlineDirectory.signInRequired"),
+        className: "nw-od-panel",
+        buttonClass: "nw-od-btn",
+      })}</div>`;
       this.attachShellListeners();
       return;
     }
@@ -669,58 +662,58 @@ export class OnlineDirectoryWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .nw-od { max-width: 1024px; margin: 0 auto; }
-      .nw-od-title { font-size: 22px; font-weight: 800; color: #002855; margin: 0 0 16px; }
+      .nw-od-title { font-size: 22px; font-weight: 800; color: var(--_nw-color-secondary); margin: 0 0 var(--_nw-space-4); }
 
-      .nw-od-form { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: grid; grid-template-columns: 1fr 2fr; gap: 12px; }
-      .nw-od-field { display: flex; flex-direction: column; gap: 4px; }
-      .nw-od-field label { font-size: 12px; font-weight: 600; color: #6b7280; }
-      .nw-od-input, .nw-od-select { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; background: white; outline: none; }
-      .nw-od-input:focus, .nw-od-select:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
+      .nw-od-form { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-4); margin-bottom: var(--_nw-space-5); box-shadow: var(--_nw-shadow); display: grid; grid-template-columns: 1fr 2fr; gap: var(--_nw-space-3); }
+      .nw-od-field { display: flex; flex-direction: column; gap: var(--_nw-space-1); }
+      .nw-od-field label { font-size: 12px; font-weight: 600; color: var(--_nw-color-muted); }
+      .nw-od-input, .nw-od-select { padding: 9px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); background: var(--_nw-color-surface); outline: none; }
+      .nw-od-input:focus, .nw-od-select:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
       textarea.nw-od-input { resize: vertical; min-height: 64px; }
       .nw-od-search { position: relative; display: flex; flex-direction: column; gap: 6px; }
-      .nw-od-chip { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; background: #eef2f7; color: #002855; font-size: 12px; font-weight: 600; padding: 3px 6px 3px 10px; border-radius: 9999px; }
-      .nw-od-chip-clear { background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1; color: #6b7280; padding: 0 2px; }
+      .nw-od-chip { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; background: #eef2f7; color: var(--_nw-color-secondary); font-size: 12px; font-weight: 600; padding: 3px 6px 3px 10px; border-radius: 9999px; }
+      .nw-od-chip-clear { background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1; color: var(--_nw-color-muted); padding: 0 2px; }
 
-      .nw-od-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-      .nw-od-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      .nw-od-card-row { display: flex; gap: 12px; }
+      .nw-od-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--_nw-space-4); }
+      .nw-od-card { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: 14px; box-shadow: var(--_nw-shadow); }
+      .nw-od-card-row { display: flex; gap: var(--_nw-space-3); }
       .nw-od-card-imgwrap { flex-shrink: 0; }
       .nw-od-card-img { width: 64px; height: 64px; border-radius: 9999px; object-fit: cover; display: block; }
-      .nw-od-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #9ca3af; width: 64px; height: 64px; }
+      .nw-od-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: var(--_nw-color-surface-muted); color: #9ca3af; width: 64px; height: 64px; }
       .nw-od-card-body { flex: 1; min-width: 0; }
-      .nw-od-card-name { font-size: 16px; font-weight: 700; color: #002855; margin: 0 0 2px; }
-      .nw-od-card-pos { font-size: 13px; color: #6b7280; margin-bottom: 6px; }
-      .nw-od-phones { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: #474747; }
-      .nw-od-phone b { color: #6b7280; font-weight: 600; }
-      .nw-od-phone a { color: #004C97; text-decoration: none; }
+      .nw-od-card-name { font-size: 16px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: 0 0 2px; }
+      .nw-od-card-pos { font-size: 13px; color: var(--_nw-color-muted); margin-bottom: 6px; }
+      .nw-od-phones { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--_nw-color-text-subtle); }
+      .nw-od-phone b { color: var(--_nw-color-muted); font-weight: 600; }
+      .nw-od-phone a { color: var(--_nw-color-primary); text-decoration: none; }
       .nw-od-phone a:hover { text-decoration: underline; }
 
-      .nw-od-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #f3f4f6; }
-      .nw-od-action { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; color: #004C97; text-decoration: none; font-size: 11px; font-weight: 600; cursor: pointer; }
-      .nw-od-action:hover { color: #002855; }
+      .nw-od-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: var(--_nw-space-3); padding-top: var(--_nw-space-3); border-top: 1px solid #f3f4f6; }
+      .nw-od-action { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; color: var(--_nw-color-primary); text-decoration: none; font-size: 11px; font-weight: 600; cursor: pointer; }
+      .nw-od-action:hover { color: var(--_nw-color-secondary); }
       .nw-od-action span { white-space: nowrap; }
 
-      .nw-od-email { margin-top: 12px; padding-top: 12px; border-top: 1px solid #f3f4f6; display: flex; flex-direction: column; gap: 8px; }
-      .nw-od-email-title { font-size: 13px; font-weight: 700; color: #002855; }
-      .nw-od-email-error { color: #b91c1c; font-size: 12px; }
-      .nw-od-email-buttons { display: flex; gap: 8px; }
+      .nw-od-email { margin-top: var(--_nw-space-3); padding-top: var(--_nw-space-3); border-top: 1px solid #f3f4f6; display: flex; flex-direction: column; gap: var(--_nw-space-2); }
+      .nw-od-email-title { font-size: 13px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); }
+      .nw-od-email-error { color: var(--_nw-color-error-text); font-size: 12px; }
+      .nw-od-email-buttons { display: flex; gap: var(--_nw-space-2); }
 
-      .nw-od-btn { padding: 10px 20px; background: #004C97; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
-      .nw-od-btn:hover { background: #002855; }
+      .nw-od-btn { padding: 10px var(--_nw-space-5); background: var(--_nw-button-bg); color: var(--_nw-button-fg); border: none; border-radius: var(--_nw-button-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; }
+      .nw-od-btn:hover { background: var(--_nw-button-bg-hover); }
       .nw-od-btn:disabled { opacity: 0.5; cursor: not-allowed; }
       .nw-od-btn--sm { padding: 7px 14px; font-size: 13px; }
-      .nw-od-btn--ghost { background: white; color: #004C97; border: 1px solid #004C97; }
+      .nw-od-btn--ghost { background: var(--_nw-color-surface); color: var(--_nw-color-primary); border: var(--_nw-border-width) solid var(--_nw-color-primary); }
       .nw-od-btn--ghost:hover { background: #f0f6fc; }
 
-      .nw-od-panel { text-align: center; background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 32px 16px; }
-      .nw-od-panel p { margin: 0 0 12px; font-size: 15px; color: #474747; }
-      .nw-od-msg { padding: 12px 16px; border-radius: 8px; font-size: 14px; }
+      .nw-od-panel { text-align: center; background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: 32px var(--_nw-space-4); }
+      .nw-od-panel p { margin: 0 0 var(--_nw-space-3); font-size: 15px; color: var(--_nw-color-text-subtle); }
+      .nw-od-msg { padding: var(--_nw-space-3) var(--_nw-space-4); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); }
       .nw-od-msg--info { background: #e6f6fc; color: #015a7a; }
       .nw-od-msg--warning { background: #fdf6e3; color: #8a6d3b; }
-      .nw-od-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 40px 16px; color: #6b7280; font-size: 15px; }
-      .nw-od-spinner { animation: nw-od-spin 1s linear infinite; color: #004C97; }
+      .nw-od-state { display: flex; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 40px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; }
+      .nw-od-spinner { animation: nw-od-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes nw-od-spin { to { transform: rotate(360deg); } }
 
       @media (max-width: 640px) {

@@ -216,7 +216,7 @@
 
         <!-- The actual widget (hidden until authenticated) -->
         <div id="widget-container" style="display:none;">
-          <next-my-invoices api-host="http://localhost:3000"></next-my-invoices>
+          <next-my-invoices api-host="http://localhost:3000" checkout-url="/demo-checkout.html"></next-my-invoices>
         </div>
         <div id="auth-placeholder" class="auth-placeholder">
           Sign in above to load the invoices widget.
@@ -241,7 +241,8 @@
           <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
         </div>
         <pre><code id="widget-code">&lt;!-- Use the widget --&gt;
-&lt;next-my-invoices&gt;&lt;/next-my-invoices&gt;
+&lt;!-- checkout-url: your checkout page; Pay links go to it with ?id=&lt;Invoice_GUID&gt; --&gt;
+&lt;next-my-invoices checkout-url="/checkout"&gt;&lt;/next-my-invoices&gt;
 
 &lt;!-- Listen to events --&gt;
 &lt;script&gt;

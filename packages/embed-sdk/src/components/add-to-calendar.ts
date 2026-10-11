@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import {
   buildGoogleCalendarUrl,
   buildIcsContent,
@@ -7,6 +7,11 @@ import {
   icsFileName,
   type CalendarEventInput,
 } from "../shared/calendar-links";
+import {
+  dialogFocus,
+  type DialogCloseReason,
+  type DialogFocusHandle,
+} from "../shared/dialog-focus";
 
 // ── Local types (mirrors @mpnext/types without importing) ───────────────
 interface CalendarEventData {
@@ -25,16 +30,6 @@ interface CalendarEventData {
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
-
-const BRAND = {
-  blue: "#004C97",
-  navy: "#002855",
-  green: "#86AD3F",
-  red: "#FF6D6A",
-  gold: "#F1BE48",
-  lightBlue: "#009CDE",
-  black: "#2D2926",
-};
 
 type ProviderId = "google" | "apple" | "outlook" | "office365" | "yahoo" | "ics";
 
@@ -144,16 +139,18 @@ export class AddToCalendarWidget extends MPNextWidget {
 
   private eventId: number;
   private providers: ProviderId[];
+  /** Focus management for the open menu — the shared `dialogFocus()`. */
+  private menuFocus: DialogFocusHandle | null = null;
   private onDocumentPointerDown = (e: Event) => {
     // `composedPath` rather than `contains`: a click inside our Shadow DOM is
     // retargeted to the host, so `e.target` alone cannot tell inside from out.
-    if (!e.composedPath().includes(this)) this.close();
+    // An outside click does not pull focus back to the trigger.
+    if (!e.composedPath().includes(this)) this.close("outside");
   };
   private onDocumentKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape" && this.state.open) {
-      this.close();
-      this.root.querySelector<HTMLButtonElement>(".atc-trigger")?.focus();
-    }
+    // Escape anywhere on the page closes the menu and restores focus to the
+    // trigger (via `dialogFocus().release("escape")`).
+    if (e.key === "Escape" && this.state.open) this.close("escape");
   };
 
   constructor() {
@@ -216,7 +213,7 @@ export class AddToCalendarWidget extends MPNextWidget {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body));
+        throw new WidgetError(this.errorText(body));
       }
 
       const eventData: CalendarEventData = await res.json();
@@ -229,7 +226,7 @@ export class AddToCalendarWidget extends MPNextWidget {
       // `errorText` has already produced a translated sentence; anything else
       // (a dropped connection) becomes the generic network message.
       this.state.error =
-        err instanceof Error ? err.message : this.t("errors.network");
+        this.caughtText(err, "errors.network");
       this.render();
       this.emit("addToCalendarError", { error: this.state.error });
     }
@@ -316,7 +313,7 @@ export class AddToCalendarWidget extends MPNextWidget {
       });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : this.t("addToCalendar.buildFailed");
+        this.caughtText(err, "addToCalendar.buildFailed");
       this.state.error = message;
       this.emit("addToCalendarError", { error: message });
       this.render();
@@ -332,13 +329,26 @@ export class AddToCalendarWidget extends MPNextWidget {
     if (this.state.open) return;
     this.state.open = true;
     this.render();
-    this.root.querySelector<HTMLButtonElement>(".atc-option")?.focus();
+    const menu = this.root.querySelector<HTMLElement>(".atc-menu");
+    if (menu) {
+      // Focus the first option. No Tab trap: this is a `role="menu"`, and Tab
+      // out of a menu is expected to leave it (the outside-pointer listener
+      // closes it). The trigger is re-rendered on close, so it is resolved
+      // late rather than held.
+      this.menuFocus = dialogFocus(
+        menu,
+        () => this.root.querySelector<HTMLButtonElement>(".atc-trigger"),
+        { trapTab: false },
+      );
+    }
   }
 
-  private close(): void {
+  private close(reason: DialogCloseReason = "programmatic"): void {
     if (!this.state.open) return;
     this.state.open = false;
     this.render();
+    this.menuFocus?.release(reason);
+    this.menuFocus = null;
   }
 
   private toggle(): void {
@@ -540,8 +550,8 @@ export class AddToCalendarWidget extends MPNextWidget {
     return `
       :host {
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-        color: ${BRAND.black};
+        font-family: var(--_nw-font-family);
+        color: var(--_nw-color-text);
         box-sizing: border-box;
       }
 
@@ -558,16 +568,16 @@ export class AddToCalendarWidget extends MPNextWidget {
         display: flex;
         align-items: center;
         gap: 10px;
-        color: #6b7280;
-        font-size: 14px;
-        padding: 12px 0;
+        color: var(--_nw-color-muted);
+        font-size: var(--_nw-font-size-base);
+        padding: var(--_nw-space-3) 0;
       }
 
       .nw-atc-spinner {
         width: 18px;
         height: 18px;
-        border: 2px solid #e5e7eb;
-        border-top-color: ${BRAND.blue};
+        border: 2px solid var(--_nw-color-border);
+        border-top-color: var(--_nw-color-primary);
         border-radius: 50%;
         animation: nw-spin 0.7s linear infinite;
         flex-shrink: 0;
@@ -581,13 +591,13 @@ export class AddToCalendarWidget extends MPNextWidget {
       .nw-atc-error {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         background: #fff1f1;
-        color: ${BRAND.red};
-        border: 1px solid ${BRAND.red};
-        border-radius: 8px;
-        padding: 12px 16px;
-        font-size: 14px;
+        color: var(--_nw-color-error);
+        border: var(--_nw-border-width) solid var(--_nw-color-error);
+        border-radius: var(--_nw-radius);
+        padding: var(--_nw-space-3) var(--_nw-space-4);
+        font-size: var(--_nw-font-size-base);
       }
 
       .nw-atc-error svg {
@@ -603,14 +613,14 @@ export class AddToCalendarWidget extends MPNextWidget {
       .atc-trigger {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         padding: 10px 18px;
-        background: ${BRAND.blue};
-        color: #fff;
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         border: none;
         border-radius: 9999px;
         font-family: inherit;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
         line-height: 1;
         cursor: pointer;
@@ -618,11 +628,11 @@ export class AddToCalendarWidget extends MPNextWidget {
       }
 
       .atc-trigger:hover {
-        background: ${BRAND.navy};
+        background: var(--_nw-button-bg-hover);
       }
 
       .atc-trigger:focus-visible {
-        outline: 2px solid ${BRAND.lightBlue};
+        outline: var(--_nw-focus-ring);
         outline-offset: 2px;
       }
 
@@ -646,8 +656,8 @@ export class AddToCalendarWidget extends MPNextWidget {
         z-index: 50;
         min-width: 220px;
         padding: 6px;
-        background: #fff;
-        border: 1px solid #e5e7eb;
+        background: var(--_nw-color-surface);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
         border-radius: 10px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
         display: flex;
@@ -660,43 +670,43 @@ export class AddToCalendarWidget extends MPNextWidget {
         align-items: center;
         gap: 10px;
         width: 100%;
-        padding: 9px 12px;
+        padding: 9px var(--_nw-space-3);
         background: transparent;
         border: none;
         border-radius: 7px;
         font-family: inherit;
-        font-size: 14px;
-        color: ${BRAND.black};
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text);
         text-align: left;
         cursor: pointer;
       }
 
       .atc-option:hover,
       .atc-option:focus-visible {
-        background: #f3f4f6;
+        background: var(--_nw-color-surface-muted);
         outline: none;
       }
 
       .atc-option:focus-visible {
-        box-shadow: inset 0 0 0 2px ${BRAND.lightBlue};
+        box-shadow: inset 0 0 0 2px var(--_nw-color-info);
       }
 
       .atc-option svg {
         flex-shrink: 0;
-        color: ${BRAND.blue};
+        color: var(--_nw-color-primary);
       }
 
       /* ── Summary ── */
       .atc-summary {
-        margin-top: 12px;
+        margin-top: var(--_nw-space-3);
         font-size: 13px;
-        line-height: 1.5;
+        line-height: var(--_nw-line-height);
       }
 
       .atc-summary-title {
         font-size: 15px;
         font-weight: 600;
-        color: ${BRAND.navy};
+        color: var(--_nw-color-secondary);
       }
 
       .atc-summary-meta {
@@ -705,7 +715,7 @@ export class AddToCalendarWidget extends MPNextWidget {
       }
 
       .atc-summary-location {
-        color: #6b7280;
+        color: var(--_nw-color-muted);
       }
     `;
   }

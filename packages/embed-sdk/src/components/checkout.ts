@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -6,6 +6,8 @@ import {
   FORM_VALIDATION_STYLES,
   type ValidateOptions,
 } from "../shared/form-validation";
+import { headingTag, HEADING_RESET_STYLES } from "../shared/heading-level";
+import { paymentOutcomeView, type PaymentTone } from "./checkout-status";
 
 interface CheckoutLineItem {
   invoiceDetailId: number;
@@ -16,6 +18,7 @@ interface CheckoutLineItem {
   lineTotal: number;
   isSubItem: boolean;
   eventParticipantId: number | null;
+  eventId?: number | null;
 }
 
 interface CheckoutInvoice {
@@ -42,6 +45,8 @@ interface CheckoutInvoice {
     postalCode: string | null;
   };
   lineItems: CheckoutLineItem[];
+  /** The registration's event (C49); absent from an older server. */
+  eventId?: number | null;
 }
 
 type PayChoice = "full" | "deposit" | "other";
@@ -62,15 +67,23 @@ export class CheckoutWidget extends MPNextWidget {
   private otherAmount = "";
   private processing = false;
 
-  private confirmation: { kind: "success" | "pending"; message: string } | null = null;
+  private confirmation: { tone: PaymentTone; message: string } | null = null;
+  /**
+   * True after a payment response we could not record (`error`) or could not
+   * read: the card may have been charged, so the Pay form is not offered again
+   * until the payer reloads. A decline does not set it.
+   */
+  private holdPayForm = false;
 
   static get observedAttributes() {
     return [
       "api-host",
       "payment-processor-url",
       "back-to-event-url",
+      "back-to-event-id-parameter-name",
       "invoice-id-parameter-name",
       "invoice-id",
+      "receipt-template-id",
     ];
   }
 
@@ -155,42 +168,36 @@ export class CheckoutWidget extends MPNextWidget {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
-      const data: {
-        invoiceId: number | null;
-        success: boolean;
-        paymentReceived: boolean;
-      } = await res.json();
+      const data: { invoiceId?: number | null; status?: unknown } = await res.json();
 
-      if (data.paymentReceived) {
-        this.confirmation = {
-          kind: "success",
-          message: this.t("checkout.paymentReceived"),
-        };
-      } else {
-        this.confirmation = {
-          kind: "pending",
-          message: this.t("checkout.paymentPending"),
-        };
-      }
+      // One mapper for both payment widgets (C41): a decline is coral and
+      // keeps the Pay form; an error is coral and holds it back.
+      const view = paymentOutcomeView(data);
+      this.confirmation = { tone: view.tone, message: this.t(view.bannerKey) };
+      this.holdPayForm = view.status === "error";
       this.emit("paymentComplete", {
-        invoiceId: data.invoiceId,
-        paymentReceived: data.paymentReceived,
+        invoiceId: data.invoiceId ?? null,
+        status: view.status,
+        paymentReceived: view.status === "received",
       });
     } catch (err) {
+      // We do not know whether it was recorded, so this is never the amber
+      // "processing" banner (C41), and the form is held back.
+      this.holdPayForm = true;
+      const errorText = this.caughtText(err, "errors.network");
       this.confirmation = {
-        kind: "pending",
-        // `err.message` is itself already a translated sentence from
-        // `errorText`, so it is safe to quote inside this one.
+        tone: "failed",
+        // A WidgetError's message is already a translated sentence from
+        // `errorText`, so it is safe to quote inside this one. Anything else
+        // (the browser's "Failed to fetch") is never quoted.
         message:
-          err instanceof Error
-            ? this.t("checkout.paymentUnconfirmedDetail", { detail: err.message })
+          err instanceof WidgetError
+            ? this.t("checkout.paymentUnconfirmedDetail", { detail: errorText })
             : this.t("checkout.paymentUnconfirmed"),
       };
-      this.emit("checkoutError", {
-        error: err instanceof Error ? err.message : this.t("errors.network"),
-      });
+      this.emit("checkoutError", { error: errorText });
     } finally {
       this.processing = false;
       this.render();
@@ -202,7 +209,6 @@ export class CheckoutWidget extends MPNextWidget {
       this.loading = false;
       this.error = this.t("checkout.noInvoiceSpecified");
       this.render();
-      this.attachListeners();
       this.emit("checkoutError", { error: this.error });
       return;
     }
@@ -216,23 +222,22 @@ export class CheckoutWidget extends MPNextWidget {
         `/api/embed/checkout/invoice?guid=${encodeURIComponent(this.guid)}`,
       );
       if (res.status === 404) {
-        throw new Error(this.t("errors.invoice_not_found"));
+        throw new WidgetError(this.t("errors.invoice_not_found"));
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { invoice: CheckoutInvoice } = await res.json();
       this.invoice = data.invoice;
       this.payChoice = "full";
       this.emit("invoiceLoaded", { invoiceId: this.invoice.invoiceId });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("checkoutError", { error: this.error });
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -247,6 +252,11 @@ export class CheckoutWidget extends MPNextWidget {
           const n = parseFloat(value);
           if (isNaN(n) || n <= 0) {
             return this.t("checkout.invalidAmount");
+          }
+          // A courtesy cap (C43) — `checkout/payment-token` enforces it.
+          const due = this.invoice?.balanceDue ?? 0;
+          if (Math.round(n * 100) > Math.round(due * 100)) {
+            return this.t("checkout.amountTooHigh", { amount: this.fmt.currency(due) });
           }
           return null;
         },
@@ -276,7 +286,6 @@ export class CheckoutWidget extends MPNextWidget {
     if (amount <= 0) {
       this.error = this.t("checkout.invalidAmount");
       this.render();
-      this.attachListeners();
       return;
     }
 
@@ -284,7 +293,6 @@ export class CheckoutWidget extends MPNextWidget {
     if (!processorUrl) {
       this.error = this.t("checkout.processorMissing");
       this.render();
-      this.attachListeners();
       this.emit("checkoutError", { error: this.error });
       return;
     }
@@ -293,15 +301,29 @@ export class CheckoutWidget extends MPNextWidget {
     this.render();
 
     try {
-      const returnUrl = encodeURIComponent(this.currentPageUrlWithoutToken());
-      const res = await this.fetch(
-        `/api/embed/checkout/payment-token?guid=${encodeURIComponent(
-          this.guid,
-        )}&amount=${encodeURIComponent(String(amount))}&returnUrl=${returnUrl}`,
-      );
+      const params = new URLSearchParams({
+        guid: this.guid,
+        amount: String(amount),
+        returnUrl: this.currentPageUrlWithoutToken(),
+      });
+      // Legacy `receipttemplateid` (C66): threaded into the request token so
+      // the server sends the receipt wherever the payment is recorded.
+      const receipt = this.getAttribute("receipt-template-id")?.trim();
+      if (receipt) params.set("receiptTemplateId", receipt);
+      const res = await this.fetch(`/api/embed/checkout/payment-token?${params.toString()}`);
+      if (res.status === 422) {
+        // The server refused an amount above the balance due (C43). The form
+        // already caps it, so the balance has most likely moved under us — a
+        // payment from another tab. Reload and say so.
+        this.processing = false;
+        await this.loadInvoice();
+        this.error = this.t("checkout.balanceChanged");
+        this.render();
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { token: string } = await res.json();
       const sep = processorUrl.includes("?") ? "&" : "?";
@@ -310,9 +332,8 @@ export class CheckoutWidget extends MPNextWidget {
       )}`;
     } catch (err) {
       this.processing = false;
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.render();
-      this.attachListeners();
       this.emit("checkoutError", { error: this.error });
     }
   }
@@ -338,7 +359,6 @@ export class CheckoutWidget extends MPNextWidget {
         radio.addEventListener("change", () => {
           this.payChoice = radio.value as PayChoice;
           this.render();
-          this.attachListeners();
           if (this.payChoice === "other") {
             const input = this.root.querySelector<HTMLInputElement>("#nw-other-amount");
             input?.focus();
@@ -356,7 +376,18 @@ export class CheckoutWidget extends MPNextWidget {
     }
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.processing && !this.loading) {
       this.root.innerHTML = this.shell(`
         <div class="nw-co-state">
@@ -394,9 +425,12 @@ export class CheckoutWidget extends MPNextWidget {
   }
 
   private shell(body: string): string {
+    // The title is a real heading (CROSS-3); `heading-level` places it in the
+    // host page's outline (C35 convention, default h2).
+    const h = headingTag(this.getAttribute("heading-level"));
     return `
       <div class="nw-co">
-        <div class="nw-co-header">${this.escapeHtml(this.t("checkout.header"))}</div>
+        <${h} class="nw-co-header">${this.escapeHtml(this.t("checkout.header"))}</${h}>
         <div class="nw-co-body">
           ${this.confirmation ? this.renderConfirmation() : ""}
           ${body}
@@ -406,9 +440,11 @@ export class CheckoutWidget extends MPNextWidget {
 
   private renderConfirmation(): string {
     if (!this.confirmation) return "";
-    const cls = this.confirmation.kind === "success" ? "nw-co-confirm--success" : "nw-co-confirm--pending";
+    const { tone } = this.confirmation;
+    // A failure is announced assertively; success and pending politely.
+    const role = tone === "failed" ? "alert" : "status";
     return `
-      <div class="nw-co-confirm ${cls}">
+      <div class="nw-co-confirm nw-co-confirm--${tone}" role="${role}">
         ${this.escapeHtml(this.confirmation.message)}
       </div>`;
   }
@@ -423,10 +459,16 @@ export class CheckoutWidget extends MPNextWidget {
           <span class="nw-co-meta-label">${this.escapeHtml(this.t("checkout.invoiceDate"))}</span>
           <span class="nw-co-meta-value">${this.escapeHtml(this.fmt.date(inv.invoiceDate, "long"))}</span>
         </div>
-        <div>
-          <span class="nw-co-meta-label">${this.escapeHtml(this.t("checkout.status"))}</span>
-          <span class="nw-co-meta-value">${this.escapeHtml(inv.status)}</span>
-        </div>
+        ${
+          // MP's status vocabulary is about payment; a free registration has
+          // no payment to describe, so "Status: None Paid" is left out (C47).
+          inv.invoiceTotal > 0
+            ? `<div>
+                <span class="nw-co-meta-label">${this.escapeHtml(this.t("checkout.status"))}</span>
+                <span class="nw-co-meta-value">${this.escapeHtml(inv.status)}</span>
+              </div>`
+            : ""
+        }
       </div>
 
       ${
@@ -453,7 +495,7 @@ export class CheckoutWidget extends MPNextWidget {
         </div>
       </div>
 
-      ${inv.canPay ? this.renderPaySection(inv) : this.renderStatusSection(inv)}
+      ${inv.canPay ? (this.holdPayForm ? "" : this.renderPaySection(inv)) : this.renderStatusSection(inv)}
     `;
   }
 
@@ -480,7 +522,11 @@ export class CheckoutWidget extends MPNextWidget {
   }
 
   private renderPaySection(inv: CheckoutInvoice): string {
-    const hasDeposit = inv.depositDue != null && inv.depositDue > 0;
+    // A deposit at or above what is left is not a deposit any more — and
+    // offering it would ask for more than the balance (C43).
+    const hasDeposit =
+      inv.depositDue != null && inv.depositDue > 0 && inv.depositDue < inv.balanceDue;
+    const changesHref = this.makeChangesHref(inv);
     return `
       <form id="nw-co-pay-form" class="nw-co-pay" novalidate>
         <div class="nw-co-pay-title">${this.escapeHtml(this.t("checkout.paymentAmount"))}</div>
@@ -525,24 +571,69 @@ export class CheckoutWidget extends MPNextWidget {
         </div>
         <button type="submit" class="nw-co-btn nw-co-btn--pay" data-action="pay">${this.escapeHtml(this.t("checkout.pay"))}</button>
         ${
-          this.getAttribute("back-to-event-url")
-            ? `<a class="nw-co-changes" href="${this.escapeAttr(this.getAttribute("back-to-event-url") as string)}">${this.escapeHtml(this.t("checkout.makeChanges"))}</a>`
+          changesHref
+            ? `<a class="nw-co-changes" href="${this.escapeAttr(changesHref)}">${this.escapeHtml(this.t("checkout.makeChanges"))}</a>`
             : ""
         }
       </form>`;
   }
 
+  /**
+   * The closing line for an invoice with nothing to pay (C47). Three cases,
+   * because "nothing to pay" and "has been paid" are different facts:
+   *
+   * - a zero-total invoice (a free registration) → neutral "registration is
+   *   complete". It never had a balance, so "Paid in full" — in the success
+   *   colour, under "Status: None Paid" — was false on its face;
+   * - money paid and no balance left → "Paid in full";
+   * - otherwise → MP's own status wording (Cancelled, say), as written.
+   */
   private renderStatusSection(inv: CheckoutInvoice): string {
-    const paid = inv.balanceDue <= 0;
-    const cls = paid ? "nw-co-status--paid" : "nw-co-status--closed";
-    // A non-paid status is MP's own wording for it, so it renders as written.
-    const label = paid
-      ? this.escapeHtml(this.t("checkout.paidInFull"))
-      : this.escapeHtml(inv.status);
+    let cls: string;
+    let label: string;
+    if (inv.invoiceTotal <= 0) {
+      cls = "nw-co-status--complete";
+      label = this.t("checkout.registrationComplete");
+    } else if (inv.amountPaid > 0 && inv.balanceDue <= 0) {
+      cls = "nw-co-status--paid";
+      label = this.t("checkout.paidInFull");
+    } else {
+      cls = "nw-co-status--closed";
+      label = inv.status;
+    }
     return `
-      <div class="nw-co-status ${cls}">
-        ${label}
+      <div class="nw-co-status ${cls}" role="status">
+        ${this.escapeHtml(label)}
       </div>`;
+  }
+
+  /**
+   * "Make Changes" (C49): back to the event's registration with this invoice
+   * re-opened — `<back-to-event-url>?id=<eventId>&invoiceid=<guid>`, legacy's
+   * shape and exactly what `next-event-details` reads (`id-parameter-name`,
+   * default `id`; `invoiceid`). The event-id parameter name follows the
+   * destination's: `back-to-event-id-parameter-name`, default `id`.
+   *
+   * Built with `URL` / `URLSearchParams`, so a configured URL that already has
+   * a query string keeps it. A non-event invoice gets the bare URL. A
+   * `javascript:` / `data:` URL is refused. The label stays "Make Changes":
+   * clearer than legacy's "Back to Event Details", and deliberate.
+   */
+  private makeChangesHref(inv: CheckoutInvoice): string | null {
+    const base = this.getAttribute("back-to-event-url")?.trim();
+    if (!base) return null;
+    let url: URL;
+    try {
+      url = new URL(base, window.location.href);
+    } catch {
+      return null;
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (inv.eventId == null) return base;
+    const idParam = this.getAttribute("back-to-event-id-parameter-name")?.trim() || "id";
+    url.searchParams.set(idParam, String(inv.eventId));
+    url.searchParams.set("invoiceid", inv.invoiceGuid);
+    return url.toString();
   }
 
   // ── Helpers ──
@@ -579,71 +670,73 @@ export class CheckoutWidget extends MPNextWidget {
   }
 
   private getStyles(): string {
-    return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
-      .nw-co { max-width: 720px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-      .nw-co-header { background: #002855; color: white; padding: 24px; font-size: 22px; font-weight: 700; text-align: center; }
-      .nw-co-body { padding: 24px; }
+    return `${HEADING_RESET_STYLES}
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
+      .nw-co { max-width: 720px; margin: 0 auto; background: var(--_nw-color-surface); border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+      .nw-co-header { background: var(--_nw-color-secondary); color: var(--_nw-color-on-primary); padding: var(--_nw-space-6); font-size: 22px; font-weight: var(--_nw-font-weight-heading); text-align: center; }
+      .nw-co-body { padding: var(--_nw-space-6); }
 
-      .nw-co-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 40px 16px; color: #6b7280; font-size: 15px; text-align: center; }
-      .nw-co-spinner { animation: nw-co-spin 1s linear infinite; color: #004C97; }
+      .nw-co-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 40px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; text-align: center; }
+      .nw-co-spinner { animation: nw-co-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes nw-co-spin { to { transform: rotate(360deg); } }
-      .nw-co-error p { color: #b91c1c; margin: 0 0 12px; }
+      .nw-co-error p { color: var(--_nw-color-error-text); margin: 0 0 var(--_nw-space-3); }
       .nw-co-empty { color: #9ca3af; }
 
-      .nw-co-confirm { border-radius: 10px; padding: 14px 16px; font-size: 14px; font-weight: 600; margin-bottom: 20px; }
+      .nw-co-confirm { border-radius: 10px; padding: 14px var(--_nw-space-4); font-size: var(--_nw-font-size-base); font-weight: 600; margin-bottom: var(--_nw-space-5); }
       .nw-co-confirm--success { background: rgba(134,173,63,0.15); color: #4d6a14; border: 1px solid rgba(134,173,63,0.4); }
       .nw-co-confirm--pending { background: rgba(241,190,72,0.18); color: #8a6d10; border: 1px solid rgba(241,190,72,0.5); }
+      .nw-co-confirm--failed { background: rgba(255,109,106,0.15); color: var(--_nw-color-error-text); border: 1px solid rgba(255,109,106,0.5); }
 
-      .nw-co-meta { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb; margin-bottom: 16px; }
+      .nw-co-meta { display: flex; justify-content: space-between; gap: var(--_nw-space-4); padding-bottom: var(--_nw-space-4); border-bottom: var(--_nw-border-width) solid var(--_nw-color-border); margin-bottom: var(--_nw-space-4); }
       .nw-co-meta-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #9ca3af; font-weight: 600; }
-      .nw-co-meta-value { font-size: 15px; color: #002855; font-weight: 600; }
+      .nw-co-meta-value { font-size: 15px; color: var(--_nw-color-secondary); font-weight: 600; }
 
-      .nw-co-items { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
-      .nw-co-item { display: grid; grid-template-columns: 1fr 50px 90px; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #f3f4f6; }
+      .nw-co-items { border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: 10px; overflow: hidden; margin-bottom: var(--_nw-space-4); }
+      .nw-co-item { display: grid; grid-template-columns: 1fr 50px 90px; align-items: center; gap: var(--_nw-space-3); padding: var(--_nw-space-3) var(--_nw-space-4); border-bottom: var(--_nw-border-width) solid var(--_nw-color-surface-muted); }
       .nw-co-item:last-child { border-bottom: none; }
       .nw-co-item--sub { background: #f9fafb; padding-left: 32px; }
-      .nw-co-item-name { font-size: 14px; color: #2D2926; }
-      .nw-co-item-recipient { font-weight: 600; color: #002855; }
-      .nw-co-item-note { font-size: 12px; color: #6b7280; margin-top: 2px; }
-      .nw-co-item-qty { text-align: center; font-size: 13px; color: #6b7280; }
-      .nw-co-item-total { text-align: right; font-size: 14px; font-weight: 600; }
+      .nw-co-item-name { font-size: var(--_nw-font-size-base); color: var(--_nw-color-text); }
+      .nw-co-item-recipient { font-weight: 600; color: var(--_nw-color-secondary); }
+      .nw-co-item-note { font-size: 12px; color: var(--_nw-color-muted); margin-top: 2px; }
+      .nw-co-item-qty { text-align: center; font-size: 13px; color: var(--_nw-color-muted); }
+      .nw-co-item-total { text-align: right; font-size: var(--_nw-font-size-base); font-weight: 600; }
 
-      .nw-co-totals { padding: 8px 4px 4px; }
-      .nw-co-total-row { display: flex; justify-content: space-between; font-size: 14px; padding: 6px 0; color: #474747; }
-      .nw-co-total-row--due { border-top: 1px solid #e5e7eb; margin-top: 6px; padding-top: 12px; font-size: 18px; font-weight: 700; color: #004C97; }
+      .nw-co-totals { padding: var(--_nw-space-2) var(--_nw-space-1) var(--_nw-space-1); }
+      .nw-co-total-row { display: flex; justify-content: space-between; font-size: var(--_nw-font-size-base); padding: 6px 0; color: var(--_nw-color-text-subtle); }
+      .nw-co-total-row--due { border-top: var(--_nw-border-width) solid var(--_nw-color-border); margin-top: 6px; padding-top: var(--_nw-space-3); font-size: 18px; font-weight: 700; color: var(--_nw-color-primary); }
 
-      .nw-co-pay { margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
-      .nw-co-pay-title { font-size: 16px; font-weight: 700; color: #002855; margin-bottom: 12px; }
-      .nw-co-choice { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 8px; cursor: pointer; font-size: 14px; }
-      .nw-co-choice:hover { border-color: #004C97; }
-      .nw-co-choice input { accent-color: #004C97; width: 16px; height: 16px; }
+      .nw-co-pay { margin-top: var(--_nw-space-5); padding-top: var(--_nw-space-5); border-top: var(--_nw-border-width) solid var(--_nw-color-border); }
+      .nw-co-pay-title { font-size: 16px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin-bottom: var(--_nw-space-3); }
+      .nw-co-choice { display: flex; align-items: center; gap: 10px; padding: 10px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius); margin-bottom: var(--_nw-space-2); cursor: pointer; font-size: var(--_nw-font-size-base); }
+      .nw-co-choice:hover { border-color: var(--_nw-color-primary); }
+      .nw-co-choice input { accent-color: var(--_nw-color-primary); width: 16px; height: 16px; }
 
-      .nw-co-other { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; padding: 0 12px; }
-      .nw-co-other-prefix { font-size: 15px; color: #6b7280; }
-      .nw-co-other input { flex: 1; padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; outline: none; }
-      .nw-co-other input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
+      .nw-co-other { display: flex; align-items: center; gap: 6px; margin: 0 0 var(--_nw-space-2); padding: 0 var(--_nw-space-3); }
+      .nw-co-other-prefix { font-size: 15px; color: var(--_nw-color-muted); }
+      .nw-co-other input { flex: 1; padding: 9px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; outline: none; }
+      .nw-co-other input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
 
-      .nw-co-inline-error { color: #b91c1c; font-size: 13px; margin-bottom: 8px; }
+      .nw-co-inline-error { color: var(--_nw-color-error-text); font-size: 13px; margin-bottom: var(--_nw-space-2); }
 
-      .nw-co-pay-summary { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0; font-size: 14px; color: #474747; }
-      .nw-co-pay-amount { font-size: 22px; font-weight: 700; color: #004C97; }
+      .nw-co-pay-summary { display: flex; justify-content: space-between; align-items: baseline; padding: var(--_nw-space-3) 0; font-size: var(--_nw-font-size-base); color: var(--_nw-color-text-subtle); }
+      .nw-co-pay-amount { font-size: 22px; font-weight: 700; color: var(--_nw-color-primary); }
 
-      .nw-co-btn { padding: 10px 20px; background: #004C97; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
-      .nw-co-btn:hover { background: #002855; }
+      .nw-co-btn { padding: 10px var(--_nw-space-5); background: var(--_nw-button-bg); color: var(--_nw-button-fg); border: none; border-radius: var(--_nw-button-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; }
+      .nw-co-btn:hover { background: var(--_nw-button-bg-hover); }
       .nw-co-btn--pay { display: block; width: 100%; padding: 14px; font-size: 15px; }
 
-      .nw-co-changes { display: block; text-align: center; margin-top: 12px; font-size: 13px; font-weight: 600; color: #004C97; text-decoration: none; }
+      .nw-co-changes { display: block; text-align: center; margin-top: var(--_nw-space-3); font-size: 13px; font-weight: 600; color: var(--_nw-color-primary); text-decoration: none; }
       .nw-co-changes:hover { text-decoration: underline; }
 
-      .nw-co-status { margin-top: 20px; padding: 16px; border-radius: 10px; text-align: center; font-size: 16px; font-weight: 700; }
+      .nw-co-status { margin-top: var(--_nw-space-5); padding: var(--_nw-space-4); border-radius: 10px; text-align: center; font-size: 16px; font-weight: 700; }
       .nw-co-status--paid { background: rgba(134,173,63,0.15); color: #4d6a14; }
-      .nw-co-status--closed { background: #f3f4f6; color: #474747; }
+      .nw-co-status--closed { background: var(--_nw-color-surface-muted); color: var(--_nw-color-text-subtle); }
+      .nw-co-status--complete { background: rgba(0,76,151,0.08); color: var(--_nw-color-secondary); }
 
       @media (max-width: 640px) {
-        .nw-co-header, .nw-co-body { padding: 16px; }
-        .nw-co-item { grid-template-columns: 1fr 40px 80px; gap: 8px; padding: 10px 12px; }
-        .nw-co-meta { flex-direction: column; gap: 8px; }
+        .nw-co-header, .nw-co-body { padding: var(--_nw-space-4); }
+        .nw-co-item { grid-template-columns: 1fr 40px 80px; gap: var(--_nw-space-2); padding: 10px var(--_nw-space-3); }
+        .nw-co-meta { flex-direction: column; gap: var(--_nw-space-2); }
       }
     `;
   }

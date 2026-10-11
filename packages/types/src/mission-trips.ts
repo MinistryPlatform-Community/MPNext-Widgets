@@ -18,7 +18,7 @@
  * parse the calendar parts into a local `Date` and format with no zone, and the
  * two cancel out. See CLAUDE.md, "Widget Localisation".
  *
- * Full reasoning: `.claude/TODO/Comparison/Plans/mission-trips.md`.
+ * Comparison finding C76.
  */
 
 import { z } from "zod";

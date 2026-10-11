@@ -24,7 +24,7 @@ export const esGiving = {
     disclaimer:
       "La siguiente lista de donaciones es informativa y no debe utilizarse para fines fiscales.",
     softCreditDisclaimer:
-      "A continuación se incluyen las donaciones con crédito indirecto, que reflejan donativos que se le acreditan a usted pero que no realizó personalmente.",
+      "Las donaciones con crédito indirecto son donativos que se le acreditan a usted pero que no realizó personalmente. Sus montos se excluyen de su Total donado y no aparecerán en su estado de contribuciones para fines fiscales.",
     donations: "Donaciones",
     empty: "Sin donaciones",
     showMore: "VER MÁS DONACIONES",
@@ -32,6 +32,10 @@ export const esGiving = {
     badgeSpouse: "Cónyuge",
     badgeSoftCredit: "Crédito indirecto",
     badgeNonDeductible: "No deducible",
+    signInPrompt: "Inicie sesión para ver la información de sus donaciones.",
+    month: "Mes",
+    monthYear: "{month} de {year}",
+    barTooltip: "{label}: {amount}",
   },
 
   myPledges: {
@@ -62,6 +66,7 @@ export const esGiving = {
       discontinued: "Descontinuado",
       pending: "Pendiente",
     },
+    signInPrompt: "Inicie sesión para ver sus compromisos.",
   },
 
   pledgeCampaign: {
@@ -103,6 +108,12 @@ export const esGiving = {
     registrationOpensOn: "El registro abre el {date}.",
     registrationClosed: "El registro para esta campaña ya está cerrado.",
     registrationClosedOn: "El registro para esta campaña cerró el {date}.",
+    amountTooLow: "Ingrese un monto de compromiso mayor que {amount}.",
+    amountTooHigh: "Ingrese un monto de compromiso de {amount} o menos.",
+    totalTooHigh:
+      "Su compromiso total no puede ser mayor que {amount}. Revise el monto y el calendario.",
+    scheduleEmpty:
+      "Este calendario no tiene cuotas. Elija una fecha de finalización posterior u otra frecuencia.",
   },
 
   contributionStatement: {
@@ -111,6 +122,10 @@ export const esGiving = {
     empty: "No hay estados de contribuciones disponibles por el momento.",
     selectYear: "Seleccione el año del estado",
     savePdf: "Guardar como PDF",
+    signInPrompt: "Inicie sesión para ver sus estados de contribuciones.",
+    popupBlocked: "Su navegador impidió abrir el estado de contribuciones.",
+    openStatement: "Abrir el estado de contribuciones",
+    myGivingLink: "Ver mis donaciones →",
   },
 
   statementPreferences: {
@@ -121,6 +136,7 @@ export const esGiving = {
     updated: "Se actualizó el método de entrega",
     updateFailed:
       "Error al actualizar el método de entrega. Inténtelo de nuevo.",
+    signInPrompt: "Inicie sesión para elegir cómo recibe sus estados de contribuciones.",
   },
 
   checkout: {
@@ -150,6 +166,11 @@ export const esGiving = {
       "Su pago se está procesando. Esta factura se actualizará cuando el pago se acredite.",
     paymentUnconfirmed: "No pudimos confirmar su pago.",
     paymentUnconfirmedDetail: "No pudimos confirmar su pago: {detail}",
+    paymentDeclined: "Su pago fue rechazado y no se realizó ningún cargo. Intente con otra tarjeta.",
+    paymentError: "No pudimos registrar su pago. Comuníquese con nosotros antes de volver a intentarlo, para que no se le cobre dos veces.",
+    amountTooHigh: "El monto no puede ser mayor que el saldo pendiente ({amount}).",
+    balanceChanged: "El saldo de esta factura cambió. Revíselo e inténtelo de nuevo.",
+    registrationComplete: "Su inscripción está completa.",
   },
 
   checkoutComplete: {
@@ -161,9 +182,10 @@ export const esGiving = {
     received: "¡Gracias! Recibimos su pago.",
     processing:
       "¡Gracias! Su pago se está procesando y se confirmará en breve.",
-    failed:
-      "No pudimos confirmar su pago. Inténtelo de nuevo o comuníquese con nosotros.",
     unconfirmed: "No pudimos confirmar su pago.",
+    titleDeclined: "Pago rechazado",
+    declined: "Su pago fue rechazado y no se realizó ningún cargo. Vuelva a su factura e intente con otra tarjeta.",
+    error: "No pudimos registrar su pago. Comuníquese con nosotros antes de volver a intentarlo, para que no se le cobre dos veces.",
   },
 
   pay: {
@@ -188,6 +210,15 @@ export const esGiving = {
     enterCard: "Ingrese un número de tarjeta.",
     enterExpiry: "Ingrese la fecha de vencimiento.",
     enterCvv: "Ingrese el CVV.",
+    linkUsedTitle: "Este enlace de pago ya se utilizó",
+    linkUsed: "No se realizó ningún cargo adicional. Vuelva a su factura para ver el saldo actual.",
+    linkExpiredTitle: "Este enlace de pago venció",
+    linkExpired: "No se realizó ningún cargo. Vuelva a su factura e inicie el pago de nuevo.",
+    returnToInvoice: "Volver a la factura",
+    invalidCard: "Ingrese un número de tarjeta válido.",
+    invalidExpiry: "Ingrese la fecha de vencimiento como MM/AA.",
+    expiredCard: "Esta tarjeta está vencida.",
+    invalidCvv: "Ingrese el código de seguridad de 3 o 4 dígitos.",
   },
 
   subscriptions: {
@@ -200,6 +231,12 @@ export const esGiving = {
     subscribed: "Se suscribió a {title}",
     unsubscribed: "Canceló la suscripción a {title}",
     updateFailed: "No se pudo actualizar la suscripción. Inténtelo de nuevo.",
+    signInPrompt: "Inicie sesión para ver sus suscripciones.",
+    bulkEmailTitle: "Todo el correo de la iglesia",
+    sendBulkEmail: "Enviarme los correos electrónicos generales de la iglesia",
+    bulkEmailHint: "Desactive esta opción para dejar de recibir todos los correos masivos de la iglesia.",
+    bulkEmailOn: "Volverá a recibir los correos electrónicos generales de la iglesia.",
+    bulkEmailOff: "Ya no recibirá correos masivos de la iglesia.",
   },
   /**
    * `next-subscribe-to-publication` (C70).

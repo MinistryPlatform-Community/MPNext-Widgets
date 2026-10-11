@@ -42,12 +42,15 @@ export async function GET(
   } catch (error) {
     console.error("Error loading event detail:", error);
 
+    if (error instanceof Error && error.message === "Event not found") {
+      return NextResponse.json(
+        { error: "event_not_found", message: "Event not found" },
+        { status: 404, headers: buildFallbackCorsHeaders(origin) }
+      );
+    }
+
     const status =
-      error instanceof Error && error.message === "Event not found"
-        ? 404
-        : error instanceof Error && error.message.includes("Token")
-          ? 403
-          : 500;
+      error instanceof Error && error.message.includes("Token") ? 403 : 500;
 
     return NextResponse.json(
       {

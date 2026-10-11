@@ -277,6 +277,21 @@ describe("errorText", () => {
     expect(el.publicErrorText({ error: 42 })).toBe(generic);
   });
 
+  // C42 remainder: W1's payment/checkout routes emit `mp_unavailable` when MP
+  // does not answer. The key exists ahead of the routes so they only emit it.
+  it("covers the generic mp_unavailable code without a WIRE_CODE_KEYS entry", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(el.publicErrorText({ error: "mp_unavailable", message: "MP 503" })).toBe(
+      "This service is temporarily unavailable. Please try again in a few minutes.",
+    );
+    expect(warn).not.toHaveBeenCalled();
+    await getLocaleSession().setLocale("pt-BR");
+    await settle();
+    expect(el.publicErrorText({ error: "mp_unavailable" })).toBe(
+      "Este serviço está temporariamente indisponível. Tente novamente em alguns minutos.",
+    );
+  });
+
   it("translates the code, not the message, in Spanish", async () => {
     await getLocaleSession().setLocale("es");
     await settle();

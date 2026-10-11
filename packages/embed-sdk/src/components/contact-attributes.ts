@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 
 /**
  * `<next-contact-attributes>` (C52) — the congregant's own attributes.
@@ -55,7 +55,8 @@ export class ContactAttributesWidget extends MPNextWidget {
   private noticeTimer: ReturnType<typeof setTimeout> | null = null;
 
   connectedCallback() {
-    this.injectStyles(this.getStyles());
+    // The shared sign-in sheet goes first so this widget's own button classes win.
+    this.injectStyles(SIGN_IN_REQUIRED_STYLES + this.getStyles());
     // Catalogue before the first paint, so a Spanish visitor never watches
     // English swap to Spanish.
     void this.initLocale().then(() => {
@@ -86,9 +87,9 @@ export class ContactAttributesWidget extends MPNextWidget {
     try {
       const res = await this.fetch("/api/embed/contact-attributes");
 
-      if (res.status === 401) {
+      if (this.isNeedsAuth(res)) {
         // Signed out is an ordinary state for this widget, not an error: it is
-        // signed-in-only by design, so the answer is a Sign In button.
+        // signed-in-only by design, so the answer is the shared sign-in panel.
         this.phase = "signedOut";
         this.paint();
         return;
@@ -155,7 +156,7 @@ export class ContactAttributesWidget extends MPNextWidget {
         body: JSON.stringify({ attributeIds: [...this.draft] }),
       });
 
-      if (res.status === 401) {
+      if (this.isNeedsAuth(res)) {
         this.phase = "signedOut";
         return;
       }
@@ -237,13 +238,10 @@ export class ContactAttributesWidget extends MPNextWidget {
   /** `render()` plus the listener pass every repaint needs. */
   private paint() {
     this.render();
-    this.attachListeners();
   }
 
   private attachListeners() {
-    const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.requestLogin("contact-attributes"));
-
+    // `[data-action="login"]` is delegated by the base class (renderSignInRequired).
     const retry = this.root.querySelector('[data-action="retry"]');
     if (retry) retry.addEventListener("click", () => this.retryLoad());
 
@@ -295,7 +293,18 @@ export class ContactAttributesWidget extends MPNextWidget {
     if (submit) submit.disabled = this.saving || !this.dirty;
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.phase === "loading") {
       this.root.innerHTML = this.shell(`
         <div class="ca-loading">
@@ -306,13 +315,14 @@ export class ContactAttributesWidget extends MPNextWidget {
     }
 
     if (this.phase === "signedOut") {
-      this.root.innerHTML = this.shell(`
-        <p class="ca-intro">${this.escapeHtml(this.t("contactAttributes.signedOut"))}</p>
-        <div class="ca-actions">
-          <button type="button" class="ca-btn ca-btn--primary" data-action="login">
-            ${this.escapeHtml(this.t("common.signIn"))}
-          </button>
-        </div>`);
+      this.root.innerHTML = this.shell(
+        this.renderSignInRequired({
+          subject: "contact-attributes",
+          message: this.t("contactAttributes.signedOut"),
+          className: "ca-signin",
+          buttonClass: "ca-btn ca-btn--primary",
+        })
+      );
       return;
     }
 
@@ -456,54 +466,54 @@ export class ContactAttributesWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-        color: #2D2926;
+        font-family: var(--_nw-font-family);
+        color: var(--_nw-color-text);
       }
 
       .ca {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
-        border: 1px solid #e5e7eb;
+        background: var(--_nw-color-surface);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
         border-radius: 16px;
-        padding: 24px;
+        padding: var(--_nw-space-6);
         box-sizing: border-box;
       }
 
       .ca-title {
-        margin: 0 0 8px;
+        margin: 0 0 var(--_nw-space-2);
         font-size: 22px;
-        font-weight: 700;
-        color: #004C97;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-primary);
       }
 
       .ca-intro {
-        margin: 0 0 20px;
-        font-size: 14px;
-        line-height: 1.5;
-        color: #6b7280;
+        margin: 0 0 var(--_nw-space-5);
+        font-size: var(--_nw-font-size-base);
+        line-height: var(--_nw-line-height);
+        color: var(--_nw-color-muted);
       }
 
       .ca-loading {
         display: flex;
         align-items: center;
         gap: 10px;
-        color: #6b7280;
+        color: var(--_nw-color-muted);
         font-size: 15px;
       }
       .ca-spinner {
         width: 20px;
         height: 20px;
         animation: ca-spin 1s linear infinite;
-        color: #004C97;
+        color: var(--_nw-color-primary);
       }
       @keyframes ca-spin { to { transform: rotate(360deg); } }
 
       .ca-notice {
-        margin: 0 0 16px;
+        margin: 0 0 var(--_nw-space-4);
         padding: 10px 14px;
-        border-radius: 8px;
-        font-size: 14px;
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
         line-height: 1.4;
       }
       .ca-notice--success {
@@ -514,36 +524,36 @@ export class ContactAttributesWidget extends MPNextWidget {
       .ca-notice--error {
         background: rgba(255, 109, 106, 0.15);
         border: 1px solid rgba(255, 109, 106, 0.4);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
       }
 
       .ca-group {
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 16px;
-        margin: 0 0 16px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius-lg);
+        padding: var(--_nw-space-4);
+        margin: 0 0 var(--_nw-space-4);
       }
       .ca-group-title {
-        margin: 0 0 12px;
-        padding: 0 4px;
+        margin: 0 0 var(--_nw-space-3);
+        padding: 0 var(--_nw-space-1);
         font-size: 15px;
         font-weight: 600;
-        color: #002855;
+        color: var(--_nw-color-secondary);
       }
 
       .ca-list {
         margin: 0;
-        padding: 0 0 0 20px;
+        padding: 0 0 0 var(--_nw-space-5);
       }
       .ca-item {
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         line-height: 1.6;
       }
 
       .ca-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: 8px 16px;
+        gap: var(--_nw-space-2) var(--_nw-space-4);
       }
       .ca-choice {
         display: flex;
@@ -554,13 +564,13 @@ export class ContactAttributesWidget extends MPNextWidget {
         width: 18px;
         height: 18px;
         flex-shrink: 0;
-        accent-color: #004C97;
+        accent-color: var(--_nw-color-primary);
         margin: 0;
         cursor: pointer;
       }
       .ca-check:disabled { cursor: not-allowed; opacity: 0.6; }
       .ca-choice label {
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         line-height: 1.4;
         cursor: pointer;
       }
@@ -568,27 +578,27 @@ export class ContactAttributesWidget extends MPNextWidget {
       .ca-actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 12px;
-        margin-top: 20px;
+        gap: var(--_nw-space-3);
+        margin-top: var(--_nw-space-5);
       }
       .ca-btn {
         padding: 10px 22px;
-        border-radius: 8px;
+        border-radius: var(--_nw-radius);
         border: 1px solid transparent;
         font-family: inherit;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
         cursor: pointer;
       }
       .ca-btn--primary {
-        background: #004C97;
-        color: white;
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
       }
-      .ca-btn--primary:hover:not(:disabled) { background: #002855; }
+      .ca-btn--primary:hover:not(:disabled) { background: var(--_nw-button-bg-hover); }
       .ca-btn--ghost {
-        background: white;
-        color: #004C97;
-        border-color: #004C97;
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-primary);
+        border-color: var(--_nw-color-primary);
       }
       .ca-btn--ghost:hover:not(:disabled) { background: rgba(0, 76, 151, 0.06); }
       .ca-btn:disabled {
@@ -597,7 +607,7 @@ export class ContactAttributesWidget extends MPNextWidget {
       }
 
       @media (max-width: 640px) {
-        .ca { padding: 16px; }
+        .ca { padding: var(--_nw-space-4); }
         .ca-grid { grid-template-columns: 1fr; }
       }
     `;

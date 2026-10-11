@@ -1,7 +1,7 @@
 /**
  * Subscriptions endpoint for embed widgets
  * GET  /api/embed/subscriptions - list publications + user's subscription state
- * PUT  /api/embed/subscriptions - update user's subscriptions
+ * PUT  /api/embed/subscriptions - update user's subscriptions and/or bulk-email opt-out
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -9,6 +9,17 @@ import { requireWidgetAuth, getCorsHeaders, resolveRequestOrigin, buildOptionsRe
 import { SubscriptionService } from "@/services/subscriptionService";
 import { SubscriptionUpdateSchema } from "@mpnext/types";
 import { z } from "zod";
+
+/**
+ * `?congregationId=` (C61). Absent or empty → no scope; anything else must be a
+ * positive integer, or the request is refused rather than silently unscoped.
+ */
+function parseCongregationId(value: string | null): { ok: true; value: number | null } | { ok: false } {
+  if (value === null || value.trim() === "") return { ok: true, value: null };
+  if (!/^\d+$/.test(value.trim())) return { ok: false };
+  const n = Number(value.trim());
+  return n > 0 ? { ok: true, value: n } : { ok: false };
+}
 
 function fallbackCors(origin: string): HeadersInit {
   return buildFallbackCorsHeaders(origin);
@@ -32,6 +43,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const congregation = parseCongregationId(req.nextUrl.searchParams.get("congregationId"));
+    if (!congregation.ok) {
+      return NextResponse.json(
+        { error: "validation_failed", message: "congregationId must be a positive integer" },
+        { status: 400, headers }
+      );
+    }
+
     const service = await SubscriptionService.getInstance();
     const contactId = await service.getContactIdByUserGuid(claims.sub);
 
@@ -42,9 +61,12 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const subscriptions = await service.getSubscriptions(contactId);
+    const [subscriptions, bulkEmailOptOut] = await Promise.all([
+      service.getSubscriptions(contactId, congregation.value),
+      service.getBulkEmailOptOut(contactId),
+    ]);
 
-    return NextResponse.json({ subscriptions }, { status: 200, headers });
+    return NextResponse.json({ subscriptions, bulkEmailOptOut }, { status: 200, headers });
   } catch (error) {
     console.error("Error loading subscriptions:", error);
     return NextResponse.json(
@@ -94,7 +116,16 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    const result = await service.updateSubscriptions(contactId, parsed.data.subscribedIds);
+    const { subscribedIds, bulkEmailOptOut, congregationId } = parsed.data;
+    let result: { success: boolean; error?: string; bulkEmailOptOut?: boolean } = { success: true };
+
+    if (subscribedIds !== undefined) {
+      result = await service.updateSubscriptions(contactId, subscribedIds, congregationId ?? null);
+    }
+    if (result.success && bulkEmailOptOut !== undefined) {
+      result = await service.setBulkEmailOptOutForContact(contactId, bulkEmailOptOut);
+      if (result.success) result = { ...result, bulkEmailOptOut };
+    }
 
     return NextResponse.json(result, {
       status: result.success ? 200 : 500,

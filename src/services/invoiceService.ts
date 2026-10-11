@@ -1,5 +1,6 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
+import { inFilter, readByIdBatches } from "@/services/_shared/id-batches";
 import type {
   InvoiceListItem,
   InvoiceLineItem,
@@ -38,6 +39,16 @@ interface ProductRecord {
   Product_ID: number;
   Product_Name: string;
   Description: string | null;
+}
+
+/** Server-side narrowing for the `next-my-invoices` list (C60). */
+export interface InvoiceListFilters {
+  /** `Invoices.Congregation_ID`. */
+  congregationId?: number;
+  /** Calendar month of `Invoice_Date`, 1–12. */
+  monthId?: number;
+  /** Legacy vocabulary: 1 balance due, 2 paid in full, 0/absent all. */
+  invoiceStatus?: number;
 }
 
 // ── api_MPPW_GetInvoice proc result shapes (header = result[0][0], details = result[1]) ──
@@ -96,6 +107,29 @@ function toCheckoutNumber(
 ): number {
   const n = toCheckoutNumberOrNull(value);
   return n === null ? fallback : n;
+}
+
+/**
+ * The contact an invoice read must belong to, from the widget JWT's `sub`.
+ *
+ * - `"public"` → `undefined`: no ownership check; the GUID is the capability.
+ * - signed in → that user's `Contact_ID`.
+ * - signed in but no `dp_Users` row → `0`, which matches no purchaser, so the
+ *   read fails **closed** (404) rather than silently degrading to the
+ *   anonymous, unscoped path.
+ *
+ * Shared by the checkout routes and the event-details participants route; any
+ * service exposing `getUserByGuid` will do.
+ */
+export async function resolveInvoiceOwner(
+  service: {
+    getUserByGuid(guid: string): Promise<{ Contact_ID: number } | null>;
+  },
+  sub: string
+): Promise<number | undefined> {
+  if (sub === "public") return undefined;
+  const user = await service.getUserByGuid(sub);
+  return user?.Contact_ID ?? 0;
 }
 
 export class InvoiceService {
@@ -163,16 +197,36 @@ export class InvoiceService {
 
   // ── Invoice List ──
 
+  /**
+   * The contact's invoices, newest first, optionally narrowed in MP by the
+   * `next-my-invoices` filter attributes (C60). Every filter value is an
+   * integer by the time it reaches here (the route parses them), and is
+   * re-checked below before it is interpolated into `$filter`.
+   */
   public async getInvoices(
     contactId: number,
-    mpAccessToken?: string
+    mpAccessToken?: string,
+    filters: InvoiceListFilters = {}
   ): Promise<InvoiceListItem[]> {
+    const clauses = [`Purchaser_Contact_ID = ${contactId}`];
+    const { congregationId, monthId, invoiceStatus } = filters;
+    if (Number.isInteger(congregationId) && (congregationId as number) > 0) {
+      clauses.push(`Congregation_ID = ${congregationId}`);
+    }
+    if (Number.isInteger(monthId) && (monthId as number) >= 1 && (monthId as number) <= 12) {
+      clauses.push(`MONTH(Invoice_Date) = ${monthId}`);
+    }
+    // Legacy `invoiceStatusId` is its own vocabulary, not an MP status id:
+    // 1 = balance due (None Paid / Some Paid), 2 = paid in full, 0 = all.
+    if (invoiceStatus === 1) clauses.push("Invoice_Status_ID IN (1,2)");
+    if (invoiceStatus === 2) clauses.push("Invoice_Status_ID = 3");
+
     const [records, statusMap] = await Promise.all([
       this.mp!.getTableRecords<InvoiceRecord>({
         table: "Invoices",
         select:
           "Invoice_ID,Invoice_Date,Invoice_Total,Invoice_Status_ID,Notes,Currency,Invoice_GUID",
-        filter: `Purchaser_Contact_ID = ${contactId}`,
+        filter: clauses.join(" AND "),
         orderBy: "Invoice_Date DESC",
       }),
       this.getStatusMap(),
@@ -207,13 +261,17 @@ export class InvoiceService {
     if (invoiceIds.length === 0) return summaryMap;
 
     try {
-      // Batch-fetch all Invoice_Detail records for these invoices
-      const filter = invoiceIds.map((id) => `Invoice_ID = ${id}`).join(" OR ");
-      const details = await this.mp!.getTableRecords<InvoiceDetailRecord & { Invoice_ID: number }>({
-        table: "Invoice_Detail",
-        select: "Invoice_Detail_ID,Invoice_ID,Product_ID,Item_Quantity,Line_Total,Item_Note,Recipient_Name",
-        filter,
-      });
+      // Batch-fetch all Invoice_Detail records for these invoices. Batched
+      // because a purchaser's lifetime invoice count is unbounded, and one
+      // unbatched id list overflowed IIS's 2048-char query limit at ~75
+      // invoices -- blanking every Product_Summary (see _shared/id-batches).
+      const details = await readByIdBatches(invoiceIds, (batch) =>
+        this.mp!.getTableRecords<InvoiceDetailRecord & { Invoice_ID: number }>({
+          table: "Invoice_Detail",
+          select: "Invoice_Detail_ID,Invoice_ID,Product_ID,Item_Quantity,Line_Total,Item_Note,Recipient_Name",
+          filter: inFilter("Invoice_ID", batch),
+        })
+      );
 
       // Collect unique Product_IDs
       const productIds = [...new Set(details.map((d) => d.Product_ID))];
@@ -258,15 +316,17 @@ export class InvoiceService {
    * Fetch product info using the user's own MP access token.
    * Client credentials don't have permission to the Products table,
    * but the user's OIDC token (from MP Widget Login) does.
+   *
+   * `productIds` is one batch from `idBatches`: callers go through
+   * `readByIdBatches` so the query string stays under IIS's limit.
    */
   private async fetchProductsWithUserToken(
     productIds: number[],
     mpAccessToken: string
   ): Promise<ProductRecord[]> {
-    const filter = productIds.map((id) => `Product_ID = ${id}`).join(" OR ");
     const params = new URLSearchParams({
       $select: "Product_ID,Product_Name,Description",
-      $filter: filter,
+      $filter: inFilter("Product_ID", productIds),
     });
 
     const url = `${this.mpBaseUrl}/tables/Products?${params}`;
@@ -294,7 +354,9 @@ export class InvoiceService {
     // Strategy 1: Use the user's MP access token (preferred — has table permissions)
     if (mpAccessToken) {
       try {
-        const products = await this.fetchProductsWithUserToken(uncached, mpAccessToken);
+        const products = await readByIdBatches(uncached, (batch) =>
+          this.fetchProductsWithUserToken(batch, mpAccessToken)
+        );
         for (const p of products) {
           this.productCache.set(p.Product_ID, {
             Product_Name: p.Product_Name,
@@ -309,12 +371,13 @@ export class InvoiceService {
 
     // Strategy 2: Fall back to client credentials (may not have Products table access)
     try {
-      const filter = uncached.map((id) => `Product_ID = ${id}`).join(" OR ");
-      const products = await this.mp!.getTableRecords<ProductRecord>({
-        table: "Products",
-        select: "Product_ID,Product_Name,Description",
-        filter,
-      });
+      const products = await readByIdBatches(uncached, (batch) =>
+        this.mp!.getTableRecords<ProductRecord>({
+          table: "Products",
+          select: "Product_ID,Product_Name,Description",
+          filter: inFilter("Product_ID", batch),
+        })
+      );
 
       for (const p of products) {
         this.productCache.set(p.Product_ID, {
@@ -399,27 +462,39 @@ export class InvoiceService {
    * the legacy `api_MPPW_GetInvoice` proc (header in result[0][0], detail rows
    * in result[1]) and maps it onto the shared CheckoutInvoice contract.
    *
-   * Pass `mpContactId` (> 0) for an authenticated payor so the proc can scope
-   * to the logged-in contact; omit it for the public/guest checkout path.
+   * ## Ownership is enforced here, not by the proc (C80 / C42)
+   *
+   * `api_MPPW_GetInvoice` takes `@InvoiceGuid` and nothing else. It used to be
+   * sent a contact-id parameter for a signed-in payer, which MP rejects with
+   * "Parameter ... does not exists in the requested procedure" — so every
+   * signed-in read 500'd while the anonymous one worked. The proc is now called
+   * with the GUID only, and when `ownerContactId` is supplied the header's
+   * `Contact_ID` (the invoice's `Purchaser_Contact_ID`, verified against the
+   * live proc 2026-10-11) must equal it, or the invoice reads as not found.
+   * That is the shape `getInvoiceDetail` already uses for `next-my-invoices`.
+   *
+   * Omit `ownerContactId` for the public/guest path, where the GUID itself is
+   * the capability (legacy parity).
    */
   public async getCheckoutInvoiceByGuid(
     invoiceGuid: string,
-    mpContactId?: number
+    ownerContactId?: number
   ): Promise<CheckoutInvoice | null> {
-    const params: Record<string, string | number | null> = {
-      "@InvoiceGuid": invoiceGuid,
-    };
-    if (mpContactId != null && mpContactId > 0) {
-      params["@MpLoggedInContactId"] = mpContactId;
-    }
-
     const [result, statusMap] = await Promise.all([
-      this.mp!.executeProcedure("api_MPPW_GetInvoice", params),
+      this.mp!.executeProcedure("api_MPPW_GetInvoice", {
+        "@InvoiceGuid": invoiceGuid,
+      }),
       this.getStatusMap(),
     ]);
 
     const header = ((result[0] as CheckoutInvoiceHeaderRow[] | undefined) ?? [])[0];
     if (!header) return null;
+    if (
+      ownerContactId !== undefined &&
+      toCheckoutNumberOrNull(header.Contact_ID) !== ownerContactId
+    ) {
+      return null;
+    }
 
     const details = (result[1] as CheckoutInvoiceDetailRow[] | undefined) ?? [];
 
@@ -449,7 +524,9 @@ export class InvoiceService {
       lineTotal: toCheckoutNumber(d.Line_Total),
       isSubItem: Boolean(d.Sub_Item),
       eventParticipantId: toCheckoutNumberOrNull(d.Event_Participant_ID),
+      eventId: toCheckoutNumberOrNull(d.Event_ID),
     }));
+    const eventId = lineItems.find((li) => li.eventId !== null)?.eventId ?? null;
 
     return {
       invoiceId: toCheckoutNumber(header.Invoice_ID),
@@ -475,6 +552,7 @@ export class InvoiceService {
         postalCode: header.Postal_Code ?? null,
       },
       lineItems,
+      eventId,
     };
   }
 }

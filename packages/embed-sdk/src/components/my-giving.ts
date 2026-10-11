@@ -1,4 +1,10 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import {
+  GIVING_SIGNED_OUT_STYLES,
+  HEADING_RESET_STYLES,
+  givingSignedOut,
+  headingTag,
+} from "./giving-shared";
 
 interface DonationRecord {
   donationDate: string;
@@ -13,15 +19,18 @@ interface DonationRecord {
   isOmitAmount: boolean;
 }
 
-// Brand-derived palette cycled across programs in the doughnut chart.
+// Brand-derived palette cycled across programs in the doughnut chart. Theme
+// tokens, not hexes, so a church's --nw-color-* reaches the chart too: both
+// consumers (the ring's inline `stroke` and the legend swatch's `background`)
+// are inline styles inside the shadow root, where the token block is in scope.
 const PROGRAM_COLORS = [
-  "#004C97", // primary blue
-  "#009CDE", // info light blue
-  "#F1BE48", // gold
-  "#86AD3F", // success green
-  "#002855", // navy
-  "#FF6D6A", // coral
-  "#2D2926", // black
+  "var(--_nw-color-primary)",
+  "var(--_nw-color-info)",
+  "var(--_nw-color-accent)",
+  "var(--_nw-color-success)",
+  "var(--_nw-color-secondary)",
+  "var(--_nw-color-error)",
+  "var(--_nw-color-text)",
 ];
 
 const MIN_YEAR_OFFSET = 4; // allow going back this many years from current
@@ -34,13 +43,18 @@ export class MyGivingWidget extends MPNextWidget {
   private showFullList = false;
   private loading = true;
   private error: string | null = null;
+  /** Signed out is a state, not an error (C30 / CROSS-1). */
+  private signedOut = false;
+
+  /** C79: the legacy flat spelling is read (with a one-time warning) for one release. */
+  static readonly attributeAliases = { "hide-soft-credits": "hidesoftcredits" };
 
   static get observedAttributes() {
-    return ["hidesoftcredits"];
+    return ["hide-soft-credits", "heading-level", ...Object.values(this.attributeAliases)];
   }
 
   private get hideSoftCredits(): boolean {
-    return (this.getAttribute("hidesoftcredits") || "").toLowerCase() === "true";
+    return (this.readAttr("hide-soft-credits") || "").toLowerCase() === "true";
   }
 
   connectedCallback() {
@@ -50,14 +64,20 @@ export class MyGivingWidget extends MPNextWidget {
     // this widget already paints while it queries the API.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.loadDonations();
     });
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue !== null && oldValue !== newValue) {
-      this.loadDonations();
-    }
+  /**
+   * An observed attribute changed after the first paint (C39; the base class's
+   * `attributeChangedCallback` routes here). Every attribute this widget reads
+   * only changes how already-loaded data is drawn, so a re-render is enough; a
+   * load still in flight reads them when it lands.
+   */
+  protected override reload(): void {
+    if (this.loading) return;
+    this.render();
   }
 
   public retryLoad() {
@@ -68,6 +88,7 @@ export class MyGivingWidget extends MPNextWidget {
   private async loadDonations() {
     this.loading = true;
     this.error = null;
+    this.signedOut = false;
     this.render();
 
     try {
@@ -75,9 +96,17 @@ export class MyGivingWidget extends MPNextWidget {
       if (this.selectedMonth > 0) url += `&month=${this.selectedMonth}`;
 
       const res = await this.fetch(url);
+      if (this.isNeedsAuth(res)) {
+        // An anonymous visitor: offer sign-in, never "Unable to Load" + a
+        // Try Again that can only fail again. A 401 reaching a signed-in
+        // visitor is not this state and falls through to the error.
+        this.signedOut = true;
+        this.donations = [];
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { donations: DonationRecord[] } = await res.json();
       this.donations = data.donations || [];
@@ -94,13 +123,12 @@ export class MyGivingWidget extends MPNextWidget {
     } catch (err) {
       // `errorText` has already turned an API machine code into a translated
       // sentence; anything else becomes the generic network message.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("givingError", { error: this.error });
     } finally {
       this.loading = false;
       this.showFullList = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -139,7 +167,6 @@ export class MyGivingWidget extends MPNextWidget {
       softToggle.addEventListener("change", () => {
         this.includeSoftCredits = softToggle.checked;
         this.render();
-        this.attachListeners();
       });
     }
 
@@ -148,12 +175,22 @@ export class MyGivingWidget extends MPNextWidget {
       showMoreBtn.addEventListener("click", () => {
         this.showFullList = true;
         this.render();
-        this.attachListeners();
       });
     }
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `
         <div class="nw-giving">
@@ -162,6 +199,24 @@ export class MyGivingWidget extends MPNextWidget {
               ${this.spinnerSvg()}
               <span>${this.escapeHtml(this.t("myGiving.loading"))}</span>
             </div>
+          </div>
+        </div>`;
+      return;
+    }
+
+    if (this.signedOut) {
+      this.root.innerHTML = `
+        <div class="nw-giving">
+          <div class="header">
+            <${this.h(0)} class="title">${this.escapeHtml(this.t("myGiving.title"))}</${this.h(0)}>
+          </div>
+          <div class="body">
+            ${givingSignedOut(
+              this.renderSignInRequired({
+                subject: "my-giving",
+                message: this.t("myGiving.signInPrompt"),
+              }),
+            )}
           </div>
         </div>`;
       return;
@@ -197,7 +252,7 @@ export class MyGivingWidget extends MPNextWidget {
     return `
       <div class="nw-giving">
         <div class="header">
-          <div class="title">${this.escapeHtml(this.t("myGiving.title"))}</div>
+          <${this.h(0)} class="title">${this.escapeHtml(this.t("myGiving.title"))}</${this.h(0)}>
         </div>
         <div class="body">
           ${this.renderControls()}
@@ -227,7 +282,7 @@ export class MyGivingWidget extends MPNextWidget {
     for (let m = 1; m <= 12; m++) {
       const futureInCurrentYear = this.selectedYear === currentYear && m > currentMonth;
       monthOptions.push(
-        `<option value="${m}" ${this.selectedMonth === m ? "selected" : ""} ${futureInCurrentYear ? "disabled" : ""}>${this.escapeHtml(monthNames[m - 1])}</option>`
+        `<option value="${m}" ${this.selectedMonth === m ? "selected" : ""} ${futureInCurrentYear ? "disabled" : ""}>${this.escapeHtml(this.t("myGiving.monthYear", { month: monthNames[m - 1], year: this.selectedYear }))}</option>`
       );
     }
 
@@ -260,11 +315,11 @@ export class MyGivingWidget extends MPNextWidget {
   }
 
   private renderCharts(filtered: DonationRecord[]): string {
-    const showByMonth = this.selectedMonth <= 0;
-    const byMonth = showByMonth ? this.renderByMonthChart(filtered) : "";
+    // C33: By Month stays visible under a month filter. The API returns only
+    // that month, so the chart shows one bar in its place in the year — still
+    // informative, and its absence used to read as a bug.
+    const byMonth = this.renderByMonthChart(filtered);
     const byProgram = this.renderByProgramChart(filtered);
-
-    if (!byMonth && !byProgram) return "";
 
     return `
       <div class="graphs-container">
@@ -273,35 +328,46 @@ export class MyGivingWidget extends MPNextWidget {
       </div>`;
   }
 
+  /**
+   * Giving by month (C33). No charting library (CDN policy): an SVG where every
+   * month carries a `<title>` (native tooltip: "March 2026: $1,250.00"), every
+   * non-zero bar prints its value above it, and a visually hidden table gives
+   * screen-reader and keyboard users the actual numbers.
+   *
+   * All twelve months are laid out. In the current year the months still to
+   * come keep their slot, with a muted label and no bar, so a donor sees that
+   * the year is unfinished rather than a nine-bar chart with no explanation.
+   */
   private renderByMonthChart(filtered: DonationRecord[]): string {
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
-    const monthsToShow = this.selectedYear === currentYear ? currentMonth : 12;
+    const now = new Date();
+    const lastMonth = this.selectedYear === now.getFullYear() ? now.getMonth() + 1 : 12;
 
-    const totals = new Array(monthsToShow).fill(0) as number[];
+    const totals = new Array(12).fill(0) as number[];
     for (const d of filtered) {
       const parts = this.parseDateParts(d.donationDate);
       if (!parts) continue;
       const idx = parts.month - 1;
-      if (idx >= 0 && idx < monthsToShow) {
+      if (idx >= 0 && idx < 12) {
         totals[idx] += d.amount;
       }
     }
 
+    const title = `<${this.h(1)} class="chart-title">${this.escapeHtml(this.t("myGiving.byMonth"))}</${this.h(1)}>`;
     const max = Math.max(...totals, 0);
     if (max <= 0) {
       return `
         <div class="chart-card">
-          <div class="chart-title">${this.escapeHtml(this.t("myGiving.byMonth"))}</div>
+          ${title}
           <div class="chart-empty">${this.escapeHtml(this.t("myGiving.chartEmpty"))}</div>
         </div>`;
     }
 
     const chartW = 320;
-    const chartH = 160;
+    const chartH = 172;
     const labelH = 18;
+    const valueH = 14; // headroom for the value printed above the tallest bar
     const plotH = chartH - labelH;
-    const slot = chartW / monthsToShow;
+    const slot = chartW / 12;
     const barW = slot * 0.6;
 
     // The axis labels are SVG `<text>`, which CSS `text-transform` does not
@@ -310,23 +376,77 @@ export class MyGivingWidget extends MPNextWidget {
     const axisLabels = this.fmt
       .monthNames("short")
       .map((m) => m.toLocaleUpperCase(this.locale));
+    const longNames = this.fmt.monthNames("long");
+    const compact = this.compactCurrency();
 
     let bars = "";
-    for (let i = 0; i < monthsToShow; i++) {
-      const h = max > 0 ? (totals[i] / max) * (plotH - 8) : 0;
+    const rows: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const cx = (i * slot + slot / 2).toFixed(1);
+      const future = i + 1 > lastMonth;
+      const label = this.t("myGiving.monthYear", { month: longNames[i], year: this.selectedYear });
+      const amount = this.fmt.currency(totals[i]);
+      const selected = this.selectedMonth === i + 1;
+      if (!future) {
+        rows.push(
+          `<tr><th scope="row">${this.escapeHtml(label)}</th><td>${this.escapeHtml(amount)}</td></tr>`,
+        );
+      }
+      const h = (totals[i] / max) * (plotH - valueH);
       const x = i * slot + (slot - barW) / 2;
       const y = plotH - h;
-      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="#009CDE"></rect>`;
-      bars += `<text x="${(i * slot + slot / 2).toFixed(1)}" y="${chartH - 4}" text-anchor="middle" class="chart-axis-label">${this.escapeHtml(axisLabels[i])}</text>`;
+      const classes = [
+        "chart-month",
+        future ? "chart-month--future" : "",
+        selected ? "chart-month--selected" : "",
+      ].filter(Boolean).join(" ");
+      bars += [
+        `<g class="${classes}">`,
+        `<title>${this.escapeHtml(this.t("myGiving.barTooltip", { label, amount }))}</title>`,
+        // A full-height transparent hit area, so a short or $0 month still shows its tooltip.
+        `<rect class="chart-hit" x="${(i * slot).toFixed(1)}" y="0" width="${slot.toFixed(1)}" height="${plotH}" fill="transparent"></rect>`,
+        h > 0
+          ? `<rect class="chart-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2"></rect>`
+          : "",
+        totals[i] > 0
+          ? `<text x="${cx}" y="${(y - 3).toFixed(1)}" text-anchor="middle" class="chart-value">${this.escapeHtml(compact(totals[i]))}</text>`
+          : "",
+        `<text x="${cx}" y="${chartH - 4}" text-anchor="middle" class="chart-axis-label">${this.escapeHtml(axisLabels[i])}</text>`,
+        `</g>`,
+      ].join("");
     }
 
     return `
       <div class="chart-card">
-        <div class="chart-title">${this.escapeHtml(this.t("myGiving.byMonth"))}</div>
+        ${title}
         <svg viewBox="0 0 ${chartW} ${chartH}" class="chart-svg" role="img" aria-label="${this.escapeAttr(this.t("myGiving.byMonthChartLabel"))}">
           ${bars}
         </svg>
+        <table class="nw-sr-only">
+          <caption>${this.escapeHtml(this.t("myGiving.byMonthChartLabel"))}</caption>
+          <thead><tr><th scope="col">${this.escapeHtml(this.t("myGiving.month"))}</th><th scope="col">${this.escapeHtml(this.t("fields.amount"))}</th></tr></thead>
+          <tbody>${rows.join("")}</tbody>
+        </table>
       </div>`;
+  }
+
+  /**
+   * Short currency for the value printed above a bar ("$14K", "$2.9K") —
+   * twelve full "$14,000.00" labels do not fit a 320-unit chart. The exact
+   * figure is in each bar's `<title>` and in the hidden table.
+   */
+  private compactCurrency(): (n: number) => string {
+    try {
+      const nf = new Intl.NumberFormat(this.locale, {
+        style: "currency",
+        currency: this.fmt.defaultCurrency,
+        notation: "compact",
+        maximumFractionDigits: 1,
+      });
+      return (n) => nf.format(n);
+    } catch {
+      return (n) => this.fmt.currency(n);
+    }
   }
 
   private renderByProgramChart(filtered: DonationRecord[]): string {
@@ -347,7 +467,7 @@ export class MyGivingWidget extends MPNextWidget {
     if (grandTotal <= 0) {
       return `
         <div class="chart-card">
-          <div class="chart-title">${this.escapeHtml(this.t("myGiving.byProgram"))}</div>
+          <${this.h(1)} class="chart-title">${this.escapeHtml(this.t("myGiving.byProgram"))}</${this.h(1)}>
           <div class="chart-empty">${this.escapeHtml(this.t("myGiving.chartEmpty"))}</div>
         </div>`;
     }
@@ -371,7 +491,7 @@ export class MyGivingWidget extends MPNextWidget {
       segments += `<circle
         cx="${cx}" cy="${cy}" r="${ringR}"
         fill="none"
-        stroke="${color}"
+        style="stroke: ${color}"
         stroke-width="${stroke}"
         stroke-dasharray="${dash.toFixed(2)} ${(circumference - dash).toFixed(2)}"
         stroke-dashoffset="${(-offset).toFixed(2)}"
@@ -387,7 +507,7 @@ export class MyGivingWidget extends MPNextWidget {
 
     return `
       <div class="chart-card">
-        <div class="chart-title">${this.escapeHtml(this.t("myGiving.byProgram"))}</div>
+        <${this.h(1)} class="chart-title">${this.escapeHtml(this.t("myGiving.byProgram"))}</${this.h(1)}>
         <div class="doughnut-wrap">
           <svg viewBox="0 0 ${size} ${size}" class="doughnut-svg" role="img" aria-label="${this.escapeAttr(this.t("myGiving.byProgramChartLabel"))}">
             ${segments}
@@ -398,7 +518,12 @@ export class MyGivingWidget extends MPNextWidget {
   }
 
   private renderDonationsList(filtered: DonationRecord[]): string {
-    const showSoftDisclaimer = this.includeSoftCredits && filtered.some((d) => d.isSoftCredit);
+    // C37: shown whenever the toggle is available (the data holds a soft
+    // credit), ticked or not — a donor who never ticks it should still learn
+    // soft credits exist, and one who does needs the gap between the list and
+    // Total Giving explained. Legacy showed it unconditionally.
+    const showSoftDisclaimer =
+      !this.hideSoftCredits && this.donations.some((d) => d.isSoftCredit);
 
     const subtitle = `
       <p class="list-subtitle">${this.escapeHtml(this.t("myGiving.disclaimer"))}</p>
@@ -409,7 +534,7 @@ export class MyGivingWidget extends MPNextWidget {
     if (filtered.length === 0) {
       return `
         <div class="donations-section">
-          <div class="section-label">${this.escapeHtml(this.t("myGiving.donations"))}</div>
+          <${this.h(1)} class="section-label">${this.escapeHtml(this.t("myGiving.donations"))}</${this.h(1)}>
           ${subtitle}
           <div class="empty-state">${this.escapeHtml(this.t("myGiving.empty"))}</div>
         </div>`;
@@ -422,7 +547,7 @@ export class MyGivingWidget extends MPNextWidget {
 
     return `
       <div class="donations-section">
-        <div class="section-label">${this.escapeHtml(this.t("myGiving.donations"))}</div>
+        <${this.h(1)} class="section-label">${this.escapeHtml(this.t("myGiving.donations"))}</${this.h(1)}>
         ${subtitle}
         <div class="donation-list">
           ${rows}
@@ -519,45 +644,50 @@ export class MyGivingWidget extends MPNextWidget {
     </svg>`;
   }
 
+  /** Heading tag `offset` levels below this widget's `heading-level` (C35). */
+  private h(offset = 0): string {
+    return headingTag(this.getAttribute("heading-level"), offset);
+  }
+
   private getStyles(): string {
-    return `
+    return `${HEADING_RESET_STYLES}${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-giving {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
+        background: var(--_nw-color-surface);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .header {
-        background: #002855;
-        color: white;
-        padding: 24px;
+        background: var(--_nw-color-secondary);
+        color: var(--_nw-color-on-primary);
+        padding: var(--_nw-space-6);
       }
       .title {
         font-size: 24px;
         font-weight: bold;
         text-align: center;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
       }
       .subtitle {
         text-align: center;
         opacity: 0.8;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         margin: 0;
       }
       .loading-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         font-size: 18px;
       }
 
@@ -571,31 +701,31 @@ export class MyGivingWidget extends MPNextWidget {
       }
 
       .body {
-        padding: 20px;
+        padding: var(--_nw-space-5);
       }
 
       .controls-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 16px;
+        gap: var(--_nw-space-3);
+        margin-bottom: var(--_nw-space-4);
       }
       .year-nav-btn {
-        padding: 8px 14px;
-        background: white;
-        color: #004C97;
-        font-size: 14px;
+        padding: var(--_nw-space-2) 14px;
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-primary);
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
         cursor: pointer;
         font-family: inherit;
         white-space: nowrap;
         transition: all 0.15s;
       }
       .year-nav-btn:hover {
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
         background: rgba(0, 76, 151, 0.04);
       }
       .year-nav-btn.disabled {
@@ -603,39 +733,39 @@ export class MyGivingWidget extends MPNextWidget {
         cursor: not-allowed;
       }
       .year-nav-btn.disabled:hover {
-        border-color: #e5e7eb;
-        background: white;
+        border-color: var(--_nw-color-border);
+        background: var(--_nw-color-surface);
       }
       .month-select {
         flex: 1;
-        padding: 9px 12px;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        font-size: 14px;
+        padding: 9px var(--_nw-space-3);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
         font-family: inherit;
-        color: #2D2926;
-        background: white;
+        color: var(--_nw-color-text);
+        background: var(--_nw-color-surface);
         outline: none;
         cursor: pointer;
         transition: border-color 0.15s;
       }
       .month-select:focus {
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
       }
 
       .soft-toggle-row {
         display: flex;
         align-items: center;
-        gap: 8px;
-        font-size: 14px;
-        color: #474747;
-        margin-bottom: 16px;
+        gap: var(--_nw-space-2);
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text-subtle);
+        margin-bottom: var(--_nw-space-4);
         cursor: pointer;
       }
       .soft-toggle-row input {
         width: 16px;
         height: 16px;
-        accent-color: #004C97;
+        accent-color: var(--_nw-color-primary);
         cursor: pointer;
       }
 
@@ -643,42 +773,42 @@ export class MyGivingWidget extends MPNextWidget {
         display: flex;
         align-items: baseline;
         justify-content: space-between;
-        padding: 16px;
+        padding: var(--_nw-space-4);
         background: #f9fafb;
-        border-radius: 8px;
-        border-left: 3px solid #F1BE48;
-        margin-bottom: 24px;
+        border-radius: var(--_nw-radius);
+        border-left: 3px solid var(--_nw-color-accent);
+        margin-bottom: var(--_nw-space-6);
       }
       .total-label {
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
-        color: #002855;
+        color: var(--_nw-color-secondary);
         text-transform: uppercase;
         letter-spacing: 0.03em;
       }
       .total-amount {
         font-size: 28px;
         font-weight: 700;
-        color: #004C97;
+        color: var(--_nw-color-primary);
       }
 
       .graphs-container {
         display: flex;
         flex-wrap: wrap;
-        gap: 16px;
-        margin-bottom: 24px;
+        gap: var(--_nw-space-4);
+        margin-bottom: var(--_nw-space-6);
       }
       .chart-card {
         flex: 1 1 280px;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 16px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
+        padding: var(--_nw-space-4);
       }
       .chart-title {
-        font-size: 14px;
-        font-weight: 700;
-        color: #002855;
-        margin-bottom: 12px;
+        font-size: var(--_nw-font-size-base);
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
+        margin-bottom: var(--_nw-space-3);
         text-transform: uppercase;
         letter-spacing: 0.03em;
       }
@@ -687,14 +817,42 @@ export class MyGivingWidget extends MPNextWidget {
         height: auto;
         display: block;
       }
+      .chart-bar {
+        fill: var(--_nw-color-info);
+        transition: fill 0.15s;
+      }
+      .chart-month:hover .chart-bar,
+      .chart-month--selected .chart-bar {
+        fill: var(--_nw-color-primary);
+      }
+      .chart-value {
+        font-size: 8px;
+        font-weight: 600;
+        fill: var(--_nw-color-secondary);
+        font-family: var(--_nw-font-family);
+      }
+      .chart-month--future .chart-axis-label {
+        opacity: 0.4;
+      }
+      .nw-sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
       .chart-axis-label {
         font-size: 9px;
         fill: rgba(45, 41, 38, 0.6);
-        font-family: ui-sans-serif, system-ui, sans-serif;
+        font-family: var(--_nw-font-family);
       }
       .chart-empty {
         text-align: center;
-        padding: 24px 8px;
+        padding: var(--_nw-space-6) var(--_nw-space-2);
         color: #9E9E9E;
         font-size: 13px;
       }
@@ -702,7 +860,7 @@ export class MyGivingWidget extends MPNextWidget {
       .doughnut-wrap {
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: var(--_nw-space-4);
         flex-wrap: wrap;
       }
       .doughnut-svg {
@@ -720,9 +878,9 @@ export class MyGivingWidget extends MPNextWidget {
       .legend-item {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         font-size: 13px;
-        color: #474747;
+        color: var(--_nw-color-text-subtle);
       }
       .legend-swatch {
         width: 12px;
@@ -736,34 +894,34 @@ export class MyGivingWidget extends MPNextWidget {
       }
 
       .donations-section {
-        margin-top: 8px;
+        margin-top: var(--_nw-space-2);
       }
       .section-label {
         font-size: 16px;
-        font-weight: 700;
-        color: #002855;
-        margin-bottom: 8px;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
+        margin-bottom: var(--_nw-space-2);
       }
       .list-subtitle {
         font-size: 12px;
         color: rgba(45, 41, 38, 0.6);
-        line-height: 1.5;
-        margin: 0 0 8px;
+        line-height: var(--_nw-line-height);
+        margin: 0 0 var(--_nw-space-2);
       }
       .donation-list {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
         overflow: hidden;
-        margin-top: 8px;
+        margin-top: var(--_nw-space-2);
       }
       .donation-row {
         display: grid;
         grid-template-columns: 110px 1fr 100px;
         align-items: center;
-        gap: 12px;
-        padding: 12px 16px;
-        font-size: 14px;
-        color: #2D2926;
+        gap: var(--_nw-space-3);
+        padding: var(--_nw-space-3) var(--_nw-space-4);
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text);
         border-bottom: 1px solid #f3f4f6;
       }
       .donation-row:last-child {
@@ -784,7 +942,7 @@ export class MyGivingWidget extends MPNextWidget {
       .badge-group {
         display: inline-flex;
         flex-wrap: wrap;
-        gap: 4px;
+        gap: var(--_nw-space-1);
         margin-left: 6px;
         vertical-align: middle;
       }
@@ -796,7 +954,7 @@ export class MyGivingWidget extends MPNextWidget {
       .badge {
         display: inline-flex;
         align-items: center;
-        padding: 2px 8px;
+        padding: 2px var(--_nw-space-2);
         border-radius: 9999px;
         font-size: 10px;
         font-weight: 600;
@@ -814,63 +972,63 @@ export class MyGivingWidget extends MPNextWidget {
       }
       .badge-nondeductible {
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
       }
 
       .empty-state {
         text-align: center;
-        padding: 40px 20px;
+        padding: 40px var(--_nw-space-5);
         color: #9E9E9E;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
       }
 
       .show-more-section {
         text-align: center;
-        margin-top: 16px;
+        margin-top: var(--_nw-space-4);
       }
       .show-more-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: white;
-        color: #004C97;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-primary);
         font-weight: 600;
         font-size: 13px;
         letter-spacing: 0.03em;
-        border: 1px solid #004C97;
-        border-radius: 8px;
+        border: var(--_nw-border-width) solid var(--_nw-color-primary);
+        border-radius: var(--_nw-radius);
         cursor: pointer;
         font-family: inherit;
         transition: all 0.15s;
       }
       .show-more-btn:hover {
-        background: #004C97;
-        color: white;
+        background: var(--_nw-color-primary);
+        color: var(--_nw-color-on-primary);
       }
 
       .retry-section {
-        padding: 20px;
+        padding: var(--_nw-space-5);
         text-align: center;
       }
       .retry-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .retry-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       @media (max-width: 640px) {
         .header, .body {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .controls-row {
           flex-wrap: wrap;
@@ -884,8 +1042,8 @@ export class MyGivingWidget extends MPNextWidget {
         }
         .donation-row {
           grid-template-columns: 90px 1fr 80px;
-          gap: 8px;
-          padding: 10px 12px;
+          gap: var(--_nw-space-2);
+          padding: 10px var(--_nw-space-3);
           font-size: 13px;
         }
         .total-amount {

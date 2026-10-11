@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import {
   renderCustomFormFields,
   bindCustomFormDependsOn,
@@ -8,8 +8,9 @@ import {
 import {
   validateForm,
   bindLiveValidation,
-  requiredStar,
+  field,
   FORM_VALIDATION_STYLES,
+  type FieldOptions,
 } from "../shared/form-validation";
 import {
   loadGoogleMaps,
@@ -26,7 +27,6 @@ interface CustomFormHeader {
   getAddressInfo: boolean;
   forceLogin: boolean;
   productId: number | null;
-  standaloneOnly: boolean;
   isExpired: boolean;
   imageUrl: string | null;
   googleMapsApiKey: string | null;
@@ -34,6 +34,7 @@ interface CustomFormHeader {
 
 /** Subset of the basic-contact response used to prefill the form for signed-in users. */
 interface PrefillContact {
+  contactId?: number | null;
   firstName: string | null;
   lastName: string | null;
   emailAddress: string | null;
@@ -44,6 +45,19 @@ interface PrefillContact {
   stateRegion?: string | null;
   postalCode?: string | null;
 }
+
+/** One `GET /api/embed/household` member: the "Who is this form for?" roster (C26). */
+interface HouseholdMemberLite {
+  contactId: number;
+  firstName: string;
+  lastName: string;
+  nickName: string | null;
+  emailAddress: string | null;
+  mobilePhoneNumber: string | null;
+}
+
+/** The contact-block inputs a picked member fills, keyed by input `name`. */
+const CONTACT_FIELDS = ["FirstName", "LastName", "EmailAddress", "MobilePhoneNumber"] as const;
 
 /**
  * `next-custom-form` — standalone MinistryPlatform custom form.
@@ -63,16 +77,19 @@ export class CustomFormWidget extends MPNextWidget {
   private submitted = false;
   private isAuthenticated = false;
   private contact: PrefillContact | null = null;
+  /** The signed-in user's household, self included (C26). */
+  private householdMembers: HouseholdMemberLite[] = [];
+  /**
+   * "Who is this form for?": a contact id, or `""` for "Someone else (blank
+   * form)". Defaults to the signed-in user, so a signed-in submit is filed
+   * against them exactly as before the picker existed.
+   */
+  private completeAs = "";
+  /** Display name of the contact the last submit was filed against. */
+  private submittedFor: string | null = null;
 
   static get observedAttributes() {
     return ["api-host", "form-id", "form-guid", "id-parameter-name", "checkout-url"];
-  }
-
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    if ((name === "form-id" || name === "form-guid") && !this.loading) {
-      this.init();
-    }
   }
 
   connectedCallback() {
@@ -82,8 +99,27 @@ export class CustomFormWidget extends MPNextWidget {
     // this widget already paints while it fetches the form definition.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  /**
+   * C39: only the attributes that pick *which form* reload it; `checkout-url`
+   * and `api-host` are read when used. The old guard (`&& !this.loading`)
+   * dropped a `form-id` set while the first load was still in flight, which
+   * is exactly when a framework host sets it.
+   */
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
+    if (oldValue === newValue) return;
+    if (name === "form-id" || name === "form-guid" || name === "id-parameter-name") {
+      this.reconfigure();
+    }
+  }
+
+  protected override reload(): void {
+    this.error = null;
+    this.init();
   }
 
   public retryLoad() {
@@ -122,7 +158,6 @@ export class CustomFormWidget extends MPNextWidget {
       this.error = this.t("customForm.noFormSpecified");
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.emit("formError", { error: this.error });
       return;
     }
@@ -132,7 +167,7 @@ export class CustomFormWidget extends MPNextWidget {
       const res = await this.fetch(`/api/embed/custom-form?${params.toString()}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body, "errors.form_not_found"));
+        throw new WidgetError(this.errorText(body, "errors.form_not_found"));
       }
       const data: { header: CustomFormHeader; fields: CustomFormField[] } = await res.json();
       this.header = data.header;
@@ -143,12 +178,11 @@ export class CustomFormWidget extends MPNextWidget {
       // `errorText` has already produced a translated sentence; a thrown
       // non-Error (a dropped connection) becomes the generic network message
       // rather than leaking English.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("formError", { error: this.error });
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.prefillContact();
     }
   }
@@ -169,6 +203,78 @@ export class CustomFormWidget extends MPNextWidget {
       this.isAuthenticated = false;
       this.contact = null;
     }
+    this.householdMembers = [];
+    this.completeAs = "";
+    if (this.isAuthenticated && this.contact) {
+      await this.loadHousehold();
+      this.completeAs = this.contact.contactId ? String(this.contact.contactId) : "";
+    }
+  }
+
+  /**
+   * The roster for "Who is this form for?" (C26), from the same endpoint
+   * `next-opportunity-details`' "Respond As" uses. The signed-in user is put
+   * first; a failure degrades to "just me", never to an error.
+   */
+  private async loadHousehold() {
+    const self = this.contact;
+    const selfMember: HouseholdMemberLite | null =
+      self && self.contactId
+        ? {
+            contactId: self.contactId,
+            firstName: self.firstName || "",
+            lastName: self.lastName || "",
+            nickName: null,
+            emailAddress: self.emailAddress,
+            mobilePhoneNumber: self.mobilePhoneNumber,
+          }
+        : null;
+    let members: HouseholdMemberLite[] = [];
+    try {
+      const res = await this.fetch(`/api/embed/household`);
+      if (res.ok) {
+        const data: { members?: HouseholdMemberLite[] } = await res.json();
+        members = data.members ?? [];
+      }
+    } catch {
+      members = [];
+    }
+    const others = members.filter((m) => m.contactId !== selfMember?.contactId);
+    const selfFromList = members.find((m) => m.contactId === selfMember?.contactId);
+    const first = selfFromList ?? selfMember;
+    this.householdMembers = first ? [first, ...others] : others;
+  }
+
+  private memberName(m: HouseholdMemberLite): string {
+    return [m.nickName || m.firstName, m.lastName].filter(Boolean).join(" ").trim();
+  }
+
+  private selectedMember(): HouseholdMemberLite | null {
+    return this.householdMembers.find((m) => String(m.contactId) === this.completeAs) ?? null;
+  }
+
+  /**
+   * Fill the contact block from the chosen member (C26). A value the member's
+   * record has is shown read-only, because the server files the response with
+   * the record's value regardless of what is typed; an empty one stays
+   * editable. "Someone else" clears the block and unlocks it.
+   */
+  private applyCompleteAs() {
+    const m = this.selectedMember();
+    const values: Record<(typeof CONTACT_FIELDS)[number], string> = {
+      FirstName: m?.firstName ?? "",
+      LastName: m?.lastName ?? "",
+      EmailAddress: m?.emailAddress ?? "",
+      MobilePhoneNumber: m?.mobilePhoneNumber ?? "",
+    };
+    for (const name of CONTACT_FIELDS) {
+      const input = this.control(name);
+      if (!input) continue;
+      input.value = values[name];
+      input.readOnly = !!m && !!values[name];
+      input.classList.toggle("cf-readonly", input.readOnly);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
   }
 
   /**
@@ -177,11 +283,19 @@ export class CustomFormWidget extends MPNextWidget {
    */
   private prefillContact() {
     if (!this.contact) return;
+    // With the picker (C26) the contact block follows the chosen member; the
+    // address block still prefills from the signed-in household's address.
+    const picker = this.householdMembers.length > 0;
+    if (picker) this.applyCompleteAs();
     const map: Record<string, string | null | undefined> = {
-      FirstName: this.contact.firstName,
-      LastName: this.contact.lastName,
-      EmailAddress: this.contact.emailAddress,
-      MobilePhoneNumber: this.contact.mobilePhoneNumber,
+      ...(picker
+        ? {}
+        : {
+            FirstName: this.contact.firstName,
+            LastName: this.contact.lastName,
+            EmailAddress: this.contact.emailAddress,
+            MobilePhoneNumber: this.contact.mobilePhoneNumber,
+          }),
       AddressLine1: this.contact.addressLine1,
       AddressLine2: this.contact.addressLine2,
       City: this.contact.city,
@@ -200,7 +314,7 @@ export class CustomFormWidget extends MPNextWidget {
   private async submit() {
     const form = this.root.querySelector<HTMLFormElement>("#cf-form");
     if (!form || !this.header) return;
-    if (!validateForm(form).valid) return;
+    if (!validateForm(form, { t: this.t }).valid) return;
 
     const fd = new FormData(form);
     const payload: Record<string, string> = {};
@@ -227,16 +341,22 @@ export class CustomFormWidget extends MPNextWidget {
         this.emit("formError", { error: msg });
         this.setSubmitDisabled(false);
         this.render();
-        this.attachListeners();
+        this.prefillContact();
         return;
       }
       this.submitted = true;
-      this.emit("formSubmitted", { formId: this.header.formId });
+      // Say who the response was filed against: silent attribution is how
+      // C26 went unnoticed.
+      const member = this.selectedMember();
+      this.submittedFor = member ? this.memberName(member) : null;
+      this.emit("formSubmitted", {
+        formId: this.header.formId,
+        contactId: member?.contactId ?? null,
+      });
       this.render();
-      this.attachListeners();
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : this.t("errors.submitFailed");
+        this.caughtText(err, "errors.submitFailed");
       this.error = msg;
       this.emit("formError", { error: msg });
       this.setSubmitDisabled(false);
@@ -265,10 +385,18 @@ export class CustomFormWidget extends MPNextWidget {
       });
     }
 
+    const completeAs = this.root.querySelector<HTMLSelectElement>('#cf-form [name="ContactId"]');
+    if (completeAs) {
+      completeAs.addEventListener("change", () => {
+        this.completeAs = completeAs.value;
+        this.applyCompleteAs();
+      });
+    }
+
     const form = this.root.querySelector<HTMLFormElement>("#cf-form");
     if (form) {
       bindCustomFormDependsOn(form, this.fields);
-      bindLiveValidation(form);
+      bindLiveValidation(form, { t: this.t });
       this.initGooglePlaces();
     }
   }
@@ -283,7 +411,7 @@ export class CustomFormWidget extends MPNextWidget {
     const key = this.header?.googleMapsApiKey;
     if (!this.header?.getAddressInfo || !key || key.trim() === "") return;
 
-    const line1 = this.root.querySelector<HTMLInputElement>("#cf-line1");
+    const line1 = this.control("AddressLine1");
     if (!line1) return;
 
     let loaded = false;
@@ -297,23 +425,34 @@ export class CustomFormWidget extends MPNextWidget {
     if (!line1.isConnected) return;
 
     attachAddressAutocomplete(line1, (addr) => {
-      const setVal = (id: string, value: string) => {
-        const el = this.root.querySelector<HTMLInputElement>(`#${id}`);
+      const setVal = (name: string, value: string) => {
+        const el = this.control(name);
         if (el && value) {
           el.value = value;
           el.dispatchEvent(new Event("input", { bubbles: true }));
         }
       };
-      setVal("cf-line1", addr.line1);
-      setVal("cf-city", addr.city);
-      setVal("cf-state", addr.state);
-      setVal("cf-postal", addr.postalCode);
+      setVal("AddressLine1", addr.line1);
+      setVal("City", addr.city);
+      setVal("StateRegion", addr.state);
+      setVal("PostalCode", addr.postalCode);
     });
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `<div class="cf">${this.stateRow(this.spinner(), this.t("customForm.loading"))}</div>`;
       return;
@@ -336,7 +475,10 @@ export class CustomFormWidget extends MPNextWidget {
       // `completeMessage` is MP-authored copy from the church's own form
       // definition, so it renders as written; only the fallback is translated.
       const msg = h.completeMessage || this.t("customForm.completed");
-      this.root.innerHTML = `<div class="cf"><div class="cf-card"><div class="cf-complete">${this.escapeHtml(msg)}</div></div></div>`;
+      const forWhom = this.submittedFor
+        ? `<p class="cf-submitted-for">${this.escapeHtml(this.t("customForm.submittedFor", { name: this.submittedFor }))}</p>`
+        : "";
+      this.root.innerHTML = `<div class="cf"><div class="cf-card"><div class="cf-complete">${this.escapeHtml(msg)}</div>${forWhom}</div></div>`;
       return;
     }
     if (h.forceLogin && !this.isAuthenticated) {
@@ -366,9 +508,10 @@ export class CustomFormWidget extends MPNextWidget {
           ${instructions}
           ${errorBanner}
           <form id="cf-form" class="cf-form" novalidate>
+            ${this.renderCompleteAs()}
             ${h.getContactInfo ? this.renderContactBlock() : ""}
             ${h.getAddressInfo ? this.renderAddressBlock() : ""}
-            ${renderCustomFormFields(this.fields, { formId: h.formId, t: this.t })}
+            ${renderCustomFormFields(this.fields, { formId: h.formId, t: this.t, idPrefix: this.instanceId })}
             <div class="cf-actions">
               <button class="cf-btn cf-btn--primary cf-submit" type="button">${this.escapeHtml(this.t("common.submit"))}</button>
             </div>
@@ -377,33 +520,70 @@ export class CustomFormWidget extends MPNextWidget {
       </div>`;
   }
 
+  /**
+   * "Who is this form for?" (C26, legacy "Complete Form As"). Signed-in only,
+   * signed-in user first, "Someone else (blank form)" last. The value posts as
+   * `ContactId`; the submit route checks it against the caller's household and
+   * files the response against that contact. Absent when anonymous (legacy
+   * rendered an empty select there, which helped nobody).
+   */
+  private renderCompleteAs(): string {
+    if (!this.householdMembers.length) return "";
+    const options = this.householdMembers
+      .map((m) => ({ value: String(m.contactId), label: this.memberName(m) || this.t("customForm.myInfo") }))
+      .concat([{ value: "", label: this.t("customForm.someoneElse") }]);
+    return this.cf({
+      name: "ContactId",
+      label: this.t("customForm.completeAs"),
+      type: "select",
+      value: this.completeAs,
+      options: options.map((o) => ({ ...o, selected: o.value === this.completeAs })),
+    });
+  }
+
   private renderContactBlock(): string {
     return `
       <fieldset class="cf-fieldset">
         <legend>${this.escapeHtml(this.t("customForm.yourInformation"))}</legend>
         <div class="cf-grid2">
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="cf-input" name="FirstName" required></div>
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="cf-input" name="LastName" required></div>
+          ${this.cf({ name: "FirstName", label: this.t("fields.firstName"), required: true, autocomplete: "given-name" })}
+          ${this.cf({ name: "LastName", label: this.t("fields.lastName"), required: true, autocomplete: "family-name" })}
         </div>
         <div class="cf-grid2">
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="cf-input" type="email" name="EmailAddress" required></div>
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}</label><input class="cf-input" name="MobilePhoneNumber"></div>
+          ${this.cf({ name: "EmailAddress", label: this.t("fields.email"), type: "email", required: true, autocomplete: "email" })}
+          ${this.cf({ name: "MobilePhoneNumber", label: this.t("fields.mobilePhone"), type: "tel" })}
         </div>
       </fieldset>`;
   }
 
+  /**
+   * The address block. `autocomplete="off"` stays on these inputs because
+   * Google Places draws its own suggestion list over line 1, and a browser
+   * autofill dropdown would sit on top of it.
+   */
   private renderAddressBlock(): string {
+    const off = "off";
     return `
       <fieldset class="cf-fieldset">
         <legend>${this.escapeHtml(this.t("fields.address"))}</legend>
-        <div class="cf-field"><label>${this.escapeHtml(this.t("fields.addressLine1"))}${requiredStar()}</label><input class="cf-input" id="cf-line1" name="AddressLine1" autocomplete="off" required></div>
-        <div class="cf-field"><label>${this.escapeHtml(this.t("fields.addressLine2"))}</label><input class="cf-input" id="cf-line2" name="AddressLine2" autocomplete="off"></div>
+        ${this.cf({ name: "AddressLine1", label: this.t("fields.addressLine1"), required: true, autocomplete: off })}
+        ${this.cf({ name: "AddressLine2", label: this.t("fields.addressLine2"), autocomplete: off })}
         <div class="cf-grid3">
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.city"))}${requiredStar()}</label><input class="cf-input" id="cf-city" name="City" autocomplete="off" required></div>
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.stateRegion"))}${requiredStar()}</label><input class="cf-input" id="cf-state" name="StateRegion" autocomplete="off" required></div>
-          <div class="cf-field"><label>${this.escapeHtml(this.t("fields.postalCode"))}${requiredStar()}</label><input class="cf-input" id="cf-postal" name="PostalCode" autocomplete="off" required></div>
+          ${this.cf({ name: "City", label: this.t("fields.city"), required: true, autocomplete: off })}
+          ${this.cf({ name: "StateRegion", label: this.t("fields.stateRegion"), required: true, autocomplete: off })}
+          ${this.cf({ name: "PostalCode", label: this.t("fields.postalCode"), required: true, autocomplete: off })}
         </div>
       </fieldset>`;
+  }
+
+  /** `field()` with this widget's id prefix and classes (C28). */
+  private cf(opts: FieldOptions): string {
+    return field({ idPrefix: this.instanceId, wrapperClass: "cf-field", inputClass: "cf-input", ...opts });
+  }
+
+  /** A control in this widget's own blocks, by `name`. */
+  private control(name: string): HTMLInputElement | null {
+    return this.root.querySelector<HTMLInputElement>(`#cf-form [name="${name}"]`);
   }
 
   private stateRow(icon: string, text: string): string {
@@ -441,31 +621,33 @@ export class CustomFormWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .cf { max-width: 720px; margin: 0 auto; }
-      .cf-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      .cf-image { width: 100%; height: 200px; background-size: cover; background-position: center; border-radius: 12px; margin-bottom: 16px; }
-      .cf-title { font-size: 24px; font-weight: 800; color: #002855; margin: 0 0 12px; }
-      .cf-instructions-block { font-size: 15px; line-height: 1.6; color: #474747; margin-bottom: 16px; }
+      .cf-card { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-6); box-shadow: var(--_nw-shadow); }
+      .cf-image { width: 100%; height: 200px; background-size: cover; background-position: center; border-radius: var(--_nw-radius-lg); margin-bottom: var(--_nw-space-4); }
+      .cf-title { font-size: 24px; font-weight: 800; color: var(--_nw-color-secondary); margin: 0 0 var(--_nw-space-3); }
+      .cf-instructions-block { font-size: 15px; line-height: 1.6; color: var(--_nw-color-text-subtle); margin-bottom: var(--_nw-space-4); }
       .cf-form { display: block; }
-      .cf-fieldset { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px 4px; margin: 0 0 16px; }
-      .cf-fieldset legend { font-size: 13px; font-weight: 700; color: #002855; padding: 0 6px; }
-      .cf-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-      .cf-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-      .cf-actions { margin-top: 16px; }
-      .cf-btn { padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
-      .cf-btn--primary { background: #004C97; color: white; }
-      .cf-btn--primary:hover { background: #002855; }
+      .cf-fieldset { border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius); padding: var(--_nw-space-3) var(--_nw-space-4) var(--_nw-space-1); margin: 0 0 var(--_nw-space-4); }
+      .cf-fieldset legend { font-size: 13px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); padding: 0 6px; }
+      .cf-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--_nw-space-3); }
+      .cf-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--_nw-space-3); }
+      .cf-actions { margin-top: var(--_nw-space-4); }
+      .cf-btn { padding: 10px var(--_nw-space-5); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
+      .cf-btn--primary { background: var(--_nw-button-bg); color: var(--_nw-button-fg); border-radius: var(--_nw-button-radius); }
+      .cf-btn--primary:hover { background: var(--_nw-button-bg-hover); }
       .cf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-      .cf-message { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
-      .cf-message--danger { background: #ffe9e9; color: #b91c1c; }
+      .cf-message { padding: var(--_nw-space-3) var(--_nw-space-4); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); margin-bottom: var(--_nw-space-4); }
+      .cf-message--danger { background: #ffe9e9; color: var(--_nw-color-error-text); }
       .cf-complete { font-size: 16px; line-height: 1.6; color: #2D6B1F; }
+      .cf-submitted-for { font-size: var(--_nw-font-size-base); color: var(--_nw-color-text-subtle); margin: var(--_nw-space-2) 0 0; }
+      .cf-input.cf-readonly { background: var(--_nw-color-surface-muted); color: var(--_nw-color-muted); }
       .cf-expired { color: #8a6d3b; font-size: 15px; margin: 0; }
       .cf-login { text-align: center; }
-      .cf-login p { margin: 0 0 12px; }
-      .cf-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; flex-direction: column; }
-      .cf-error p { color: #b91c1c; }
-      .cf-spinner { animation: cf-spin 1s linear infinite; color: #004C97; }
+      .cf-login p { margin: 0 0 var(--_nw-space-3); }
+      .cf-state { display: flex; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 48px var(--_nw-space-4); color: var(--_nw-color-muted); flex-direction: column; }
+      .cf-error p { color: var(--_nw-color-error-text); }
+      .cf-spinner { animation: cf-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes cf-spin { to { transform: rotate(360deg); } }
       @media (max-width: 640px) { .cf-grid2, .cf-grid3 { grid-template-columns: 1fr; } }
     `;

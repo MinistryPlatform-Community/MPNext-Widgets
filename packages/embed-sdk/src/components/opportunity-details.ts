@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import { parseWallClock } from "../i18n";
 import {
   renderCustomFormFields,
@@ -10,8 +10,13 @@ import {
   validateForm,
   bindLiveValidation,
   requiredStar,
+  field,
   FORM_VALIDATION_STYLES,
+  type FieldOptions,
 } from "../shared/form-validation";
+
+/** `DATENAME(dw, …)` output on an English-language MP SQL server; index 0 = Sunday. */
+const ENGLISH_WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
 interface OpportunityContact {
   displayName: string | null;
@@ -95,14 +100,16 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       "id-parameter-name",
       "return-url",
       "response-email-template",
+      "show-full-address",
     ];
   }
 
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    if (name === "opportunity-id" && this.opportunity) {
-      this.init();
-    }
+  /**
+   * C65: legacy `showfulladdress`. Off by default, so the street address is
+   * withheld **by the server** and only "City, State" is ever fetched.
+   */
+  private get showFullAddress(): boolean {
+    return this.getAttribute("show-full-address") === "true";
   }
 
   connectedCallback() {
@@ -112,8 +119,27 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     // this widget already paints while it queries the API.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  /**
+   * C39: any observed attribute change after first paint reloads, through the
+   * base `attributeChangedCallback` → `reconfigure()`. The old guard
+   * (`opportunity-id && this.opportunity`) ignored every attribute but one,
+   * and that one only once an opportunity had loaded, so a widget whose
+   * first load failed (no id yet) could never be pointed at one.
+   */
+  protected override reload(): void {
+    this.error = null;
+    this.init();
+  }
+
+  /** `response-email-template` is read at submit time, so it needs no reload. */
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
+    if (oldValue === newValue || name === "response-email-template") return;
+    this.reconfigure();
   }
 
   /** Public hook so demo pages can force a reload (e.g. after sign-in). */
@@ -160,22 +186,21 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       this.error = this.t("opportunityDetails.noOpportunitySpecified");
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.emit("opportunityDetailError", { error: this.error });
       return;
     }
 
     try {
       const res = await this.fetch(
-        `/api/embed/opportunity-details/${encodeURIComponent(opportunityId)}`
+        `/api/embed/opportunity-details/${encodeURIComponent(opportunityId)}${this.showFullAddress ? "?showFullAddress=true" : ""}`
       );
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body, "errors.opportunity_not_found"));
+        throw new WidgetError(this.errorText(body, "errors.opportunity_not_found"));
       }
       const data: { opportunity: OpportunityDetail } = await res.json();
       if (!data || !data.opportunity) {
-        throw new Error(this.t("errors.opportunity_not_found"));
+        throw new WidgetError(this.t("errors.opportunity_not_found"));
       }
       this.opportunity = data.opportunity;
 
@@ -201,17 +226,15 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       // `errorText` has already produced a translated sentence; a thrown
       // non-Error (a dropped connection) becomes the generic network message
       // rather than leaking English.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.opportunity = null;
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.emit("opportunityDetailError", { error: this.error });
       return;
     }
 
     this.render();
-    this.attachListeners();
   }
 
   private async loadBasicContact() {
@@ -291,12 +314,16 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     const form = this.root.querySelector<HTMLFormElement>("#od-form");
     if (!form) return;
 
-    if (!validateForm(form).valid) {
+    if (!validateForm(form, { t: this.t }).valid) {
       this.setMessage("warning", this.t("opportunityDetails.verifyDetails"));
       return;
     }
 
     const payload = this.gatherFormData(form);
+    // Read at submit time, not baked into a hidden input at render (C39). The
+    // respond route now sends this dp_Communications template to the
+    // responder (W4 bonus; it used to be posted and ignored).
+    payload.UseEmailTemplate = (this.getAttribute("response-email-template") || "").trim();
 
     this.setSubmitDisabled(true);
     try {
@@ -332,10 +359,9 @@ export class OpportunityDetailsWidget extends MPNextWidget {
           : this.t("opportunityDetails.responseReceived"),
       };
       this.render();
-      this.attachListeners();
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : this.t("errors.submitFailed");
+        this.caughtText(err, "errors.submitFailed");
       this.setMessage("danger", msg);
       this.emit("responseError", { error: msg });
       this.setSubmitDisabled(false);
@@ -385,7 +411,6 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       container.style.display = "";
     } else {
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -403,7 +428,6 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       respondAs.addEventListener("change", () => {
         this.respondAs = respondAs.value;
         this.render();
-        this.attachListeners();
         void this.checkHasResponded(Number(this.respondAs) || null);
       });
     }
@@ -422,20 +446,30 @@ export class OpportunityDetailsWidget extends MPNextWidget {
         this.submitted = false;
         this.message = null;
         this.render();
-        this.attachListeners();
       });
     }
 
     const form = this.root.querySelector<HTMLFormElement>("#od-form");
     if (form) {
       bindCustomFormDependsOn(form, this.customFields);
-      bindLiveValidation(form);
+      bindLiveValidation(form, { t: this.t });
     }
   }
 
   // ── Render ──
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `<div class="od">${this.renderState(this.spinnerSvg(), this.t("opportunityDetails.loading"))}</div>`;
       return;
@@ -595,10 +629,8 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
   private renderHiddenInputs(): string {
     const op = this.opportunity!;
-    const template = this.getAttribute("response-email-template") || "";
     return `
       <input type="hidden" name="OpportunityId" value="${op.id}">
-      <input type="hidden" name="UseEmailTemplate" value="${this.escapeAttr(template)}">
       <input type="hidden" id="od-contact-id" name="ContactId" value="${this.escapeAttr(this.blankForm ? "" : this.respondAs)}">`;
   }
 
@@ -648,14 +680,19 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       <fieldset class="od-fieldset">
         <legend>${this.escapeHtml(this.t("opportunityDetails.yourInformation"))}</legend>
         <div class="od-grid2">
-          <div class="od-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="od-input" name="FirstName" required></div>
-          <div class="od-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="od-input" name="LastName" required></div>
+          ${this.odField({ name: "FirstName", label: this.t("fields.firstName"), required: true, autocomplete: "given-name" })}
+          ${this.odField({ name: "LastName", label: this.t("fields.lastName"), required: true, autocomplete: "family-name" })}
         </div>
         <div class="od-grid2">
-          <div class="od-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="od-input" type="email" name="EmailAddress" required></div>
-          <div class="od-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}${requiredStar()}</label><input class="od-input" name="MobilePhoneNumber" required></div>
+          ${this.odField({ name: "EmailAddress", label: this.t("fields.email"), type: "email", required: true, autocomplete: "email" })}
+          ${this.odField({ name: "MobilePhoneNumber", label: this.t("fields.mobilePhone"), type: "tel", required: true })}
         </div>
       </fieldset>`;
+  }
+
+  /** `field()` with this widget's id prefix and classes (C28, C29). */
+  private odField(opts: FieldOptions): string {
+    return field({ idPrefix: this.instanceId, wrapperClass: "od-field", inputClass: "od-input", ...opts });
   }
 
   private renderMessageField(): string {
@@ -672,7 +709,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     return `
       <div class="od-customform">
         <h3 class="od-reg-subtitle">${this.escapeHtml(this.t("opportunityDetails.additionalInformation"))}</h3>
-        ${renderCustomFormFields(this.customFields, { formId: op.customFormId, t: this.t })}
+        ${renderCustomFormFields(this.customFields, { formId: op.customFormId, t: this.t, idPrefix: this.instanceId })}
       </div>`;
   }
 
@@ -685,8 +722,9 @@ export class OpportunityDetailsWidget extends MPNextWidget {
   /**
    * MP stores `meetingDay` as its own text — the sentinel "Ongoing", or a day
    * name used when the opportunity carries no concrete start. The sentinel and
-   * the recurrence wrapper are translated; the day name itself stays as MP
-   * supplies it, since "Mondays" pluralises in a way no other language copies.
+   * the recurrence wrapper are translated, and the English day name MP returns
+   * is localised through `Intl` ("Every Friday" / "Cada viernes"), never
+   * pluralised by appending "s" (C25).
    *
    * `parseWallClock` replaces the local `parseMpDate`: same calendar-parts
    * parse into a local Date, so MP's wall clock survives and `fmt` formats it
@@ -697,9 +735,11 @@ export class OpportunityDetailsWidget extends MPNextWidget {
     if (day === "ongoing") return this.t("opportunityDetails.ongoing");
     const d = parseWallClock(op.startDate);
     if (!d) {
-      return op.meetingDay
-        ? this.t("opportunityDetails.everyDay", { day: op.meetingDay })
-        : "";
+      // C25: localise the weekday with `Intl` rather than appending an "s".
+      if (!op.meetingDay) return "";
+      const index = ENGLISH_WEEKDAYS.indexOf(op.meetingDay.trim().toLowerCase());
+      const dayName = index < 0 ? op.meetingDay : this.fmt.weekdayNames("long")[index];
+      return this.t("opportunityDetails.everyWeekday", { day: dayName });
     }
     const dateStr = this.fmt.date(d, "full");
     // Midnight means the record has a date but no real time component.
@@ -747,70 +787,70 @@ export class OpportunityDetailsWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .od { max-width: 880px; margin: 0 auto; }
 
-      .od-back { margin-bottom: 12px; }
-      .od-back a { color: #004C97; text-decoration: none; font-weight: 600; font-size: 14px; cursor: pointer; }
+      .od-back { margin-bottom: var(--_nw-space-3); }
+      .od-back a { color: var(--_nw-color-primary); text-decoration: none; font-weight: 600; font-size: var(--_nw-font-size-base); cursor: pointer; }
       .od-back a:hover { text-decoration: underline; }
 
-      .od-message { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
+      .od-message { padding: var(--_nw-space-3) var(--_nw-space-4); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); margin-bottom: var(--_nw-space-4); }
       .od-message--success { background: #ecf6e0; color: #4d6b1f; }
       .od-message--warning { background: #fdf6e3; color: #8a6d3b; }
       .od-message--info { background: #e6f6fc; color: #015a7a; }
-      .od-message--danger { background: #ffe9e9; color: #b91c1c; }
+      .od-message--danger { background: #ffe9e9; color: var(--_nw-color-error-text); }
 
-      .od-image { width: 100%; height: 260px; background-size: cover; background-position: center; border-radius: 12px; margin-bottom: 16px; }
-      .od-title { font-size: 28px; font-weight: 800; color: #002855; margin: 0 0 10px; }
-      .od-labels { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 8px; }
-      .od-labels li { background: #F1BE48; color: #2D2926; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; }
-      .od-datetime { font-size: 16px; font-weight: 600; color: #004C97; margin-bottom: 16px; }
-      .od-description { font-size: 15px; line-height: 1.6; color: #474747; margin-bottom: 16px; }
+      .od-image { width: 100%; height: 260px; background-size: cover; background-position: center; border-radius: var(--_nw-radius-lg); margin-bottom: var(--_nw-space-4); }
+      .od-title { font-size: 28px; font-weight: 800; color: var(--_nw-color-secondary); margin: 0 0 10px; }
+      .od-labels { list-style: none; padding: 0; margin: 0 0 var(--_nw-space-3); display: flex; flex-wrap: wrap; gap: var(--_nw-space-2); }
+      .od-labels li { background: var(--_nw-color-accent); color: var(--_nw-color-text); font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; }
+      .od-datetime { font-size: 16px; font-weight: 600; color: var(--_nw-color-primary); margin-bottom: var(--_nw-space-4); }
+      .od-description { font-size: 15px; line-height: 1.6; color: var(--_nw-color-text-subtle); margin-bottom: var(--_nw-space-4); }
       .od-description img { max-width: 100%; height: auto; }
 
-      .od-special { margin-bottom: 16px; }
-      .od-special-title { font-size: 13px; font-weight: 700; color: #002855; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 4px; }
-      .od-special-body { font-size: 15px; color: #474747; line-height: 1.5; }
+      .od-special { margin-bottom: var(--_nw-space-4); }
+      .od-special-title { font-size: 13px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: var(--_nw-space-1); }
+      .od-special-body { font-size: 15px; color: var(--_nw-color-text-subtle); line-height: var(--_nw-line-height); }
 
-      .od-contacts { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 16px; }
-      .od-contact { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-      .od-contact a { color: #004C97; text-decoration: none; }
+      .od-contacts { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: var(--_nw-space-4); }
+      .od-contact { display: flex; align-items: center; gap: var(--_nw-space-2); font-size: var(--_nw-font-size-base); }
+      .od-contact a { color: var(--_nw-color-primary); text-decoration: none; }
       .od-contact a:hover { text-decoration: underline; }
-      .od-contact-badge { width: 36px; height: 36px; border-radius: 9999px; background: #004C97; color: white; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; background-size: cover; background-position: center; }
+      .od-contact-badge { width: 36px; height: 36px; border-radius: 9999px; background: var(--_nw-color-primary); color: var(--_nw-color-on-primary); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; background-size: cover; background-position: center; }
 
-      .od-map { margin-bottom: 16px; }
-      .od-map iframe { width: 100%; height: 280px; border: 0; border-radius: 12px; }
-      .od-link { color: #004C97; font-weight: 600; text-decoration: none; font-size: 14px; }
+      .od-map { margin-bottom: var(--_nw-space-4); }
+      .od-map iframe { width: 100%; height: 280px; border: 0; border-radius: var(--_nw-radius-lg); }
+      .od-link { color: var(--_nw-color-primary); font-weight: 600; text-decoration: none; font-size: var(--_nw-font-size-base); }
       .od-link:hover { text-decoration: underline; }
 
-      .od-btn { padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; border: none; text-decoration: none; display: inline-block; }
-      .od-btn--primary { background: #004C97; color: white; }
-      .od-btn--primary:hover { background: #002855; }
-      .od-btn--secondary { background: #009CDE; color: white; }
+      .od-btn { padding: 10px 18px; border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; border: none; text-decoration: none; display: inline-block; }
+      .od-btn--primary { background: var(--_nw-button-bg); color: var(--_nw-button-fg); border-radius: var(--_nw-button-radius); }
+      .od-btn--primary:hover { background: var(--_nw-button-bg-hover); }
+      .od-btn--secondary { background: var(--_nw-color-info); color: var(--_nw-color-on-primary); }
       .od-btn--secondary:hover { background: #007bb0; }
       .od-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-      .od-reg { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-top: 8px; }
-      .od-reg-title { font-size: 20px; font-weight: 800; color: #002855; margin: 0 0 16px; }
-      .od-reg-subtitle { font-size: 16px; font-weight: 700; color: #002855; margin: 16px 0 8px; }
+      .od-reg { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-5); box-shadow: var(--_nw-shadow); margin-top: var(--_nw-space-2); }
+      .od-reg-title { font-size: 20px; font-weight: 800; color: var(--_nw-color-secondary); margin: 0 0 var(--_nw-space-4); }
+      .od-reg-subtitle { font-size: 16px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: var(--_nw-space-4) 0 var(--_nw-space-2); }
       .od-login-panel { text-align: center; }
-      .od-login-panel p { margin: 0 0 12px; font-size: 15px; }
+      .od-login-panel p { margin: 0 0 var(--_nw-space-3); font-size: 15px; }
 
       .od-form { display: block; }
-      .od-fieldset { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px 16px; margin: 0 0 16px; }
-      .od-fieldset legend { font-size: 13px; font-weight: 700; color: #002855; padding: 0 6px; }
-      .od-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-      .od-field label { font-size: 13px; font-weight: 600; color: #6b7280; }
-      .od-input { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; background: white; outline: none; }
-      .od-input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
+      .od-fieldset { border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius); padding: var(--_nw-space-3) var(--_nw-space-4) var(--_nw-space-4); margin: 0 0 var(--_nw-space-4); }
+      .od-fieldset legend { font-size: 13px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); padding: 0 6px; }
+      .od-field { display: flex; flex-direction: column; gap: var(--_nw-space-1); margin-bottom: var(--_nw-space-3); }
+      .od-field label { font-size: 13px; font-weight: 600; color: var(--_nw-color-muted); }
+      .od-input { padding: 9px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); background: var(--_nw-color-surface); outline: none; }
+      .od-input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
       textarea.od-input { min-height: 80px; resize: vertical; }
-      .od-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-      .od-buttons { display: flex; flex-wrap: wrap; gap: 12px; }
+      .od-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--_nw-space-3); }
+      .od-buttons { display: flex; flex-wrap: wrap; gap: var(--_nw-space-3); }
 
-      .od-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; font-size: 15px; }
+      .od-state { display: flex; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 48px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; }
       .od-error { flex-direction: column; }
-      .od-error p { color: #b91c1c; }
-      .od-spinner { animation: od-spin 1s linear infinite; color: #004C97; }
+      .od-error p { color: var(--_nw-color-error-text); }
+      .od-spinner { animation: od-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes od-spin { to { transform: rotate(360deg); } }
 
       @media (max-width: 640px) {

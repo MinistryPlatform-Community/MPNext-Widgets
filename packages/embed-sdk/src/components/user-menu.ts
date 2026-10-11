@@ -1,6 +1,7 @@
 import { MPNextWidget } from "../shared/base-widget";
 import type { EmbedAuthMode } from "../shared/auth-session";
 import type { MessageKey } from "../i18n";
+import { dialogFocus, type DialogCloseReason, type DialogFocusHandle } from "../shared/dialog-focus";
 
 interface UserMenuState {
   isDropdownOpen: boolean;
@@ -74,6 +75,19 @@ export class UserMenuWidget extends MPNextWidget {
   private suppressHashChange = false;
   private documentClickHandler = (e: MouseEvent) => this.handleDocumentClick(e);
   private escapeHandler = (e: KeyboardEvent) => this.handleEscape(e);
+  /**
+   * C54: focus handles for the dropdown and the account modal. Escape is not
+   * passed to `dialogFocus` (`onEscape`): the document-level `handleEscape`
+   * already owns it and its modal-before-dropdown precedence, and calls the
+   * close methods with `"escape"`, which release these handles.
+   */
+  private dropdownFocus: DialogFocusHandle | null = null;
+  private modalFocus: DialogFocusHandle | null = null;
+  /** A function, because every render replaces the avatar button. */
+  /** C56: warn once when signed-in child markup has nowhere to render. */
+  private unslottedWarned = false;
+  private avatarTrigger = (): HTMLElement | null =>
+    this.root.querySelector<HTMLElement>(".nw-avatar-btn");
   private storageHandler = () => this.render();
   private hashChangeHandler = () => this.checkHashDeepLink();
 
@@ -831,6 +845,27 @@ export class UserMenuWidget extends MPNextWidget {
     );
   }
 
+  /**
+   * C56. Signed in, the only place host markup renders is the dropdown's
+   * `<slot name="menu-items">` (a *named* slot, because the default light DOM
+   * carries the injected `<mpp-user-login>` in `legacy` mode). Any other child
+   * is painted nowhere, so say so once instead of dropping it silently.
+   */
+  private warnUnslottedChildren() {
+    if (this.unslottedWarned) return;
+    const stray = Array.from(this.childNodes).some((node) => {
+      if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").trim() !== "";
+      if (!(node instanceof Element)) return false;
+      if (node.localName === "mpp-user-login") return false;
+      return node.getAttribute("slot") !== "menu-items";
+    });
+    if (!stray) return;
+    this.unslottedWarned = true;
+    console.warn(
+      `[next-user-menu] child markup without slot="menu-items" is not rendered when signed in. To add links to the signed-in menu, write e.g. <a slot="menu-items" href="/give">Give</a>.`,
+    );
+  }
+
   private removeLightDOMLogin() {
     this.stopMpLoginWatch();
     const login = this.querySelector("mpp-user-login");
@@ -1094,9 +1129,10 @@ export class UserMenuWidget extends MPNextWidget {
           ${this.escapeHtml(this.t("userMenu.myAccount"))}
         </button>
         ${this.isTaxSeason() ? `<button class="nw-dropdown-item" data-action="giving">
-          <svg class="nw-icon" style="stroke: #F1BE48;" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <svg class="nw-icon" style="stroke: var(--_nw-color-accent);" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           ${this.escapeHtml(this.t("userMenu.contributionStatement"))}
         </button>` : ""}
+        <slot name="menu-items"></slot>
         <button class="nw-dropdown-item" data-action="logout">
           <svg class="nw-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           ${this.escapeHtml(this.t("common.signOut"))}
@@ -1122,6 +1158,12 @@ export class UserMenuWidget extends MPNextWidget {
   // ── Event Listeners ──────────────────────────────────────────
 
   private attachShadowListeners() {
+    this.warnUnslottedChildren();
+
+    // Choosing a host-authored item closes the dropdown like a built-in one.
+    const menuSlot = this.root.querySelector('slot[name="menu-items"]');
+    if (menuSlot) menuSlot.addEventListener("click", () => this.closeDropdown("programmatic"));
+
     const avatarBtn = this.root.querySelector(".nw-avatar-btn");
     if (avatarBtn) {
       avatarBtn.addEventListener("click", (e) => {
@@ -1159,15 +1201,29 @@ export class UserMenuWidget extends MPNextWidget {
   }
 
   private toggleDropdown() {
-    this.state.isDropdownOpen = !this.state.isDropdownOpen;
+    if (this.state.isDropdownOpen) {
+      this.closeDropdown("programmatic");
+      return;
+    }
+    this.state.isDropdownOpen = true;
     this.render();
+    const menu = this.root.querySelector<HTMLElement>(".nw-dropdown");
+    // A disclosure, not a `role="menu"`: Tab may leave it, so no trap.
+    if (menu) this.dropdownFocus = dialogFocus(menu, this.avatarTrigger, { trapTab: false });
   }
 
-  private closeDropdown() {
+  /**
+   * `reason` decides where focus goes: back to the avatar after Escape or an
+   * in-widget action, but **not** after an outside click — the visitor clicked
+   * something else, and pulling focus back would fight them (C54).
+   */
+  private closeDropdown(reason: DialogCloseReason = "programmatic") {
     if (this.state.isDropdownOpen) {
       this.state.isDropdownOpen = false;
       this.render();
     }
+    this.dropdownFocus?.release(reason);
+    this.dropdownFocus = null;
   }
 
   private handleDocumentClick(e: MouseEvent) {
@@ -1175,16 +1231,16 @@ export class UserMenuWidget extends MPNextWidget {
 
     const path = e.composedPath();
     if (!path.includes(this)) {
-      this.closeDropdown();
+      this.closeDropdown("outside");
     }
   }
 
   private handleEscape(e: KeyboardEvent) {
     if (e.key === "Escape") {
       if (this.state.isModalOpen) {
-        this.closeModal();
+        this.closeModal("escape");
       } else if (this.state.isDropdownOpen) {
-        this.closeDropdown();
+        this.closeDropdown("escape");
       }
     }
   }
@@ -1202,12 +1258,24 @@ export class UserMenuWidget extends MPNextWidget {
 
     this.createPortal();
 
+    // C54: move focus into the dialog (its Close button) and return it to the
+    // avatar on close. Tab is trapped (`dialogFocus`'s default): the trap walks
+    // open shadow roots, so it cycles through the form fields of the tab-panel
+    // widgets (`next-profile`, `next-my-household`, ...) rather than skipping them.
+    const dialog = this.portalEl?.querySelector<HTMLElement>(".nw-modal-container");
+    this.modalFocus?.release("programmatic");
+    this.modalFocus = dialog
+      ? dialogFocus(dialog, this.avatarTrigger, { initialFocus: ".nw-modal-close" })
+      : null;
+
     this.emit("accountModalOpen", { tab: this.state.activeTab });
   }
 
-  private closeModal() {
+  private closeModal(reason: DialogCloseReason = "programmatic") {
     this.state.isModalOpen = false;
     this.destroyPortal();
+    this.modalFocus?.release(reason);
+    this.modalFocus = null;
 
     // Clean #nw-tab=... from URL without adding a history entry
     if (this.parseTabFromHash()) {
@@ -1294,7 +1362,7 @@ export class UserMenuWidget extends MPNextWidget {
         </div>`;
       case "family":
         return `<div class="nw-tab-panel" data-panel="family">
-          <next-my-household hideaddhouseholdmember="false" api-host="${this.escapeHtml(this.apiHost)}"></next-my-household>
+          <next-my-household hide-add-household-member="false" api-host="${this.escapeHtml(this.apiHost)}"></next-my-household>
         </div>`;
       case "groups":
         return `<div class="nw-tab-panel" data-panel="groups">
@@ -1308,8 +1376,8 @@ export class UserMenuWidget extends MPNextWidget {
         // statement widget bundled both into one), giving history, and pledges.
         // The entire Giving tab is now native — no legacy MP widgets remain.
         const statement = `<next-my-contribution-statement api-host="${host}"></next-my-contribution-statement><next-statement-preferences api-host="${host}"></next-statement-preferences>`;
-        const giving = `<next-my-giving hidesoftcredits="true" api-host="${host}"></next-my-giving>`;
-        const pledges = `<next-my-pledges hidecancelbuttonpledge="true" api-host="${host}"></next-my-pledges>`;
+        const giving = `<next-my-giving hide-soft-credits="true" api-host="${host}"></next-my-giving>`;
+        const pledges = `<next-my-pledges hide-cancel-button-pledge="true" api-host="${host}"></next-my-pledges>`;
 
         return statementOnTop
           ? `<div class="nw-tab-panel" data-panel="giving">${statement}${giving}${pledges}</div>`
@@ -1319,10 +1387,15 @@ export class UserMenuWidget extends MPNextWidget {
         return `<div class="nw-tab-panel" data-panel="subscriptions">
           <next-subscriptions api-host="${this.escapeHtml(this.apiHost)}"></next-subscriptions>
         </div>`;
-      case "invoices":
+      case "invoices": {
+        // The Pay link is an anchor to the church's checkout page (C44); without
+        // a checkout-url the invoices tab lists invoices with no Pay affordance.
+        const checkoutUrl = this.getAttribute("invoices-checkout-url");
+        const checkoutAttr = checkoutUrl ? ` checkout-url="${this.escapeHtml(checkoutUrl)}"` : "";
         return `<div class="nw-tab-panel" data-panel="invoices">
-          <next-my-invoices api-host="${this.escapeHtml(this.apiHost)}"></next-my-invoices>
+          <next-my-invoices api-host="${this.escapeHtml(this.apiHost)}"${checkoutAttr}></next-my-invoices>
         </div>`;
+      }
     }
   }
 
@@ -1483,7 +1556,7 @@ export class UserMenuWidget extends MPNextWidget {
       :host {
         all: initial;
         display: inline-block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-user-menu {
@@ -1499,8 +1572,8 @@ export class UserMenuWidget extends MPNextWidget {
         border: none;
         padding: 0;
         cursor: pointer;
-        background: #004C97;
-        color: white;
+        background: var(--_nw-color-primary);
+        color: var(--_nw-color-on-primary);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1510,7 +1583,7 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-avatar-btn:focus-visible {
-        box-shadow: 0 0 0 2px white, 0 0 0 4px #004C97;
+        box-shadow: 0 0 0 2px white, 0 0 0 4px var(--_nw-color-primary);
       }
 
       .nw-avatar-btn:hover {
@@ -1525,7 +1598,7 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-avatar-initials {
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
         line-height: 1;
         user-select: none;
@@ -1537,9 +1610,9 @@ export class UserMenuWidget extends MPNextWidget {
         top: calc(100% + 6px);
         right: 0;
         width: 224px;
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
+        background: var(--_nw-color-surface);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
         box-shadow: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1);
         z-index: 50;
         overflow: hidden;
@@ -1552,35 +1625,35 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-dropdown-header {
-        padding: 12px 16px;
+        padding: var(--_nw-space-3) var(--_nw-space-4);
       }
 
       .nw-dropdown-name {
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 500;
         color: #1f2937;
       }
 
       .nw-dropdown-email {
         font-size: 12px;
-        color: #6b7280;
+        color: var(--_nw-color-muted);
         margin-top: 2px;
       }
 
       .nw-dropdown-divider {
         height: 1px;
-        background: #e5e7eb;
+        background: var(--_nw-color-border);
       }
 
       .nw-dropdown-item {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         width: 100%;
-        padding: 10px 16px;
+        padding: 10px var(--_nw-space-4);
         border: none;
         background: none;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         color: #1f2937;
         cursor: pointer;
         text-align: left;
@@ -1588,7 +1661,31 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-dropdown-item:hover {
-        background: #f3f4f6;
+        background: var(--_nw-color-surface-muted);
+      }
+
+      /* C56: host-authored items (slot="menu-items") look like built-in ones. */
+      ::slotted(a),
+      ::slotted(button) {
+        display: flex;
+        align-items: center;
+        gap: var(--_nw-space-2);
+        box-sizing: border-box;
+        width: 100%;
+        padding: 10px var(--_nw-space-4);
+        border: none;
+        background: none;
+        font-size: var(--_nw-font-size-base);
+        color: #1f2937;
+        text-decoration: none;
+        cursor: pointer;
+        text-align: left;
+        font-family: inherit;
+      }
+
+      ::slotted(a:hover),
+      ::slotted(button:hover) {
+        background: var(--_nw-color-surface-muted);
       }
 
       .nw-icon {
@@ -1610,15 +1707,15 @@ export class UserMenuWidget extends MPNextWidget {
       .nw-login-btn {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         height: 36px;
         padding: 0 14px;
         border: none;
         border-radius: 6px;
-        background: #004C97;
-        color: white;
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-family: inherit;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 500;
         line-height: 1;
         cursor: pointer;
@@ -1631,7 +1728,7 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-login-btn:focus-visible {
-        box-shadow: 0 0 0 2px white, 0 0 0 4px #004C97;
+        box-shadow: 0 0 0 2px white, 0 0 0 4px var(--_nw-color-primary);
       }
     `;
   }
@@ -1661,8 +1758,8 @@ export class UserMenuWidget extends MPNextWidget {
 
       .nw-modal-container {
         position: relative;
-        background: white;
-        border-radius: 12px;
+        background: var(--nw-color-surface, #ffffff);
+        border-radius: var(--nw-radius-lg, 12px);
         box-shadow: 0 25px 50px -12px rgba(0,0,0,.25);
         width: 90vw;
         max-width: 900px;
@@ -1670,7 +1767,7 @@ export class UserMenuWidget extends MPNextWidget {
         display: flex;
         flex-direction: column;
         animation: nw-modal-in 0.2s ease-out;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--nw-font-family, ui-sans-serif, system-ui, -apple-system, sans-serif);
       }
 
       @keyframes nw-modal-in {
@@ -1682,8 +1779,8 @@ export class UserMenuWidget extends MPNextWidget {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        padding: 24px 24px 16px;
-        border-bottom: 1px solid #e5e7eb;
+        padding: var(--nw-space-6, 24px) var(--nw-space-6, 24px) var(--nw-space-4, 16px);
+        border-bottom: var(--nw-border-width, 1px) solid var(--nw-color-border, #e5e7eb);
       }
 
       .nw-modal-title {
@@ -1695,9 +1792,9 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-modal-description {
-        font-size: 14px;
-        color: #6b7280;
-        margin: 4px 0 0;
+        font-size: var(--nw-font-size-base, 14px);
+        color: var(--nw-color-muted, #6b7280);
+        margin: var(--nw-space-1, 4px) 0 0;
       }
 
       .nw-modal-close {
@@ -1710,13 +1807,13 @@ export class UserMenuWidget extends MPNextWidget {
         background: none;
         border-radius: 6px;
         cursor: pointer;
-        color: #6b7280;
+        color: var(--nw-color-muted, #6b7280);
         padding: 0;
         flex-shrink: 0;
       }
 
       .nw-modal-close:hover {
-        background: #f3f4f6;
+        background: var(--nw-color-surface-muted, #f3f4f6);
         color: #1f2937;
       }
 
@@ -1728,19 +1825,19 @@ export class UserMenuWidget extends MPNextWidget {
       /* Tabs */
       .nw-modal-tabs {
         display: flex;
-        padding: 0 24px;
-        border-bottom: 1px solid #e5e7eb;
+        padding: 0 var(--nw-space-6, 24px);
+        border-bottom: var(--nw-border-width, 1px) solid var(--nw-color-border, #e5e7eb);
         gap: 0;
       }
 
       .nw-tab {
         flex: 1;
-        padding: 12px 16px;
+        padding: var(--nw-space-3, 12px) var(--nw-space-4, 16px);
         border: none;
         background: none;
-        font-size: 14px;
+        font-size: var(--nw-font-size-base, 14px);
         font-weight: 500;
-        color: #6b7280;
+        color: var(--nw-color-muted, #6b7280);
         cursor: pointer;
         border-bottom: 2px solid transparent;
         transition: color 0.15s, border-color 0.15s;
@@ -1752,13 +1849,13 @@ export class UserMenuWidget extends MPNextWidget {
       }
 
       .nw-tab.active {
-        color: #004C97;
-        border-bottom-color: #004C97;
+        color: var(--nw-color-primary, #004C97);
+        border-bottom-color: var(--nw-color-primary, #004C97);
       }
 
       /* Modal body */
       .nw-modal-body {
-        padding: 24px;
+        padding: var(--nw-space-6, 24px);
         overflow-y: auto;
         flex: 1;
         min-height: 200px;
@@ -1771,7 +1868,7 @@ export class UserMenuWidget extends MPNextWidget {
       .nw-tab-empty {
         text-align: center;
         color: #9ca3af;
-        font-size: 14px;
+        font-size: var(--nw-font-size-base, 14px);
         padding: 48px 0;
       }
 
@@ -1782,20 +1879,20 @@ export class UserMenuWidget extends MPNextWidget {
         }
 
         .nw-modal-header {
-          padding: 16px 16px 12px;
+          padding: var(--nw-space-4, 16px) var(--nw-space-4, 16px) var(--nw-space-3, 12px);
         }
 
         .nw-modal-tabs {
-          padding: 0 16px;
+          padding: 0 var(--nw-space-4, 16px);
         }
 
         .nw-tab {
-          padding: 10px 8px;
+          padding: 10px var(--nw-space-2, 8px);
           font-size: 13px;
         }
 
         .nw-modal-body {
-          padding: 16px;
+          padding: var(--nw-space-4, 16px);
         }
       }
     `;

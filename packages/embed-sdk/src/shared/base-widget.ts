@@ -1,4 +1,5 @@
 import { getAuthSession, type AuthSession } from "./auth-session";
+import { escapeHtml } from "./html";
 import {
   getFormatters,
   getLocaleSession,
@@ -10,6 +11,25 @@ import {
   type MessageKey,
   type Translator,
 } from "../i18n";
+import { THEME_TOKENS_CSS } from "./theme-tokens";
+
+/**
+ * An error whose `message` is **already a sentence for the visitor**, in the
+ * visitor's language: thrown as `new WidgetError(this.errorText(body))` or
+ * `new WidgetError(this.t(...))`.
+ *
+ * It exists so a `catch` can tell that apart from everything else that lands
+ * there — the browser's `TypeError: Failed to fetch` (untranslated, and worded
+ * per browser), a JSON `SyntaxError`, an auth-session or token-provider
+ * failure carrying server prose. Only a `WidgetError`'s message is rendered;
+ * see {@link MPNextWidget.caughtText}.
+ */
+export class WidgetError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WidgetError";
+  }
+}
 
 /**
  * Wire error codes whose catalogue key is spelled differently, plus the ones
@@ -48,12 +68,87 @@ export const WIRE_CODE_KEYS: Record<string, MessageKey> = {
 };
 
 /**
+ * Wire codes that mean "this request carried no usable session". Read by
+ * `isNeedsAuth()` when it is handed a parsed body rather than a `Response`.
+ * Codes only — the state is **never** inferred from a message string.
+ */
+const NEEDS_AUTH_CODES: ReadonlySet<string> = new Set([
+  "auth_required",
+  "session_expired",
+  "invalid_session",
+]);
+
+/** Options for {@link MPNextWidget.renderSignInRequired}. */
+export interface SignInRequiredOptions {
+  /**
+   * The widget id handed to `requestLogin()` and carried in the
+   * `loginRequired` event's `detail.wid`. Defaults to the tag name without its
+   * `next-` prefix (`next-my-giving` → `my-giving`).
+   */
+  subject?: string;
+  /**
+   * Already-translated prompt, e.g. `this.t("myGiving.signInPrompt")`.
+   * Defaults to `common.signInPrompt`.
+   */
+  message?: string;
+  /**
+   * Already-translated sentence for `legacy` mode, where no button is drawn.
+   * When omitted, `message` is followed by `common.signInViaPage`.
+   */
+  legacyMessage?: string;
+  /** Extra classes on the panel wrapper, to keep a widget's own layout. */
+  className?: string;
+  /** Extra classes on the Sign In button, to match the widget's own buttons. */
+  buttonClass?: string;
+}
+
+/**
+ * Minimal styles for the shared signed-out panel. Include in `getStyles()` of
+ * any widget that renders {@link MPNextWidget.renderSignInRequired} without its
+ * own `className` / `buttonClass` styling.
+ */
+export const SIGN_IN_REQUIRED_STYLES = `
+  .nw-signin { display: flex; flex-direction: column; align-items: center; gap: var(--_nw-space-3); padding: var(--_nw-space-6) var(--_nw-space-4); text-align: center; }
+  .nw-signin-msg { margin: 0; }
+  .nw-signin-btn { font: inherit; font-weight: 600; cursor: pointer; padding: var(--_nw-space-2) var(--_nw-space-5); border: 0; border-radius: 6px; background: var(--_nw-button-bg); color: var(--_nw-button-fg); }
+  .nw-signin-btn:hover { background: var(--_nw-button-bg-hover); }
+  .nw-signin-btn:focus-visible { outline: var(--_nw-focus-ring); outline-offset: 2px; }
+`;
+
+/** Source of `MPNextWidget.instanceId`. */
+let instanceCounter = 0;
+
+/** Legacy attribute spellings already warned about, per element class. */
+const warnedAliases = new WeakMap<object, Set<string>>();
+
+/** Read the `sub` claim of a JWT without verifying it. */
+function decodeJwtSub(token: string): string | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    let payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    while (payload.length % 4) payload += "=";
+    const claims = JSON.parse(atob(payload)) as { sub?: unknown };
+    return typeof claims.sub === "string" ? claims.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Base class for MPNext embeddable widgets
  * Handles Shadow DOM, API communication, token management and localisation
  */
 export abstract class MPNextWidget extends HTMLElement {
   protected root: ShadowRoot;
   protected apiHost: string;
+
+  /**
+   * A per-element prefix (`nw1`, `nw2`, …) for ids minted inside the shadow
+   * root — pass it as `field({ idPrefix: this.instanceId })` so two widgets of
+   * the same kind on one page can never produce the same id.
+   */
+  protected readonly instanceId = `nw${++instanceCounter}`;
   protected tokenProvider: () => Promise<string>;
 
   /**
@@ -93,6 +188,11 @@ export abstract class MPNextWidget extends HTMLElement {
       this.getAttribute("api-host") ||
       this.detectApiHostFromScript() ||
       "";
+
+    // The shared signed-out panel's Sign In button. Delegated from the shadow
+    // root so a widget cannot render the panel and forget to bind it — which
+    // is the dead-button failure C81 filed in ten places.
+    this.root.addEventListener("click", (e) => this.onSignInClick(e));
 
     // Token provider — resolved lazily via waitForTokenProvider()
     this.tokenProvider =
@@ -149,6 +249,7 @@ export abstract class MPNextWidget extends HTMLElement {
     if (!token) {
       throw new Error("Authentication token not available.");
     }
+    this.lastTokenSub = decodeJwtSub(token);
 
     const headers: Record<string, string> = {
       ...(init?.headers as Record<string, string>),
@@ -162,9 +263,20 @@ export abstract class MPNextWidget extends HTMLElement {
       mode: "cors",
     });
 
-    // Handle token refresh on 401
-    if (res.status === 401 && window.__nextTokenProvider?.refresh) {
+    // Handle token refresh on 401 — but only for a token that carried a user.
+    // A public token is minted for "no one is signed in"; a refresh mints
+    // another public token, so the retry cannot change the answer and only
+    // doubles the round-trip (and a session-mint call) on every signed-out
+    // visit. The provider never hands out a token within 30s of its `exp`, so
+    // a public 401 is not an expiry the refresh could cure. An undecodable
+    // token (custom `MPNextEmbed.init()` provider) keeps the retry.
+    if (
+      res.status === 401 &&
+      this.lastTokenSub !== "public" &&
+      window.__nextTokenProvider?.refresh
+    ) {
       const newToken = await window.__nextTokenProvider.refresh();
+      this.lastTokenSub = decodeJwtSub(newToken);
       return fetch(`${this.apiHost}${path}`, {
         ...init,
         headers: {
@@ -179,11 +291,28 @@ export abstract class MPNextWidget extends HTMLElement {
     return res;
   }
 
+  /** The one constructed sheet this widget owns in `adoptedStyleSheets`. */
+  private ownSheet: CSSStyleSheet | null = null;
+  /** The `<style>` element used when constructable stylesheets are unavailable. */
+  private ownStyleTag: HTMLStyleElement | null = null;
+
   /**
-   * Inject CSS into Shadow DOM
-   * Uses Constructable Stylesheets when available, fallback to <style> tag
+   * Inject the widget's CSS into its Shadow DOM.
+   *
+   * Uses a constructable stylesheet when available, with a `<style>` tag as the
+   * fallback. **Never assigns over `adoptedStyleSheets`**: the widget's
+   * own sheet is added once, placed *before* any sheet already there, and a
+   * later call replaces only that sheet. Anything a host page adopted into the
+   * open shadow root therefore survives re-injection and re-render, and — being
+   * later in the list — wins on equal specificity, as a church's override
+   * should.
+   *
+   * The `--nw-*` theme-token block (`THEME_TOKENS_CSS`, `./theme-tokens`) is
+   * prepended to every widget's sheet here, so each widget reads the resolved
+   * `var(--_nw-…)` names without including the block itself.
    */
-  protected injectStyles(css: string): void {
+  protected injectStyles(widgetCss: string): void {
+    const css = [THEME_TOKENS_CSS, widgetCss].join("\n");
     if (
       "adoptedStyleSheets" in Document.prototype &&
       "replace" in CSSStyleSheet.prototype
@@ -191,19 +320,29 @@ export abstract class MPNextWidget extends HTMLElement {
       try {
         const sheet = new CSSStyleSheet();
         sheet.replaceSync(css);
-        this.root.adoptedStyleSheets = [sheet];
+        const current = Array.from(this.root.adoptedStyleSheets ?? []);
+        const index = this.ownSheet ? current.indexOf(this.ownSheet) : -1;
+        if (index >= 0) current[index] = sheet;
+        else current.unshift(sheet);
+        this.root.adoptedStyleSheets = current;
+        this.ownSheet = sheet;
+        return;
       } catch {
-        this.injectStyleTag(css);
+        /* fall through to the <style> tag */
       }
-    } else {
-      this.injectStyleTag(css);
     }
+    this.injectStyleTag(css);
   }
 
   private injectStyleTag(css: string): void {
-    const style = document.createElement("style");
-    style.textContent = css;
-    this.root.appendChild(style);
+    if (!this.ownStyleTag) {
+      this.ownStyleTag = document.createElement("style");
+    }
+    this.ownStyleTag.textContent = css;
+    // Re-insert when a render's `innerHTML` assignment detached it.
+    if (this.ownStyleTag.parentNode !== this.root) {
+      this.root.insertBefore(this.ownStyleTag, this.root.firstChild);
+    }
   }
 
   /**
@@ -402,6 +541,26 @@ export abstract class MPNextWidget extends HTMLElement {
   }
 
   /**
+   * Turn whatever a `catch` caught into a sentence for the visitor.
+   *
+   * A {@link WidgetError} carries a sentence the widget already translated, and
+   * is returned as is. Anything else — above all the browser's own
+   * `TypeError: Failed to fetch` when the network or CORS fails, which no
+   * catalogue translates — is logged with `console.error` and replaced by
+   * `fallbackKey` (normally `errors.network`). **Never render `err.message`
+   * directly**; `components/no-raw-error-message.test.ts` fails the run if a
+   * component does.
+   */
+  protected caughtText(
+    err: unknown,
+    fallbackKey: MessageKey = "errors.generic",
+  ): string {
+    if (err instanceof WidgetError && err.message) return err.message;
+    console.error(`[mpnext] <${this.localName}>`, err);
+    return this.t(fallbackKey);
+  }
+
+  /**
    * Cleanup. **A subclass that defines its own `disconnectedCallback` must call
    * `super.disconnectedCallback()`** — six of the thirty components already
    * define one, and without the super call each mount leaks a locale
@@ -435,6 +594,218 @@ export abstract class MPNextWidget extends HTMLElement {
     if (!handled && mode !== null && mode !== "legacy") {
       this.authSession.login({ wid });
     }
+  }
+
+  // ── Attributes (C79 / CROSS-4) ───────────────────────────────────────────
+
+  /**
+   * Legacy attribute spellings still accepted, as `{ "kebab-name": "oldname" }`.
+   * **Widget attributes are kebab-case**; a renamed attribute keeps its old
+   * spelling here for one release. List both spellings in
+   * `observedAttributes` so a late set of either reconfigures:
+   *
+   * ```ts
+   * static readonly attributeAliases = { "hide-soft-credits": "hidesoftcredits" };
+   * static get observedAttributes() {
+   *   return ["api-host", "hide-soft-credits", ...Object.values(this.attributeAliases)];
+   * }
+   * ```
+   *
+   * `observed-attributes.test.ts` exempts exactly these values from the
+   * kebab-case guard.
+   */
+  static readonly attributeAliases: Readonly<Record<string, string>> = {};
+
+  /**
+   * Read an attribute by its kebab-case name, falling back to a legacy
+   * spelling — `legacyAlias`, or else this class's `attributeAliases` entry.
+   * The fallback `console.warn`s **once per element class** so a host still
+   * on the old spelling finds out, without flooding the console on every
+   * render. Returns `null` when neither is present.
+   */
+  protected readAttr(name: string, legacyAlias?: string): string | null {
+    const value = this.getAttribute(name);
+    if (value !== null) return value;
+
+    const ctor = this.constructor as typeof MPNextWidget;
+    const alias = legacyAlias ?? ctor.attributeAliases?.[name];
+    if (!alias) return null;
+    const legacy = this.getAttribute(alias);
+    if (legacy === null) return null;
+
+    let seen = warnedAliases.get(ctor);
+    if (!seen) {
+      seen = new Set();
+      warnedAliases.set(ctor, seen);
+    }
+    if (!seen.has(alias)) {
+      seen.add(alias);
+      console.warn(
+        `[mpnext] <${this.localName}> attribute "${alias}" is deprecated; use "${name}". The old spelling is read for one release only.`,
+      );
+    }
+    return legacy;
+  }
+
+  // ── Reconfiguration (C39 / CROSS-4 §1, §4) ───────────────────────────────
+
+  /**
+   * True once the widget has painted. **Set it yourself** at the end of the
+   * first render in `connectedCallback` (the base class cannot see when that
+   * is). `reconfigure()` is a no-op until then, because the first load reads
+   * every attribute anyway.
+   */
+  protected painted = false;
+
+  /**
+   * **The rule:** an observed attribute change calls `reconfigure()`. Never
+   * guard on `oldValue !== null` — an attribute absent at upgrade arrives with
+   * `oldValue === null`, which is exactly the "create, insert, then configure"
+   * shape of every CMS and framework host (C39). Never guard on "entity
+   * already loaded" either — a widget whose first load failed must still
+   * respond (`pledge-campaign`'s variant of the bug).
+   *
+   * This default is all most widgets need: list the attributes in
+   * `observedAttributes` and implement `reload()`. Override only to filter
+   * attributes that need no reload, and call `this.reconfigure()` for the rest.
+   */
+  attributeChangedCallback(
+    _name: string,
+    oldValue: string | null,
+    newValue: string | null,
+  ): void {
+    if (oldValue !== newValue) this.reconfigure();
+  }
+
+  /** A no-op before the first paint (or once disconnected); `reload()` after. */
+  protected reconfigure(): void {
+    if (!this.painted || !this.isConnected) return;
+    this.reload();
+  }
+
+  /**
+   * Re-read configuration and re-load. Called by `reconfigure()` after the
+   * first paint. Reset any state derived from the old attributes here, paint
+   * the loading state, and start the load. The default does nothing.
+   */
+  protected reload(): void {
+    /* subclasses that observe attributes override this */
+  }
+
+  // ── Signed-out state (C81 / CROSS-1) ─────────────────────────────────────
+
+  /**
+   * `sub` of the token the last `fetch()` sent, or null when it was not a
+   * decodable JWT (a custom `MPNextEmbed.init()` provider, say).
+   */
+  private lastTokenSub: string | null = null;
+
+  /** `legacy` announces `loginRequired` once per element, not once per render. */
+  private signInAnnounced = false;
+
+  /**
+   * True when a response (or its parsed body) means "the visitor is not signed
+   * in" rather than "something broke".
+   *
+   * - A `Response`-shaped value: `status === 401`.
+   * - A parsed body: `error` is `auth_required`, `session_expired` or
+   *   `invalid_session`.
+   *
+   * …**and** the visitor is in fact signed out: the token the request carried
+   * was public (`sub === "public"`), or — when that token could not be read —
+   * `AuthSession.isAuthenticated()` is false. A 401 that reaches a *signed-in*
+   * visitor is a server fault (C42 is one) and must render as an error, or the
+   * widget offers sign-in to someone already signed in, in a loop.
+   *
+   * Never inferred from message text. `fetch()` has already retried once with a
+   * refreshed token before a 401 gets here.
+   */
+  protected isNeedsAuth(input: unknown): boolean {
+    if (!input || typeof input !== "object") return false;
+    const value = input as { status?: unknown; error?: unknown };
+    if (typeof value.status === "number") {
+      if (value.status !== 401) return false;
+    } else if (typeof value.error !== "string" || !NEEDS_AUTH_CODES.has(value.error)) {
+      return false;
+    }
+    if (this.lastTokenSub !== null) return this.lastTokenSub === "public";
+    return !this.authSession.isAuthenticated();
+  }
+
+  /**
+   * The signed-out panel: one implementation for every auth-only widget.
+   *
+   * **Mode-aware**, which is the point (CROSS-1 Phase 1):
+   * - `dual` / `hardened`: the prompt plus a real **Sign In** button
+   *   (`[data-action="login"]`), which calls `requestLogin(subject)` — a
+   *   cancelable `loginRequired` event, then a top-level redirect to MP.
+   * - `legacy`, or a mode not yet known: instructional copy naming the page's
+   *   own sign-in link and **no button**. `AuthSession.login()` is not the live
+   *   path there, and a button that silently does nothing is worse than none.
+   *   The cancelable `loginRequired` event still fires — once per element,
+   *   with `detail.passive: true` — so a host page that can sign the visitor in
+   *   may intercept it.
+   *
+   * **Never** renders "Try Again": retrying an anonymous request fails
+   * identically. Retry is for 5xx and network faults only.
+   *
+   * The button needs no binding — the base class delegates the click from the
+   * shadow root. **Do not** also bind `[data-action="login"]` inside this panel
+   * yourself, or one press fires two `loginRequired` events.
+   *
+   * Include {@link SIGN_IN_REQUIRED_STYLES} in `getStyles()`, or pass
+   * `className` / `buttonClass` to reuse the widget's own classes.
+   */
+  protected renderSignInRequired(opts: SignInRequiredOptions = {}): string {
+    const subject = opts.subject ?? this.localName.replace(/^next-/, "");
+    const mode = this.authSession.getMode();
+    const canSignIn = mode === "dual" || mode === "hardened";
+    const message = opts.message ?? this.t("common.signInPrompt");
+    const wrapperClass = ["nw-signin", opts.className].filter(Boolean).join(" ");
+
+    let body: string;
+    if (canSignIn) {
+      const buttonClass = ["nw-signin-btn", opts.buttonClass].filter(Boolean).join(" ");
+      body = [
+        `<p class="nw-signin-msg">${escapeHtml(message)}</p>`,
+        `<button type="button" class="${escapeHtml(buttonClass)}" data-action="login">${escapeHtml(this.t("common.signIn"))}</button>`,
+      ].join("");
+    } else {
+      body = opts.legacyMessage
+        ? `<p class="nw-signin-msg">${escapeHtml(opts.legacyMessage)}</p>`
+        : [
+            `<p class="nw-signin-msg">${escapeHtml(message)}</p>`,
+            `<p class="nw-signin-msg">${escapeHtml(this.t("common.signInViaPage"))}</p>`,
+          ].join("");
+      this.announceSignInRequired(subject);
+    }
+
+    return `<div class="${escapeHtml(wrapperClass)}" role="status" data-nw-signin data-subject="${escapeHtml(subject)}">${body}</div>`;
+  }
+
+  /** `legacy`: fire `loginRequired` once, after the panel has been painted. */
+  private announceSignInRequired(subject: string): void {
+    if (this.signInAnnounced) return;
+    this.signInAnnounced = true;
+    queueMicrotask(() => {
+      this.dispatchEvent(
+        new CustomEvent("loginRequired", {
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+          detail: { wid: subject, passive: true },
+        }),
+      );
+    });
+  }
+
+  /** Delegated handler for the signed-out panel's Sign In button. */
+  private onSignInClick(e: Event): void {
+    const target = e.target as Element | null;
+    const button = target?.closest?.('[data-nw-signin] [data-action="login"]');
+    if (!button) return;
+    const panel = button.closest<HTMLElement>("[data-nw-signin]");
+    this.requestLogin(panel?.dataset.subject || this.localName.replace(/^next-/, ""));
   }
 
   /**

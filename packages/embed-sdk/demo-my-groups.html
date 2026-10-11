@@ -214,12 +214,10 @@
           <next-user-menu mp-base-url="__MP_BASE_URL__" api-host="__API_HOST__"></next-user-menu>
         </div>
 
-        <!-- The actual widget (hidden until authenticated) -->
-        <div id="widget-container" style="display:none;">
+        <!-- The widget is always shown: signed out, it renders its own sign-in
+             prompt (C13). Hiding it until sign-in is how that state went unseen. -->
+        <div id="widget-container">
           <next-my-groups api-host="http://localhost:3000"></next-my-groups>
-        </div>
-        <div id="auth-placeholder" class="auth-placeholder">
-          Sign in above to load the groups widget.
         </div>
       </div>
 
@@ -242,7 +240,9 @@
         </div>
         <pre><code id="widget-code">&lt;!-- Use the widget --&gt;
 &lt;!-- Optional attributes: --&gt;
-&lt;!--   hidegrouplife="true" hides the Group/Volunteer Connect button. --&gt;
+&lt;!--   hide-group-life="true" hides the Group Connect / Volunteer Connect --&gt;
+&lt;!--   button (MP's "Group Life" app link). The old spelling hidegrouplife --&gt;
+&lt;!--   still works for one release and logs a deprecation warning. --&gt;
 &lt;next-my-groups&gt;&lt;/next-my-groups&gt;
 
 &lt;!-- Listen to events --&gt;
@@ -319,9 +319,7 @@
         if (msg.includes("Invalid MP user token")) {
           logEvent("auth", "MP token expired — clearing stale token, waiting for fresh login");
           localStorage.removeItem("mpp-widgets_AuthToken");
-          // Reset UI to "sign in" state
-          widgetContainer.style.display = "none";
-          authPlaceholder.style.display = "block";
+          // The widget renders its own signed-out state; just wait for a fresh login.
           startAuthPoll();
         }
 
@@ -355,15 +353,11 @@
     });
 
     // Poll localStorage for auth token (set by mpp-user-login via next-user-menu)
-    const widgetContainer = document.getElementById("widget-container");
-    const authPlaceholder = document.getElementById("auth-placeholder");
     let authPollInterval = null;
 
     function checkAuth() {
       const hasToken = !!localStorage.getItem("mpp-widgets_AuthToken");
       if (hasToken) {
-        widgetContainer.style.display = "block";
-        authPlaceholder.style.display = "none";
         logEvent("auth", "MP auth token detected in localStorage");
         return true;
       }

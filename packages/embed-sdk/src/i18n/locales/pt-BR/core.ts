@@ -42,6 +42,7 @@ export const ptBRCore = {
     getDirections: "Ver rota",
     signInPrompt: "Entre para continuar.",
     dismiss: "Dispensar",
+    signInViaPage: "Use o link de acesso desta página.",
   },
 
   fields: {
@@ -89,6 +90,7 @@ export const ptBRCore = {
     generic: "Corrija este campo.",
     formIncomplete: "Preencha os campos obrigatórios.",
     phone: "Informe um telefone válido.",
+    requiredField: "O campo {label} é obrigatório.",
   },
 
   errors: {
@@ -153,6 +155,8 @@ export const ptBRCore = {
     no_file: "Escolha um arquivo primeiro.",
     invalid_file_type: "Envie uma imagem JPEG, PNG, GIF ou WebP.",
     file_too_large: "Esse arquivo é muito grande. Escolha uma imagem menor.",
+    mp_unavailable:
+      "Este serviço está temporariamente indisponível. Tente novamente em alguns minutos.",
   },
 
   localeSelector: {

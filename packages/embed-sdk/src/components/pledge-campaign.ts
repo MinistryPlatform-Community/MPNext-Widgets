@@ -1,10 +1,18 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
   requiredStar,
   FORM_VALIDATION_STYLES,
 } from "../shared/form-validation";
+
+/**
+ * Ceiling on a pledge amount (C32). Mirrors `MAX_PLEDGE_AMOUNT` in
+ * `@mpnext/types` (`SavePledgeRequestSchema`), which is the real gate — this
+ * package does not import that one at runtime (it would pull Zod into the
+ * bundle), so `pledge-campaign.test.ts` asserts the two values agree.
+ */
+export const MAX_PLEDGE_AMOUNT = 1_000_000_000;
 
 // ─────────────────────────────────────────────────────────────────────────
 // Local type declarations (mirrors @mpnext/types pledge-campaign.ts — this
@@ -122,21 +130,25 @@ export class PledgeCampaignWidget extends MPNextWidget {
     ];
   }
 
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    if (name === "campaign-id" && this.campaign) {
-      this.init();
-    }
-  }
-
   connectedCallback() {
     this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  /**
+   * An observed attribute changed after the first paint (C39; the base class's
+   * `attributeChangedCallback` routes here). Re-init unconditionally: the old
+   * guard re-ran only when a campaign had already loaded, so a widget whose
+   * first load failed could never be pointed at another campaign.
+   */
+  protected override reload(): void {
+    void this.init();
   }
 
   /** Re-run the load — exposed so the demo page can refresh on sign-in. */
@@ -190,7 +202,6 @@ export class PledgeCampaignWidget extends MPNextWidget {
       this.error = this.t("pledgeCampaign.notSpecified");
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.emit("pledgeCampaignError", { error: this.error });
       return;
     }
@@ -210,7 +221,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
         // A 404 and a route-reported error code land in the same place: a
         // translated sentence, with "no campaign found" as the fallback.
         const body = await campaignRes.json().catch(() => ({}));
-        throw new Error(this.errorText(body, "pledgeCampaign.notFound"));
+        throw new WidgetError(this.errorText(body, "pledgeCampaign.notFound"));
       }
       const data: { campaign: PledgeCampaign; userHasAlreadyPledged: boolean } =
         await campaignRes.json();
@@ -229,18 +240,18 @@ export class PledgeCampaignWidget extends MPNextWidget {
         title: this.campaign.title,
       });
     } catch (err) {
-      this.error =
-        err instanceof Error ? err.message : this.t("pledgeCampaign.notFound");
+      // A 404 arrives here as a WidgetError already reading "not found"; what
+      // is left is transport (the browser's untranslated "Failed to fetch"),
+      // so the fallback is the network sentence, not a misleading "not found".
+      this.error = this.caughtText(err, "errors.network");
       this.campaign = null;
       this.loading = false;
       this.render();
-      this.attachListeners();
       this.emit("pledgeCampaignError", { error: this.error });
       return;
     }
 
     this.render();
-    this.attachListeners();
   }
 
   private async loadBasicContact() {
@@ -367,13 +378,29 @@ export class PledgeCampaignWidget extends MPNextWidget {
     const form = this.root.querySelector<HTMLFormElement>("#pc-form");
     if (!form) return;
 
-    if (!validateForm(form, { t: this.t }).valid) {
+    if (!validateForm(form, this.validationOptions()).valid) {
       this.setMessage("warning", this.t("validation.formIncomplete"));
       return;
     }
 
     // Recompute the plan from the current inputs before reading it.
     this.recalcTotal();
+
+    // C32: the amount field can be valid while the *plan* is not — a schedule
+    // whose dates yield no installment totals $0.00, and a large installment
+    // times many installments can pass the ceiling. Name the actual problem
+    // rather than the generic "please complete the form".
+    if (this.totalPledge <= 0) {
+      this.setMessage("danger", this.t("pledgeCampaign.scheduleEmpty"));
+      return;
+    }
+    if (this.totalPledge > MAX_PLEDGE_AMOUNT) {
+      this.setMessage(
+        "danger",
+        this.t("pledgeCampaign.totalTooHigh", { amount: this.fmt.currency(MAX_PLEDGE_AMOUNT) }),
+      );
+      return;
+    }
 
     const last = this.fieldValue("#pc-last-installment");
     if (this.pastCampaignEndDate(last)) {
@@ -429,7 +456,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
         return;
       }
 
-      const displayName = this.getDisplayName(payload.firstName, payload.lastName);
+      const displayName = this.getDisplayName(payload.firstName);
       // A campaign's own thank-you is church-authored copy and wins as written.
       const thankYou =
         this.campaign?.onlineThankYouMessage?.trim() ||
@@ -438,15 +465,40 @@ export class PledgeCampaignWidget extends MPNextWidget {
       this.submitted = true;
       this.emit("pledgeSaved", { pledgeId: data.pledgeId });
       this.render();
-      this.attachListeners();
       this.setMessage("success", thankYou);
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : this.t("errors.network");
+        this.caughtText(err, "errors.network");
       this.setMessage("danger", msg);
       this.emit("pledgeError", { error: msg });
       this.setSubmitDisabled(false);
     }
+  }
+
+  /**
+   * Validation for the pledge form: the shared rules plus the amount bounds
+   * (C32). `min="0.01"` alone would say "Value is out of range"; this names
+   * the floor and the ceiling. A custom validator runs before the native check.
+   */
+  private validationOptions() {
+    return {
+      t: this.t,
+      customValidators: {
+        InstallmentAmount: (value: string): string | null => {
+          if (value.trim() === "") return null; // `required` speaks for an empty field
+          const amount = Number(value);
+          if (!Number.isFinite(amount) || amount <= 0) {
+            return this.t("pledgeCampaign.amountTooLow", { amount: this.fmt.currency(0) });
+          }
+          if (amount > MAX_PLEDGE_AMOUNT) {
+            return this.t("pledgeCampaign.amountTooHigh", {
+              amount: this.fmt.currency(MAX_PLEDGE_AMOUNT),
+            });
+          }
+          return null;
+        },
+      },
+    };
   }
 
   private setSubmitDisabled(disabled: boolean) {
@@ -454,13 +506,28 @@ export class PledgeCampaignWidget extends MPNextWidget {
     if (btn) btn.disabled = disabled;
   }
 
-  private getDisplayName(firstName: string, lastName: string): string {
+  /**
+   * The name the thank-you greets (the C17 fix, as W3 applied it to
+   * group-details). It used to strip the comma from the picker's
+   * `Display_Name` ("Kehayias, Chris") and so read "Kehayias Chris"; and
+   * because it read the option *text*, choosing "Blank Form" greeted the
+   * donor as "Blank Form". Now: the chosen household member's Nickname, else
+   * First_Name — both already on the household read (`HouseholdMember`) and on
+   * the basic-contact read (`Nickname ?? First_Name`) — else the first name
+   * typed into the form, else a neutral "your household".
+   */
+  private getDisplayName(typedFirstName: string): string {
     const select = this.root.querySelector<HTMLSelectElement>("#pc-apply-as");
-    if (select && select.selectedIndex > 0) {
-      const text = select.options[select.selectedIndex]?.text ?? "";
-      if (text.trim()) return text.replace(/,/g, "").trim();
+    const chosen = Number(select?.value || 0);
+    if (chosen) {
+      const member = this.householdMembers.find((m) => m.contactId === chosen);
+      const fromMember = (member?.nickName || member?.firstName || "").trim();
+      if (fromMember) return fromMember;
+      if (this.contact?.contactId === chosen && this.contact.firstName?.trim()) {
+        return this.contact.firstName.trim();
+      }
     }
-    return `${firstName} ${lastName}`.trim() || this.t("pledgeCampaign.yourHousehold");
+    return typedFirstName.trim() || this.t("pledgeCampaign.yourHousehold");
   }
 
   // ── Total / installment math (port of CalculateTotalPledge) ─────────────
@@ -594,7 +661,6 @@ export class PledgeCampaignWidget extends MPNextWidget {
       container.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } else {
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -656,7 +722,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
       });
     }
 
-    if (form) bindLiveValidation(form, { t: this.t });
+    if (form) bindLiveValidation(form, this.validationOptions());
     this.recalcTotal();
   }
 
@@ -735,12 +801,22 @@ export class PledgeCampaignWidget extends MPNextWidget {
     this.submitted = false;
     this.message = null;
     this.render();
-    this.attachListeners();
   }
 
   // ── Render ────────────────────────────────────────────────────────────
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `<div class="pc">${this.renderState(this.spinnerSvg(), this.t("pledgeCampaign.loading"))}</div>`;
       return;
@@ -871,7 +947,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
       ${buttons}
       <div class="pc-field">
         <label for="pc-installment-amount">${this.escapeHtml(this.t("pledgeCampaign.pledgeAmount"))}${requiredStar()}</label>
-        <input id="pc-installment-amount" class="pc-input" type="number" name="InstallmentAmount" min="0" step="0.01" inputmode="decimal" required>
+        <input id="pc-installment-amount" class="pc-input" type="number" name="InstallmentAmount" min="0.01" max="${MAX_PLEDGE_AMOUNT}" step="0.01" inputmode="decimal" required>
       </div>`;
   }
 
@@ -1089,59 +1165,59 @@ export class PledgeCampaignWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .pc { max-width: 760px; margin: 0 auto; }
 
-      .pc-message { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin: 16px 0; }
+      .pc-message { padding: var(--_nw-space-3) var(--_nw-space-4); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); margin: var(--_nw-space-4) 0; }
       .pc-message--success { background: #ecf6e0; color: #4d6b1f; }
       .pc-message--warning { background: #fdf6e3; color: #8a6d3b; }
       .pc-message--info { background: #e6f6fc; color: #015a7a; }
-      .pc-message--danger { background: #ffe9e9; color: #b91c1c; }
+      .pc-message--danger { background: #ffe9e9; color: var(--_nw-color-error-text); }
 
-      .pc-image { width: 100%; height: 240px; background-size: cover; background-position: center; border-radius: 12px; margin-bottom: 16px; }
-      .pc-title { font-size: 28px; font-weight: 800; color: #002855; margin: 0 0 10px; }
-      .pc-description { font-size: 15px; line-height: 1.6; color: #474747; margin: 0 0 16px; }
+      .pc-image { width: 100%; height: 240px; background-size: cover; background-position: center; border-radius: var(--_nw-radius-lg); margin-bottom: var(--_nw-space-4); }
+      .pc-title { font-size: 28px; font-weight: 800; color: var(--_nw-color-secondary); margin: 0 0 10px; }
+      .pc-description { font-size: 15px; line-height: 1.6; color: var(--_nw-color-text-subtle); margin: 0 0 var(--_nw-space-4); }
 
-      .pc-progress-title { font-size: 16px; font-weight: 700; color: #002855; margin: 16px 0 8px; }
-      .pc-progress { margin-bottom: 8px; }
-      .pc-progress-sub { font-size: 15px; font-weight: 700; color: #004C97; margin: 0 0 6px; }
-      .pc-legend { font-size: 13px; color: #6b7280; margin: 8px 0 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .pc-progress-title { font-size: 16px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: var(--_nw-space-4) 0 var(--_nw-space-2); }
+      .pc-progress { margin-bottom: var(--_nw-space-2); }
+      .pc-progress-sub { font-size: 15px; font-weight: 700; color: var(--_nw-color-primary); margin: 0 0 6px; }
+      .pc-legend { font-size: 13px; color: var(--_nw-color-muted); margin: var(--_nw-space-2) 0 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
       .pc-dot { width: 10px; height: 10px; border-radius: 9999px; display: inline-block; }
       .pc-dot--received { background: #000; }
-      .pc-dot--pledged { background: #1fb5ac; margin-left: 12px; }
+      .pc-dot--pledged { background: #1fb5ac; margin-left: var(--_nw-space-3); }
 
-      .pc-form-wrap { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-top: 16px; }
-      .pc-form-title { font-size: 20px; font-weight: 800; color: #002855; margin: 0 0 16px; }
-      .pc-subtitle { font-size: 15px; font-weight: 700; color: #002855; margin: 16px 0 8px; }
+      .pc-form-wrap { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-5); box-shadow: var(--_nw-shadow); margin-top: var(--_nw-space-4); }
+      .pc-form-title { font-size: 20px; font-weight: 800; color: var(--_nw-color-secondary); margin: 0 0 var(--_nw-space-4); }
+      .pc-subtitle { font-size: 15px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: var(--_nw-space-4) 0 var(--_nw-space-2); }
       .pc-login-panel { text-align: center; }
-      .pc-login-panel p { margin: 0 0 12px; font-size: 15px; }
+      .pc-login-panel p { margin: 0 0 var(--_nw-space-3); font-size: 15px; }
 
-      .pc-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-      .pc-field label { font-size: 13px; font-weight: 600; color: #6b7280; }
-      .pc-input { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; background: white; outline: none; }
-      .pc-input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
-      .pc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-      .pc-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+      .pc-field { display: flex; flex-direction: column; gap: var(--_nw-space-1); margin-bottom: var(--_nw-space-3); }
+      .pc-field label { font-size: 13px; font-weight: 600; color: var(--_nw-color-muted); }
+      .pc-input { padding: 9px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); background: var(--_nw-color-surface); outline: none; }
+      .pc-input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
+      .pc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--_nw-space-3); }
+      .pc-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--_nw-space-3); }
 
-      .pc-amount-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+      .pc-amount-buttons { display: flex; flex-wrap: wrap; gap: var(--_nw-space-2); margin-bottom: var(--_nw-space-3); }
 
-      .pc-btn { padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
-      .pc-btn--primary { background: #004C97; color: white; }
-      .pc-btn--primary:hover { background: #002855; }
-      .pc-btn--ghost { background: white; color: #004C97; border: 1px solid #004C97; }
-      .pc-btn--ghost:hover, .pc-btn--ghost.active { background: #004C97; color: white; }
+      .pc-btn { padding: 10px 18px; border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
+      .pc-btn--primary { background: var(--_nw-button-bg); color: var(--_nw-button-fg); border-radius: var(--_nw-button-radius); }
+      .pc-btn--primary:hover { background: var(--_nw-button-bg-hover); }
+      .pc-btn--ghost { background: var(--_nw-color-surface); color: var(--_nw-color-primary); border: var(--_nw-border-width) solid var(--_nw-color-primary); }
+      .pc-btn--ghost:hover, .pc-btn--ghost.active { background: var(--_nw-color-primary); color: var(--_nw-color-on-primary); }
       .pc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-      .pc-total { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 2px solid #e5e7eb; margin: 16px 0; }
-      .pc-total-label { font-size: 16px; font-weight: 700; color: #002855; }
-      .pc-total-value { font-size: 20px; font-weight: 800; color: #004C97; }
+      .pc-total { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 2px solid var(--_nw-color-border); margin: var(--_nw-space-4) 0; }
+      .pc-total-label { font-size: 16px; font-weight: 700; color: var(--_nw-color-secondary); }
+      .pc-total-value { font-size: 20px; font-weight: 800; color: var(--_nw-color-primary); }
 
-      .pc-buttons { display: flex; justify-content: flex-end; gap: 12px; }
+      .pc-buttons { display: flex; justify-content: flex-end; gap: var(--_nw-space-3); }
 
-      .pc-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; font-size: 15px; }
+      .pc-state { display: flex; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 48px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; }
       .pc-error { flex-direction: column; }
-      .pc-error p { color: #b91c1c; }
-      .pc-spinner { animation: pc-spin 1s linear infinite; color: #004C97; }
+      .pc-error p { color: var(--_nw-color-error-text); }
+      .pc-spinner { animation: pc-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes pc-spin { to { transform: rotate(360deg); } }
 
       @media (max-width: 640px) {

@@ -27,7 +27,7 @@
  * written; the widget rendering only visible types is a convenience, not a
  * control.
  *
- * Full reasoning: `.claude/TODO/Comparison/Plans/contact-attributes.md`.
+ * Comparison finding C52.
  */
 
 import { MPHelper } from "@/lib/providers/ministry-platform";

@@ -12,6 +12,15 @@ Configuration parity per CONFIG-MAP §2.10: the legacy page sets
 which is the same effective state as `false`, so this is like-for-like as shipped
 — no attribute overrides were needed.
 
+> **Updated 2026-10-11 (C79):** `next-my-household` now spells this attribute
+> **`hide-add-household-member`**. `hideaddhouseholdmember` is still read for one release
+> as an alias, and it logs one console warning. A late `setAttribute` of either spelling
+> now takes effect (C39). A re-run should set `hide-add-household-member`.
+>
+> Two other findings in this log are closed:
+> - C53: signed out, the widget now shows the shared sign-in panel.
+> - C57: birthdays showing month and day only is kept on purpose (keep ours).
+
 ## What I tested
 
 1. **Anonymous render, both sites.** Clean contexts. Enumerated the shadow roots

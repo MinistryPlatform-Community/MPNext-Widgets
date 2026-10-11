@@ -24,7 +24,7 @@ export const ptBRGiving = {
     disclaimer:
       "A lista de doações a seguir é informativa e não deve ser usada para fins fiscais.",
     softCreditDisclaimer:
-      "As doações com crédito indireto estão incluídas abaixo e refletem doações creditadas a você, mas que você não fez pessoalmente.",
+      "As doações com crédito indireto são doações creditadas a você, mas que você não fez pessoalmente. Os valores delas ficam fora do seu Total doado e não aparecerão no seu informe de doações para fins fiscais.",
     donations: "Doações",
     empty: "Nenhuma doação",
     showMore: "VER MAIS DOAÇÕES",
@@ -32,6 +32,10 @@ export const ptBRGiving = {
     badgeSpouse: "Cônjuge",
     badgeSoftCredit: "Crédito indireto",
     badgeNonDeductible: "Não dedutível",
+    signInPrompt: "Entre para ver as informações das suas doações.",
+    month: "Mês",
+    monthYear: "{month} de {year}",
+    barTooltip: "{label}: {amount}",
   },
 
   myPledges: {
@@ -61,6 +65,7 @@ export const ptBRGiving = {
       discontinued: "Descontinuada",
       pending: "Pendente",
     },
+    signInPrompt: "Entre para ver suas promessas de doação.",
   },
 
   pledgeCampaign: {
@@ -101,6 +106,12 @@ export const ptBRGiving = {
     registrationOpensOn: "As inscrições abrem em {date}.",
     registrationClosed: "As inscrições para esta campanha estão encerradas.",
     registrationClosedOn: "As inscrições para esta campanha encerraram em {date}.",
+    amountTooLow: "Informe um valor de promessa maior que {amount}.",
+    amountTooHigh: "Informe um valor de promessa de até {amount}.",
+    totalTooHigh:
+      "O total da sua promessa não pode passar de {amount}. Confira o valor e o cronograma.",
+    scheduleEmpty:
+      "Este cronograma não tem parcelas. Escolha uma data final posterior ou outra frequência.",
   },
 
   contributionStatement: {
@@ -109,6 +120,10 @@ export const ptBRGiving = {
     empty: "Nenhum informe disponível no momento.",
     selectYear: "Selecione o ano do informe",
     savePdf: "Salvar como PDF",
+    signInPrompt: "Entre para ver seus informes de doações.",
+    popupBlocked: "Seu navegador bloqueou a abertura do informe.",
+    openStatement: "Abrir o informe",
+    myGivingLink: "Ver minhas doações →",
   },
 
   statementPreferences: {
@@ -117,6 +132,7 @@ export const ptBRGiving = {
     goPaperless: "Dispense o papel! Receba seus informes online ou por e-mail.",
     updated: "Método de entrega atualizado",
     updateFailed: "Erro ao atualizar o método de entrega. Tente novamente.",
+    signInPrompt: "Entre para escolher como receber seus informes de doações.",
   },
 
   checkout: {
@@ -147,6 +163,11 @@ export const ptBRGiving = {
     paymentUnconfirmed: "Não conseguimos confirmar seu pagamento.",
     paymentUnconfirmedDetail:
       "Não conseguimos confirmar seu pagamento: {detail}",
+    paymentDeclined: "Seu pagamento foi recusado e nada foi cobrado. Tente outro cartão.",
+    paymentError: "Não conseguimos registrar seu pagamento. Entre em contato conosco antes de tentar novamente, para não ser cobrado duas vezes.",
+    amountTooHigh: "O valor não pode ser maior que o saldo devedor ({amount}).",
+    balanceChanged: "O saldo desta fatura mudou. Revise-o e tente novamente.",
+    registrationComplete: "Sua inscrição está concluída.",
   },
 
   checkoutComplete: {
@@ -158,9 +179,10 @@ export const ptBRGiving = {
     received: "Obrigado! Seu pagamento foi recebido.",
     processing:
       "Obrigado! Seu pagamento está sendo processado e será confirmado em breve.",
-    failed:
-      "Não conseguimos confirmar seu pagamento. Tente novamente ou entre em contato conosco.",
     unconfirmed: "Não conseguimos confirmar seu pagamento.",
+    titleDeclined: "Pagamento recusado",
+    declined: "Seu pagamento foi recusado e nada foi cobrado. Volte à sua fatura e tente outro cartão.",
+    error: "Não conseguimos registrar seu pagamento. Entre em contato conosco antes de tentar novamente, para não ser cobrado duas vezes.",
   },
 
   pay: {
@@ -185,6 +207,15 @@ export const ptBRGiving = {
     enterCard: "Informe o número do cartão.",
     enterExpiry: "Informe a data de validade.",
     enterCvv: "Informe o CVV.",
+    linkUsedTitle: "Este link de pagamento já foi usado",
+    linkUsed: "Nada mais foi cobrado. Volte à sua fatura para ver o saldo atual.",
+    linkExpiredTitle: "Este link de pagamento expirou",
+    linkExpired: "Nada foi cobrado. Volte à sua fatura e inicie o pagamento novamente.",
+    returnToInvoice: "Voltar à fatura",
+    invalidCard: "Digite um número de cartão válido.",
+    invalidExpiry: "Digite a data de validade como MM/AA.",
+    expiredCard: "Este cartão está vencido.",
+    invalidCvv: "Digite o código de segurança de 3 ou 4 dígitos.",
   },
 
   subscriptions: {
@@ -197,6 +228,12 @@ export const ptBRGiving = {
     subscribed: "Você assinou {title}",
     unsubscribed: "Você cancelou a assinatura de {title}",
     updateFailed: "Não foi possível atualizar a assinatura. Tente novamente.",
+    signInPrompt: "Entre para ver suas assinaturas.",
+    bulkEmailTitle: "Todos os e-mails da igreja",
+    sendBulkEmail: "Enviar-me os e-mails gerais da igreja",
+    bulkEmailHint: "Desative esta opção para deixar de receber todos os e-mails em massa da igreja.",
+    bulkEmailOn: "Você voltará a receber os e-mails gerais da igreja.",
+    bulkEmailOff: "Você não receberá mais e-mails em massa da igreja.",
   },
   /**
    * `next-subscribe-to-publication` (C70).

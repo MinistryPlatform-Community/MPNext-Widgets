@@ -216,7 +216,7 @@
 
         <!-- The actual widget (hidden until authenticated) -->
         <div id="widget-container" style="display:none;">
-          <next-my-contribution-statement api-host="http://localhost:3000"></next-my-contribution-statement>
+          <next-my-contribution-statement api-host="http://localhost:3000" show-paperless-toggle="true" my-giving-url="/demo-my-giving.html"></next-my-contribution-statement>
         </div>
         <div id="auth-placeholder" class="auth-placeholder">
           Sign in above to load the contribution statements widget.
@@ -241,7 +241,11 @@
           <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('widget-code').textContent).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})">Copy</button>
         </div>
         <pre><code id="widget-code">&lt;!-- Use the widget --&gt;
-&lt;next-my-contribution-statement&gt;&lt;/next-my-contribution-statement&gt;
+&lt;!-- Replacing mpp-my-contribution-statement? Legacy also carried the Go Paperless --&gt;
+&lt;!-- toggle. show-paperless-toggle="true" embeds it (it is next-statement-preferences, --&gt;
+&lt;!-- which can also be placed on its own). my-giving-url links across to the page --&gt;
+&lt;!-- that hosts next-my-giving (legacy: mygivingwidgettargeturl). --&gt;
+&lt;next-my-contribution-statement show-paperless-toggle="true" my-giving-url="/my-giving"&gt;&lt;/next-my-contribution-statement&gt;
 
 &lt;!-- Listen to events --&gt;
 &lt;script&gt;

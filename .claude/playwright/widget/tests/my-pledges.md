@@ -6,6 +6,11 @@
 - **Auth state(s) tested**: signed out (clean context) / signed in as PLAYWRIGHT_MP_USERNAME (User_ID 98, Contact_ID 98, Donor_ID 6)
 - **Script**: `.claude/playwright/widget/scripts/giving/new-baseline.mjs`, `pledges-deep.mjs`, `old-cancel.mjs`, `signedout.mjs`, `kbd.mjs`
 - **Config parity**: legacy page sets `hidecancelbuttonpledge="false"`. The new widget accepts the identical attribute name and `cancelpledgeemailtemplate` verbatim (CONFIG-MAP §2.12, §4.11 — "full parity"), but its **default is inverted**, so the demo page as shipped is *not* like-for-like. I mirrored the legacy config explicitly before testing the cancel flow, and filed the default difference separately (`C31`).
+  - *Updated 2026-10-11:*
+    - **C79:** the canonical spellings are now `hide-cancel-button-pledge` and
+      `cancel-pledge-email-template`, with the flat names read as one-release aliases.
+    - **C31:** Cancel Pledge is now shown by default, as in legacy.
+    - **C39:** a late `setAttribute` takes effect.
 
 ## What I tested
 

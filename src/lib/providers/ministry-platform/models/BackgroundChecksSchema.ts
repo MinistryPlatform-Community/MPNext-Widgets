@@ -39,6 +39,9 @@ export const BackgroundChecksSchema = z.object({
   Background_Check_Status_ID: z.number().int().nullable(),
   Status_Date: z.iso.datetime().nullable(),
   IP_Address: z.string().max(45).nullable(),
+  Background_Check_InProgress: z.iso.datetime().nullable(),
+  Background_Check_Cancelled: z.iso.datetime().nullable(),
+  Invitation_Guid: z.guid().nullable(),
 });
 
 export type BackgroundChecksInput = z.infer<typeof BackgroundChecksSchema>;

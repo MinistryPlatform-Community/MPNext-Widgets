@@ -166,7 +166,8 @@ describe('FullCalendarService', () => {
       const eventsCall = mockGetTableRecords.mock.calls[0][0];
       expect(eventsCall.table).toBe('Events');
       // Should include date filter, cancelled, visibility
-      expect(eventsCall.filter).toContain('Event_Start_Date >=');
+      expect(eventsCall.filter).toContain('Event_Start_Date <');
+      expect(eventsCall.filter).toContain('Event_End_Date >=');
       expect(eventsCall.filter).toContain('Cancelled = 0');
       expect(eventsCall.filter).toContain('Visibility_Level_ID = 4');
       expect(eventsCall.orderBy).toBe('Event_Start_Date ASC');
@@ -272,8 +273,8 @@ describe('FullCalendarService', () => {
 
       const filter = mockGetTableRecords.mock.calls[0][0].filter as string;
       // 2026-05-01T00:00:00Z → 2026-04-30 20:00:00 in America/New_York (EDT, UTC-4)
-      expect(filter).toContain(`Event_Start_Date >= '2026-04-30 20:00:00'`);
-      expect(filter).toContain(`Event_End_Date <= '2026-05-31 19:59:59'`);
+      expect(filter).toContain(`Event_End_Date >= '2026-04-30 20:00:00'`);
+      expect(filter).toContain(`Event_Start_Date < '2026-05-31 19:59:59'`);
     });
 
     it('regression: repeating the same getEvents call produces the same filter (no drift)', async () => {
@@ -288,9 +289,172 @@ describe('FullCalendarService', () => {
       // regardless of how many times getDomainInfo is hit or what TZ the
       // node process is running in.
       const filters = mockGetTableRecords.mock.calls.map((c) => c[0].filter as string);
-      expect(filters[0]).toContain(`Event_Start_Date >= '2026-04-30 20:00:00'`);
+      expect(filters[0]).toContain(`Event_End_Date >= '2026-04-30 20:00:00'`);
       expect(filters[1]).toBe(filters[0]);
       expect(filters[2]).toBe(filters[0]);
+    });
+
+    it('batches every lookup into IN lists of at most 100 ids and merges the results', async () => {
+      // 230 distinct programs / ministries / locations / campuses / event types:
+      // past the ~75 ids at which one `X_ID = n OR ...` filter overflowed IIS's
+      // 2048-char query limit, which blanked every name on the grid.
+      const N = 230;
+      const events = Array.from({ length: N }, (_, i) => ({
+        ...baseEvent,
+        Event_ID: 1_000_000 + i,
+        Event_Type_ID: 2_000_000 + i,
+        Congregation_ID: 3_000_000 + i,
+        Location_ID: 4_000_000 + i,
+        Program_ID: 5_000_000 + i,
+      }));
+      const idsIn = (filter: string) =>
+        (/IN \(([^)]*)\)/.exec(filter)?.[1] ?? '').split(',').filter(Boolean).map(Number);
+      mockGetTableRecords.mockImplementation(async (q: { table: string; filter: string }) => {
+        const ids = idsIn(q.filter);
+        switch (q.table) {
+          case 'Events':
+            return events;
+          case 'Event_Types':
+            return ids.map((id) => ({ Event_Type_ID: id, Event_Type: `T${id}` }));
+          case 'Congregations':
+            return ids.map((id) => ({ Congregation_ID: id, Congregation_Name: `C${id}` }));
+          case 'Locations':
+            return ids.map((id) => ({ Location_ID: id, Location_Name: `L${id}` }));
+          case 'Programs':
+            return ids.map((id) => ({ Program_ID: id, Program_Name: `P${id}`, Ministry_ID: id + 1 }));
+          case 'Ministries':
+            return ids.map((id) => ({ Ministry_ID: id, Ministry_Name: `M${id}`, Available_Online: true }));
+          default:
+            return [];
+        }
+      });
+
+      const service = await FullCalendarService.getInstance();
+      const result = await service.getEvents(start, end);
+
+      for (const table of ['Event_Types', 'Congregations', 'Locations', 'Programs', 'Ministries']) {
+        const filters = mockGetTableRecords.mock.calls
+          .filter(([q]) => q.table === table)
+          .map(([q]) => q.filter as string);
+        expect(filters, table).toHaveLength(3);
+        for (const f of filters) {
+          expect(f).not.toMatch(/ OR /);
+          expect(idsIn(f).length).toBeLessThanOrEqual(100);
+        }
+        expect(new Set(filters.flatMap(idsIn)).size, table).toBe(N);
+      }
+
+      expect(result.events).toHaveLength(N);
+      for (const ev of result.events) {
+        expect(ev.Event_Type).toBe(`T${ev.Event_Type_ID}`);
+        expect(ev.Congregation_Name).toBe(`C${ev.Congregation_ID}`);
+        expect(ev.Location_Name).toMatch(/^L\d+$/);
+        expect(ev.Program_Name).toBe(`P${ev.Program_ID}`);
+        expect(ev.Ministry_Name).toBe(`M${ev.Program_ID! + 1}`);
+      }
+    });
+  });
+
+  // C03. MP evaluates the $filter, and the live dataset has no public
+  // multi-day event, so the suite proves the predicate itself: it parses the
+  // two bounds out of the filter getEvents actually sends and applies them to
+  // fixture events. 'YYYY-MM-DD HH:MM:SS' literals order lexicographically.
+  describe('getEvents range predicate (C03: overlap, not containment)', () => {
+    async function admits(startIso: string, endIso: string) {
+      mockGetDomainInfo.mockResolvedValue({ TimeZoneName: 'UTC' });
+      mockGetTableRecords.mockResolvedValueOnce([]);
+      const service = await FullCalendarService.getInstance();
+      await service.getEvents(startIso, endIso);
+      const filter = mockGetTableRecords.mock.calls[0][0].filter as string;
+      const lt = /Event_Start_Date < '([^']+)'/.exec(filter)?.[1];
+      const ge = /Event_End_Date >= '([^']+)'/.exec(filter)?.[1];
+      expect(lt).toBeDefined();
+      expect(ge).toBeDefined();
+      expect(filter).not.toMatch(/Event_Start_Date >=|Event_End_Date <=/);
+      return (evStart: string, evEnd: string) => evStart < lt! && evEnd >= ge!;
+    }
+
+    // November 2026 grid range, as FullCalendar requests it.
+    const novStart = '2026-11-01T00:00:00Z';
+    const novEnd = '2026-12-13T00:00:00Z';
+
+    it('admits a retreat that starts before the window and ends inside it', async () => {
+      const inWindow = await admits(novStart, novEnd);
+      expect(inWindow('2026-10-30 09:00:00', '2026-11-02 17:00:00')).toBe(true);
+    });
+
+    it('admits an event that starts inside the window and ends after it', async () => {
+      const inWindow = await admits(novStart, novEnd);
+      expect(inWindow('2026-12-12 09:00:00', '2026-12-15 17:00:00')).toBe(true);
+    });
+
+    it('admits an event that spans the entire window', async () => {
+      const inWindow = await admits(novStart, novEnd);
+      expect(inWindow('2026-10-01 00:00:00', '2027-01-31 00:00:00')).toBe(true);
+    });
+
+    it('still admits a contained event and rejects ones wholly outside', async () => {
+      const inWindow = await admits(novStart, novEnd);
+      expect(inWindow('2026-11-15 10:00:00', '2026-11-15 11:00:00')).toBe(true);
+      expect(inWindow('2026-10-25 10:00:00', '2026-10-25 11:00:00')).toBe(false);
+      expect(inWindow('2026-12-13 00:00:00', '2026-12-13 01:00:00')).toBe(false);
+    });
+
+    it('keeps a zero-length event stamped exactly at the window start', async () => {
+      const inWindow = await admits(novStart, novEnd);
+      expect(inWindow('2026-11-01 00:00:00', '2026-11-01 00:00:00')).toBe(true);
+    });
+
+    // W8 additions. The cases above prove the predicate against UTC bounds;
+    // these two cover what they do not: the offset-tagged range FullCalendar
+    // actually sends (across the US DST change on 2026-11-01), and the
+    // straddling row surviving getEvents' own post-processing intact.
+
+    it('admits the retreat for the offset-tagged November range FullCalendar sends, across DST', async () => {
+      mockGetDomainInfo.mockResolvedValue({ TimeZoneName: 'America/New_York' });
+      mockGetTableRecords.mockResolvedValueOnce([]);
+      const service = await FullCalendarService.getInstance();
+      // Verbatim from C03's network capture: EDT start, EST end.
+      await service.getEvents('2026-11-01T00:00:00-04:00', '2026-12-13T00:00:00-05:00');
+      const filter = mockGetTableRecords.mock.calls[0][0].filter as string;
+      expect(filter).toContain(`Event_Start_Date < '2026-12-13 00:00:00'`);
+      expect(filter).toContain(`Event_End_Date >= '2026-11-01 00:00:00'`);
+      const lt = /Event_Start_Date < '([^']+)'/.exec(filter)![1];
+      const ge = /Event_End_Date >= '([^']+)'/.exec(filter)![1];
+      const inWindow = (s: string, e: string) => s < lt && e >= ge;
+      expect(inWindow('2026-10-30 09:00:00', '2026-11-02 17:00:00')).toBe(true);
+      // The month before: a retreat that ended at 23:59 on Oct 31 stays out.
+      expect(inWindow('2026-10-30 09:00:00', '2026-10-31 23:59:00')).toBe(false);
+    });
+
+    it('returns a straddling event MP sends back, with its wall-clock dates untouched', async () => {
+      const retreat = {
+        Event_ID: 9001,
+        Event_Title: 'ZZTEST-Multi-Day Retreat',
+        Event_Start_Date: '2026-10-30T09:00:00',
+        Event_End_Date: '2026-11-02T17:00:00',
+        Event_Type_ID: null,
+        Congregation_ID: null,
+        Location_ID: null,
+        Description: null,
+        Featured_On_Calendar: false,
+        Registration_Active: false,
+        External_Registration_URL: null,
+        Online_Registration_Product: null,
+        Program_ID: null,
+        Primary_Contact: null,
+        Participants_Expected: null,
+      };
+      mockGetTableRecords.mockImplementation(async ({ table }: { table: string }) =>
+        table === 'Events' ? [retreat] : [],
+      );
+      const service = await FullCalendarService.getInstance();
+      const { events } = await service.getEvents(novStart, novEnd);
+      expect(events.map((e) => e.Event_ID)).toEqual([9001]);
+      // No client-side re-filter by start date, and no UTC round-trip of the
+      // wall-clock strings (the day would shift for any non-UTC domain).
+      expect(events[0].Event_Start_Date).toBe('2026-10-30T09:00:00');
+      expect(events[0].Event_End_Date).toBe('2026-11-02T17:00:00');
     });
   });
 
@@ -347,7 +511,7 @@ describe('FullCalendarService', () => {
       expect(result.event.Registration_Product_Name).toBeNull();
     });
 
-    it('should issue the Events query with Event_ID + Visibility_Level_ID filter', async () => {
+    it('should issue the Events query with Event_ID + the public-event predicate (C06: incl. Cancelled = 0)', async () => {
       mockGetTableRecords.mockResolvedValueOnce([]);
 
       const service = await FullCalendarService.getInstance();
@@ -355,7 +519,7 @@ describe('FullCalendarService', () => {
 
       const eventsCall = mockGetTableRecords.mock.calls[0][0];
       expect(eventsCall.table).toBe('Events');
-      expect(eventsCall.filter).toBe('Event_ID = 42 AND Visibility_Level_ID = 4');
+      expect(eventsCall.filter).toBe('(Event_ID = 42) AND Cancelled = 0 AND Visibility_Level_ID = 4');
       expect(eventsCall.top).toBe(1);
     });
   });

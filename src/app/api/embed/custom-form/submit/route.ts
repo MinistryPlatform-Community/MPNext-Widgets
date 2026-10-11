@@ -18,6 +18,11 @@ import {
 } from "@/lib/embed/auth";
 import { CustomFormService } from "@/services/customFormService";
 import { EventDetailsService } from "@/services/eventDetailsService";
+import {
+  canActAsContact,
+  getContactBasics,
+  type ContactBasics,
+} from "@/services/_shared/household-contact";
 
 export async function POST(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
@@ -48,13 +53,37 @@ export async function POST(req: NextRequest) {
     const forms = await CustomFormService.getInstance();
     const answers = forms.extractAnswers(payload);
 
-    // Resolve the authenticated contact (optional — forms can be anonymous).
+    // Who the response is filed against (C26).
+    //  - No `ContactId` key (anonymous, or an embed predating the picker):
+    //    the signed-in caller, as before; null when anonymous.
+    //  - `ContactId: ""` ("Someone else (blank form)"): nobody. The typed
+    //    details describe a person who is not the caller.
+    //  - `ContactId: <id>`: that contact, **only** when the caller may act as
+    //    them (self or household), and then their details come from MP's own
+    //    record, not from the client (same rule as C21 / C12).
     let contactId: number | null = null;
-    if (claims.sub !== "public") {
+    let picked: ContactBasics | null = null;
+    if (Object.prototype.hasOwnProperty.call(payload, "ContactId")) {
+      const raw = String(payload.ContactId ?? "").trim();
+      if (raw !== "") {
+        const requested = Number(raw);
+        if (!(await canActAsContact(claims.sub, requested))) {
+          return NextResponse.json(
+            { success: false, error: "not_household_member", message: "ContactId is not the caller or their household" },
+            { status: 403, headers: getCorsHeaders(origin) }
+          );
+        }
+        contactId = requested;
+        picked = await getContactBasics(requested);
+      }
+    } else if (claims.sub !== "public") {
       const details = await EventDetailsService.getInstance();
       const user = await details.getUserByGuid(claims.sub);
       contactId = user?.Contact_ID ?? null;
     }
+
+    const typedOr = (fromRecord: string | null | undefined, typed: string | undefined) =>
+      fromRecord || typed;
 
     const formResponseId = await forms.saveFormResponse({
       formId,
@@ -62,10 +91,10 @@ export async function POST(req: NextRequest) {
       ipAddress: req.headers.get("x-forwarded-for") || null,
       answers,
       contact: {
-        firstName: payload.FirstName,
-        lastName: payload.LastName,
-        email: payload.EmailAddress,
-        phone: payload.MobilePhoneNumber,
+        firstName: typedOr(picked?.firstName, payload.FirstName),
+        lastName: typedOr(picked?.lastName, payload.LastName),
+        email: typedOr(picked?.email, payload.EmailAddress),
+        phone: typedOr(picked?.phone, payload.MobilePhoneNumber),
       },
       address: {
         line1: payload.AddressLine1,

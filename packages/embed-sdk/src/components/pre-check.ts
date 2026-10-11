@@ -31,9 +31,8 @@ import type { PreCheckMember } from "@mpnext/types";
  * is not the live path in that mode and a button that silently does nothing is
  * worse than none. `common.retry` is never rendered in this state.
  *
- * `CROSS-1`'s shared `renderSignInRequired()` helper has not landed yet, so the
- * panel is built here in the shape that plan specifies — the later extraction
- * should be a move, not a rewrite.
+ * The panel is the base class's shared `renderSignInRequired()` (W0), which
+ * this widget's own earlier implementation was the model for.
  *
  * ## Times are wall-clock and stay wall-clock
  *
@@ -96,8 +95,6 @@ export class PreCheckWidget extends MPNextWidget {
   private errorPayload: unknown = null;
   /** The date currently being shown — the attribute, the query string, or the server's. */
   private activeDate: string | null = null;
-  /** True once `render()` has run, so `reconfigure()` knows to reload. */
-  private painted = false;
   /** Set on disconnect, so an in-flight request never paints a detached root. */
   private detached = false;
   /** A save is in flight: the submit control is disabled and reads `Saving…`. */
@@ -137,13 +134,13 @@ export class PreCheckWidget extends MPNextWidget {
     this.detached = true;
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue !== newValue) this.reconfigure();
-  }
-
-  /** A no-op before the first paint; a full reload after it. */
-  private reconfigure(): void {
-    if (!this.painted || this.detached) return;
+  /**
+   * An observed attribute changed after the first paint (the base class's
+   * `attributeChangedCallback` → `reconfigure()` → here; a no-op before the
+   * first paint and once disconnected). A full reload: the date and the QR
+   * panel both derive from attributes.
+   */
+  protected override reload(): void {
     this.data = null;
     this.errorPayload = null;
     this.activeDate = null;
@@ -232,9 +229,10 @@ export class PreCheckWidget extends MPNextWidget {
         this.errorPayload = payload;
         const code = (payload as { error?: string }).error ?? "";
 
-        // Never inferred from a message string: the 401 status is the signal,
-        // and the route only answers it for an absent or public subject.
-        if (res.status === 401) {
+        // Never inferred from a message string: a 401 carried by a public
+        // token is the signal (`isNeedsAuth`). A 401 that reaches a signed-in
+        // visitor is a fault, and renders as one.
+        if (this.isNeedsAuth(res)) {
           this.state = "needs-auth";
         } else if (code === "household_not_found") {
           this.state = "no-household";
@@ -381,7 +379,7 @@ export class PreCheckWidget extends MPNextWidget {
         const code = (payload as { error?: string }).error ?? "";
         this.saving = false;
 
-        if (res.status === 401) {
+        if (this.isNeedsAuth(res)) {
           this.state = "needs-auth";
           this.errorPayload = payload;
           this.emit("preCheckError", { code, status: res.status });
@@ -438,16 +436,21 @@ export class PreCheckWidget extends MPNextWidget {
 
   // ── Rendering ────────────────────────────────────────────────────────────
 
-  /** Render, then re-attach the listeners the new markup needs. */
+  /** Render (which re-binds the listeners) and mark the widget painted. */
   private paint(): void {
     if (this.detached) return;
     this.render();
     this.painted = true;
-    this.attachListeners();
   }
 
+  /**
+   * Paint, then re-bind the listeners the new markup needs. Both live here,
+   * not in `paint()`, because the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change.
+   */
   render() {
     this.root.innerHTML = `<div class="pc">${this.renderHeader()}${this.renderState()}</div>`;
+    this.attachListeners();
   }
 
   private renderHeader(): string {
@@ -468,7 +471,7 @@ export class PreCheckWidget extends MPNextWidget {
         );
 
       case "needs-auth":
-        return this.renderSignInRequired();
+        return this.renderSignedOut();
 
       case "no-household":
         return this.statusRegion(
@@ -503,34 +506,19 @@ export class PreCheckWidget extends MPNextWidget {
   }
 
   /**
-   * The signed-out panel, in the shape `CROSS-1` phase 1 specifies.
-   *
-   * Mode-aware, and that is the whole point: in `legacy` the SDK cannot start a
-   * sign-in — the host page does it through `<mpp-user-login>` /
-   * `next-user-menu` — so a Sign In button there would silently no-op on every
-   * customer we have today. Instructional copy naming the page's own control is
-   * strictly better than legacy, which always drew a button whether or not it
-   * could work.
+   * The signed-out panel — the base class's mode-aware helper. `dual` /
+   * `hardened` get the prompt and a real Sign In button; `legacy` gets copy
+   * naming the page's own sign-in link and no button, because a button that
+   * silently does nothing is worse than none. Never "Try Again".
    */
-  private renderSignInRequired(): string {
-    const mode = this.authSession.getMode();
-    const canSignIn = mode !== null && mode !== "legacy";
-
-    const body = this.escapeHtml(
-      this.t(canSignIn ? "preCheck.signedOutPrompt" : "preCheck.signedOutLegacy"),
-    );
-
-    // No `[data-action="retry"]` in this state, ever: re-issuing the same
-    // anonymous request fails identically, which is a loop with no exit.
-    const action = canSignIn
-      ? `<div class="pc-actions">
-           <button class="pc-btn" type="button" data-action="login">${this.escapeHtml(
-             this.t("common.signIn"),
-           )}</button>
-         </div>`
-      : "";
-
-    return `${this.statusRegion(`<p class="pc-msg">${body}</p>`)}${action}`;
+  private renderSignedOut(): string {
+    return this.renderSignInRequired({
+      subject: "pre-check",
+      message: this.t("preCheck.signedOutPrompt"),
+      legacyMessage: this.t("preCheck.signedOutLegacy"),
+      className: "pc-status",
+      buttonClass: "pc-btn",
+    });
   }
 
   private renderDateControl(): string {
@@ -706,8 +694,7 @@ export class PreCheckWidget extends MPNextWidget {
   // ── Listeners ────────────────────────────────────────────────────────────
 
   private attachListeners(): void {
-    const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.requestLogin("pre-check"));
+    // The signed-out panel's Sign In button is bound by the base class.
 
     const retry = this.root.querySelector('[data-action="retry"]');
     if (retry) retry.addEventListener("click", () => this.retryLoad());
@@ -751,37 +738,37 @@ export class PreCheckWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .pc {
         max-width: 640px;
         margin: 0 auto;
-        padding: 28px 24px;
-        background: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        color: #2D2926;
+        padding: 28px var(--_nw-space-6);
+        background: var(--_nw-color-surface);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius-lg);
+        color: var(--_nw-color-text);
         box-sizing: border-box;
       }
 
-      .pc-head { margin-bottom: 20px; }
+      .pc-head { margin-bottom: var(--_nw-space-5); }
 
       .pc-title {
         margin: 0 0 6px;
         font-size: 22px;
-        font-weight: 700;
-        color: #004C97;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-primary);
       }
 
       .pc-intro {
         margin: 0;
-        font-size: 14px;
-        color: #6b7280;
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-muted);
       }
 
       .pc-status {
-        padding: 16px 0;
+        padding: var(--_nw-space-4) 0;
         font-size: 15px;
       }
 
@@ -789,14 +776,14 @@ export class PreCheckWidget extends MPNextWidget {
         display: inline-flex;
         align-items: center;
         gap: 10px;
-        color: #6b7280;
+        color: var(--_nw-color-muted);
       }
 
       .pc-spinner {
         width: 20px;
         height: 20px;
         animation: pc-spin 1s linear infinite;
-        color: #004C97;
+        color: var(--_nw-color-primary);
       }
 
       @keyframes pc-spin { to { transform: rotate(360deg); } }
@@ -805,45 +792,45 @@ export class PreCheckWidget extends MPNextWidget {
         .pc-spinner { animation: none; }
       }
 
-      .pc-msg { margin: 0 0 8px; }
+      .pc-msg { margin: 0 0 var(--_nw-space-2); }
       .pc-msg:last-child { margin-bottom: 0; }
-      .pc-msg--warn { font-weight: 600; color: #2D2926; }
+      .pc-msg--warn { font-weight: 600; color: var(--_nw-color-text); }
 
       .pc-date-label {
-        margin: 0 0 16px;
+        margin: 0 0 var(--_nw-space-4);
         font-size: 15px;
         font-weight: 600;
-        color: #002855;
+        color: var(--_nw-color-secondary);
       }
 
-      .pc-datepick { margin-bottom: 16px; }
+      .pc-datepick { margin-bottom: var(--_nw-space-4); }
 
       .pc-label {
         display: block;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
         font-size: 13px;
         font-weight: 600;
-        color: #2D2926;
+        color: var(--_nw-color-text);
       }
 
       .pc-input {
         font: inherit;
-        padding: 8px 10px;
-        border: 1px solid #d1d5db;
+        padding: var(--_nw-space-2) 10px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border-strong);
         border-radius: 6px;
         color: inherit;
-        background: white;
+        background: var(--_nw-color-surface);
       }
 
       .pc-input:focus-visible {
-        outline: 2px solid #009CDE;
+        outline: var(--_nw-focus-ring);
         outline-offset: 1px;
       }
 
       .pc-qr {
-        margin-bottom: 20px;
-        padding: 16px;
-        border: 1px solid #e5e7eb;
+        margin-bottom: var(--_nw-space-5);
+        padding: var(--_nw-space-4);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
         border-radius: 10px;
         text-align: center;
       }
@@ -851,8 +838,8 @@ export class PreCheckWidget extends MPNextWidget {
       .pc-qr-title {
         margin: 0 0 10px;
         font-size: 15px;
-        font-weight: 700;
-        color: #002855;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
       }
 
       .pc-qr-code svg {
@@ -864,15 +851,15 @@ export class PreCheckWidget extends MPNextWidget {
       .pc-qr-help {
         margin: 10px 0 0;
         font-size: 13px;
-        color: #6b7280;
+        color: var(--_nw-color-muted);
       }
 
-      .pc-members { display: flex; flex-direction: column; gap: 16px; }
+      .pc-members { display: flex; flex-direction: column; gap: var(--_nw-space-4); }
 
       .pc-member {
         margin: 0;
-        padding: 12px 14px;
-        border: 1px solid #e5e7eb;
+        padding: var(--_nw-space-3) 14px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
         border-radius: 10px;
         min-width: 0;
       }
@@ -880,8 +867,8 @@ export class PreCheckWidget extends MPNextWidget {
       .pc-member-name {
         padding: 0 6px;
         font-size: 15px;
-        font-weight: 700;
-        color: #002855;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
       }
 
       .pc-rows { list-style: none; margin: 0; padding: 0; }
@@ -892,41 +879,41 @@ export class PreCheckWidget extends MPNextWidget {
         display: flex;
         align-items: baseline;
         flex-wrap: wrap;
-        gap: 8px;
-        padding: 6px 4px;
-        font-size: 14px;
+        gap: var(--_nw-space-2);
+        padding: 6px var(--_nw-space-1);
+        font-size: var(--_nw-font-size-base);
         border-radius: 6px;
       }
 
       .pc-check input { margin: 0; }
 
       .pc-when { font-variant-numeric: tabular-nums; font-weight: 600; }
-      .pc-event { color: #2D2926; }
-      .pc-group { color: #6b7280; }
+      .pc-event { color: var(--_nw-color-text); }
+      .pc-group { color: var(--_nw-color-muted); }
       .pc-group::before { content: "— "; }
-      .pc-role { color: #6b7280; }
+      .pc-role { color: var(--_nw-color-muted); }
       .pc-role::before { content: "("; }
       .pc-role::after { content: ")"; }
 
       .pc-locked {
         font-size: 12px;
         font-weight: 600;
-        color: #86AD3F;
+        color: var(--_nw-color-success);
         border: 1px solid currentColor;
         border-radius: 999px;
-        padding: 1px 8px;
+        padding: 1px var(--_nw-space-2);
       }
 
-      .pc-actions { margin-top: 12px; }
+      .pc-actions { margin-top: var(--_nw-space-3); }
 
       .pc-actions--bar {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         flex-wrap: wrap;
-        margin-top: 16px;
-        padding-top: 16px;
-        border-top: 1px solid #e5e7eb;
+        margin-top: var(--_nw-space-4);
+        padding-top: var(--_nw-space-4);
+        border-top: var(--_nw-border-width) solid var(--_nw-color-border);
       }
 
       .pc-actions--bar .pc-btn { margin-left: auto; }
@@ -936,8 +923,8 @@ export class PreCheckWidget extends MPNextWidget {
         font-size: 13px;
         background: none;
         border: 0;
-        padding: 4px 2px;
-        color: #004C97;
+        padding: var(--_nw-space-1) 2px;
+        color: var(--_nw-color-primary);
         text-decoration: underline;
         cursor: pointer;
       }
@@ -945,29 +932,29 @@ export class PreCheckWidget extends MPNextWidget {
       .pc-link:disabled { color: #9ca3af; cursor: default; }
 
       .pc-link:focus-visible {
-        outline: 2px solid #009CDE;
+        outline: var(--_nw-focus-ring);
         outline-offset: 2px;
       }
 
       .pc-btn:disabled { background: #9ca3af; cursor: default; }
 
       .pc-notice {
-        margin: 0 0 12px;
-        padding: 10px 12px;
-        border-radius: 8px;
-        font-size: 14px;
+        margin: 0 0 var(--_nw-space-3);
+        padding: 10px var(--_nw-space-3);
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
       }
 
       .pc-notice--ok {
         background: #f1f7e8;
-        border: 1px solid #86AD3F;
-        color: #2D2926;
+        border: var(--_nw-border-width) solid var(--_nw-color-success);
+        color: var(--_nw-color-text);
       }
 
       .pc-notice--warn {
         background: #fff1f1;
-        border: 1px solid #FF6D6A;
-        color: #2D2926;
+        border: var(--_nw-border-width) solid var(--_nw-color-error);
+        color: var(--_nw-color-text);
       }
 
       .pc-btn {
@@ -975,16 +962,16 @@ export class PreCheckWidget extends MPNextWidget {
         font-weight: 600;
         padding: 10px 18px;
         border: 0;
-        border-radius: 8px;
-        background: #004C97;
-        color: white;
+        border-radius: var(--_nw-button-radius);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         cursor: pointer;
       }
 
-      .pc-btn:hover { background: #002855; }
+      .pc-btn:hover { background: var(--_nw-button-bg-hover); }
 
       .pc-btn:focus-visible {
-        outline: 2px solid #009CDE;
+        outline: var(--_nw-focus-ring);
         outline-offset: 2px;
       }
     `;

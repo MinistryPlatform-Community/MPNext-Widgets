@@ -23,6 +23,7 @@ describe('@mpnext/types barrel re-exports', () => {
     'InvoiceDetailResponseSchema',
     // profile
     'ProfileUpdateSchema',
+    'ProfilePhoneSchema',
     'ChangePasswordSchema',
     // subscription
     'PublicationSchema',

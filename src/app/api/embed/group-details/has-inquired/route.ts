@@ -1,6 +1,13 @@
 /**
  * Has-inquired check for the next-group-details widget.
  * GET /api/embed/group-details/has-inquired?groupId=&contactId= -> { hasInquired }
+ *
+ * The widget asks this for the contact picked in its "Inquire as" picker, so
+ * the answer is only given for the signed-in caller or a member of their
+ * household (`canActAsContact`). Any other contact id — or any id at all from a
+ * public token — is refused with `403 not_household_member` before MP is read:
+ * an open boolean here disclosed, one bit per request, whether any contact in
+ * the domain had inquired about any group (C12, left open by W3).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -12,12 +19,13 @@ import {
   buildFallbackCorsHeaders,
 } from "@/lib/embed/auth";
 import { GroupsService } from "@/services/groupsService";
+import { canActAsContact } from "@/services/_shared/household-contact";
 
 export async function GET(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
 
   try {
-    await requireWidgetAuth(req, { widget: ["group-details", "user-menu", "*"] });
+    const claims = await requireWidgetAuth(req, { widget: ["group-details", "user-menu", "*"] });
 
     const sp = req.nextUrl.searchParams;
     const groupId = parseInt(sp.get("groupId") || "", 10);
@@ -30,6 +38,13 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    if (!(await canActAsContact(claims.sub, contactId))) {
+      return NextResponse.json(
+        { error: "not_household_member", message: "contactId is not the caller or their household" },
+        { status: 403, headers: getCorsHeaders(origin) }
+      );
+    }
+
     const service = await GroupsService.getInstance();
     const hasInquired = await service.hasInquired(groupId, contactId);
 
@@ -39,12 +54,12 @@ export async function GET(req: NextRequest) {
     );
   } catch (error) {
     console.error("Error checking group inquiry:", error);
+    const tokenFault = error instanceof Error && error.message.includes("Token");
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal server error" },
-      {
-        status: error instanceof Error && error.message.includes("Token") ? 403 : 500,
-        headers: buildFallbackCorsHeaders(origin),
-      }
+      tokenFault
+        ? { error: "forbidden", message: "Token verification failed" }
+        : { error: "internal_error", message: "Failed to check group inquiry" },
+      { status: tokenFault ? 403 : 500, headers: buildFallbackCorsHeaders(origin) }
     );
   }
 }

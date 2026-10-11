@@ -2,8 +2,7 @@
 
 **Status:** proposed, not started
 **Author:** drafted 2026-09-09
-**Closes:** `.claude/TODO/Comparison/C67-no-mp-configurable-labels.md`,
-`.claude/TODO/Comparison/C73-no-locale-selector-no-localisation.md`
+**Closes:** comparison findings C67 and C73
 **Ships:** `en`, `es`, `pt-BR`
 
 Every string in every `next-*` widget is a hardcoded English literal, and all 43
@@ -285,7 +284,7 @@ visitor. Rungs 2–6 are page-wide.
   leak a subscription per mount. This is the easiest thing in the plan to get silently
   wrong.
 - Add `"lang"` to `observedAttributes` on all 30 components; **11 have no
-  `observedAttributes` getter at all** and need one added. Note `C39-attribute-changed-callback-ignores-first-set.md`
+  `observedAttributes` getter at all** and need one added. Note C39
   — several `attributeChangedCallback` implementations ignore the first set, so re-check
   each against that filed bug rather than pattern-matching the neighbours.
 - Reflect `lang` and `dir` onto the shadow host so screen readers switch voice
@@ -609,7 +608,7 @@ because both drafts looked plausible:
 - **`{{userLocale}}` is not forwarded to payment vendors.** MP's
   `mpp-smart-link` passed the chosen locale out to the giving vendor; a visitor
   who picks Spanish here still lands on the vendor's default language. Needs the
-  vendor's parameter contract; tracked with C74.
+  vendor's parameter contract. Not planned: smart-link has no `next-*` counterpart.
 - **`user-menu.ts` in `legacy` mode.** It renders MP's own `<mpp-user-login>`,
   whose copy comes from `GetLabels` in *MP's* locale. A Spanish page can show a
   Spanish menu around an English MP login control. `dual`/`hardened` uses our own

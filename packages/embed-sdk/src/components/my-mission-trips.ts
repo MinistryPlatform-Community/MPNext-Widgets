@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 
 /**
  * Local mirrors of `@mpnext/types` (`mission-trips.ts`). This package does not
@@ -159,16 +159,17 @@ export class MyMissionTripsWidget extends MPNextWidget {
 
     try {
       const res = await this.fetch(`/api/embed/mission-trips/mine${query}`);
-      if (res.status === 401) {
-        // Signed out is a state, not an error (C13 / C30 / C46): the widget
-        // offers sign-in rather than "Unable to Load".
+      if (this.isNeedsAuth(res)) {
+        // Signed out is a state, not an error (C81 / CROSS-1): the widget
+        // offers sign-in rather than "Unable to Load". A 401 that reaches a
+        // signed-in visitor is not this state and falls through to the error.
         this.signedOut = true;
         this.trips = [];
         return;
       }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body));
+        throw new WidgetError(this.errorText(body));
       }
       const data: { trips?: MyMissionTrip[] } = await res.json();
       this.trips = data.trips || [];
@@ -176,13 +177,12 @@ export class MyMissionTripsWidget extends MPNextWidget {
 
       await this.loadPanels();
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.trips = [];
       this.emit("myMissionTripsError", { error: this.error });
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -262,14 +262,23 @@ export class MyMissionTripsWidget extends MPNextWidget {
     this.root
       .querySelector('[data-action="retry"]')
       ?.addEventListener("click", () => this.retryLoad());
-    this.root
-      .querySelector('[data-action="login"]')
-      ?.addEventListener("click", () => this.requestLogin("my-mission-trips"));
+    // The signed-out panel's Sign In button is bound by the base class.
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     this.root.innerHTML = `
       <section class="mmt">
         <h2 class="mmt-title">${this.escapeHtml(this.t("myMissionTrips.title"))}</h2>
@@ -282,11 +291,14 @@ export class MyMissionTripsWidget extends MPNextWidget {
       return `<div class="mmt-state">${this.spinnerSvg()}<span>${this.escapeHtml(this.t("myMissionTrips.loading"))}</span></div>`;
     }
     if (this.signedOut) {
-      return `
-        <div class="mmt-state mmt-signin">
-          <p>${this.escapeHtml(this.t("myMissionTrips.signInPrompt"))}</p>
-          <button class="mmt-btn" type="button" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button>
-        </div>`;
+      // Mode-aware: a Sign In button in `dual`/`hardened`, instructional copy
+      // and no button in `legacy`. Never "Try Again".
+      return this.renderSignInRequired({
+        subject: "my-mission-trips",
+        message: this.t("myMissionTrips.signInPrompt"),
+        className: "mmt-state mmt-signin",
+        buttonClass: "mmt-btn",
+      });
     }
     if (this.error) {
       return `
@@ -573,67 +585,67 @@ export class MyMissionTripsWidget extends MPNextWidget {
   }
 
   private globeSvg(): string {
-    return `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#004C97" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`;
+    return `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" style="stroke: var(--_nw-color-primary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`;
   }
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .mmt { max-width: 860px; margin: 0 auto; }
-      .mmt-title { font-size: 22px; font-weight: 700; color: #002855; margin: 0 0 16px; }
-      .mmt-section { font-size: 16px; font-weight: 700; color: #002855; margin: 24px 0 12px; }
+      .mmt-title { font-size: 22px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: 0 0 var(--_nw-space-4); }
+      .mmt-section { font-size: 16px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: var(--_nw-space-6) 0 var(--_nw-space-3); }
 
-      .mmt-list { display: flex; flex-direction: column; gap: 16px; }
-      .mmt-card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; background: white; }
+      .mmt-list { display: flex; flex-direction: column; gap: var(--_nw-space-4); }
+      .mmt-card { border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-4); background: var(--_nw-color-surface); }
       .mmt-card-top { display: flex; align-items: flex-start; gap: 14px; }
-      .mmt-image { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; flex-shrink: 0; background: #f3f4f6; }
+      .mmt-image { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; flex-shrink: 0; background: var(--_nw-color-surface-muted); }
       .mmt-image--placeholder { display: flex; align-items: center; justify-content: center; background: rgba(0,76,151,0.08); }
       .mmt-card-head { flex: 1; min-width: 0; }
       .mmt-badges { display: flex; gap: 6px; flex-wrap: wrap; }
-      .mmt-name { font-size: 16px; font-weight: 700; color: #002855; margin: 6px 0 0; line-height: 1.3; }
+      .mmt-name { font-size: 16px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: 6px 0 0; line-height: 1.3; }
       .mmt-owner { font-size: 13px; color: rgba(45,41,38,0.6); margin: 2px 0 0; }
-      .mmt-dates { font-size: 13px; color: #004C97; font-weight: 600; margin: 4px 0 0; }
+      .mmt-dates { font-size: 13px; color: var(--_nw-color-primary); font-weight: 600; margin: var(--_nw-space-1) 0 0; }
 
       .mmt-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
-      .mmt-badge--leader { background: rgba(241,190,72,0.25); color: #92700c; margin-left: 8px; }
+      .mmt-badge--leader { background: rgba(241,190,72,0.25); color: #92700c; margin-left: var(--_nw-space-2); }
       .mmt-badge--active { background: rgba(134,173,63,0.15); color: #5a7a1a; }
-      .mmt-badge--completed { background: rgba(0,76,151,0.12); color: #004C97; }
-      .mmt-badge--discontinued { background: rgba(255,109,106,0.15); color: #b91c1c; }
+      .mmt-badge--completed { background: rgba(0,76,151,0.12); color: var(--_nw-color-primary); }
+      .mmt-badge--discontinued { background: rgba(255,109,106,0.15); color: var(--_nw-color-error-text); }
       .mmt-badge--pending { background: rgba(241,190,72,0.2); color: #92700c; }
-      .mmt-badge--default { background: #f3f4f6; color: #474747; }
+      .mmt-badge--default { background: var(--_nw-color-surface-muted); color: var(--_nw-color-text-subtle); }
 
-      .mmt-progress { margin-top: 16px; }
-      .mmt-progress-label { font-size: 12px; font-weight: 600; color: #6b7280; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.03em; }
-      .mmt-track { width: 100%; height: 12px; background: #f3f4f6; border-radius: 9999px; overflow: hidden; }
-      .mmt-track--sm { height: 8px; margin-top: 4px; }
-      .mmt-fill { height: 100%; background: #004C97; border-radius: 9999px; }
-      .mmt-progress-text { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: #002855; }
+      .mmt-progress { margin-top: var(--_nw-space-4); }
+      .mmt-progress-label { font-size: 12px; font-weight: 600; color: var(--_nw-color-muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.03em; }
+      .mmt-track { width: 100%; height: 12px; background: var(--_nw-color-surface-muted); border-radius: 9999px; overflow: hidden; }
+      .mmt-track--sm { height: 8px; margin-top: var(--_nw-space-1); }
+      .mmt-fill { height: 100%; background: var(--_nw-color-primary); border-radius: 9999px; }
+      .mmt-progress-text { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--_nw-color-secondary); }
 
-      .mmt-panel { margin-top: 16px; padding-top: 14px; border-top: 1px solid #f3f4f6; }
-      .mmt-panel-title { font-size: 13px; font-weight: 700; color: #002855; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.03em; }
-      .mmt-panel-empty { font-size: 13px; color: #6b7280; margin: 0; }
+      .mmt-panel { margin-top: var(--_nw-space-4); padding-top: 14px; border-top: 1px solid #f3f4f6; }
+      .mmt-panel-title { font-size: 13px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.03em; }
+      .mmt-panel-empty { font-size: 13px; color: var(--_nw-color-muted); margin: 0; }
       .mmt-rows { display: flex; flex-direction: column; gap: 10px; }
-      .mmt-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px; background: #fafafa; border-radius: 8px; }
+      .mmt-row { display: flex; justify-content: space-between; gap: var(--_nw-space-3); padding: 10px; background: #fafafa; border-radius: var(--_nw-radius); }
       .mmt-row-main { min-width: 0; }
       .mmt-row-side { text-align: right; display: flex; flex-direction: column; gap: 2px; align-items: flex-end; min-width: 140px; }
-      .mmt-donor-name { font-size: 14px; font-weight: 600; color: #2D2926; margin: 0; }
-      .mmt-donor-line { font-size: 12px; color: #6b7280; margin: 2px 0 0; }
-      .mmt-donor-note { font-size: 12px; color: #474747; margin: 4px 0 0; font-style: italic; }
-      .mmt-donor-date { font-size: 12px; color: #6b7280; }
-      .mmt-amount { font-size: 14px; font-weight: 700; color: #004C97; }
-      .mmt-team-label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.03em; }
-      .mmt-team-goal { font-size: 13px; color: #2D2926; }
-      .mmt-team-status { font-size: 12px; color: #474747; margin: 4px 0 0; }
-      .mmt-team-pct { font-size: 12px; font-weight: 600; color: #002855; }
+      .mmt-donor-name { font-size: var(--_nw-font-size-base); font-weight: 600; color: var(--_nw-color-text); margin: 0; }
+      .mmt-donor-line { font-size: 12px; color: var(--_nw-color-muted); margin: 2px 0 0; }
+      .mmt-donor-note { font-size: 12px; color: var(--_nw-color-text-subtle); margin: var(--_nw-space-1) 0 0; font-style: italic; }
+      .mmt-donor-date { font-size: 12px; color: var(--_nw-color-muted); }
+      .mmt-amount { font-size: var(--_nw-font-size-base); font-weight: 700; color: var(--_nw-color-primary); }
+      .mmt-team-label { font-size: 11px; color: var(--_nw-color-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+      .mmt-team-goal { font-size: 13px; color: var(--_nw-color-text); }
+      .mmt-team-status { font-size: 12px; color: var(--_nw-color-text-subtle); margin: var(--_nw-space-1) 0 0; }
+      .mmt-team-pct { font-size: 12px; font-weight: 600; color: var(--_nw-color-secondary); }
 
-      .mmt-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 40px 16px; color: #6b7280; font-size: 15px; text-align: center; }
+      .mmt-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 40px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; text-align: center; }
       .mmt-state p { margin: 0; }
-      .mmt-error-title { font-weight: 700; color: #002855; }
-      .mmt-error p { color: #b91c1c; }
-      .mmt-spinner { animation: mmt-spin 1s linear infinite; color: #004C97; }
+      .mmt-error-title { font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); }
+      .mmt-error p { color: var(--_nw-color-error-text); }
+      .mmt-spinner { animation: mmt-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes mmt-spin { to { transform: rotate(360deg); } }
-      .mmt-btn { padding: 10px 24px; background: #004C97; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
-      .mmt-btn:hover { background: #002855; }
+      .mmt-btn { padding: 10px var(--_nw-space-6); background: var(--_nw-button-bg); color: var(--_nw-button-fg); border: none; border-radius: var(--_nw-button-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; }
+      .mmt-btn:hover { background: var(--_nw-button-bg-hover); }
 
       @media (max-width: 640px) {
         .mmt-row { flex-direction: column; }

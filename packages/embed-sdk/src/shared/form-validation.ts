@@ -21,6 +21,7 @@
  */
 
 import { getLocaleSession, type Translator } from "../i18n";
+import { escapeAttr, escapeHtml, renderAttrs } from "./html";
 
 type ValidatableControl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
@@ -57,6 +58,122 @@ const DEFAULT_WRAPPER_SELECTOR =
  */
 export function requiredStar(): string {
   return ` <span class="mpx-req" aria-hidden="true">*</span>`;
+}
+
+// ── field(): a labelled control (C28, C29) ─────────────────────────────────
+
+type FieldAttrValue = string | number | boolean | null | undefined;
+
+export interface FieldOption {
+  value: string;
+  /** Visible text, already translated. Escaped by `field()`. */
+  label: string;
+  selected?: boolean;
+  disabled?: boolean;
+}
+
+export interface FieldOptions {
+  /** Control `name`; also the source of the stable `id`. */
+  name: string;
+  /** Visible label, already translated (`this.t("fields.email")`). Escaped by `field()`. */
+  label: string;
+  /**
+   * An `<input>` type, or `"textarea"` / `"select"`. Default `"text"`.
+   * `"tel"` implies `autocomplete="tel"` and `inputmode="tel"` (C29) unless
+   * those are passed explicitly.
+   */
+  type?: string;
+  required?: boolean;
+  autocomplete?: string;
+  inputmode?: string;
+  /** Initial value (`value=` / textarea content / the matching `<option>`). */
+  value?: string | number | null;
+  placeholder?: string;
+  /** `<option>`s for `type: "select"`. */
+  options?: FieldOption[];
+  /** Further attributes for the control: `maxlength`, `pattern`, `min`, `data-*`… */
+  attrs?: Record<string, FieldAttrValue>;
+  /**
+   * Ids of help text that describes the control. The validation error node is
+   * added to `aria-describedby` by `validateForm()` when — and only when — it
+   * exists, so a never-rendered id is not referenced.
+   */
+  describedBy?: string | string[];
+  /**
+   * The widget's instance prefix (`this.instanceId`), so two widgets of the
+   * same kind cannot mint the same id. Optional, but pass it.
+   */
+  idPrefix?: string;
+  /** Wrapper class. Default `"nw-field"`. Keep the widget's own (`"cf-field"`). */
+  wrapperClass?: string;
+  /** Class on the control (`"cf-input"`). */
+  inputClass?: string;
+  /** Class on the `<label>`. */
+  labelClass?: string;
+}
+
+/** A stable, id-safe slug of `name`, prefixed with the widget instance. */
+export function fieldId(name: string, idPrefix?: string): string {
+  const slug = name.trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "field";
+  return [idPrefix, "f", slug].filter(Boolean).join("-");
+}
+
+/**
+ * A form control with a real accessible name: `<label for=id>` + the control,
+ * inside a `[data-mpx-field]` wrapper that `validateForm()` recognises.
+ *
+ * - `requiredStar()` sits **inside** the label, so it is part of the click
+ *   target; it is `aria-hidden`, and `required` conveys the requirement.
+ * - The control carries `data-mpx-label`, so a missing value reads
+ *   "{label} is required." instead of the anonymous "This field is required."
+ * - `type: "tel"` gets `autocomplete="tel"` + `inputmode="tel"`.
+ *
+ * ```ts
+ * field({ name: "mobile", label: this.t("fields.mobilePhone"), type: "tel",
+ *         required: true, idPrefix: this.instanceId, wrapperClass: "cf-field",
+ *         inputClass: "cf-input" })
+ * ```
+ */
+export function field(opts: FieldOptions): string {
+  const type = opts.type ?? "text";
+  const id = fieldId(opts.name, opts.idPrefix);
+  const describedBy = Array.isArray(opts.describedBy)
+    ? opts.describedBy.filter(Boolean).join(" ")
+    : (opts.describedBy ?? "");
+  const isTel = type === "tel";
+
+  const common = renderAttrs({
+    id,
+    name: opts.name,
+    class: opts.inputClass || undefined,
+    required: !!opts.required,
+    autocomplete: opts.autocomplete ?? (isTel ? "tel" : undefined),
+    inputmode: opts.inputmode ?? (isTel ? "tel" : undefined),
+    placeholder: opts.placeholder,
+    "aria-describedby": describedBy || undefined,
+    "data-mpx-label": opts.label,
+    ...opts.attrs,
+  });
+
+  const value = opts.value === null || opts.value === undefined ? "" : String(opts.value);
+  let control: string;
+  if (type === "textarea") {
+    control = `<textarea${common}>${escapeHtml(value)}</textarea>`;
+  } else if (type === "select") {
+    const options = (opts.options ?? [])
+      .map((o) => {
+        const selected = o.selected ?? (value !== "" && o.value === value);
+        return `<option${renderAttrs({ value: o.value, selected, disabled: !!o.disabled })}>${escapeHtml(o.label)}</option>`;
+      })
+      .join("");
+    control = `<select${common}>${options}</select>`;
+  } else {
+    control = `<input${renderAttrs({ type })}${common}${renderAttrs({ value: value === "" ? undefined : value })}>`;
+  }
+
+  const labelClass = opts.labelClass ? ` class="${escapeAttr(opts.labelClass)}"` : "";
+  const label = `<label for="${escapeAttr(id)}"${labelClass}>${escapeHtml(opts.label)}${opts.required ? requiredStar() : ""}</label>`;
+  return `<div class="${escapeAttr(opts.wrapperClass ?? "nw-field")}" data-mpx-field>${label}${control}</div>`;
 }
 
 function cssEscape(value: string): string {
@@ -133,7 +250,15 @@ function resolveMessage(el: ValidatableControl, opts: ValidateOptions): string {
 
   const t = translator(opts);
   const v = el.validity;
-  if (v.valueMissing) return t("validation.required");
+  if (v.valueMissing) {
+    // `field()` stamps the visible label on the control, so the message can
+    // say *which* field (C19 row 10). Hand-written markup has no stamp and
+    // keeps the bare sentence.
+    const label = (el as HTMLElement).dataset?.mpxLabel;
+    return label
+      ? t("validation.requiredField", { label })
+      : t("validation.required");
+  }
   if (v.typeMismatch && el instanceof HTMLInputElement && el.type === "email")
     return t("validation.email");
   if (v.typeMismatch && el instanceof HTMLInputElement && el.type === "url")
@@ -299,18 +424,18 @@ export function bindLiveValidation(
 }
 
 export const FORM_VALIDATION_STYLES = `
-  .mpx-req { color: #FF6D6A; font-weight: 700; }
+  .mpx-req { color: var(--_nw-color-error); font-weight: 700; }
   input.mpx-invalid,
   select.mpx-invalid,
   textarea.mpx-invalid {
-    border-color: #FF6D6A !important;
+    border-color: var(--_nw-color-error) !important;
     box-shadow: 0 0 0 2px rgba(255, 109, 106, 0.2) !important;
   }
   .mpx-field-error {
     display: block;
     font-size: 12px;
     line-height: 1.4;
-    color: #FF6D6A;
-    margin-top: 4px;
+    color: var(--_nw-color-error);
+    margin-top: var(--_nw-space-1);
   }
 `;

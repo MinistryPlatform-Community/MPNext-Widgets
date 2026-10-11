@@ -37,12 +37,14 @@ Embeddable Web Component widgets for [Ministry Platform](https://www.ministrypla
   - [Cutover Runbook](#cutover-runbook)
   - [Troubleshooting Widget Auth](#troubleshooting-widget-auth)
 - [Widget Languages](#widget-languages)
+- [Theming](#theming)
 - [Widget Unsubscribe Links](#widget-unsubscribe-links)
 - [Prayer & Feedback Intake](#prayer--feedback-intake)
 - [Newsletter Sign-Up](#newsletter-sign-up)
 - [Event Pre Check-In](#event-pre-check-in)
 - [About Me — Skills & Spiritual Gifts](#about-me--skills--spiritual-gifts)
 - [Mission Trips](#mission-trips)
+- [Migrating from MPWidgets.js](#migrating-from-mpwidgetsjs)
 - [Testing](#testing)
 - [Development](#development)
 - [Claude Code Commands](#claude-code-commands)
@@ -955,6 +957,94 @@ Everything still rendering in plain English is a string that was never
 translated; anything overflowing its container will overflow in Spanish too.
 
 
+## Theming
+
+Every `next-*` widget renders inside Shadow DOM, so your site's selectors cannot
+reach into it. CSS custom properties *do* cross that boundary, and the widgets
+read a published set of them: the `--nw-*` **theme tokens**. Set them anywhere
+on your page, and every widget picks them up. You don't need a stylesheet
+URL or an attribute, and nothing needs re-applying after a widget re-renders.
+
+```css
+/* Re-brand every widget on the site */
+:root {
+  --nw-color-primary: #7a1f2b;
+  --nw-font-family: "Lato", system-ui, sans-serif;
+  --nw-radius: 4px;
+}
+
+/* …or just one widget, or one page section */
+next-event-finder { --nw-color-accent: #e0a100; }
+.sidebar { --nw-space-4: 12px; }
+```
+
+**Tokens are a supported, versioned API.** A token's name and what it controls
+stay stable across SDK releases. New tokens may be added in a minor release.
+Renaming or removing a token, or changing what it controls, is a breaking change,
+and it will be called out in the release notes. Anything *not* listed here
+(class names, the widgets' internal `--_nw-*` properties, element structure) is
+internal and may change without notice.
+
+With nothing set, each default below is the widget's own look, unchanged.
+Defaults that name another token follow it: set `--nw-color-primary` and
+buttons follow unless you also set `--nw-button-bg`.
+
+| Token | Default | Controls |
+|---|---|---|
+| **Colour** | | |
+| `--nw-color-primary` | `#004C97` | Buttons, links, focused inputs, dates, spinners, selected states |
+| `--nw-color-secondary` | `#002855` | Headings and card titles, button hover |
+| `--nw-color-accent` | `#F1BE48` | Badges (e.g. *Featured*) and highlights |
+| `--nw-color-info` | `#009CDE` | Informational accents; the focus-ring colour |
+| `--nw-color-success` | `#86AD3F` | Success states and confirmations |
+| `--nw-color-error` | `#FF6D6A` | Invalid-field borders, required markers, error icons |
+| `--nw-color-warning` | `#F1BE48` | Pending and warning states: a payment still processing, an amount due, warning toasts, the payment sandbox notice. Same hex as the accent by default, but separate, so re-branding the accent never recolours a status |
+| `--nw-color-text` | `#2D2926` | Body text |
+| `--nw-color-text-subtle` | `#474747` | Secondary body text, such as descriptions |
+| `--nw-color-muted` | `#6b7280` | Field labels, metadata, empty and loading states |
+| `--nw-color-on-primary` | `#ffffff` | Text and icons on a primary-coloured background |
+| `--nw-color-surface` | `#ffffff` | Card, panel and input background |
+| `--nw-color-surface-muted` | `#f3f4f6` | Subdued backgrounds: image placeholders, inactive chips |
+| `--nw-color-border` | `#e5e7eb` | Card and panel borders, dividers |
+| `--nw-color-border-strong` | `#d1d5db` | Form-control borders |
+| `--nw-color-error-text` | `#b91c1c` | Error message text |
+| **Type** | | |
+| `--nw-font-family` | `ui-sans-serif, system-ui, -apple-system, sans-serif` | Font stack for every widget |
+| `--nw-font-size-base` | `14px` | Body and form-control text size |
+| `--nw-line-height` | `1.5` | Line height of running text |
+| `--nw-font-weight-heading` | `700` | Weight of headings and card titles |
+| **Shape** | | |
+| `--nw-radius` | `8px` | Corners of buttons, inputs and small surfaces |
+| `--nw-radius-lg` | `12px` | Corners of cards and panels |
+| `--nw-border-width` | `1px` | Card, panel and control borders |
+| `--nw-shadow` | `0 1px 2px rgba(0,0,0,0.05)` | Resting shadow of cards and panels |
+| `--nw-shadow-hover` | `0 4px 10px rgba(0,0,0,0.08)` | Shadow of a card under the pointer |
+| **Space** | | |
+| `--nw-space-1` … `--nw-space-6` | `4px` `8px` `12px` `16px` `20px` `24px` | The spacing scale used for gaps, padding and margins |
+| **Controls** | | |
+| `--nw-button-bg` | `--nw-color-primary` | Primary button background |
+| `--nw-button-bg-hover` | `--nw-color-secondary` | Primary button background on hover |
+| `--nw-button-fg` | `--nw-color-on-primary` | Primary button text |
+| `--nw-button-radius` | `--nw-radius` | Primary button corners |
+| `--nw-focus-ring` | `2px solid` `--nw-color-info` | Keyboard focus outline (an `outline` value) |
+
+The spacing scale, in full: `--nw-space-1` (4px), `--nw-space-2` (8px),
+`--nw-space-3` (12px), `--nw-space-4` (16px), `--nw-space-5` (20px),
+`--nw-space-6` (24px).
+
+**Conversion status.** `next-event-finder` reads every token. The other widgets
+are being converted in the next release train. Until a widget is converted it
+keeps the default look and ignores the tokens. It does not break.
+`next-full-calendar` already takes its brand colours (primary, secondary,
+error, text) from the tokens.
+
+**Not available, and not planned:** `::part()` hooks for repositioning
+structural elements, a per-element `custom-css` stylesheet attribute, and a
+domain-wide stylesheet applied to every widget automatically (legacy
+`GetCustomStyles`). A stylesheet adopted into a widget's open shadow root does
+survive re-renders and wins on equal specificity, but that route is unsupported.
+
+
 ## Widget Unsubscribe Links
 
 `<next-unsubscribe>` is the landing page for the unsubscribe link in a bulk
@@ -1756,6 +1846,107 @@ widgets' own labels are available in Spanish and Portuguese.
 - Both authorization rules are covered by fixture-driven unit tests, including the
   head-of-household-whose-child-is-the-leader case, which a naive "check the
   caller's own pledge" implementation gets wrong.
+
+## Migrating from MPWidgets.js
+
+This section covers moving a page from a legacy `mpp-*` widget to its `next-*` counterpart.
+It is about what changes for the widgets themselves. Sign-in is a separate topic: see
+[Cutover Runbook](#cutover-runbook) and the per-widget "Migrating from…" sections above
+(prayer, newsletter, pre-check, about-me, mission trips).
+
+> ### The RSS reader has no replacement
+>
+> `mpp-rss-reader` is **not** being carried over, and nothing in the `next-*` catalogue
+> renders a publication feed.
+>
+> **What to do:** keep MPWidgets.js on that one page, or render the feed from your own
+> CMS.
+>
+> It is on MP's own sample home page, so it is the gap a church is most likely to meet
+> first. Check your home page before you cut over.
+
+### Widgets that have no counterpart
+
+| Legacy | Status | What to do |
+|---|---|---|
+| `mpp-rss-reader` | **Won't port** | See above. |
+| `mpp-smart-link`, `mpp-smart-frame` | **Not planned.** Both would merge a signed-in member's details into a URL handed to a third party. | Keep MPWidgets.js on those pages. `/widgets/giving.aspx` is a smart-link, not a payment widget. |
+| `mpp-user-label` | **Won't do** | Write the word on your page yourself. To rename a label across every widget, use [`MPNextEmbed.setMessages()`](#renaming-labels). |
+
+A page that keeps MPWidgets.js for one of these runs both login models side by side. Sign-in
+still works, but read [Widget Authentication](#widget-authentication) before mixing them on
+one page.
+
+### Styling: your MP domain stylesheet no longer reaches the widgets
+
+Legacy widgets pick up the domain's skin stylesheet automatically, and accept a `customCss`
+attribute. The `next-*` widgets render in Shadow DOM and do neither.
+
+**Restate your branding as `--nw-*` theme tokens** on your own site. A few lines on `:root`
+usually covers it. See [Theming](#theming).
+
+Not available yet:
+- a per-element `custom-css` attribute;
+- `::part()` hooks;
+- a domain-level stylesheet.
+
+### Renamed attributes
+
+Every `next-*` attribute is kebab-case. Five widgets once took flat-lowercase names, and
+those have been renamed:
+
+| Widget | Use | Old spelling (still accepted for one release) |
+|---|---|---|
+| `next-my-giving` | `hide-soft-credits` | `hidesoftcredits` |
+| `next-my-pledges` | `hide-cancel-button-pledge` | `hidecancelbuttonpledge` |
+| `next-my-pledges` | `cancel-pledge-email-template` | `cancelpledgeemailtemplate` |
+| `next-my-groups` | `hide-group-life` | `hidegrouplife` |
+| `next-my-household` | `hide-add-household-member` | `hideaddhouseholdmember` |
+
+**The old spellings still work for one release.** When one is used, the widget logs a
+single console warning naming the new spelling. Update your snippets now; the old names
+will be removed.
+
+**Other legacy attributes map to new names**, as the table below shows. For example,
+`targeturl` on my-invoices is now `checkout-url`. These were never accepted under their old
+spelling.
+
+### New attributes, and behaviour that changed
+
+Rows marked **changed default** behave differently from the legacy widget, or from an
+earlier `next-*` release, unless you set the attribute.
+
+| Widget | Attribute / behaviour | Notes |
+|---|---|---|
+| `next-full-calendar` | `cards-scope="month\|rolling"` (default `month`) | **Changed default.** `view="cards" show-toolbar="false"` used to show a fixed window of this month plus two more. It now shows the current month only. For a home-page "upcoming events" strip, add `cards-scope="rolling"`. |
+| `next-opportunity-details` | `show-full-address` (default hidden) | **Changed default.** The page now shows city and state only, matching legacy's privacy default. Add `show-full-address="true"` to show the street address. The address is withheld on the server, not hidden in the browser. |
+| `next-opportunity-details` | `response-email-template` | Now actually sent. The responder receives the `dp_Communications` template after their response is saved. |
+| `next-my-invoices` | `show-free-events` (default shown) | **Changed default.** Zero-total registrations now appear, badged "Free", with a "Show free registrations" toggle. Legacy hid them. For legacy behaviour, set `show-free-events="false"`, and `hide-free-events-checkbox` to hide the toggle too. |
+| `next-my-invoices` | `checkout-url` (legacy `targeturl`) | Where **Pay** links to. The link is `?id=<Invoice_GUID>`, which `next-checkout` reads. **With no `checkout-url`, no Pay link is shown.** |
+| `next-my-invoices` | `congregation-id`, `month-id`, `invoice-status-id`, `keyword`, `hide-free-events-checkbox` | Legacy's filters. They now filter on the server. There is no visible "Show Advanced" form. |
+| `next-user-menu` | `invoices-checkout-url` | Gives the Invoices tab its Pay link: it is forwarded as `checkout-url`. |
+| `next-user-menu` | custom links need `slot="menu-items"` | Write `<next-user-menu><a slot="menu-items" href="/give">Give</a></next-user-menu>`. Signed in, any other child markup is not rendered, and the widget logs a console warning. |
+| `next-checkout` | `receipt-template-id` (legacy `receipttemplateid`) | Sends a receipt when the payment is recorded. Replays and reloads do not send it again. |
+| `next-my-contribution-statement` | `show-paperless-toggle` (opt-in) | Legacy's statement widget included Go Paperless. Add `show-paperless-toggle="true"` to get the same surface. `next-statement-preferences` still exists on its own. |
+| `next-my-contribution-statement` | `my-giving-url` (legacy `mygivingwidgettargeturl`) | Adds a "See my giving" link. |
+| `next-my-giving`, `next-my-pledges`, `next-my-contribution-statement`, `next-statement-preferences` | `heading-level` (1–6, default 2) | The widgets now emit real headings. Legacy hard-coded `h1`. Set `heading-level` so the widget fits under your page's own heading. |
+| `next-my-pledges` | Cancel Pledge shown by default | Matches legacy. `hide-cancel-button-pledge="true"` hides it. |
+| `next-group-details` | `require-inquiry-phone` (default required) | The phone number is required on an inquiry, as in legacy. Set `require-inquiry-phone="false"` to make it optional. |
+| `next-group-details` | `inquiry-email-template`, `signup-email-template`, `leader-signup-email-template` | **Now actually sent.** They were accepted before but did nothing. Check that the template ids exist on your domain. |
+| `next-group-finder` | `city-postal-code` | Pre-fills and pre-scopes the first search. Visitors can still change it. |
+| `next-subscriptions` | `congregation-id` | Scopes the list and its save to one campus. Publications with **no** congregation stay visible on every campus page. To get a strictly campus-only list, give every publication a congregation. |
+| `next-subscriptions`, `next-profile` | Bulk-email preference | Shown as "Send me general church emails": checked means the member receives email. This replaces legacy's double negative, "Do not send me bulk email messages". It writes the same `Bulk_Email_Opt_Out` field. |
+| `next-plan-your-visit` | `google-maps-api-key` | Address autocomplete. By default it uses your MP `GoogleMapsAPIKey`. That key must allow the **Maps JavaScript API** and **Places**, and must allow your site's origin as a referrer. The same applies to `next-custom-form` and `next-my-household`. |
+| `next-plan-your-visit` | `user-notification-email-template-id` | The visitor's confirmation template. Without it, the congregation's `Plan_A_Visit_Template` applies. |
+| Signed-out auth-only widgets | Sign-in panel | In `dual` / `hardened` mode the panel has a **Sign In** button. **In `legacy` mode it has no button.** It reads "Use the sign-in link on this page", because MPWidgets.js's `<mpp-user-login>` owns sign-in there. Keep that login widget on the page, or use `next-user-menu`. |
+
+### Smaller differences
+
+- **Custom forms no longer ask for Country.** MP's `Form_Responses` has no country column,
+  and the form does not update the contact's address.
+- **My Household shows a member's birthday as month and day** (for example "Mar 4"), not
+  the full date of birth. The full date is still editable in the member form.
+- **MP-authored content is not translated.** See [Widget Languages](#widget-languages).
 
 ## Testing
 

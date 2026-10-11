@@ -1,4 +1,5 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
+import { bindCardSelect, cardLink, CARD_LINK_STYLES } from "../shared/card-link";
 
 interface EventSearchResult {
   id: number;
@@ -44,6 +45,14 @@ export class EventFinderWidget extends MPNextWidget {
   private ministryId = "";
   private monthId = "";
   private signupType = "";
+  /**
+   * "Featured only" (C04). Seeded from the `featured` attribute, then owned by
+   * the Advanced panel's checkbox, so the attribute is a default rather than a
+   * lock: a visitor on a `featured="true"` page can untick it and see the rest.
+   */
+  private featured = false;
+  /** Bumped per search; a response for a superseded search is dropped. */
+  private searchSeq = 0;
 
   static get observedAttributes() {
     return [
@@ -62,25 +71,38 @@ export class EventFinderWidget extends MPNextWidget {
     ];
   }
 
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    // Re-seed and re-search when a filtering attribute changes after first load.
-    if (this.events.length || !this.loading) {
-      this.seedFromAttributes();
-      this.search();
-    }
-  }
+  // No attributeChangedCallback of its own: the base class's default routes
+  // every observed change through `reconfigure()` → `reload()` once painted
+  // (W0 / C39). The old guard (`events.length || !loading`) dropped a change
+  // that arrived while the first search was still in flight.
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
     this.seedFromAttributes();
+    // A filter the page pre-set is shown, not hidden behind "Advanced Search":
+    // otherwise a `featured="true"` page silently narrows the results and the
+    // visitor cannot see why, or how to undo it (C04).
+    this.advancedOpen = this.hasSeededAdvancedFilter();
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish. Free in practice: the fetch lands inside
     // the loading state this widget already paints while it queries the API.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  protected override reload(): void {
+    this.seedFromAttributes();
+    if (this.hasSeededAdvancedFilter()) this.advancedOpen = true;
+    void this.search();
+  }
+
+  private hasSeededAdvancedFilter(): boolean {
+    return Boolean(
+      this.congregationId || this.ministryId || this.monthId || this.signupType || this.featured,
+    );
   }
 
   /** Public hook so demo pages can force a reload. */
@@ -95,6 +117,7 @@ export class EventFinderWidget extends MPNextWidget {
     this.ministryId = this.getAttribute("ministry-id") || "";
     this.monthId = this.getAttribute("month-id") || "";
     this.signupType = this.getAttribute("signup-type") || "";
+    this.featured = this.getAttribute("featured") === "true";
   }
 
   private async init() {
@@ -132,8 +155,7 @@ export class EventFinderWidget extends MPNextWidget {
     if (eventTypeId) params.set("eventTypeId", eventTypeId);
     const programId = this.getAttribute("program-id");
     if (programId) params.set("programId", programId);
-    const featured = this.getAttribute("featured");
-    if (featured === "true") params.set("isFeatured", "true");
+    if (this.featured) params.set("isFeatured", "true");
     const reduceSeriesTo = this.getAttribute("reduce-series-to");
     if (reduceSeriesTo) params.set("reduceSeriesTo", reduceSeriesTo);
 
@@ -142,6 +164,7 @@ export class EventFinderWidget extends MPNextWidget {
   }
 
   private async search() {
+    const seq = ++this.searchSeq;
     this.loading = true;
     this.error = null;
     this.render();
@@ -150,22 +173,22 @@ export class EventFinderWidget extends MPNextWidget {
       const res = await this.fetch(`/api/embed/event-finder${this.buildQuery()}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { events: EventSearchResult[] } = await res.json();
+      if (seq !== this.searchSeq) return;
       this.events = data.events || [];
       this.emit("eventsLoaded", { count: this.events.length });
     } catch (err) {
+      if (seq !== this.searchSeq) return;
       // `errorText` has already turned an API machine code into a translated
       // sentence; anything else (a thrown TypeError from a dropped connection)
       // becomes the generic network message rather than leaking English.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("eventFinderError", { error: this.error });
-    } finally {
-      this.loading = false;
-      this.render();
-      this.attachListeners();
     }
+    this.loading = false;
+    this.render();
   }
 
   // ── Detail link / selection ──
@@ -203,7 +226,6 @@ export class EventFinderWidget extends MPNextWidget {
         this.readFormState();
         this.advancedOpen = !this.advancedOpen;
         this.render();
-        this.attachListeners();
       });
     }
 
@@ -212,14 +234,11 @@ export class EventFinderWidget extends MPNextWidget {
       retry.addEventListener("click", () => this.retryLoad());
     }
 
-    // Card navigation / selection.
-    this.root.querySelectorAll<HTMLElement>("[data-event-id]").forEach((el) => {
-      el.addEventListener("click", () => {
-        const id = Number(el.getAttribute("data-event-id"));
-        this.emit("eventSelected", { eventId: id });
-        const url = this.buildDetailUrl(id);
-        if (url) window.location.href = url;
-      });
+    // Selection only: the card is a real `<a href>` when `target-url` is set
+    // (C05), so the browser does the navigating — Enter, Ctrl/Cmd-click,
+    // middle-click, open-in-new-tab and copy-link all work with no script.
+    bindCardSelect(this.root, "[data-event-id]", (card) => {
+      this.emit("eventSelected", { eventId: Number(card.dataset.eventId) });
     });
   }
 
@@ -234,11 +253,24 @@ export class EventFinderWidget extends MPNextWidget {
     if (month) this.monthId = month.value;
     const signup = this.root.querySelector<HTMLSelectElement>("#ef-signup");
     if (signup) this.signupType = signup.value;
+    const featured = this.root.querySelector<HTMLInputElement>("#ef-featured");
+    if (featured) this.featured = featured.checked;
   }
 
   // ── Render ──
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     this.root.innerHTML = `
       <div class="nw-ef">
         ${this.renderSearchForm()}
@@ -314,6 +346,12 @@ export class EventFinderWidget extends MPNextWidget {
               <option value="2" ${this.signupType === "2" ? "selected" : ""}>${this.escapeHtml(this.t("eventFinder.signupVolunteer"))}</option>
             </select>
           </div>
+          <div class="nw-ef-field nw-ef-field--check">
+            <label class="nw-ef-check" for="ef-featured">
+              <input id="ef-featured" type="checkbox" ${this.featured ? "checked" : ""}>
+              <span>${this.escapeHtml(this.t("eventFinder.featured"))}</span>
+            </label>
+          </div>
         </div>
       </form>`;
   }
@@ -336,16 +374,15 @@ export class EventFinderWidget extends MPNextWidget {
   }
 
   private renderCard(e: EventSearchResult): string {
-    const hasLink = !!this.getAttribute("target-url");
+    const href = this.buildDetailUrl(e.id);
+    const hasLink = href !== null;
     const img = e.imageUrl
       ? `<img class="nw-ef-card-img" src="${this.escapeAttr(e.imageUrl)}" alt="" loading="lazy">`
       : `<div class="nw-ef-card-img nw-ef-card-img--placeholder">${this.calendarSvg()}</div>`;
     const badge = e.featured
       ? `<span class="nw-ef-badge">${this.escapeHtml(this.t("eventFinder.featured"))}</span>`
       : "";
-    // `weekdayShort` matches the pre-i18n shape ("Thu, Sep 10"); C09 tracks
-    // whether these cards should carry the year at all.
-    const dateRange = this.fmt.dateRange(e.startDate, e.endDate, "weekdayShort");
+    const dateRange = this.fmt.dateRange(e.startDate, e.endDate, this.cardDateStyle(e));
     const location = e.location
       ? `<div class="nw-ef-card-loc">${this.escapeHtml(e.location)}</div>`
       : "";
@@ -353,8 +390,7 @@ export class EventFinderWidget extends MPNextWidget {
       ? `<div class="nw-ef-card-desc">${this.escapeHtml(this.truncate(e.description, 160))}</div>`
       : "";
 
-    return `
-      <div class="nw-ef-card" data-event-id="${e.id}" role="${hasLink ? "link" : "article"}" ${hasLink ? 'tabindex="0"' : ""}>
+    const body = `
         <div class="nw-ef-card-imgwrap">${img}${badge}</div>
         <div class="nw-ef-card-body">
           <h3 class="nw-ef-card-title">${this.escapeHtml(e.title)}</h3>
@@ -362,12 +398,30 @@ export class EventFinderWidget extends MPNextWidget {
           ${location}
           ${description}
           ${hasLink ? `<span class="nw-ef-card-cta">${this.escapeHtml(this.t("common.seeDetails"))} &rarr;</span>` : ""}
-        </div>
-      </div>`;
+        </div>`;
+
+    // A real anchor when there is somewhere to go; the `role="article"` div
+    // otherwise (C05, W0 `cardLink`).
+    return cardLink({ href, className: "nw-ef-card", body, attrs: { "data-event-id": e.id } });
   }
 
   // ── Date / text helpers ──
 
+  /**
+   * "Thu, Sep 10" for this year, "Sun, Jan 3, 2027" otherwise (C09).
+   *
+   * The result list is unpaginated and runs ~4 months, so a year boundary
+   * falls inside it about a third of the year; without the year "Sat, Jan 2"
+   * reads as last week. Keeping the common case short is why this is not
+   * always-on. The year is read off MP's wall-clock string, so no time zone
+   * is involved; "this year" is the visitor's clock.
+   */
+  private cardDateStyle(e: EventSearchResult): "weekdayShort" | "weekdayMedium" {
+    const thisYear = String(new Date().getFullYear());
+    const startYear = (e.startDate || "").slice(0, 4);
+    const endYear = (e.endDate || e.startDate || "").slice(0, 4);
+    return startYear === thisYear && endYear === thisYear ? "weekdayShort" : "weekdayMedium";
+  }
 
   private truncate(text: string, max: number): string {
     const clean = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -397,49 +451,52 @@ export class EventFinderWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .nw-ef { max-width: 1024px; margin: 0 auto; }
 
-      .nw-ef-form { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      .nw-ef-search-row { display: flex; gap: 8px; }
-      .nw-ef-input { flex: 1; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; outline: none; }
-      .nw-ef-input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
-      .nw-ef-btn { padding: 10px 20px; background: #004C97; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
-      .nw-ef-btn:hover { background: #002855; }
-      .nw-ef-advanced-link { display: inline-block; margin-top: 12px; font-size: 13px; color: #004C97; text-decoration: none; cursor: pointer; font-weight: 600; }
+      .nw-ef-form { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-4); margin-bottom: var(--_nw-space-5); box-shadow: var(--_nw-shadow); }
+      .nw-ef-search-row { display: flex; gap: var(--_nw-space-2); }
+      .nw-ef-input { flex: 1; padding: 10px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); outline: none; }
+      .nw-ef-input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
+      .nw-ef-btn { padding: 10px var(--_nw-space-5); background: var(--_nw-button-bg); color: var(--_nw-button-fg); border: none; border-radius: var(--_nw-button-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+      .nw-ef-btn:hover { background: var(--_nw-button-bg-hover); }
+      .nw-ef-advanced-link { display: inline-block; margin-top: var(--_nw-space-3); font-size: 13px; color: var(--_nw-color-primary); text-decoration: none; cursor: pointer; font-weight: 600; }
       .nw-ef-advanced-link:hover { text-decoration: underline; }
-      .nw-ef-advanced { margin-top: 16px; gap: 12px; grid-template-columns: repeat(2, 1fr); }
-      .nw-ef-field { display: flex; flex-direction: column; gap: 4px; }
-      .nw-ef-field label { font-size: 12px; font-weight: 600; color: #6b7280; }
-      .nw-ef-select { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; background: white; outline: none; cursor: pointer; }
-      .nw-ef-select:focus { border-color: #004C97; }
+      .nw-ef-advanced { margin-top: var(--_nw-space-4); gap: var(--_nw-space-3); grid-template-columns: repeat(2, 1fr); }
+      .nw-ef-field { display: flex; flex-direction: column; gap: var(--_nw-space-1); }
+      .nw-ef-field label { font-size: 12px; font-weight: 600; color: var(--_nw-color-muted); }
+      .nw-ef-select { padding: 9px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); background: var(--_nw-color-surface); outline: none; cursor: pointer; }
+      .nw-ef-select:focus { border-color: var(--_nw-color-primary); }
+      .nw-ef-field--check { justify-content: flex-end; }
+      .nw-ef-field label.nw-ef-check { display: inline-flex; align-items: center; gap: var(--_nw-space-2); padding: 9px 0; font-size: var(--_nw-font-size-base); font-weight: 600; color: var(--_nw-color-text); cursor: pointer; }
+      .nw-ef-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--_nw-color-primary); cursor: pointer; }
 
-      .nw-ef-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-      .nw-ef-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: border-color 0.15s, box-shadow 0.15s; }
-      .nw-ef-card[role="link"] { cursor: pointer; }
-      .nw-ef-card[role="link"]:hover { border-color: #004C97; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
-      .nw-ef-card[role="link"]:focus-visible { outline: 2px solid #004C97; outline-offset: 2px; }
+      .nw-ef-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--_nw-space-4); }
+      .nw-ef-card { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--_nw-shadow); transition: border-color 0.15s, box-shadow 0.15s; }
+      a.nw-ef-card { cursor: pointer; }
+      a.nw-ef-card:hover { border-color: var(--_nw-color-primary); box-shadow: var(--_nw-shadow-hover); }
       .nw-ef-card-imgwrap { position: relative; }
       .nw-ef-card-img { width: 100%; height: 160px; object-fit: cover; display: block; }
-      .nw-ef-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: #f3f4f6; color: #9ca3af; }
-      .nw-ef-badge { position: absolute; top: 10px; left: 10px; background: #F1BE48; color: #2D2926; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.03em; }
-      .nw-ef-card-body { padding: 16px; display: flex; flex-direction: column; flex: 1; }
-      .nw-ef-card-title { font-size: 16px; font-weight: 700; color: #002855; margin: 0 0 6px; }
-      .nw-ef-card-date { font-size: 13px; color: #004C97; font-weight: 600; margin-bottom: 4px; }
-      .nw-ef-card-loc { font-size: 13px; color: #6b7280; margin-bottom: 8px; }
-      .nw-ef-card-desc { font-size: 13px; color: #474747; line-height: 1.5; flex: 1; }
-      .nw-ef-card-cta { margin-top: 12px; font-size: 13px; font-weight: 600; color: #004C97; }
+      .nw-ef-card-img--placeholder { display: flex; align-items: center; justify-content: center; background: var(--_nw-color-surface-muted); color: #9ca3af; }
+      .nw-ef-badge { position: absolute; top: 10px; left: 10px; background: var(--_nw-color-accent); color: var(--_nw-color-text); font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.03em; }
+      .nw-ef-card-body { padding: var(--_nw-space-4); display: flex; flex-direction: column; flex: 1; }
+      .nw-ef-card-title { font-size: 16px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: 0 0 6px; }
+      .nw-ef-card-date { font-size: 13px; color: var(--_nw-color-primary); font-weight: 600; margin-bottom: var(--_nw-space-1); }
+      .nw-ef-card-loc { font-size: 13px; color: var(--_nw-color-muted); margin-bottom: var(--_nw-space-2); }
+      .nw-ef-card-desc { font-size: 13px; color: var(--_nw-color-text-subtle); line-height: var(--_nw-line-height); flex: 1; }
+      .nw-ef-card-cta { margin-top: var(--_nw-space-3); font-size: 13px; font-weight: 600; color: var(--_nw-color-primary); }
 
-      .nw-ef-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; font-size: 15px; flex-direction: column; text-align: center; }
-      .nw-ef-spinner { animation: nw-ef-spin 1s linear infinite; color: #004C97; }
+      .nw-ef-state { display: flex; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 48px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; flex-direction: column; text-align: center; }
+      .nw-ef-spinner { animation: nw-ef-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes nw-ef-spin { to { transform: rotate(360deg); } }
-      .nw-ef-error p { color: #b91c1c; margin: 0; }
+      .nw-ef-error p { color: var(--_nw-color-error-text); margin: 0; }
 
       @media (max-width: 1024px) { .nw-ef-grid { grid-template-columns: repeat(2, 1fr); } }
       @media (max-width: 640px) {
         .nw-ef-grid { grid-template-columns: 1fr; }
         .nw-ef-advanced { grid-template-columns: 1fr; }
       }
+      ${CARD_LINK_STYLES}
     `;
   }
 }

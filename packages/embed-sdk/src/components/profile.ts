@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -52,8 +52,31 @@ interface ProfileLookups {
   maritalStatuses: LookupOption[];
 }
 
+/**
+ * Formats a plausible US phone as 999-999-9999 and returns anything else
+ * untouched. Only digits and phone punctuation qualify, with 10 digits (or 11
+ * with a leading country code 1), so "+1 (321) 794-1376" becomes
+ * "321-794-1376" while "ZZTEST-abc" or "321-794-1376 x204" are left for the
+ * validator to reject visibly. Never destroys input (C51).
+ */
+export function normalizePhone(raw: string): string {
+  const value = raw.trim();
+  if (!/^[\d\s().+-]+$/.test(value)) return raw;
+  let digits = value.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) digits = digits.slice(1);
+  if (digits.length !== 10) return raw;
+  return [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6)].join("-");
+}
+
+/** True when the form value differs from the number MP holds. */
+export function phoneChanged(value: string, stored: string | null): boolean {
+  return value.trim() !== (stored ?? "").trim();
+}
+
 export class ProfileWidget extends MPNextWidget {
   private loading = true;
+  /** Signed out: a prompt with Sign In, never the Try Again error state (C53). */
+  private needsAuth = false;
   private saving = false;
   private savingPassword = false;
   private error: string | null = null;
@@ -71,7 +94,8 @@ export class ProfileWidget extends MPNextWidget {
   private uploadingPhoto = false;
 
   connectedCallback() {
-    this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
+    // The shared sign-in sheet goes first so this widget's own button classes win.
+    this.injectStyles(SIGN_IN_REQUIRED_STYLES + this.getStyles() + FORM_VALIDATION_STYLES);
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish; the fetch hides inside the loading state
     // this widget paints anyway while it queries the API.
@@ -79,10 +103,25 @@ export class ProfileWidget extends MPNextWidget {
       this.render();
       this.loadProfile();
     });
+    document.addEventListener("bulkEmailChanged", this.onBulkEmailChanged);
   }
+
+  /**
+   * C55: `next-subscriptions` writes the same `Bulk_Email_Opt_Out`. Follow it in
+   * place (no re-render, so an edit in progress elsewhere on the form survives),
+   * and keep the loaded value in step so the next save does not revert it.
+   */
+  private onBulkEmailChanged = (e: Event) => {
+    const value = (e as CustomEvent).detail?.bulkEmailOptOut;
+    if (typeof value !== "boolean" || !this.profile) return;
+    this.profile.Bulk_Email_Opt_Out = value;
+    const box = this.root.querySelector<HTMLInputElement>("#bulk-email-opt-in");
+    if (box) box.checked = !value;
+  };
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    document.removeEventListener("bulkEmailChanged", this.onBulkEmailChanged);
     if (this.successTimer) clearTimeout(this.successTimer);
     if (this.passwordSuccessTimer) clearTimeout(this.passwordSuccessTimer);
     if (this.photoUrl) URL.revokeObjectURL(this.photoUrl);
@@ -90,14 +129,21 @@ export class ProfileWidget extends MPNextWidget {
 
   private async loadProfile() {
     this.loading = true;
+    this.needsAuth = false;
     this.error = null;
     this.render();
 
     try {
       const res = await this.fetch("/api/embed/profile");
+      if (this.isNeedsAuth(res)) {
+        this.loading = false;
+        this.needsAuth = true;
+        this.render();
+        return;
+      }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body));
+        throw new WidgetError(this.errorText(body));
       }
       const data = await res.json();
       this.profile = data.profile;
@@ -112,7 +158,7 @@ export class ProfileWidget extends MPNextWidget {
       this.loading = false;
       // `errorText` has already translated an API code; anything else (a
       // dropped connection) becomes the generic network message.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.render();
       this.emit("profileError", { error: this.error });
     }
@@ -165,7 +211,7 @@ export class ProfileWidget extends MPNextWidget {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
 
       this.uploadingPhoto = false;
@@ -174,7 +220,7 @@ export class ProfileWidget extends MPNextWidget {
     } catch (err) {
       this.uploadingPhoto = false;
       this.error =
-        err instanceof Error ? err.message : this.t("errors.saveFailed");
+        this.caughtText(err, "errors.saveFailed");
       this.render();
     }
   }
@@ -189,6 +235,16 @@ export class ProfileWidget extends MPNextWidget {
           <div class="nw-spinner"></div>
           <p>${this.esc(this.t("profile.loading"))}</p>
         </div>`;
+      if (!this.root.querySelector(".nw-profile")) this.root.appendChild(container);
+      return;
+    }
+
+    if (this.needsAuth) {
+      container.innerHTML = this.renderSignInRequired({
+        subject: "profile",
+        message: this.t("profile.signInPrompt"),
+        buttonClass: "nw-btn nw-btn-primary",
+      });
       if (!this.root.querySelector(".nw-profile")) this.root.appendChild(container);
       return;
     }
@@ -237,7 +293,7 @@ export class ProfileWidget extends MPNextWidget {
           <button type="button" class="nw-photo-btn" ${this.uploadingPhoto ? "disabled" : ""}>
             ${this.uploadingPhoto
               ? '<span class="nw-spinner-sm"></span>'
-              : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2D2926" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>'}
+              : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="stroke: var(--_nw-color-text);" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>'}
           </button>
           <input type="file" class="nw-photo-input" accept="image/jpeg,image/png,image/gif,image/webp" />
         </div>
@@ -366,8 +422,8 @@ export class ProfileWidget extends MPNextWidget {
                 </div>
               </label>
               <label class="nw-checkbox-label">
-                <input type="checkbox" id="bulk-email-opt-out" ${p.Bulk_Email_Opt_Out ? "checked" : ""} />
-                <span>${this.esc(this.t("profile.bulkEmailOptOut"))}</span>
+                <input type="checkbox" id="bulk-email-opt-in" ${p.Bulk_Email_Opt_Out ? "" : "checked"} />
+                <span>${this.esc(this.t("subscriptions.sendBulkEmail"))}</span>
               </label>
             </div>
           </div>
@@ -450,8 +506,14 @@ export class ProfileWidget extends MPNextWidget {
       photoInput.value = "";
     });
 
+    // Normalise on blur, never on input: rewriting the live value per keystroke
+    // is what turned "ZZTEST-abc" into "" and then into a silent delete (C51).
     this.root.querySelectorAll("[data-phone]").forEach((input) => {
-      input.addEventListener("input", (e) => this.formatPhone(e.target as HTMLInputElement));
+      input.addEventListener("blur", (e) => {
+        const el = e.target as HTMLInputElement;
+        const next = normalizePhone(el.value);
+        if (next !== el.value) el.value = next;
+      });
     });
 
     this.root.querySelectorAll(".nw-eye-btn").forEach((btn) => {
@@ -508,16 +570,24 @@ export class ProfileWidget extends MPNextWidget {
       Middle_Name: getValue("Middle_Name") || null,
       Nickname: getValue("Nickname") || null,
       Email_Address: email,
-      Mobile_Phone: getValue("Mobile_Phone") || null,
-      Company_Phone: getValue("Company_Phone") || null,
       Do_Not_Text: !getChecked("sms-opt-in"),
-      Bulk_Email_Opt_Out: getChecked("bulk-email-opt-out"),
+      // Phrased positively (C55): checked = receives bulk email = not opted out.
+      Bulk_Email_Opt_Out: !getChecked("bulk-email-opt-in"),
       Prefix_ID: prefixId ? Number(prefixId) : null,
       Suffix_ID: suffixId ? Number(suffixId) : null,
       Gender_ID: genderId ? Number(genderId) : null,
       Marital_Status_ID: maritalStatusId ? Number(maritalStatusId) : null,
       Date_of_Birth: dateOfBirth,
     };
+
+    // A phone is sent only when the visitor changed it. An unchanged field is
+    // omitted, so the server leaves the stored number alone even if it is in a
+    // format this form would not accept; a field the visitor emptied on purpose
+    // is the one way to send `null` (C51).
+    for (const id of ["Mobile_Phone", "Company_Phone"] as const) {
+      const value = getValue(id);
+      if (phoneChanged(value, this.profile?.[id] ?? null)) body[id] = value || null;
+    }
 
     this.saving = true;
     this.render();
@@ -532,7 +602,7 @@ export class ProfileWidget extends MPNextWidget {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
 
       if (this.profile) {
@@ -552,7 +622,7 @@ export class ProfileWidget extends MPNextWidget {
     } catch (err) {
       this.saving = false;
       this.error =
-        err instanceof Error ? err.message : this.t("errors.saveFailed");
+        this.caughtText(err, "errors.saveFailed");
       this.render();
       this.emit("profileError", { error: this.error });
     }
@@ -586,7 +656,7 @@ export class ProfileWidget extends MPNextWidget {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
 
       this.savingPassword = false;
@@ -607,21 +677,9 @@ export class ProfileWidget extends MPNextWidget {
     } catch (err) {
       this.savingPassword = false;
       this.passwordError =
-        err instanceof Error ? err.message : this.t("errors.saveFailed");
+        this.caughtText(err, "errors.saveFailed");
       this.render();
       this.emit("passwordError", { error: this.passwordError });
-    }
-  }
-
-  private formatPhone(input: HTMLInputElement) {
-    let digits = input.value.replace(/\D/g, "");
-    if (digits.length > 10) digits = digits.slice(0, 10);
-    if (digits.length >= 7) {
-      input.value = `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
-    } else if (digits.length >= 4) {
-      input.value = `${digits.slice(0, 3)}-${digits.slice(3)}`;
-    } else {
-      input.value = digits;
     }
   }
 
@@ -641,10 +699,16 @@ export class ProfileWidget extends MPNextWidget {
           v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
             ? this.t("validation.email")
             : null,
+        // Only a value the visitor changed is checked: a stored number in some
+        // other format must not block saving the rest of the profile.
         Mobile_Phone: (v: string) =>
-          v && !phoneRegex.test(v) ? this.t("profile.phoneFormat") : null,
+          v && phoneChanged(v, this.profile?.Mobile_Phone ?? null) && !phoneRegex.test(v)
+            ? this.t("profile.phoneFormat")
+            : null,
         Company_Phone: (v: string) =>
-          v && !phoneRegex.test(v) ? this.t("profile.phoneFormat") : null,
+          v && phoneChanged(v, this.profile?.Company_Phone ?? null) && !phoneRegex.test(v)
+            ? this.t("profile.phoneFormat")
+            : null,
       },
     };
   }
@@ -683,10 +747,10 @@ export class ProfileWidget extends MPNextWidget {
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-        color: #2D2926;
-        font-size: 14px;
-        line-height: 1.5;
+        font-family: var(--_nw-font-family);
+        color: var(--_nw-color-text);
+        font-size: var(--_nw-font-size-base);
+        line-height: var(--_nw-line-height);
       }
 
       *, *::before, *::after { box-sizing: border-box; }
@@ -699,9 +763,9 @@ export class ProfileWidget extends MPNextWidget {
       .nw-photo-section {
         display: flex;
         align-items: center;
-        gap: 20px;
-        margin-bottom: 24px;
-        padding-bottom: 24px;
+        gap: var(--_nw-space-5);
+        margin-bottom: var(--_nw-space-6);
+        padding-bottom: var(--_nw-space-6);
         border-bottom: 1px solid #E0E0E0;
       }
       .nw-photo-wrap {
@@ -725,7 +789,7 @@ export class ProfileWidget extends MPNextWidget {
         width: 110px;
         height: 110px;
         border-radius: 50%;
-        background: #f3f4f6;
+        background: var(--_nw-color-surface-muted);
         border: 3px solid #E0E0E0;
         display: flex;
         align-items: center;
@@ -739,8 +803,8 @@ export class ProfileWidget extends MPNextWidget {
         width: 32px;
         height: 32px;
         border-radius: 50%;
-        background: white;
-        border: 2px solid #004C97;
+        background: var(--_nw-color-surface);
+        border: 2px solid var(--_nw-color-primary);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -748,21 +812,21 @@ export class ProfileWidget extends MPNextWidget {
         padding: 0;
         transition: border-color 0.15s, background 0.15s;
       }
-      .nw-photo-btn:hover:not(:disabled) { background: #f3f4f6; }
+      .nw-photo-btn:hover:not(:disabled) { background: var(--_nw-color-surface-muted); }
       .nw-photo-btn:disabled { opacity: 0.65; cursor: not-allowed; }
       .nw-photo-input { display: none; }
       .nw-photo-text { flex: 1; }
       .nw-photo-greeting {
         font-size: 22px;
         font-weight: 800;
-        color: #2D2926;
+        color: var(--_nw-color-text);
         line-height: 1.3;
       }
       .nw-photo-subtext {
         font-size: 13px;
-        color: #474747;
-        margin: 8px 0 0 0;
-        line-height: 1.5;
+        color: var(--_nw-color-text-subtle);
+        margin: var(--_nw-space-2) 0 0 0;
+        line-height: var(--_nw-line-height);
       }
       .nw-hidden { display: none !important; }
 
@@ -770,17 +834,17 @@ export class ProfileWidget extends MPNextWidget {
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 48px 16px;
+        padding: 48px var(--_nw-space-4);
         color: #9E9E9E;
       }
       .nw-spinner {
         width: 32px;
         height: 32px;
         border: 3px solid #E0E0E0;
-        border-top-color: #004C97;
+        border-top-color: var(--_nw-color-primary);
         border-radius: 50%;
         animation: nw-spin 0.8s linear infinite;
-        margin-bottom: 12px;
+        margin-bottom: var(--_nw-space-3);
       }
       .nw-spinner-sm {
         display: inline-block;
@@ -800,32 +864,32 @@ export class ProfileWidget extends MPNextWidget {
         padding: 32px;
         color: #991b1b;
         background: #fee2e2;
-        border-radius: 8px;
+        border-radius: var(--_nw-radius);
       }
-      .nw-error-box button { margin-top: 12px; }
+      .nw-error-box button { margin-top: var(--_nw-space-3); }
 
       .nw-toast {
         padding: 10px 14px;
         border-radius: 6px;
         font-size: 13px;
         font-weight: 500;
-        margin-bottom: 16px;
+        margin-bottom: var(--_nw-space-4);
       }
       .nw-toast-success {
         background: #ecfdf5;
         color: #065f46;
-        border: 1px solid #86AD3F;
+        border: var(--_nw-border-width) solid var(--_nw-color-success);
       }
       .nw-toast-error {
         background: #fef2f2;
         color: #991b1b;
-        border: 1px solid #FF6D6A;
+        border: var(--_nw-border-width) solid var(--_nw-color-error);
       }
 
       .nw-section {
         border: none;
         padding: 0;
-        margin: 0 0 24px 0;
+        margin: 0 0 var(--_nw-space-6) 0;
       }
       .nw-section-label {
         display: block;
@@ -834,8 +898,8 @@ export class ProfileWidget extends MPNextWidget {
         letter-spacing: 0.08em;
         text-transform: uppercase;
         color: #9E9E9E;
-        margin-bottom: 12px;
-        padding-bottom: 8px;
+        margin-bottom: var(--_nw-space-3);
+        padding-bottom: var(--_nw-space-2);
         border-bottom: 1px solid #E0E0E0;
       }
 
@@ -856,8 +920,8 @@ export class ProfileWidget extends MPNextWidget {
         display: block;
         font-size: 12px;
         font-weight: 600;
-        color: #474747;
-        margin-bottom: 4px;
+        color: var(--_nw-color-text-subtle);
+        margin-bottom: var(--_nw-space-1);
       }
       .nw-field input[type="text"],
       .nw-field input[type="email"],
@@ -865,31 +929,31 @@ export class ProfileWidget extends MPNextWidget {
       .nw-field input[type="password"],
       .nw-field select {
         width: 100%;
-        padding: 8px 10px;
-        border: 1px solid #d1d5db;
+        padding: var(--_nw-space-2) 10px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border-strong);
         border-radius: 6px;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-family: inherit;
-        color: #2D2926;
-        background: white;
+        color: var(--_nw-color-text);
+        background: var(--_nw-color-surface);
         transition: border-color 0.15s;
       }
       .nw-field input:focus,
       .nw-field select:focus {
         outline: none;
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
         box-shadow: 0 0 0 2px rgba(0, 76, 151, 0.15);
       }
       .nw-field-error {
         display: block;
         font-size: 12px;
-        color: #FF6D6A;
+        color: var(--_nw-color-error);
         margin-top: 3px;
       }
 
       .nw-dob-row {
         display: flex;
-        gap: 8px;
+        gap: var(--_nw-space-2);
       }
       .nw-dob-row select { flex: 1; }
       .nw-field-dob { grid-column: 1 / -1; }
@@ -897,16 +961,16 @@ export class ProfileWidget extends MPNextWidget {
       .nw-checkbox-label {
         display: flex !important;
         align-items: flex-start;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         font-weight: 400 !important;
-        font-size: 14px !important;
-        color: #2D2926 !important;
+        font-size: var(--_nw-font-size-base) !important;
+        color: var(--_nw-color-text) !important;
         cursor: pointer;
       }
       .nw-checkbox-label input[type="checkbox"] {
         width: 16px;
         height: 16px;
-        accent-color: #004C97;
+        accent-color: var(--_nw-color-primary);
         flex-shrink: 0;
         margin-top: 2px;
       }
@@ -924,7 +988,7 @@ export class ProfileWidget extends MPNextWidget {
       .nw-comm-header {
         font-size: 12px;
         font-weight: 700;
-        color: #474747;
+        color: var(--_nw-color-text-subtle);
         margin-bottom: 2px;
       }
 
@@ -933,18 +997,18 @@ export class ProfileWidget extends MPNextWidget {
       }
       .nw-password-wrap input {
         width: 100%;
-        padding: 8px 40px 8px 10px;
-        border: 1px solid #d1d5db;
+        padding: var(--_nw-space-2) 40px var(--_nw-space-2) 10px;
+        border: var(--_nw-border-width) solid var(--_nw-color-border-strong);
         border-radius: 6px;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-family: inherit;
-        color: #2D2926;
-        background: white;
+        color: var(--_nw-color-text);
+        background: var(--_nw-color-surface);
         transition: border-color 0.15s;
       }
       .nw-password-wrap input:focus {
         outline: none;
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
         box-shadow: 0 0 0 2px rgba(0, 76, 151, 0.15);
       }
       .nw-eye-btn {
@@ -956,21 +1020,21 @@ export class ProfileWidget extends MPNextWidget {
         border: none;
         cursor: pointer;
         color: #9E9E9E;
-        padding: 4px;
+        padding: var(--_nw-space-1);
         display: flex;
         align-items: center;
       }
-      .nw-eye-btn:hover { color: #474747; }
+      .nw-eye-btn:hover { color: var(--_nw-color-text-subtle); }
 
       .nw-actions {
-        padding-top: 8px;
-        margin-bottom: 24px;
+        padding-top: var(--_nw-space-2);
+        margin-bottom: var(--_nw-space-6);
       }
       .nw-btn {
-        padding: 10px 24px;
+        padding: 10px var(--_nw-space-6);
         border: none;
         border-radius: 6px;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
         font-family: inherit;
         cursor: pointer;
@@ -981,10 +1045,10 @@ export class ProfileWidget extends MPNextWidget {
         cursor: not-allowed;
       }
       .nw-btn-primary {
-        background: #004C97;
-        color: white;
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
       }
-      .nw-btn-primary:hover:not(:disabled) { background: #002855; }
+      .nw-btn-primary:hover:not(:disabled) { background: var(--_nw-button-bg-hover); }
     `;
   }
 }

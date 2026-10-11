@@ -130,6 +130,11 @@ export const events = {
     participants: "Participants",
     registration: "Registration",
     openInMinistryPlatform: "Open in Ministry Platform",
+    /** C02: month-scoped empty state. `{month}` is the formatted month and year. */
+    noEventsInMonth: "No events in {month}.",
+    /** C02: `cards-scope="rolling"` empty state and toolbar title. */
+    noUpcomingEvents: "No upcoming events.",
+    upcomingTitle: "Upcoming events",
   },
 
   addToCalendar: {

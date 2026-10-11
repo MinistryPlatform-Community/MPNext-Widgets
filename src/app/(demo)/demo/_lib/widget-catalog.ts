@@ -212,7 +212,7 @@ const extras: Record<string, WidgetExtras> = {
   "my-household": {
     controls: [
       {
-        name: "hideAddHouseholdMember", label: "Add Member Button", type: "select", attribute: "hideaddhouseholdmember",
+        name: "hideAddHouseholdMember", label: "Add Member Button", type: "select", attribute: "hide-add-household-member",
         options: [
           { label: "Show", value: "false" },
           { label: "Hide", value: "true" },
@@ -273,7 +273,7 @@ const extras: Record<string, WidgetExtras> = {
   "my-groups": {
     controls: [
       {
-        name: "hideGroupLife", label: "Group Life Link", type: "select", attribute: "hidegrouplife",
+        name: "hideGroupLife", label: "Group Life Link", type: "select", attribute: "hide-group-life",
         options: [
           { label: "Show", value: "false" },
           { label: "Hide", value: "true" },
@@ -293,7 +293,24 @@ const extras: Record<string, WidgetExtras> = {
   },
 
   "my-contribution-statement": {
-    implementationCode: `<next-my-contribution-statement></next-my-contribution-statement>`,
+    attributes: { "show-paperless-toggle": "true", "my-giving-url": "/demo/my-giving" },
+    controls: [
+      { name: "myGivingUrl", label: "My Giving URL", type: "text", attribute: "my-giving-url", placeholder: "/demo/my-giving" },
+      {
+        name: "showPaperlessToggle", label: "Go Paperless toggle", type: "select", attribute: "show-paperless-toggle",
+        options: [
+          { label: "Shown", value: "true" },
+          { label: "Hidden", value: "false" },
+        ],
+        defaultValue: "true",
+      },
+    ],
+    implementationCode: `<!-- Replacing mpp-my-contribution-statement? Legacy carried the
+     Go Paperless toggle too; show-paperless-toggle embeds it (C38). -->
+<next-my-contribution-statement
+  show-paperless-toggle="true"
+  my-giving-url="/my-giving"
+></next-my-contribution-statement>`,
   },
 
   "statement-preferences": {
@@ -303,7 +320,7 @@ const extras: Record<string, WidgetExtras> = {
   "my-giving": {
     controls: [
       {
-        name: "hideSoftCredits", label: "Soft Credits", type: "select", attribute: "hidesoftcredits",
+        name: "hideSoftCredits", label: "Soft Credits", type: "select", attribute: "hide-soft-credits",
         options: [
           { label: "Show", value: "false" },
           { label: "Hide", value: "true" },
@@ -317,15 +334,18 @@ const extras: Record<string, WidgetExtras> = {
   "my-pledges": {
     controls: [
       {
-        name: "hideCancelButton", label: "Cancel Button", type: "select", attribute: "hidecancelbuttonpledge",
+        name: "hideCancelButton", label: "Cancel Button", type: "select", attribute: "hide-cancel-button-pledge",
         options: [
-          { label: "Hidden", value: "true" },
           { label: "Shown", value: "false" },
+          { label: "Hidden", value: "true" },
         ],
-        defaultValue: "true",
+        defaultValue: "false",
       },
     ],
-    implementationCode: `<next-my-pledges hidecancelbuttonpledge="true"></next-my-pledges>`,
+    implementationCode: `<!-- Cancel Pledge shows on Active pledges by default (legacy parity, C31).
+     hide-cancel-button-pledge="true" hides it; cancel-pledge-email-template
+     is the dp_Communications ID of the cancellation confirmation email. -->
+<next-my-pledges></next-my-pledges>`,
   },
 
   "pledge-campaign": {

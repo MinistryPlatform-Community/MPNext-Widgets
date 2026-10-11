@@ -1,4 +1,10 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import {
+  GIVING_SIGNED_OUT_STYLES,
+  HEADING_RESET_STYLES,
+  givingSignedOut,
+  headingTag,
+} from "./giving-shared";
 
 interface Pledge {
   pledgeId: number;
@@ -20,20 +26,58 @@ export class MyPledgesWidget extends MPNextWidget {
   private pledges: Pledge[] = [];
   private loading = true;
   private error: string | null = null;
+  /** Signed out is a state, not an error (C30 / CROSS-1). */
+  private signedOut = false;
   private confirmingCancelId: number | null = null;
   private cancelingId: number | null = null;
   private message: { type: "success" | "error"; text: string } | null = null;
 
+  /** C79: the legacy flat spellings are read (with a one-time warning) for one release. */
+  static readonly attributeAliases = {
+    "hide-cancel-button-pledge": "hidecancelbuttonpledge",
+    "cancel-pledge-email-template": "cancelpledgeemailtemplate",
+  };
+
   static get observedAttributes() {
-    return ["hidecancelbuttonpledge", "cancelpledgeemailtemplate"];
+    return [
+      "hide-cancel-button-pledge",
+      "cancel-pledge-email-template",
+      "heading-level",
+      ...Object.values(this.attributeAliases),
+    ];
   }
 
+  /**
+   * C31: hidden **only** when explicitly `"true"`, matching legacy
+   * (`getAttribute("hidecancelbuttonpledge") || false`). The old default hid
+   * the feature on every bare `<next-my-pledges>` embed — the exact shape of
+   * the copy-paste snippet — so every migrated site silently lost self-service
+   * cancel.
+   */
   private get hideCancelButton(): boolean {
-    return (this.getAttribute("hidecancelbuttonpledge") || "true").toLowerCase() !== "false";
+    return (this.readAttr("hide-cancel-button-pledge") || "false").toLowerCase() === "true";
+  }
+
+  /** The no-template warning is a host-developer signal: once per element. */
+  private warnedNoCancelTemplate = false;
+
+  /**
+   * Cancel is offered with no `cancel-pledge-email-template` configured, so the
+   * cancellation goes through with no confirmation email (legacy sent none at
+   * all). Say so once in the console so the host notices, rather than silently.
+   */
+  private warnIfNoCancelTemplate(): void {
+    if (this.warnedNoCancelTemplate || this.hideCancelButton) return;
+    if (this.cancelEmailTemplateId !== undefined) return;
+    if (!this.pledges.some((p) => p.pledgeStatus === "Active")) return;
+    this.warnedNoCancelTemplate = true;
+    console.warn(
+      "[mpnext] <next-my-pledges> offers Cancel Pledge but has no cancel-pledge-email-template; cancellations will send no confirmation email.",
+    );
   }
 
   private get cancelEmailTemplateId(): number | undefined {
-    const raw = this.getAttribute("cancelpledgeemailtemplate");
+    const raw = this.readAttr("cancel-pledge-email-template");
     if (!raw) return undefined;
     const parsed = parseInt(raw, 10);
     return isNaN(parsed) ? undefined : parsed;
@@ -45,14 +89,20 @@ export class MyPledgesWidget extends MPNextWidget {
     // sees English swap to Spanish.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.loadPledges();
     });
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue !== null && oldValue !== newValue) {
-      this.loadPledges();
-    }
+  /**
+   * An observed attribute changed after the first paint (C39; the base class's
+   * `attributeChangedCallback` routes here). Every attribute this widget reads
+   * only changes how already-loaded pledges are drawn, so a re-render is
+   * enough; a load still in flight reads them when it lands.
+   */
+  protected override reload(): void {
+    if (this.loading) return;
+    this.render();
   }
 
   public retryLoad() {
@@ -63,25 +113,33 @@ export class MyPledgesWidget extends MPNextWidget {
   private async loadPledges() {
     this.loading = true;
     this.error = null;
+    this.signedOut = false;
     this.render();
 
     try {
       const res = await this.fetch("/api/embed/my-pledges");
+      if (this.isNeedsAuth(res)) {
+        // An anonymous visitor: offer sign-in, never "Unable to Load" + a
+        // Try Again that can only fail again. A 401 reaching a signed-in
+        // visitor is not this state and falls through to the error.
+        this.signedOut = true;
+        this.pledges = [];
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { pledges: Pledge[] } = await res.json();
       this.pledges = data.pledges || [];
       this.emit("pledgesLoaded", { count: this.pledges.length });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("pledgeError", { error: this.error });
     } finally {
       this.loading = false;
       this.confirmingCancelId = null;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -89,7 +147,6 @@ export class MyPledgesWidget extends MPNextWidget {
     this.cancelingId = pledgeId;
     this.message = null;
     this.render();
-    this.attachListeners();
 
     try {
       const body: {
@@ -108,7 +165,7 @@ export class MyPledgesWidget extends MPNextWidget {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
 
       const data: { pledges: Pledge[] } = await res.json();
@@ -116,7 +173,7 @@ export class MyPledgesWidget extends MPNextWidget {
       this.message = { type: "success", text: this.t("myPledges.canceled") };
       this.emit("pledgeCanceled", { pledgeId });
     } catch (err) {
-      const errorText = err instanceof Error ? err.message : this.t("errors.network");
+      const errorText = this.caughtText(err, "errors.network");
       this.message = {
         type: "error",
         text: this.t("myPledges.cancelFailed"),
@@ -126,7 +183,6 @@ export class MyPledgesWidget extends MPNextWidget {
       this.cancelingId = null;
       this.confirmingCancelId = null;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -144,7 +200,6 @@ export class MyPledgesWidget extends MPNextWidget {
           this.confirmingCancelId = id;
           this.message = null;
           this.render();
-          this.attachListeners();
         }
       });
     });
@@ -154,7 +209,6 @@ export class MyPledgesWidget extends MPNextWidget {
       btn.addEventListener("click", () => {
         this.confirmingCancelId = null;
         this.render();
-        this.attachListeners();
       });
     });
 
@@ -168,7 +222,18 @@ export class MyPledgesWidget extends MPNextWidget {
     });
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.loading) {
       this.root.innerHTML = `
         <div class="nw-pledges">
@@ -177,6 +242,25 @@ export class MyPledgesWidget extends MPNextWidget {
               ${this.spinnerSvg()}
               <span>${this.escapeHtml(this.t("myPledges.loading"))}</span>
             </div>
+          </div>
+        </div>`;
+      return;
+    }
+
+    if (this.signedOut) {
+      this.root.innerHTML = `
+        <div class="nw-pledges">
+          <div class="header">
+            <${this.h(0)} class="title">${this.escapeHtml(this.t("myPledges.title"))}</${this.h(0)}>
+          </div>
+          <div class="body">
+            ${givingSignedOut(
+              this.renderSignInRequired({
+                subject: "my-pledges",
+                message: this.t("myPledges.signInPrompt"),
+              }),
+              2,
+            )}
           </div>
         </div>`;
       return;
@@ -197,6 +281,7 @@ export class MyPledgesWidget extends MPNextWidget {
     }
 
     this.root.innerHTML = this.renderMain();
+    this.warnIfNoCancelTemplate();
   }
 
   private renderMain(): string {
@@ -208,7 +293,7 @@ export class MyPledgesWidget extends MPNextWidget {
     return `
       <div class="nw-pledges">
         <div class="header">
-          <div class="title">${this.escapeHtml(this.t("myPledges.title"))}</div>
+          <${this.h(0)} class="title">${this.escapeHtml(this.t("myPledges.title"))}</${this.h(0)}>
         </div>
         <div class="body">
           ${this.message
@@ -273,12 +358,14 @@ export class MyPledgesWidget extends MPNextWidget {
           ${media}
           <div class="pledge-card-head">
             <span class="badge ${statusClass}">${this.escapeHtml(statusLabel)}</span>
-            <div class="pledge-name">${this.escapeHtml(p.campaignName)}</div>
-            ${showOwner ? `<div class="pledge-owner">${this.escapeHtml(owner)}</div>` : ""}
+            <${this.h(1)} class="pledge-name">${this.escapeHtml(p.campaignName)}</${this.h(1)}>
+            ${showOwner ? `<${this.h(2)} class="pledge-owner">${this.escapeHtml(owner)}</${this.h(2)}>` : ""}
           </div>
         </div>
         <div class="progress-section">
-          <div class="progress-track">
+          <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+            aria-valuenow="${pct}" aria-valuetext="${this.escapeAttr(barText)}"
+            aria-label="${this.escapeAttr(p.campaignName)}">
             <div class="progress-fill" style="width:${pct}%"></div>
           </div>
           <div class="progress-text">${this.escapeHtml(barText)}</div>
@@ -340,7 +427,7 @@ export class MyPledgesWidget extends MPNextWidget {
   }
 
   private heartSvg(): string {
-    return `<svg viewBox="0 0 24 24" fill="#004C97" class="heart-icon" role="img" aria-label="${this.escapeAttr(this.t("myPledges.iconLabel"))}">
+    return `<svg viewBox="0 0 24 24" class="heart-icon" role="img" aria-label="${this.escapeAttr(this.t("myPledges.iconLabel"))}">
       <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
     </svg>`;
   }
@@ -352,45 +439,50 @@ export class MyPledgesWidget extends MPNextWidget {
     </svg>`;
   }
 
+  /** Heading tag `offset` levels below this widget's `heading-level` (C35). */
+  private h(offset = 0): string {
+    return headingTag(this.getAttribute("heading-level"), offset);
+  }
+
   private getStyles(): string {
-    return `
+    return `${HEADING_RESET_STYLES}${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-pledges {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
+        background: var(--_nw-color-surface);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .header {
-        background: #002855;
-        color: white;
-        padding: 24px;
+        background: var(--_nw-color-secondary);
+        color: var(--_nw-color-on-primary);
+        padding: var(--_nw-space-6);
       }
       .title {
         font-size: 24px;
         font-weight: bold;
         text-align: center;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
       }
       .subtitle {
         text-align: center;
         opacity: 0.8;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         margin: 0;
       }
       .loading-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         font-size: 18px;
       }
 
@@ -404,14 +496,14 @@ export class MyPledgesWidget extends MPNextWidget {
       }
 
       .body {
-        padding: 20px;
+        padding: var(--_nw-space-5);
       }
 
       .message {
-        margin-bottom: 16px;
+        margin-bottom: var(--_nw-space-4);
         padding: 10px 14px;
-        border-radius: 8px;
-        font-size: 14px;
+        border-radius: var(--_nw-radius);
+        font-size: var(--_nw-font-size-base);
       }
       .message--success {
         background: rgba(134, 173, 63, 0.15);
@@ -420,28 +512,28 @@ export class MyPledgesWidget extends MPNextWidget {
       }
       .message--error {
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
         border: 1px solid rgba(255, 109, 106, 0.4);
       }
 
       .empty-state {
         text-align: center;
-        padding: 40px 20px;
+        padding: 40px var(--_nw-space-5);
         color: #9E9E9E;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
       }
 
       .pledge-grid {
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: var(--_nw-space-4);
       }
 
       .pledge-card {
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 16px;
-        background: white;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius-lg);
+        padding: var(--_nw-space-4);
+        background: var(--_nw-color-surface);
       }
       .pledge-card-top {
         display: flex;
@@ -454,7 +546,7 @@ export class MyPledgesWidget extends MPNextWidget {
         border-radius: 10px;
         object-fit: cover;
         flex-shrink: 0;
-        background: #f3f4f6;
+        background: var(--_nw-color-surface-muted);
       }
       .pledge-image--placeholder {
         display: flex;
@@ -465,6 +557,7 @@ export class MyPledgesWidget extends MPNextWidget {
       .heart-icon {
         width: 32px;
         height: 32px;
+        fill: var(--_nw-color-primary);
       }
       .pledge-card-head {
         flex: 1;
@@ -472,8 +565,8 @@ export class MyPledgesWidget extends MPNextWidget {
       }
       .pledge-name {
         font-size: 16px;
-        font-weight: 700;
-        color: #002855;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
         margin-top: 6px;
         line-height: 1.3;
       }
@@ -500,34 +593,34 @@ export class MyPledgesWidget extends MPNextWidget {
       }
       .badge-completed {
         background: rgba(0, 76, 151, 0.12);
-        color: #004C97;
+        color: var(--_nw-color-primary);
       }
       .badge-discontinued {
         background: rgba(255, 109, 106, 0.15);
-        color: #b91c1c;
+        color: var(--_nw-color-error-text);
       }
       .badge-pending {
         background: rgba(241, 190, 72, 0.2);
         color: #92700c;
       }
       .badge-default {
-        background: #f3f4f6;
-        color: #474747;
+        background: var(--_nw-color-surface-muted);
+        color: var(--_nw-color-text-subtle);
       }
 
       .progress-section {
-        margin-top: 16px;
+        margin-top: var(--_nw-space-4);
       }
       .progress-track {
         width: 100%;
         height: 12px;
-        background: #f3f4f6;
+        background: var(--_nw-color-surface-muted);
         border-radius: 9999px;
         overflow: hidden;
       }
       .progress-fill {
         height: 100%;
-        background: #004C97;
+        background: var(--_nw-color-primary);
         border-radius: 9999px;
         transition: width 0.3s ease;
       }
@@ -535,33 +628,33 @@ export class MyPledgesWidget extends MPNextWidget {
         margin-top: 6px;
         font-size: 13px;
         font-weight: 600;
-        color: #002855;
+        color: var(--_nw-color-secondary);
       }
 
       .pledge-desc {
-        margin-top: 12px;
+        margin-top: var(--_nw-space-3);
         font-size: 13px;
         color: rgba(45, 41, 38, 0.7);
       }
 
       .cancel-area {
-        margin-top: 16px;
+        margin-top: var(--_nw-space-4);
         padding-top: 14px;
         border-top: 1px solid #f3f4f6;
       }
       .cancel-confirm {
-        margin-top: 16px;
+        margin-top: var(--_nw-space-4);
         padding: 14px;
         border-top: 1px solid #f3f4f6;
         background: rgba(255, 109, 106, 0.06);
-        border-radius: 8px;
+        border-radius: var(--_nw-radius);
       }
       .cancel-confirm-text {
         display: block;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
-        color: #2D2926;
-        margin-bottom: 12px;
+        color: var(--_nw-color-text);
+        margin-bottom: var(--_nw-space-3);
       }
       .cancel-confirm-actions {
         display: flex;
@@ -573,11 +666,11 @@ export class MyPledgesWidget extends MPNextWidget {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
+        gap: var(--_nw-space-2);
         padding: 9px 18px;
         font-size: 13px;
         font-weight: 600;
-        border-radius: 8px;
+        border-radius: var(--_nw-radius);
         cursor: pointer;
         font-family: inherit;
         transition: all 0.15s;
@@ -587,15 +680,15 @@ export class MyPledgesWidget extends MPNextWidget {
         cursor: not-allowed;
       }
       .cancel-btn--request {
-        background: white;
-        color: #b91c1c;
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-error-text);
         border: 1px solid rgba(255, 109, 106, 0.6);
       }
       .cancel-btn--request:hover {
         background: rgba(255, 109, 106, 0.1);
       }
       .cancel-btn--danger {
-        background: #FF6D6A;
+        background: var(--_nw-color-error);
         color: white;
         border: none;
       }
@@ -607,42 +700,42 @@ export class MyPledgesWidget extends MPNextWidget {
         height: 14px;
       }
       .cancel-btn--ghost {
-        background: white;
-        color: #004C97;
-        border: 1px solid #e5e7eb;
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-primary);
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
       }
       .cancel-btn--ghost:hover:not(:disabled) {
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
         background: rgba(0, 76, 151, 0.04);
       }
 
       .retry-section {
-        padding: 20px;
+        padding: var(--_nw-space-5);
         text-align: center;
       }
       .retry-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .retry-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       @media (max-width: 640px) {
         .header, .body {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .pledge-card-top {
-          gap: 12px;
+          gap: var(--_nw-space-3);
         }
         .pledge-image {
           width: 52px;

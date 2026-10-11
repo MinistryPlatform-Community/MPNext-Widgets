@@ -2,6 +2,9 @@ import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv, getEnvOptional } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { CustomFormService } from "@/services/customFormService";
+import { getContactBasics } from "@/services/_shared/household-contact";
+import { MessageTemplateService } from "@/services/messageTemplateService";
+import { sqlLiteral } from "@/services/_shared/mp-lookup";
 import type { OpportunityDetail, OpportunityContact } from "@mpnext/types";
 
 /**
@@ -22,7 +25,7 @@ import type { OpportunityDetail, OpportunityContact } from "@mpnext/types";
 
 interface OpportunityRow {
   Id: number | string | null;
-  ImageUrl: string | null;
+  ImageGuid: string | null;
   NoImageText: string | null;
   Title: string | null;
   Description: string | null;
@@ -34,7 +37,7 @@ interface OpportunityRow {
   ContactLastName: string | null;
   ContactEmail: string | null;
   ContactPhone: string | null;
-  ContactImageUrl: string | null;
+  ContactImageGuid: string | null;
   MeetingDay: string | null;
   StartDate: string | null;
   RequiredGender: string | null;
@@ -71,6 +74,11 @@ export interface RespondArgs {
   phone: string;
   message: string;
   userId: number | null;
+  /**
+   * `response-email-template`: a `dp_Communications` id sent to the responder
+   * once the response is saved. Best-effort; null sends nothing.
+   */
+  responseTemplateId?: number | null;
 }
 
 export class OpportunityDetailsService {
@@ -107,7 +115,19 @@ export class OpportunityDetailsService {
     // avoid ambiguous-column errors.
     return [
       "Opportunities.Opportunity_ID AS Id",
-      `'${this.imageBaseUrl}' + CONVERT(varchar(40), dp_FileUniqueID) AS ImageUrl`,
+      // File GUIDs, not URLs: the absolute image URLs are built in JS
+      // (imageUrl()). Inlining the base URL here as a SQL string expression,
+      // twice, put the query string past IIS's 2048-char maxQueryString once
+      // the base URL reached ~215 chars, which MP answers with an HTML 404
+      // (the C50 pattern; onlineDirectoryService made the same change).
+      // Unqualified on purpose, and verified live (read-only, 2026-10-11): MP
+      // resolves the bare `dp_FileUniqueID` pseudo-column to the base table
+      // even with `_Table` joins in the select. Opportunity 3 returned
+      // ImageGuid null beside a non-null ContactImageGuid, and Contacts 98
+      // with a Household join returned its own file GUID. Note that it
+      // cannot be qualified in a $filter (`Opportunities.dp_FileUniqueID`
+      // is "Invalid column name"); it is a $select-only pseudo-column.
+      "dp_FileUniqueID AS ImageGuid",
       "Group_Role_ID_Table.Role_Title AS NoImageText",
       "Opportunity_Title AS Title",
       "Opportunities.Description AS Description",
@@ -119,7 +139,7 @@ export class OpportunityDetailsService {
       "Contact_Person_Table.Last_Name AS ContactLastName",
       "Contact_Person_Table.Email_Address AS ContactEmail",
       "Contact_Person_Table.Company_Phone AS ContactPhone",
-      `CASE WHEN Contact_Person_Table.dp_FileUniqueID IS NULL THEN '' ELSE '${this.imageBaseUrl}' + CONVERT(varchar(40), Contact_Person_Table.dp_FileUniqueID) END AS ContactImageUrl`,
+      "Contact_Person_Table.dp_FileUniqueID AS ContactImageGuid",
       "ISNULL(DATENAME(dw, Opportunity_Date), 'Ongoing') AS MeetingDay",
       "Opportunity_Date AS StartDate",
       "Required_Gender_Table.Gender AS RequiredGender",
@@ -133,7 +153,18 @@ export class OpportunityDetailsService {
     ].join(", ");
   }
 
-  public async getOpportunityById(opportunityId: number): Promise<OpportunityDetail> {
+  /**
+   * One opportunity.
+   *
+   * `showFullAddress` (C65) is legacy `showfulladdress`: a privacy switch, off
+   * by default. Off, the street lines and postal code are **withheld here**,
+   * not merely left unpainted, and only "City, State" reaches the browser.
+   * Serving locations are often a volunteer's home or a shelter.
+   */
+  public async getOpportunityById(
+    opportunityId: number,
+    opts: { showFullAddress?: boolean } = {}
+  ): Promise<OpportunityDetail> {
     const tz = DomainTimezoneService.getInstance();
     const now = await tz.toMpSqlDatetime(new Date().toISOString());
 
@@ -156,7 +187,8 @@ export class OpportunityDetailsService {
       maximumNeeded == null ? null : Math.max(0, maximumNeeded - numberOfResponses);
 
     const addressId = toNumberOrNull(row.AddressId);
-    const address = addressId != null ? await this.getAddressLine(addressId) : null;
+    const address =
+      addressId != null ? await this.getAddressLine(addressId, !!opts.showFullAddress) : null;
 
     const minimumAgeNum = toNumberOrNull(row.MinimumAge);
     const minimumAge = minimumAgeNum != null ? `Age ${minimumAgeNum}+` : null;
@@ -165,7 +197,7 @@ export class OpportunityDetailsService {
       id: Number(row.Id),
       title: String(row.Title ?? ""),
       description: row.Description ?? null,
-      imageUrl: row.ImageUrl || null,
+      imageUrl: this.imageUrl(row.ImageGuid),
       location: row.Location ?? null,
       address,
       // MP returns wall-clock datetimes; pass through verbatim (no Z-shift).
@@ -198,10 +230,16 @@ export class OpportunityDetailsService {
     return [
       {
         displayName,
-        imageUrl: row.ContactImageUrl || null,
+        imageUrl: this.imageUrl(row.ContactImageGuid),
         emailAddress: row.ContactEmail ?? null,
       },
     ];
+  }
+
+  /** `<base>/files/<guid>` for an MP file GUID, or null when there is no file. */
+  private imageUrl(guid: string | null): string | null {
+    const id = (guid ?? "").trim();
+    return id ? `${this.imageBaseUrl}${id}` : null;
   }
 
   private async getResponseCount(opportunityId: number): Promise<number> {
@@ -218,7 +256,7 @@ export class OpportunityDetailsService {
     }
   }
 
-  private async getAddressLine(addressId: number): Promise<string | null> {
+  private async getAddressLine(addressId: number, full: boolean): Promise<string | null> {
     try {
       const rows = await this.mp!.getTableRecords<AddressRow>({
         table: "Addresses",
@@ -231,6 +269,13 @@ export class OpportunityDetailsService {
       });
       const a = rows[0];
       if (!a) return null;
+      if (!full) {
+        // Coarse form only: no street lines, no postal code (C65).
+        const coarse = [a.City, a["State/Region"]]
+          .filter((p): p is string => p != null && String(p).trim().length > 0)
+          .join(", ");
+        return coarse || null;
+      }
       const cityStateZip = [a.City ? `${a.City},` : null, a["State/Region"], a.Postal_Code]
         .filter((p) => p != null && String(p).trim().length > 0)
         .join(" ")
@@ -239,7 +284,11 @@ export class OpportunityDetailsService {
         (p): p is string => p != null && String(p).trim().length > 0
       );
       return parts.length > 0 ? parts.join(", ") : null;
-    } catch {
+    } catch (err) {
+      console.error(
+        "OpportunityDetailsService: address read failed; no address will show:",
+        err instanceof Error ? err.message : err
+      );
       return null;
     }
   }
@@ -272,15 +321,26 @@ export class OpportunityDetailsService {
     const contactId = await this.resolveContactId(args);
     const participantId = await this.resolveParticipantId(contactId, args.userId);
 
+    // C21: `Responses.First_Name/Last_Name/Email/Phone` are what MP's response
+    // views, the notification template and church reports merge from. When the
+    // caller responded *as* a household member (`args.contactId`, verified by
+    // the route), the widget hides the typed fields, so back-fill them from the
+    // contact's own record. The record wins over anything typed: the client
+    // only knows the member's display name, and accepting its email for a
+    // contact picked from a list would let a caller write any address they like.
+    const basics = args.contactId ? await getContactBasics(contactId, this.mp!) : null;
+    const pick = (fromRecord: string | null | undefined, typed: string) =>
+      fromRecord || typed || null;
+
     const tz = DomainTimezoneService.getInstance();
     const now = await tz.toMpSqlDatetime(new Date().toISOString());
 
     const record: Record<string, unknown> = {
       Response_Date: now,
-      First_Name: args.firstName || null,
-      Last_Name: args.lastName || null,
-      Phone: args.phone || null,
-      Email: args.email || null,
+      First_Name: pick(basics?.firstName, args.firstName),
+      Last_Name: pick(basics?.lastName, args.lastName),
+      Phone: pick(basics?.phone, args.phone),
+      Email: pick(basics?.email, args.email),
       Comments: args.message || null,
       Opportunity_ID: args.opportunityId,
       Participant_ID: participantId,
@@ -299,7 +359,58 @@ export class OpportunityDetailsService {
     if (!responseId) {
       throw new Error("Unable to save your response.");
     }
+
+    if (args.responseTemplateId) {
+      await this.sendResponseEmail(args.responseTemplateId, record, opportunity.title);
+    }
     return responseId;
+  }
+
+  /**
+   * Send the `response-email-template` to the responder (W4 bonus, same class
+   * as C11: the attribute was posted as `UseEmailTemplate` and nobody read it).
+   *
+   * Goes to the address stored on the `Responses` row, so for a picked
+   * household member it is their own record's email (C21), never one the
+   * client typed for them. Best-effort and logged: the response is already
+   * saved, and a church's template misconfiguration must not turn a
+   * successful sign-up into an error for the volunteer.
+   *
+   * Merge tokens: MP's column-style names plus the `mpp_*` names this repo's
+   * other templates use, so a template written for either convention fills.
+   */
+  private async sendResponseEmail(
+    templateId: number,
+    record: Record<string, unknown>,
+    opportunityTitle: string
+  ): Promise<void> {
+    const email = typeof record.Email === "string" ? record.Email : "";
+    if (!email) return;
+    const first = typeof record.First_Name === "string" ? record.First_Name : "";
+    const last = typeof record.Last_Name === "string" ? record.Last_Name : "";
+    const comments = typeof record.Comments === "string" ? record.Comments : "";
+    try {
+      const templates = await MessageTemplateService.getInstance();
+      await templates.sendMessageTemplate(
+        templateId,
+        { email, name: [first, last].filter(Boolean).join(" ") },
+        {
+          First_Name: first,
+          Last_Name: last,
+          Opportunity_Title: opportunityTitle,
+          Comments: comments,
+          mpp_contact_first_name: first,
+          mpp_contact_last_name: last,
+          mpp_opportunity_title: opportunityTitle,
+          mpp_response_comments: comments,
+        }
+      );
+    } catch (err) {
+      console.error(
+        "OpportunityDetailsService: response email failed:",
+        err instanceof Error ? err.message : err
+      );
+    }
   }
 
   /** Save a submitted custom-form response (best-effort; never blocks respond). */
@@ -313,16 +424,19 @@ export class OpportunityDetailsService {
       const forms = await CustomFormService.getInstance();
       const answers = forms.extractAnswers(payload);
       if (answers.length === 0) return;
+      // Same back-fill as the Responses row (C21/C26): a picked member's own
+      // record, the typed values only where it has none.
+      const basics = contactId ? await getContactBasics(contactId, this.mp!) : null;
       await forms.saveFormResponse({
         formId,
         contactId,
         ipAddress,
         answers,
         contact: {
-          firstName: payload.FirstName,
-          lastName: payload.LastName,
-          email: payload.EmailAddress,
-          phone: payload.MobilePhoneNumber,
+          firstName: basics?.firstName || payload.FirstName,
+          lastName: basics?.lastName || payload.LastName,
+          email: basics?.email || payload.EmailAddress,
+          phone: basics?.phone || payload.MobilePhoneNumber,
         },
       });
     } catch (err) {
@@ -411,6 +525,6 @@ export class OpportunityDetailsService {
   }
 
   private sqlEscape(value: string): string {
-    return (value ?? "").replace(/'/g, "''").trim();
+    return sqlLiteral((value ?? "").trim());
   }
 }

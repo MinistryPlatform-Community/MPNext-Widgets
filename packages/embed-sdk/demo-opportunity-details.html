@@ -92,6 +92,9 @@
 &lt;!-- Or pin a specific opportunity --&gt;
 &lt;next-opportunity-details opportunity-id="123" return-url="/serve/opportunities"&gt;&lt;/next-opportunity-details&gt;
 
+&lt;!-- The street address is withheld (only "City, State" is sent) unless you opt in --&gt;
+&lt;next-opportunity-details show-full-address="true"&gt;&lt;/next-opportunity-details&gt;
+
 &lt;!-- Listen to events --&gt;
 &lt;script&gt;
   const widget = document.querySelector("next-opportunity-details");

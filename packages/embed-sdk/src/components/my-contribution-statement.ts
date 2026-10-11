@@ -1,4 +1,13 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { escapeAttr } from "../shared/html";
+import {
+  GIVING_SIGNED_OUT_STYLES,
+  HEADING_RESET_STYLES,
+  givingSignedOut,
+  headingTag,
+} from "./giving-shared";
+// C38: the Go Paperless control is this element, nested (`show-paperless-toggle`).
+import "./statement-preferences";
 
 interface ContributionStatement {
   Statement_ID: number;
@@ -18,7 +27,17 @@ export class MyContributionStatementWidget extends MPNextWidget {
   private groups: ContributionStatementGroup[] = [];
   private loading = true;
   private error: string | null = null;
+  /** Signed out is a state, not an error (C30 / CROSS-1). */
+  private signedOut = false;
   private selectedYear: Record<string, number> = {};
+  /** Companies whose statement is being fetched (C34). */
+  private downloading = new Set<string>();
+  /** A statement URL to offer as a link when the browser blocked the new tab (C34). */
+  private fallbackLinks: Record<string, string> = {};
+
+  static get observedAttributes() {
+    return ["heading-level", "show-paperless-toggle", "my-giving-url"];
+  }
 
   connectedCallback() {
     this.injectStyles(this.getStyles());
@@ -26,8 +45,19 @@ export class MyContributionStatementWidget extends MPNextWidget {
     // sees English swap to Spanish.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.loadStatements();
     });
+  }
+
+  /**
+   * An observed attribute changed after the first paint (C39 convention). Every
+   * attribute this widget reads only changes how loaded data is drawn, so a
+   * re-render is enough; a load still in flight reads them when it lands.
+   */
+  protected override reload(): void {
+    if (this.loading) return;
+    this.render();
   }
 
   public retryLoad() {
@@ -38,13 +68,22 @@ export class MyContributionStatementWidget extends MPNextWidget {
   private async loadStatements() {
     this.loading = true;
     this.error = null;
+    this.signedOut = false;
     this.render();
 
     try {
       const res = await this.fetch("/api/embed/contribution-statements");
+      if (this.isNeedsAuth(res)) {
+        // An anonymous visitor: offer sign-in, never "Unable to Load" + a
+        // Try Again that can only fail again. A 401 reaching a signed-in
+        // visitor is not this state and falls through to the error.
+        this.signedOut = true;
+        this.groups = [];
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { groups: ContributionStatementGroup[] } = await res.json();
       this.groups = data.groups || [];
@@ -62,12 +101,11 @@ export class MyContributionStatementWidget extends MPNextWidget {
 
       this.emit("statementsLoaded", { count: total });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("statementError", { error: this.error });
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -85,7 +123,6 @@ export class MyContributionStatementWidget extends MPNextWidget {
         if (company && year) {
           this.selectedYear[company] = year;
           this.render();
-          this.attachListeners();
         }
       });
     });
@@ -99,24 +136,164 @@ export class MyContributionStatementWidget extends MPNextWidget {
     });
   }
 
-  private downloadStatement(company: string) {
+  /**
+   * "Save as PDF" saves a file (C34) rather than opening a tab.
+   *
+   * The statement lives on MP's file host, a different origin, where a plain
+   * `<a download>` is ignored by browsers (they navigate instead — this tab,
+   * away from the church's page). So the file is fetched as a blob and saved
+   * through a same-origin `blob:` URL, which `download` does honour, under the
+   * statement's own `File_Name` rather than a GUID.
+   *
+   * If MP's file host refuses the cross-origin read (no CORS), fall back to
+   * opening the statement in a new tab — legacy-adjacent and still the right
+   * file. That open happens after an `await`, outside the click's user
+   * gesture, so a popup blocker may stop it; when it does, the widget renders
+   * a real link the donor can press themselves instead of failing silently.
+   */
+  private async downloadStatement(company: string) {
     const group = this.groups.find((g) => g.Accounting_Company_Name === company);
     if (!group) return;
     const year = this.selectedYear[company];
     const statement = group.statements.find((s) => s.Statement_Year === year);
-    if (!statement) return;
+    if (!statement || this.downloading.has(company)) return;
 
-    window.open(statement.Download_Url, "_blank", "noopener");
+    this.downloading.add(company);
+    delete this.fallbackLinks[company];
+    this.setDownloadBusy(company, true);
+    let method: "download" | "tab" | "link" = "download";
+    try {
+      const res = await fetch(statement.Download_Url, { credentials: "omit", mode: "cors" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      this.saveBlob(await res.blob(), this.fileName(statement));
+    } catch {
+      const tab = window.open(statement.Download_Url, "_blank");
+      if (tab) {
+        tab.opener = null;
+        method = "tab";
+      } else {
+        method = "link";
+        this.fallbackLinks[company] = statement.Download_Url;
+      }
+    } finally {
+      this.downloading.delete(company);
+      this.render();
+    }
+
     this.emit("statementDownloaded", {
       statementId: statement.Statement_ID,
       year: statement.Statement_Year,
       accountingCompany: company,
+      method,
     });
   }
 
-  render() {
+  /** The statement's own name, with its extension when MP stored it apart. */
+  private fileName(s: ContributionStatement): string {
+    const name = (s.File_Name || "").trim() || `${s.Statement_Year}`;
+    const ext = (s.Extension || "").trim();
+    if (!ext || name.toLowerCase().endsWith(ext.toLowerCase())) return name;
+    return `${name}${ext.startsWith(".") ? "" : "."}${ext}`;
+  }
+
+  private saveBlob(blob: Blob, name: string): void {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.rel = "noopener";
+    a.style.display = "none";
+    this.root.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoke on the next task: some browsers start the save asynchronously.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  private setDownloadBusy(company: string, busy: boolean): void {
+    this.root
+      .querySelectorAll<HTMLButtonElement>('[data-action="download"]')
+      .forEach((btn) => {
+        if (btn.dataset.company === company) btn.disabled = busy;
+      });
+  }
+
+  /**
+   * Paint the widget. The shadow root holds two regions: the statements card,
+   * which is re-rendered freely, and — when `show-paperless-toggle` is set — a
+   * persistent `<next-statement-preferences>` beneath it (C38). Keeping that
+   * element out of the re-rendered region means a year click does not destroy
+   * it, refetch the preference, or drop its "updated" message.
+   */
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
+    this.ensureLayout();
+    this.mainEl!.innerHTML = this.renderMainHtml();
+    this.syncPaperless();
+  }
+
+  private mainEl: HTMLDivElement | null = null;
+  private extrasEl: HTMLDivElement | null = null;
+  private prefsEl: HTMLElement | null = null;
+
+  private ensureLayout(): void {
+    if (this.mainEl?.parentNode === this.root && this.extrasEl?.parentNode === this.root) return;
+    this.mainEl = document.createElement("div");
+    this.mainEl.className = "nw-main";
+    this.extrasEl = document.createElement("div");
+    this.extrasEl.className = "nw-extras";
+    this.root.append(this.mainEl, this.extrasEl);
+  }
+
+  /** `show-paperless-toggle` (C38): opt-in, any value but "false" turns it on. */
+  private get showPaperlessToggle(): boolean {
+    const raw = this.getAttribute("show-paperless-toggle");
+    return raw !== null && raw.trim().toLowerCase() !== "false";
+  }
+
+  /**
+   * C38: embed the Go Paperless control by **reusing** `next-statement-preferences`
+   * — the element itself, not a copy of its logic — so `Statement_Method_ID` is
+   * read and written by exactly one implementation (the one that reads it
+   * correctly, unlike legacy). It follows this widget's locale and heading level,
+   * and is hidden while this widget is loading, signed out or in error, so a
+   * signed-out visitor sees one sign-in prompt, not two.
+   */
+  private syncPaperless(): void {
+    const extras = this.extrasEl!;
+    if (!this.showPaperlessToggle) {
+      this.prefsEl?.remove();
+      this.prefsEl = null;
+      extras.hidden = true;
+      return;
+    }
+    if (!this.prefsEl) {
+      const el = document.createElement("next-statement-preferences");
+      if (this.apiHost) el.setAttribute("api-host", this.apiHost);
+      this.prefsEl = el;
+      extras.appendChild(el);
+    }
+    const el = this.prefsEl;
+    const level = this.getAttribute("heading-level");
+    if (level === null) el.removeAttribute("heading-level");
+    else if (el.getAttribute("heading-level") !== level) el.setAttribute("heading-level", level);
+    if (el.getAttribute("lang") !== this.locale) el.setAttribute("lang", this.locale);
+    extras.hidden = this.loading || this.signedOut || this.error !== null;
+  }
+
+  private renderMainHtml(): string {
     if (this.loading) {
-      this.root.innerHTML = `
+      return `
         <div class="nw-statements">
           <div class="header">
             <div class="loading-row">
@@ -125,11 +302,28 @@ export class MyContributionStatementWidget extends MPNextWidget {
             </div>
           </div>
         </div>`;
-      return;
+    }
+
+    if (this.signedOut) {
+      return `
+        <div class="nw-statements">
+          <div class="header">
+            <${this.h(0)} class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</${this.h(0)}>
+          </div>
+          <div class="list-body">
+            ${givingSignedOut(
+              this.renderSignInRequired({
+                subject: "my-contribution-statement",
+                message: this.t("contributionStatement.signInPrompt"),
+              }),
+              2,
+            )}
+          </div>
+        </div>`;
     }
 
     if (this.error) {
-      this.root.innerHTML = `
+      return `
         <div class="nw-statements">
           <div class="header">
             <div class="title">${this.escapeHtml(this.t("common.unableToLoad"))}</div>
@@ -139,31 +333,30 @@ export class MyContributionStatementWidget extends MPNextWidget {
             <button class="retry-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>
           </div>
         </div>`;
-      return;
     }
 
     const hasStatements = this.groups.some((g) => g.statements.length > 0);
     if (!hasStatements) {
-      this.root.innerHTML = `
+      return `
         <div class="nw-statements">
           <div class="header">
-            <div class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</div>
+            <${this.h(0)} class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</${this.h(0)}>
           </div>
           <div class="list-body">
             <div class="empty-state">${this.escapeHtml(this.t("contributionStatement.empty"))}</div>
           </div>
+          ${this.renderMyGivingLink()}
         </div>`;
-      return;
     }
 
-    this.root.innerHTML = this.renderList();
+    return this.renderList();
   }
 
   private renderList(): string {
     return `
       <div class="nw-statements">
         <div class="header">
-          <div class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</div>
+          <${this.h(0)} class="title">${this.escapeHtml(this.t("contributionStatement.title"))}</${this.h(0)}>
         </div>
         <div class="list-body">
           ${this.groups
@@ -171,7 +364,32 @@ export class MyContributionStatementWidget extends MPNextWidget {
             .map((g) => this.renderGroup(g))
             .join("")}
         </div>
+        ${this.renderMyGivingLink()}
       </div>`;
+  }
+
+  /**
+   * `my-giving-url` (C62): where the page hosting `next-my-giving` lives, so a
+   * member reading a per-year statement is one click from the gifts behind it.
+   * Legacy's only option (`mygivingwidgettargeturl`), deliberately not copied
+   * in spelling. Absent, empty, or not an http(s)/relative URL → no link at
+   * all, so nothing changes for hosts that do not set it.
+   */
+  private get myGivingUrl(): string | null {
+    const raw = (this.getAttribute("my-giving-url") || "").trim();
+    if (!raw || ["null", "undefined", "#"].includes(raw.toLowerCase())) return null;
+    try {
+      const resolved = new URL(raw, window.location.href);
+      return resolved.protocol === "http:" || resolved.protocol === "https:" ? raw : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private renderMyGivingLink(): string {
+    const url = this.myGivingUrl;
+    if (!url) return "";
+    return `<div class="footer-links"><a class="my-giving-link" href="${escapeAttr(url)}">${this.escapeHtml(this.t("contributionStatement.myGivingLink"))}</a></div>`;
   }
 
   private renderGroup(group: ContributionStatementGroup): string {
@@ -183,7 +401,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
 
     return `
       <div class="company-section">
-        <div class="company-name">${this.escapeHtml(company)}</div>
+        <${this.h(1)} class="company-name">${this.escapeHtml(company)}</${this.h(1)}>
         <div class="year-label">${this.escapeHtml(this.t("contributionStatement.selectYear"))}</div>
         <div class="year-row">
           ${years
@@ -191,7 +409,7 @@ export class MyContributionStatementWidget extends MPNextWidget {
               (year) => `
             <button
               class="year-btn ${year === selected ? "year-btn--active" : ""}"
-              data-year-company="${this.escapeHtml(company)}"
+              data-year-company="${escapeAttr(company)}"
               data-year="${year}">
               ${year}
             </button>`
@@ -199,11 +417,21 @@ export class MyContributionStatementWidget extends MPNextWidget {
             .join("")}
         </div>
         <div class="download-section">
-          <button class="download-btn" data-action="download" data-company="${this.escapeHtml(company)}">
+          <button class="download-btn" data-action="download" data-company="${escapeAttr(company)}" ${this.downloading.has(company) ? "disabled" : ""}>
             ${this.escapeHtml(this.t("contributionStatement.savePdf"))}
           </button>
+          ${this.renderFallbackLink(group)}
         </div>
       </div>`;
+  }
+
+  /** C34: the manual link, shown only for the selected year's statement. */
+  private renderFallbackLink(group: ContributionStatementGroup): string {
+    const company = group.Accounting_Company_Name;
+    const url = this.fallbackLinks[company];
+    const current = group.statements.find((s) => s.Statement_Year === this.selectedYear[company]);
+    if (!url || !current || current.Download_Url !== url || !/^https?:/i.test(url)) return "";
+    return `<p class="download-fallback" role="status">${this.escapeHtml(this.t("contributionStatement.popupBlocked"))} <a href="${escapeAttr(url)}" target="_blank" rel="noopener">${this.escapeHtml(this.t("contributionStatement.openStatement"))}</a></p>`;
   }
 
   private escapeHtml(text: string): string {
@@ -219,45 +447,50 @@ export class MyContributionStatementWidget extends MPNextWidget {
     </svg>`;
   }
 
+  /** Heading tag `offset` levels below this widget's `heading-level` (C35). */
+  private h(offset = 0): string {
+    return headingTag(this.getAttribute("heading-level"), offset);
+  }
+
   private getStyles(): string {
-    return `
+    return `${HEADING_RESET_STYLES}${SIGN_IN_REQUIRED_STYLES}${GIVING_SIGNED_OUT_STYLES}
       :host {
         all: initial;
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-family: var(--_nw-font-family);
       }
 
       .nw-statements {
         max-width: 800px;
         margin: 0 auto;
-        background: white;
+        background: var(--_nw-color-surface);
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .header {
-        background: #002855;
-        color: white;
-        padding: 24px;
+        background: var(--_nw-color-secondary);
+        color: var(--_nw-color-on-primary);
+        padding: var(--_nw-space-6);
       }
       .title {
         font-size: 24px;
         font-weight: bold;
         text-align: center;
-        margin-bottom: 4px;
+        margin-bottom: var(--_nw-space-1);
       }
       .subtitle {
         text-align: center;
         opacity: 0.8;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         margin: 0;
       }
       .loading-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--_nw-space-3);
         font-size: 18px;
       }
 
@@ -270,32 +503,40 @@ export class MyContributionStatementWidget extends MPNextWidget {
         to { transform: rotate(360deg); }
       }
 
+      .nw-extras {
+        display: block;
+        margin-top: var(--_nw-space-4);
+      }
+      .nw-extras[hidden] {
+        display: none;
+      }
+
       .list-body {
-        padding: 20px;
+        padding: var(--_nw-space-5);
       }
 
       .empty-state {
         text-align: center;
-        padding: 40px 20px;
+        padding: 40px var(--_nw-space-5);
         color: #9E9E9E;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
       }
 
       .company-section {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 16px;
-        border-left: 3px solid #F1BE48;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
+        border-radius: var(--_nw-radius);
+        padding: var(--_nw-space-5);
+        margin-bottom: var(--_nw-space-4);
+        border-left: 3px solid var(--_nw-color-accent);
       }
       .company-section:last-child {
         margin-bottom: 0;
       }
       .company-name {
         font-size: 18px;
-        font-weight: 700;
-        color: #002855;
-        margin-bottom: 16px;
+        font-weight: var(--_nw-font-weight-heading);
+        color: var(--_nw-color-secondary);
+        margin-bottom: var(--_nw-space-4);
       }
       .year-label {
         font-size: 12px;
@@ -303,88 +544,119 @@ export class MyContributionStatementWidget extends MPNextWidget {
         color: rgba(45, 41, 38, 0.7);
         text-transform: uppercase;
         letter-spacing: 0.03em;
-        margin-bottom: 8px;
+        margin-bottom: var(--_nw-space-2);
       }
       .year-row {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 20px;
+        gap: var(--_nw-space-2);
+        margin-bottom: var(--_nw-space-5);
       }
       .year-btn {
-        padding: 8px 18px;
-        background: white;
-        color: #004C97;
-        font-size: 14px;
+        padding: var(--_nw-space-2) 18px;
+        background: var(--_nw-color-surface);
+        color: var(--_nw-color-primary);
+        font-size: var(--_nw-font-size-base);
         font-weight: 600;
-        border: 1px solid #e5e7eb;
+        border: var(--_nw-border-width) solid var(--_nw-color-border);
         border-radius: 9999px;
         cursor: pointer;
         font-family: inherit;
         transition: all 0.15s;
       }
       .year-btn:hover {
-        border-color: #004C97;
+        border-color: var(--_nw-color-primary);
         background: rgba(0, 76, 151, 0.04);
       }
       .year-btn--active {
-        background: #004C97;
-        color: white;
-        border-color: #004C97;
+        background: var(--_nw-color-primary);
+        color: var(--_nw-color-on-primary);
+        border-color: var(--_nw-color-primary);
       }
       .year-btn--active:hover {
-        background: #002855;
-        border-color: #002855;
+        background: var(--_nw-color-secondary);
+        border-color: var(--_nw-color-secondary);
       }
 
       .download-section {
-        border-top: 1px solid #e5e7eb;
-        padding-top: 16px;
+        border-top: var(--_nw-border-width) solid var(--_nw-color-border);
+        padding-top: var(--_nw-space-4);
       }
       .download-btn {
         display: inline-block;
-        padding: 12px 28px;
-        background: #004C97;
-        color: white;
+        padding: var(--_nw-space-3) 28px;
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: bold;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .download-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
+      }
+      .download-btn:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      .download-fallback {
+        margin: var(--_nw-space-3) 0 0;
+        font-size: var(--_nw-font-size-base);
+        color: var(--_nw-color-text);
+      }
+      .footer-links {
+        padding: 0 var(--_nw-space-5) var(--_nw-space-5);
+        text-align: right;
+      }
+      .my-giving-link {
+        color: var(--_nw-color-primary);
+        font-size: var(--_nw-font-size-base);
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .my-giving-link:hover {
+        text-decoration: underline;
+      }
+      .my-giving-link:focus-visible {
+        outline: var(--_nw-focus-ring);
+        outline-offset: 2px;
+        border-radius: 2px;
+      }
+      .download-fallback a {
+        color: var(--_nw-color-primary);
+        font-weight: 600;
       }
 
       .retry-section {
-        padding: 20px;
+        padding: var(--_nw-space-5);
         text-align: center;
       }
       .retry-btn {
         display: inline-block;
-        padding: 10px 24px;
-        background: #004C97;
-        color: white;
+        padding: 10px var(--_nw-space-6);
+        background: var(--_nw-button-bg);
+        color: var(--_nw-button-fg);
         font-weight: 600;
-        font-size: 14px;
+        font-size: var(--_nw-font-size-base);
         border: none;
-        border-radius: 8px;
+        border-radius: var(--_nw-button-radius);
         cursor: pointer;
         font-family: inherit;
         transition: background 0.15s;
       }
       .retry-btn:hover {
-        background: #002855;
+        background: var(--_nw-button-bg-hover);
       }
 
       @media (max-width: 640px) {
         .header, .list-body {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .company-section {
-          padding: 16px;
+          padding: var(--_nw-space-4);
         }
         .download-btn {
           display: block;

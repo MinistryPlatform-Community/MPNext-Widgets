@@ -31,8 +31,10 @@ export async function GET(req: NextRequest) {
     const eventData = await service.getEventForCalendar(eventId);
 
     if (!eventData) {
+      // Same answer for "no such id" and "not public / cancelled" (C06), so the
+      // id space cannot be probed for staff-only events.
       return NextResponse.json(
-        { error: `Event not found: ${eventId}` },
+        { error: "event_not_found", message: "Event not found" },
         { status: 404, headers: buildFallbackCorsHeaders(origin) }
       );
     }

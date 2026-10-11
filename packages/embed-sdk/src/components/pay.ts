@@ -1,11 +1,12 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
-  requiredStar,
+  field,
   FORM_VALIDATION_STYLES,
   type ValidateOptions,
 } from "../shared/form-validation";
+import { headingTag, HEADING_RESET_STYLES } from "../shared/heading-level";
 
 interface PaymentRequestToken {
   invoiceId: string;
@@ -28,6 +29,54 @@ interface PaymentRequestToken {
 
 const TEST_CARD = "4111 1111 1111 1111";
 
+// ── Card format checks (C48) ────────────────────────────────────────────────
+//
+// The sandbox is what every demo, developer and E2E run exercises, so it
+// validates formats the way a processor's hosted page would: `13/99` and CVV
+// `abc` used to submit. Pure functions, exported for the unit tests.
+
+/** Digits of a card number, with spaces and dashes allowed as separators. */
+function cardDigits(value: string): string | null {
+  const compact = value.replace(/[\s-]/g, "");
+  return /^\d+$/.test(compact) ? compact : null;
+}
+
+/** 13–19 digits passing the Luhn checksum. */
+export function isValidCardNumber(value: string): boolean {
+  const digits = cardDigits(value);
+  if (!digits || digits.length < 13 || digits.length > 19) return false;
+  let sum = 0;
+  for (let i = 0; i < digits.length; i++) {
+    let d = Number(digits[digits.length - 1 - i]);
+    if (i % 2 === 1) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+  }
+  return sum % 10 === 0;
+}
+
+/**
+ * `MM/YY` (or `MM/YYYY`) → whether it is malformed, past, or fine. A card is
+ * good through the last day of its expiry month, so the current month passes.
+ */
+export function checkExpiry(value: string, now = new Date()): "invalid" | "expired" | "ok" {
+  const m = /^\s*(\d{1,2})\s*\/\s*(\d{2}|\d{4})\s*$/.exec(value);
+  if (!m) return "invalid";
+  const month = Number(m[1]);
+  if (month < 1 || month > 12) return "invalid";
+  const year = m[2].length === 2 ? 2000 + Number(m[2]) : Number(m[2]);
+  const expiry = year * 12 + (month - 1);
+  const current = now.getFullYear() * 12 + now.getMonth();
+  return expiry < current ? "expired" : "ok";
+}
+
+/** 3 or 4 digits. */
+export function isValidCvv(value: string): boolean {
+  return /^\d{3,4}$/.test(value.trim());
+}
+
 /**
  * `next-pay` — a clearly-labeled SANDBOX payment gateway. It unpacks the
  * request token built by `next-checkout`, shows a read-only summary, collects
@@ -41,6 +90,8 @@ export class PayWidget extends MPNextWidget {
   private error: string | null = null;
   private submitting = false;
   private formError: string | null = null;
+  /** Set when the request token is spent or expired (C43). */
+  private linkState: "used" | "expired" | null = null;
 
   static get observedAttributes() {
     return ["api-host", "token"];
@@ -70,6 +121,20 @@ export class PayWidget extends MPNextWidget {
         expiry: this.t("pay.enterExpiry"),
         cvv: this.t("pay.enterCvv"),
       },
+      // Formats (C48). Empty is left to `required`, so its message stays the
+      // "please enter…" one above.
+      customValidators: {
+        "card-number": (v) =>
+          !v.trim() || isValidCardNumber(v) ? null : this.t("pay.invalidCard"),
+        expiry: (v) => {
+          if (!v.trim()) return null;
+          const result = checkExpiry(v);
+          if (result === "invalid") return this.t("pay.invalidExpiry");
+          if (result === "expired") return this.t("pay.expiredCard");
+          return null;
+        },
+        cvv: (v) => (!v.trim() || isValidCvv(v) ? null : this.t("pay.invalidCvv")),
+      },
     };
   }
 
@@ -98,7 +163,6 @@ export class PayWidget extends MPNextWidget {
       this.loading = false;
       this.error = this.t("pay.noRequest");
       this.render();
-      this.attachListeners();
       return;
     }
 
@@ -112,30 +176,34 @@ export class PayWidget extends MPNextWidget {
       );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        if (this.isLinkState(data)) return;
+        throw new WidgetError(this.errorText(data));
       }
       const data: { request: PaymentRequestToken } = await res.json();
       this.request = data.request;
     } catch (err) {
       this.error =
-        err instanceof Error ? err.message : this.t("pay.decodeFailed");
+        this.caughtText(err, "pay.decodeFailed");
     } finally {
       this.loading = false;
       this.render();
-      this.attachListeners();
     }
   }
 
   private async submit() {
+    // Double-submit guard. The in-flight paint disables the Pay button, but
+    // since `render()` now re-binds, that paint's form carries a live submit
+    // listener (a scripted `requestSubmit()`, say) — so refuse here as well.
+    if (this.submitting) return;
     if (!this.request || !this.token) return;
 
     const form = this.root.querySelector<HTMLFormElement>("#nw-pay-form");
     if (!form || !validateForm(form, this.validationOpts()).valid) return;
 
-    const nameOnCard = this.value("#nw-pay-name");
-    const cardNumber = this.value("#nw-pay-card");
-    const expiry = this.value("#nw-pay-expiry");
-    const cvv = this.value("#nw-pay-cvv");
+    const nameOnCard = this.value('[name="name-on-card"]');
+    const cardNumber = this.value('[name="card-number"]');
+    const expiry = this.value('[name="expiry"]');
+    const cvv = this.value('[name="cvv"]');
 
     this.formError = null;
     this.submitting = true;
@@ -156,7 +224,12 @@ export class PayWidget extends MPNextWidget {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data, "errors.payment_declined"));
+        if (this.isLinkState(data)) {
+          this.submitting = false;
+          this.render();
+          return;
+        }
+        throw new WidgetError(this.errorText(data, "errors.payment_declined"));
       }
       const data: { token: string } = await res.json();
 
@@ -167,10 +240,52 @@ export class PayWidget extends MPNextWidget {
     } catch (err) {
       this.submitting = false;
       this.formError =
-        err instanceof Error ? err.message : this.t("pay.submitFailed");
+        this.caughtText(err, "pay.submitFailed");
       this.render();
-      this.attachListeners();
     }
+  }
+
+  /**
+   * Recognise the single-use outcomes (C43) by their wire code and switch to
+   * the designed "link" state. Returns false for anything else, which stays an
+   * ordinary error.
+   */
+  private isLinkState(body: unknown): boolean {
+    const code = (body as { error?: unknown } | null)?.error;
+    if (code === "verification_used") this.linkState = "used";
+    else if (code === "verification_expired") this.linkState = "expired";
+    else return false;
+    this.emit("paymentLinkUnavailable", { reason: this.linkState });
+    return true;
+  }
+
+  /** The invoice page without any `token`, for the "return to invoice" link. */
+  private invoiceUrl(): string | null {
+    if (!this.request?.returnUrl) return null;
+    try {
+      const url = new URL(this.request.returnUrl, window.location.href);
+      url.searchParams.delete("token");
+      return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private renderLinkState(): string {
+    const used = this.linkState === "used";
+    const href = this.invoiceUrl();
+    return `
+      <div class="nw-pay-state nw-pay-link" role="status">
+        <p class="nw-pay-link-title">${this.escapeHtml(
+          this.t(used ? "pay.linkUsedTitle" : "pay.linkExpiredTitle"),
+        )}</p>
+        <p>${this.escapeHtml(this.t(used ? "pay.linkUsed" : "pay.linkExpired"))}</p>
+        ${
+          href
+            ? `<a class="nw-pay-btn" href="${this.escapeAttr(href)}">${this.escapeHtml(this.t("pay.returnToInvoice"))}</a>`
+            : ""
+        }
+      </div>`;
   }
 
   private buildReturnUrl(returnUrl: string, responseToken: string): string {
@@ -206,7 +321,25 @@ export class PayWidget extends MPNextWidget {
     }
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
+    // A spent or expired link is a designed state, not an error: no Try
+    // Again (it would fail identically), and a way back to the invoice.
+    if (this.linkState) {
+      this.root.innerHTML = this.shell(this.renderLinkState());
+      return;
+    }
+
     if (this.loading) {
       this.root.innerHTML = this.shell(`
         <div class="nw-pay-state">
@@ -229,9 +362,12 @@ export class PayWidget extends MPNextWidget {
   }
 
   private shell(body: string): string {
+    // The title is a real heading (CROSS-3); `heading-level` places it in the
+    // host page's outline (C35 convention, default h2).
+    const h = headingTag(this.getAttribute("heading-level"));
     return `
       <div class="nw-pay">
-        <div class="nw-pay-header">${this.escapeHtml(this.t("pay.header"))}</div>
+        <${h} class="nw-pay-header">${this.escapeHtml(this.t("pay.header"))}</${h}>
         <div class="nw-pay-sandbox">
           ${this.escapeHtml(this.t("pay.sandboxNotice", { card: TEST_CARD }))}
         </div>
@@ -261,26 +397,51 @@ export class PayWidget extends MPNextWidget {
         </div>
       </div>
 
-      <form id="nw-pay-form" class="nw-pay-form" autocomplete="off" novalidate>
-        <div class="nw-pay-field">
-          <label for="nw-pay-name">${this.escapeHtml(this.t("pay.nameOnCard"))}${requiredStar()}</label>
-          <input id="nw-pay-name" name="name-on-card" type="text" placeholder="${this.escapeAttr(this.t("pay.namePlaceholder"))}"
-            required value="${this.escapeAttr(name === "—" ? "" : name)}">
-        </div>
-        <div class="nw-pay-field">
-          <label for="nw-pay-card">${this.escapeHtml(this.t("pay.cardNumber"))}${requiredStar()}</label>
-          <input id="nw-pay-card" name="card-number" type="text" inputmode="numeric"
-            required placeholder="${TEST_CARD}">
-        </div>
+      <form id="nw-pay-form" class="nw-pay-form" novalidate>
+        ${field({
+          name: "name-on-card",
+          label: this.t("pay.nameOnCard"),
+          required: true,
+          autocomplete: "cc-name",
+          placeholder: this.t("pay.namePlaceholder"),
+          value: name === "—" ? "" : name,
+          idPrefix: this.instanceId,
+          wrapperClass: "nw-pay-field",
+        })}
+        ${field({
+          name: "card-number",
+          label: this.t("pay.cardNumber"),
+          required: true,
+          autocomplete: "cc-number",
+          inputmode: "numeric",
+          placeholder: TEST_CARD,
+          attrs: { maxlength: 23 },
+          idPrefix: this.instanceId,
+          wrapperClass: "nw-pay-field",
+        })}
         <div class="nw-pay-row">
-          <div class="nw-pay-field">
-            <label for="nw-pay-expiry">${this.escapeHtml(this.t("pay.expiry"))}${requiredStar()}</label>
-            <input id="nw-pay-expiry" name="expiry" type="text" required placeholder="${this.escapeAttr(this.t("pay.expiryPlaceholder"))}">
-          </div>
-          <div class="nw-pay-field">
-            <label for="nw-pay-cvv">${this.escapeHtml(this.t("pay.cvv"))}${requiredStar()}</label>
-            <input id="nw-pay-cvv" name="cvv" type="text" inputmode="numeric" required placeholder="123">
-          </div>
+          ${field({
+            name: "expiry",
+            label: this.t("pay.expiry"),
+            required: true,
+            autocomplete: "cc-exp",
+            inputmode: "numeric",
+            placeholder: this.t("pay.expiryPlaceholder"),
+            attrs: { maxlength: 7 },
+            idPrefix: this.instanceId,
+            wrapperClass: "nw-pay-field",
+          })}
+          ${field({
+            name: "cvv",
+            label: this.t("pay.cvv"),
+            required: true,
+            autocomplete: "cc-csc",
+            inputmode: "numeric",
+            placeholder: "123",
+            attrs: { maxlength: 4 },
+            idPrefix: this.instanceId,
+            wrapperClass: "nw-pay-field",
+          })}
         </div>
         ${this.formError ? `<div class="nw-pay-inline-error">${this.escapeHtml(this.formError)}</div>` : ""}
         <button type="submit" class="nw-pay-btn nw-pay-btn--pay" ${this.submitting ? "disabled" : ""}>
@@ -313,40 +474,43 @@ export class PayWidget extends MPNextWidget {
   }
 
   private getStyles(): string {
-    return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
-      .nw-pay { max-width: 480px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-      .nw-pay-header { background: #002855; color: white; padding: 24px; font-size: 22px; font-weight: 700; text-align: center; }
-      .nw-pay-sandbox { background: #F1BE48; color: #2D2926; padding: 10px 16px; font-size: 13px; font-weight: 700; text-align: center; }
-      .nw-pay-body { padding: 24px; }
+    return `${HEADING_RESET_STYLES}
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
+      .nw-pay { max-width: 480px; margin: 0 auto; background: var(--_nw-color-surface); border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+      .nw-pay-header { background: var(--_nw-color-secondary); color: var(--_nw-color-on-primary); padding: var(--_nw-space-6); font-size: 22px; font-weight: var(--_nw-font-weight-heading); text-align: center; }
+      .nw-pay-sandbox { background: var(--_nw-color-warning); color: var(--_nw-color-text); padding: 10px var(--_nw-space-4); font-size: 13px; font-weight: 700; text-align: center; }
+      .nw-pay-body { padding: var(--_nw-space-6); }
 
-      .nw-pay-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 40px 16px; color: #6b7280; font-size: 15px; text-align: center; }
-      .nw-pay-spinner { animation: nw-pay-spin 1s linear infinite; color: #004C97; }
+      .nw-pay-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 40px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; text-align: center; }
+      .nw-pay-spinner { animation: nw-pay-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes nw-pay-spin { to { transform: rotate(360deg); } }
-      .nw-pay-error p { color: #b91c1c; margin: 0 0 12px; }
+      .nw-pay-error p { color: var(--_nw-color-error-text); margin: 0 0 var(--_nw-space-3); }
+      .nw-pay-link p { margin: 0; color: var(--_nw-color-text-subtle); }
+      .nw-pay-link .nw-pay-link-title { font-size: 17px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); }
+      .nw-pay-link a.nw-pay-btn { text-decoration: none; margin-top: var(--_nw-space-2); }
 
-      .nw-pay-summary { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }
-      .nw-pay-summary-row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding: 4px 0; color: #474747; }
-      .nw-pay-summary-row span:first-child { color: #6b7280; }
-      .nw-pay-summary-row span:last-child { font-weight: 600; color: #2D2926; text-align: right; word-break: break-word; }
-      .nw-pay-summary-row--amount { border-top: 1px solid #e5e7eb; margin-top: 6px; padding-top: 10px; font-size: 18px; }
-      .nw-pay-summary-row--amount span:last-child { color: #004C97; font-weight: 700; }
+      .nw-pay-summary { background: #f9fafb; border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: 10px; padding: 14px var(--_nw-space-4); margin-bottom: var(--_nw-space-5); }
+      .nw-pay-summary-row { display: flex; justify-content: space-between; gap: var(--_nw-space-3); font-size: var(--_nw-font-size-base); padding: var(--_nw-space-1) 0; color: var(--_nw-color-text-subtle); }
+      .nw-pay-summary-row span:first-child { color: var(--_nw-color-muted); }
+      .nw-pay-summary-row span:last-child { font-weight: 600; color: var(--_nw-color-text); text-align: right; word-break: break-word; }
+      .nw-pay-summary-row--amount { border-top: var(--_nw-border-width) solid var(--_nw-color-border); margin-top: 6px; padding-top: 10px; font-size: 18px; }
+      .nw-pay-summary-row--amount span:last-child { color: var(--_nw-color-primary); font-weight: 700; }
 
-      .nw-pay-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
-      .nw-pay-field label { font-size: 12px; font-weight: 600; color: #6b7280; }
-      .nw-pay-field input { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; outline: none; }
-      .nw-pay-field input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
-      .nw-pay-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .nw-pay-field { display: flex; flex-direction: column; gap: var(--_nw-space-1); margin-bottom: 14px; }
+      .nw-pay-field label { font-size: 12px; font-weight: 600; color: var(--_nw-color-muted); }
+      .nw-pay-field input { padding: 10px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); outline: none; }
+      .nw-pay-field input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
+      .nw-pay-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--_nw-space-3); }
 
-      .nw-pay-inline-error { color: #b91c1c; font-size: 13px; margin-bottom: 12px; }
+      .nw-pay-inline-error { color: var(--_nw-color-error-text); font-size: 13px; margin-bottom: var(--_nw-space-3); }
 
-      .nw-pay-btn { padding: 12px 20px; background: #004C97; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
-      .nw-pay-btn:hover { background: #002855; }
+      .nw-pay-btn { padding: var(--_nw-space-3) var(--_nw-space-5); background: var(--_nw-button-bg); color: var(--_nw-button-fg); border: none; border-radius: var(--_nw-button-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; }
+      .nw-pay-btn:hover { background: var(--_nw-button-bg-hover); }
       .nw-pay-btn:disabled { opacity: 0.6; cursor: default; }
       .nw-pay-btn--pay { display: block; width: 100%; padding: 14px; font-size: 15px; margin-top: 6px; }
 
       @media (max-width: 480px) {
-        .nw-pay-header, .nw-pay-body { padding: 16px; }
+        .nw-pay-header, .nw-pay-body { padding: var(--_nw-space-4); }
       }
     `;
   }

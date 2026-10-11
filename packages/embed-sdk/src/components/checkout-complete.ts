@@ -1,6 +1,8 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
+import type { MessageKey } from "../i18n";
+import { paymentOutcomeView, type PaymentTone } from "./checkout-status";
 
-type Status = "loading" | "success" | "pending" | "failed";
+type Status = "loading" | PaymentTone;
 
 /**
  * `next-checkout-complete` — a minimal landing page for the gateway return
@@ -10,6 +12,13 @@ type Status = "loading" | "success" | "pending" | "failed";
 export class CheckoutCompleteWidget extends MPNextWidget {
   private status: Status = "loading";
   private message = "";
+  private titleKey: MessageKey = "checkoutComplete.titleFailed";
+  /**
+   * Try Again re-posts the same response token. Offered only when the request
+   * itself failed (no answer); a processed `declined` / `error` answer would
+   * just come back the same.
+   */
+  private canRetry = false;
   private token: string | null = null;
 
   static get observedAttributes() {
@@ -49,7 +58,6 @@ export class CheckoutCompleteWidget extends MPNextWidget {
       this.status = "failed";
       this.message = this.t("checkoutComplete.noPaymentInfo");
       this.render();
-      this.attachListeners();
       return;
     }
 
@@ -61,42 +69,36 @@ export class CheckoutCompleteWidget extends MPNextWidget {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
-      const data: {
-        invoiceId: number | null;
-        success: boolean;
-        paymentReceived: boolean;
-      } = await res.json();
+      const data: { invoiceId?: number | null; status?: unknown } = await res.json();
 
-      if (data.paymentReceived) {
-        this.status = "success";
-        this.message = this.t("checkoutComplete.received");
-      } else if (data.success) {
-        this.status = "pending";
-        this.message = this.t("checkoutComplete.processing");
-      } else {
-        this.status = "failed";
-        this.message = this.t("checkoutComplete.failed");
-      }
+      // The shared mapper (C41) — the same table `next-checkout` reads.
+      const view = paymentOutcomeView(data);
+      this.status = view.tone;
+      this.titleKey = view.titleKey;
+      this.message = this.t(view.messageKey);
+      this.canRetry = false;
 
       this.emit("paymentComplete", {
-        invoiceId: data.invoiceId,
-        paymentReceived: data.paymentReceived,
+        invoiceId: data.invoiceId ?? null,
+        status: view.status,
+        paymentReceived: view.status === "received",
       });
     } catch (err) {
       this.status = "failed";
+      this.titleKey = "checkoutComplete.titleFailed";
+      // A transport fault: the response was never processed, so asking again
+      // is safe — the server de-duplicates on the transaction code.
+      this.canRetry = true;
       this.message =
-        err instanceof Error
-          ? err.message
-          : this.t("checkoutComplete.unconfirmed");
+        this.caughtText(err, "checkoutComplete.unconfirmed");
       this.emit("paymentComplete", {
         invoiceId: null,
         paymentReceived: false,
       });
     } finally {
       this.render();
-      this.attachListeners();
     }
   }
 
@@ -107,7 +109,18 @@ export class CheckoutCompleteWidget extends MPNextWidget {
     }
   }
 
-  render() {
+  /**
+   * Paint, then re-bind the listeners the new markup needs. One method, so
+   * every re-render re-binds: the base class re-renders through `render()`
+   * alone on a page-wide locale or label-override change, and a paint that
+   * left the binding to its caller came back with dead buttons.
+   */
+  render(): void {
+    this.paintMarkup();
+    this.attachListeners();
+  }
+
+  private paintMarkup(): void {
     if (this.status === "loading") {
       this.root.innerHTML = `
         <div class="nw-cc">
@@ -133,13 +146,7 @@ export class CheckoutCompleteWidget extends MPNextWidget {
           ? "nw-cc-card--pending"
           : "nw-cc-card--failed";
 
-    const title = this.t(
-      this.status === "success"
-        ? "checkoutComplete.titleSuccess"
-        : this.status === "pending"
-          ? "checkoutComplete.titlePending"
-          : "checkoutComplete.titleFailed",
-    );
+    const title = this.t(this.titleKey);
 
     this.root.innerHTML = `
       <div class="nw-cc">
@@ -148,7 +155,7 @@ export class CheckoutCompleteWidget extends MPNextWidget {
           <h2 class="nw-cc-title">${this.escapeHtml(title)}</h2>
           <p class="nw-cc-msg">${this.escapeHtml(this.message)}</p>
           ${
-            this.status === "failed" && this.token
+            this.status === "failed" && this.token && this.canRetry
               ? `<button class="nw-cc-btn" data-action="retry">${this.escapeHtml(this.t("common.retry"))}</button>`
               : ""
           }
@@ -185,28 +192,28 @@ export class CheckoutCompleteWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .nw-cc { max-width: 480px; margin: 0 auto; }
-      .nw-cc-card { background: white; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 40px 32px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; border-top: 6px solid #004C97; }
-      .nw-cc-card--success { border-top-color: #86AD3F; }
-      .nw-cc-card--pending { border-top-color: #F1BE48; }
-      .nw-cc-card--failed { border-top-color: #FF6D6A; }
+      .nw-cc-card { background: var(--_nw-color-surface); border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 40px 32px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: var(--_nw-space-3); border-top: 6px solid var(--_nw-color-primary); }
+      .nw-cc-card--success { border-top-color: var(--_nw-color-success); }
+      .nw-cc-card--pending { border-top-color: var(--_nw-color-warning); }
+      .nw-cc-card--failed { border-top-color: var(--_nw-color-error); }
 
       .nw-cc-icon { width: 72px; height: 72px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; }
       .nw-cc-card--success .nw-cc-icon { background: rgba(134,173,63,0.15); color: #4d6a14; }
       .nw-cc-card--pending .nw-cc-icon { background: rgba(241,190,72,0.18); color: #8a6d10; }
-      .nw-cc-card--failed .nw-cc-icon { background: rgba(255,109,106,0.15); color: #b91c1c; }
+      .nw-cc-card--failed .nw-cc-icon { background: rgba(255,109,106,0.15); color: var(--_nw-color-error-text); }
 
-      .nw-cc-title { font-size: 22px; font-weight: 700; color: #002855; margin: 4px 0 0; }
-      .nw-cc-msg { font-size: 15px; color: #474747; line-height: 1.5; margin: 0; }
-      .nw-cc-spinner { animation: nw-cc-spin 1s linear infinite; color: #004C97; }
+      .nw-cc-title { font-size: 22px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: var(--_nw-space-1) 0 0; }
+      .nw-cc-msg { font-size: 15px; color: var(--_nw-color-text-subtle); line-height: var(--_nw-line-height); margin: 0; }
+      .nw-cc-spinner { animation: nw-cc-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes nw-cc-spin { to { transform: rotate(360deg); } }
 
-      .nw-cc-btn { margin-top: 8px; padding: 12px 24px; background: #004C97; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
-      .nw-cc-btn:hover { background: #002855; }
+      .nw-cc-btn { margin-top: var(--_nw-space-2); padding: var(--_nw-space-3) var(--_nw-space-6); background: var(--_nw-button-bg); color: var(--_nw-button-fg); border: none; border-radius: var(--_nw-button-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; }
+      .nw-cc-btn:hover { background: var(--_nw-button-bg-hover); }
 
       @media (max-width: 480px) {
-        .nw-cc-card { padding: 32px 20px; }
+        .nw-cc-card { padding: 32px var(--_nw-space-5); }
       }
     `;
   }

@@ -1,3 +1,5 @@
+import { HEADING_RESET_STYLES } from "../shared/heading-level";
+
 // ────────────────────────────────────────────────────────────────────────────
 // full-calendar-styles.ts
 // All CSS style constants for the <next-full-calendar> widget.
@@ -12,7 +14,7 @@
 export const BASE_STYLES = `
   :host {
     display: block;
-    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-family: var(--_nw-font-family);
   }
 
   /* ── Layout ── */
@@ -33,8 +35,8 @@ export const BASE_STYLES = `
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    padding: 60px 24px;
+    gap: var(--_nw-space-3);
+    padding: 60px var(--_nw-space-6);
     color: #9E9E9E;
     text-align: center;
   }
@@ -44,7 +46,7 @@ export const BASE_STYLES = `
   }
 
   .nw-fc-error svg {
-    color: #FF6D6A;
+    color: var(--_nw-color-error);
   }
 
   .nw-fc-loading p {
@@ -56,7 +58,7 @@ export const BASE_STYLES = `
     width: 32px;
     height: 32px;
     border: 3px solid #E0E0E0;
-    border-top-color: #004C97;
+    border-top-color: var(--_nw-color-primary);
     border-radius: 50%;
     animation: nw-fc-spin 0.75s linear infinite;
   }
@@ -88,6 +90,17 @@ export const BASE_STYLES = `
    *     | grep -oE -- "--fc-[a-z0-9-]+" | sort -u
    */
 
+  /*
+   * Brand-coloured entries read the resolved '--_nw-*' theme tokens (W7a,
+   * shared/theme-tokens.ts) so a church's '--nw-color-primary' etc. reaches
+   * the calendar too; so do the neutrals whose value is exactly a token's
+   * default (on-primary #fff, surface #ffffff, text-subtle #474747 — W7b).
+   * Each keeps its old literal as the var() fallback, so the
+   * contract stays complete even without the token block. Tints derived from
+   * the brand (the rgba(0, 76, 151, …) values, #D6F0FC) stay literal: CSS
+   * cannot derive them from a token without color-mix(), which is a visual
+   * change on browsers that lack it.
+   */
   :host {
     /* Skeleton stacking order (skeleton.css declares these on :root too). */
     --fc-sticky-header-footer-z: 3;
@@ -95,36 +108,36 @@ export const BASE_STYLES = `
 
     /* Buttons. FullCalendar's own toolbar is off ('headerToolbar: false') so
        nothing reads these today; kept in brand so enabling it stays correct. */
-    --fc-classic-button: #004C97;
-    --fc-classic-button-border: #004C97;
-    --fc-classic-button-strong: #002855;
-    --fc-classic-button-strong-border: #002855;
+    --fc-classic-button: var(--_nw-color-primary, #004C97);
+    --fc-classic-button-border: var(--_nw-color-primary, #004C97);
+    --fc-classic-button-strong: var(--_nw-color-secondary, #002855);
+    --fc-classic-button-strong-border: var(--_nw-color-secondary, #002855);
     --fc-classic-button-outline: rgba(0, 76, 151, 0.5);
-    --fc-classic-button-foreground: #fff;
+    --fc-classic-button-foreground: var(--_nw-color-on-primary, #fff);
 
     /* Primary / events */
-    --fc-classic-primary: #004C97;
-    --fc-classic-event: #004C97;
-    --fc-classic-event-contrast: #fff;
+    --fc-classic-primary: var(--_nw-color-primary, #004C97);
+    --fc-classic-event: var(--_nw-color-primary, #004C97);
+    --fc-classic-event-contrast: var(--_nw-color-on-primary, #fff);
     --fc-classic-background-event: #D6F0FC;
     --fc-classic-background-event-opacity: 50%;
     --fc-classic-background-event-foreground-opacity: 50%;
     --fc-classic-highlight: rgba(0, 76, 151, 0.1);
     --fc-classic-today: #D6F0FC;
-    --fc-classic-now: #FF6D6A;
+    --fc-classic-now: var(--_nw-color-error, #FF6D6A);
     --fc-classic-small-dot-width: 8px;
     --fc-classic-large-dot-width: 10px;
 
     /* Neutral backgrounds */
-    --fc-classic-background: #ffffff;
+    --fc-classic-background: var(--_nw-color-surface, #ffffff);
     --fc-classic-faint: #f9fafb;
     --fc-classic-muted: rgba(0, 0, 0, 0.08);
     --fc-classic-strong: rgba(0, 0, 0, 0.14);
 
     /* Neutral foregrounds */
-    --fc-classic-foreground: #2D2926;
+    --fc-classic-foreground: var(--_nw-color-text, #2D2926);
     --fc-classic-faint-foreground: #9E9E9E;
-    --fc-classic-muted-foreground: #474747;
+    --fc-classic-muted-foreground: var(--_nw-color-text-subtle, #474747);
 
     /* Neutral borders */
     --fc-classic-border: #E0E0E0;
@@ -158,69 +171,85 @@ export const BASE_STYLES = `
 export const TOOLBAR_STYLES = `
   /* ── Custom Toolbar ── */
 
+  /*
+   * The title is a heading (CROSS-3). With show-toolbar="false" it is still
+   * rendered, visually hidden, so the widget keeps a heading in every view.
+   */
+  .nw-fc-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
   .nw-fc-toolbar {
     display: flex;
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 0;
-    margin-bottom: 16px;
+    padding: var(--_nw-space-2) 0;
+    margin-bottom: var(--_nw-space-4);
     flex-wrap: wrap;
   }
 
   .nw-fc-toolbar-left {
     display: flex;
     flex-direction: row;
-    gap: 4px;
+    gap: var(--_nw-space-1);
   }
 
   .nw-fc-toolbar-center {
     font-size: 1.2em;
-    font-weight: 700;
-    color: #002855;
+    font-weight: var(--_nw-font-weight-heading);
+    color: var(--_nw-color-secondary);
   }
 
   .nw-fc-toolbar-right {
     display: flex;
     flex-direction: row;
-    gap: 4px;
+    gap: var(--_nw-space-1);
   }
 
   .nw-fc-toolbar-btn {
-    background: white;
+    background: var(--_nw-color-surface);
     border: 1px solid #E0E0E0;
     border-radius: 6px;
     padding: 6px 14px;
     font-size: 0.82em;
     font-weight: 600;
-    color: #474747;
+    color: var(--_nw-color-text-subtle);
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
   }
 
   .nw-fc-toolbar-btn:hover {
-    background: #f3f4f6;
+    background: var(--_nw-color-surface-muted);
     border-color: #9E9E9E;
   }
 
   .nw-fc-toolbar-btn.active {
-    background: #004C97;
-    color: white;
-    border-color: #004C97;
+    background: var(--_nw-color-primary);
+    color: var(--_nw-color-on-primary);
+    border-color: var(--_nw-color-primary);
   }
 
   .nw-fc-toolbar-btn.active:hover {
-    background: #002855;
+    background: var(--_nw-color-secondary);
   }
 
   .nw-fc-toolbar-nav {
-    background: white;
+    background: var(--_nw-color-surface);
     border: 1px solid #E0E0E0;
     border-radius: 6px;
     padding: 6px 14px;
     font-size: 0.82em;
     font-weight: 600;
-    color: #474747;
+    color: var(--_nw-color-text-subtle);
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
     width: 36px;
@@ -231,7 +260,7 @@ export const TOOLBAR_STYLES = `
   }
 
   .nw-fc-toolbar-nav:hover {
-    background: #f3f4f6;
+    background: var(--_nw-color-surface-muted);
     border-color: #9E9E9E;
   }
 
@@ -242,7 +271,7 @@ export const TOOLBAR_STYLES = `
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 12px;
+      gap: var(--_nw-space-3);
     }
   }
 `;
@@ -256,7 +285,7 @@ export const CARDS_STYLES = `
 
   .nw-fc-cards-grid {
     display: grid;
-    gap: 24px;
+    gap: var(--_nw-space-6);
     grid-template-columns: repeat(3, 1fr);
   }
 
@@ -275,8 +304,8 @@ export const CARDS_STYLES = `
   /* ── Card ── */
 
   .nw-fc-card {
-    background: white;
-    border-radius: 8px;
+    background: var(--_nw-color-surface);
+    border-radius: var(--_nw-radius);
     box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 2px 12px rgba(0,0,0,0.04);
     overflow: hidden;
     display: flex;
@@ -295,7 +324,7 @@ export const CARDS_STYLES = `
     position: relative;
     aspect-ratio: 16 / 9;
     overflow: hidden;
-    background: #f3f4f6;
+    background: var(--_nw-color-surface-muted);
   }
 
   .nw-fc-card-image img {
@@ -307,7 +336,7 @@ export const CARDS_STYLES = `
   .nw-fc-card-placeholder {
     width: 100%;
     height: 100%;
-    background: #004C97;
+    background: var(--_nw-color-primary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -319,8 +348,8 @@ export const CARDS_STYLES = `
     position: absolute;
     bottom: 0;
     left: 0;
-    background: #002855;
-    padding: 8px 14px;
+    background: var(--_nw-color-secondary);
+    padding: var(--_nw-space-2) 14px;
     text-align: center;
     min-width: 64px;
     display: flex;
@@ -339,7 +368,7 @@ export const CARDS_STYLES = `
   .nw-fc-card-date-block .nw-fc-date-day {
     font-size: 1.6em;
     font-weight: 700;
-    color: white;
+    color: var(--_nw-color-on-primary);
     line-height: 1.15;
   }
 
@@ -354,7 +383,7 @@ export const CARDS_STYLES = `
   /* ── Card Body ── */
 
   .nw-fc-card-body {
-    padding: 14px 16px;
+    padding: 14px var(--_nw-space-4);
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -364,33 +393,33 @@ export const CARDS_STYLES = `
   .nw-fc-card-info {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--_nw-space-2);
     flex-wrap: wrap;
   }
 
   .nw-fc-card-time {
     font-size: 0.82em;
-    color: #474747;
+    color: var(--_nw-color-text-subtle);
     font-weight: 500;
   }
 
   .nw-fc-card-campus {
     font-size: 0.82em;
-    color: #474747;
+    color: var(--_nw-color-text-subtle);
     font-weight: 500;
   }
 
   .nw-fc-card-campus::before {
     content: '|';
-    margin-right: 8px;
+    margin-right: var(--_nw-space-2);
     color: #E0E0E0;
   }
 
   .nw-fc-card-title {
     font-size: 1.05em;
     font-weight: 600;
-    color: #004C97;
-    margin: 4px 0 2px;
+    color: var(--_nw-color-primary);
+    margin: var(--_nw-space-1) 0 2px;
     line-height: 1.3;
   }
 
@@ -399,9 +428,9 @@ export const CARDS_STYLES = `
   .nw-fc-card-learn-more {
     display: block;
     width: 100%;
-    padding: 12px;
-    background: #002855;
-    color: white;
+    padding: var(--_nw-space-3);
+    background: var(--_nw-color-secondary);
+    color: var(--_nw-color-on-primary);
     border: none;
     border-radius: 0;
     font-size: 0.8em;
@@ -415,19 +444,19 @@ export const CARDS_STYLES = `
   }
 
   .nw-fc-card-learn-more:hover {
-    background: #004C97;
+    background: var(--_nw-color-primary);
   }
 
   /* ── Show More ── */
 
   .nw-fc-show-more {
     display: block;
-    margin: 24px auto 0;
+    margin: var(--_nw-space-6) auto 0;
     padding: 10px 32px;
-    background: white;
-    border: 2px solid #004C97;
-    color: #004C97;
-    border-radius: 8px;
+    background: var(--_nw-color-surface);
+    border: 2px solid var(--_nw-color-primary);
+    color: var(--_nw-color-primary);
+    border-radius: var(--_nw-radius);
     font-size: 0.9em;
     font-weight: 600;
     cursor: pointer;
@@ -435,15 +464,15 @@ export const CARDS_STYLES = `
   }
 
   .nw-fc-show-more:hover {
-    background: #004C97;
-    color: white;
+    background: var(--_nw-color-primary);
+    color: var(--_nw-color-on-primary);
   }
 
   /* ── Cards Empty ── */
 
   .nw-fc-cards-empty {
     text-align: center;
-    padding: 60px 24px;
+    padding: 60px var(--_nw-space-6);
     color: #9E9E9E;
     font-size: 0.95em;
   }
@@ -458,21 +487,21 @@ export const FILTER_STYLES = `
   .nw-fc-filters {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    margin-bottom: 24px;
+    gap: var(--_nw-space-3);
+    margin-bottom: var(--_nw-space-6);
   }
 
   .nw-fc-filter-section {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--_nw-space-2);
   }
 
   .nw-fc-filter-label {
     font-size: 0.8em;
     font-weight: 700;
-    color: #474747;
+    color: var(--_nw-color-text-subtle);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     min-width: 70px;
@@ -481,15 +510,15 @@ export const FILTER_STYLES = `
   .nw-fc-filter-chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--_nw-space-1);
     padding: 5px 14px;
     border-radius: 999px;
     font-size: 0.8em;
     font-weight: 600;
     cursor: pointer;
-    border: 1.5px solid #004C97;
-    color: #004C97;
-    background: white;
+    border: 1.5px solid var(--_nw-color-primary);
+    color: var(--_nw-color-primary);
+    background: var(--_nw-color-surface);
     transition: all 0.15s;
     user-select: none;
   }
@@ -499,14 +528,14 @@ export const FILTER_STYLES = `
   }
 
   .nw-fc-filter-chip.active {
-    background: #004C97;
-    color: white;
-    border-color: #004C97;
+    background: var(--_nw-color-primary);
+    color: var(--_nw-color-on-primary);
+    border-color: var(--_nw-color-primary);
   }
 
   .nw-fc-filter-chip.active:hover {
-    background: #002855;
-    border-color: #002855;
+    background: var(--_nw-color-secondary);
+    border-color: var(--_nw-color-secondary);
   }
 
   .nw-fc-filter-chip .nw-fc-chip-check {
@@ -529,7 +558,7 @@ export const MINI_CAL_STYLES = `
 
   .nw-fc-split-layout {
     display: flex;
-    gap: 24px;
+    gap: var(--_nw-space-6);
   }
 
   .nw-fc-mini-cal-panel {
@@ -559,37 +588,37 @@ export const MINI_CAL_STYLES = `
   /* ── Mini Calendar ── */
 
   .nw-fc-mini-cal {
-    background: white;
-    border-radius: 12px;
+    background: var(--_nw-color-surface);
+    border-radius: var(--_nw-radius-lg);
     border: 1px solid #E0E0E0;
-    padding: 16px;
+    padding: var(--_nw-space-4);
   }
 
   .nw-fc-mini-cal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: var(--_nw-space-3);
   }
 
   .nw-fc-mini-cal-title {
     font-size: 0.95em;
-    font-weight: 700;
-    color: #002855;
+    font-weight: var(--_nw-font-weight-heading);
+    color: var(--_nw-color-secondary);
   }
 
   .nw-fc-mini-cal-nav {
     background: none;
     border: none;
     cursor: pointer;
-    padding: 4px;
-    color: #474747;
+    padding: var(--_nw-space-1);
+    color: var(--_nw-color-text-subtle);
     font-size: 16px;
     border-radius: 4px;
   }
 
   .nw-fc-mini-cal-nav:hover {
-    background: #f3f4f6;
+    background: var(--_nw-color-surface-muted);
   }
 
   /* ── Mini Calendar Grid ── */
@@ -605,13 +634,13 @@ export const MINI_CAL_STYLES = `
     font-size: 0.7em;
     font-weight: 600;
     color: #9E9E9E;
-    padding: 4px;
+    padding: var(--_nw-space-1);
     text-transform: uppercase;
   }
 
   .nw-fc-mini-cal-day {
     font-size: 0.82em;
-    padding: 4px 0;
+    padding: var(--_nw-space-1) 0;
     cursor: pointer;
     border-radius: 6px;
     position: relative;
@@ -624,12 +653,12 @@ export const MINI_CAL_STYLES = `
   }
 
   .nw-fc-mini-cal-day:hover {
-    background: #f3f4f6;
+    background: var(--_nw-color-surface-muted);
   }
 
   .nw-fc-mini-cal-day.today .nw-fc-mini-day-num {
-    background: #004C97;
-    color: white;
+    background: var(--_nw-color-primary);
+    color: var(--_nw-color-on-primary);
     border-radius: 50%;
     width: 24px;
     height: 24px;
@@ -662,7 +691,7 @@ export const MINI_CAL_STYLES = `
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: #002855;
+    background: var(--_nw-color-secondary);
   }
 
   /* ── Today Link ── */
@@ -670,9 +699,9 @@ export const MINI_CAL_STYLES = `
   .nw-fc-mini-cal-today-link {
     display: block;
     text-align: center;
-    margin-top: 8px;
+    margin-top: var(--_nw-space-2);
     font-size: 0.8em;
-    color: #004C97;
+    color: var(--_nw-color-primary);
     cursor: pointer;
     font-weight: 600;
   }
@@ -685,9 +714,9 @@ export const MINI_CAL_STYLES = `
 
   .nw-fc-density-legend {
     display: flex;
-    gap: 12px;
+    gap: var(--_nw-space-3);
     justify-content: center;
-    margin-top: 12px;
+    margin-top: var(--_nw-space-3);
     font-size: 0.7em;
     color: #9E9E9E;
   }
@@ -695,7 +724,7 @@ export const MINI_CAL_STYLES = `
   .nw-fc-legend-item {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--_nw-space-1);
   }
 `;
 
@@ -714,7 +743,7 @@ export const MODAL_STYLES = `
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 16px;
+    padding: var(--_nw-space-4);
     opacity: 0;
     transition: opacity 0.2s ease;
     box-sizing: border-box;
@@ -725,8 +754,8 @@ export const MODAL_STYLES = `
   }
 
   .nw-fc-modal {
-    background: white;
-    border-radius: 12px;
+    background: var(--_nw-color-surface);
+    border-radius: var(--_nw-radius-lg);
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
     width: 100%;
     max-width: 520px;
@@ -741,23 +770,23 @@ export const MODAL_STYLES = `
   }
 
   .nw-fc-modal-header {
-    padding: 20px 20px 16px 20px;
+    padding: var(--_nw-space-5) var(--_nw-space-5) var(--_nw-space-4) var(--_nw-space-5);
     border-bottom: 1px solid #E0E0E0;
-    padding-left: 24px;
+    padding-left: var(--_nw-space-6);
   }
 
   .nw-fc-modal-title-row {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--_nw-space-3);
     margin-bottom: 10px;
   }
 
   .nw-fc-modal-title {
     font-size: 1.15em;
-    font-weight: 700;
-    color: #2D2926;
+    font-weight: var(--_nw-font-weight-heading);
+    color: var(--_nw-color-text);
     margin: 0;
     line-height: 1.3;
   }
@@ -783,14 +812,14 @@ export const MODAL_STYLES = `
   .nw-fc-modal-close:hover {
     background-color: #E0E0E0;
     border-color: #BBB;
-    color: #2D2926;
+    color: var(--_nw-color-text);
   }
 
   .nw-fc-modal-badges {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 4px;
+    margin-top: var(--_nw-space-1);
   }
 
   .nw-fc-badge {
@@ -802,7 +831,7 @@ export const MODAL_STYLES = `
     font-weight: 600;
     letter-spacing: 0.02em;
     text-transform: uppercase;
-    color: white;
+    color: var(--_nw-color-on-primary);
   }
 
   .nw-fc-badge-type {
@@ -810,16 +839,16 @@ export const MODAL_STYLES = `
   }
 
   .nw-fc-badge-campus {
-    background-color: #002855;
+    background-color: var(--_nw-color-secondary);
   }
 
   .nw-fc-badge-featured {
-    background-color: #F1BE48;
-    color: #2D2926;
+    background-color: var(--_nw-color-accent);
+    color: var(--_nw-color-text);
   }
 
   .nw-fc-modal-body {
-    padding: 16px 20px 20px 20px;
+    padding: var(--_nw-space-4) var(--_nw-space-5) var(--_nw-space-5) var(--_nw-space-5);
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -829,7 +858,7 @@ export const MODAL_STYLES = `
     display: flex;
     align-items: flex-start;
     gap: 10px;
-    color: #474747;
+    color: var(--_nw-color-text-subtle);
     font-size: 0.9em;
     line-height: 1.4;
   }
@@ -846,9 +875,9 @@ export const MODAL_STYLES = `
 
   .nw-fc-modal-description {
     margin-top: 6px;
-    padding-top: 12px;
+    padding-top: var(--_nw-space-3);
     border-top: 1px solid #E0E0E0;
-    color: #474747;
+    color: var(--_nw-color-text-subtle);
     font-size: 0.9em;
     line-height: 1.6;
   }
@@ -865,8 +894,8 @@ export const MODAL_STYLES = `
   }
 
   .nw-fc-modal-actions {
-    margin-top: 12px;
-    padding-top: 16px;
+    margin-top: var(--_nw-space-3);
+    padding-top: var(--_nw-space-4);
     border-top: 1px solid #E0E0E0;
   }
 
@@ -874,19 +903,19 @@ export const MODAL_STYLES = `
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 10px 24px;
-    background-color: #004C97;
-    color: white;
+    padding: 10px var(--_nw-space-6);
+    background-color: var(--_nw-button-bg);
+    color: var(--_nw-button-fg);
     font-size: 0.9em;
     font-weight: 600;
-    border-radius: 8px;
+    border-radius: var(--_nw-button-radius);
     text-decoration: none;
     transition: background-color 0.15s ease;
     cursor: pointer;
   }
 
   .nw-fc-register-btn:hover {
-    background-color: #002855;
+    background-color: var(--_nw-button-bg-hover);
   }
 
   /* ── Modal Image ── */
@@ -896,34 +925,34 @@ export const MODAL_STYLES = `
     aspect-ratio: 16 / 9;
     object-fit: cover;
     display: block;
-    border-radius: 12px 12px 0 0;
+    border-radius: var(--_nw-radius-lg) var(--_nw-radius-lg) 0 0;
   }
 
   .nw-fc-modal-image-placeholder {
     width: 100%;
     aspect-ratio: 16 / 9;
-    background: #004C97;
+    background: var(--_nw-color-primary);
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 12px 12px 0 0;
+    border-radius: var(--_nw-radius-lg) var(--_nw-radius-lg) 0 0;
   }
 
   /* ── Admin Section ── */
 
   .nw-fc-admin-section {
-    margin-top: 12px;
-    padding: 16px;
+    margin-top: var(--_nw-space-3);
+    padding: var(--_nw-space-4);
     background: #f9fafb;
-    border-radius: 8px;
+    border-radius: var(--_nw-radius);
     border: 1px solid #E0E0E0;
   }
 
   .nw-fc-admin-divider {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: var(--_nw-space-2);
+    margin-bottom: var(--_nw-space-3);
     font-size: 0.75em;
     font-weight: 700;
     color: #9E9E9E;
@@ -944,7 +973,7 @@ export const MODAL_STYLES = `
     align-items: center;
     padding: 6px 0;
     font-size: 0.85em;
-    color: #474747;
+    color: var(--_nw-color-text-subtle);
   }
 
   .nw-fc-admin-label {
@@ -957,7 +986,7 @@ export const MODAL_STYLES = `
   }
 
   .nw-fc-admin-value a {
-    color: #004C97;
+    color: var(--_nw-color-primary);
     text-decoration: none;
   }
 
@@ -969,10 +998,10 @@ export const MODAL_STYLES = `
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    margin-top: 8px;
-    padding: 8px 16px;
-    background: #002855;
-    color: white;
+    margin-top: var(--_nw-space-2);
+    padding: var(--_nw-space-2) var(--_nw-space-4);
+    background: var(--_nw-color-secondary);
+    color: var(--_nw-color-on-primary);
     border-radius: 6px;
     font-size: 0.82em;
     font-weight: 600;
@@ -981,7 +1010,7 @@ export const MODAL_STYLES = `
   }
 
   .nw-fc-mp-link:hover {
-    background: #004C97;
+    background: var(--_nw-color-primary);
   }
 
   /* ── Modal Responsive ── */
@@ -1008,12 +1037,12 @@ export const LIST_STYLES = `
 
   .nw-fc-agenda-empty {
     text-align: center;
-    padding: 60px 24px;
+    padding: 60px var(--_nw-space-6);
     color: #9E9E9E;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: var(--_nw-space-3);
   }
 
   .nw-fc-agenda-empty p {
@@ -1024,15 +1053,15 @@ export const LIST_STYLES = `
   /* ── Date Group ── */
 
   .nw-fc-agenda-group {
-    margin-bottom: 4px;
+    margin-bottom: var(--_nw-space-1);
   }
 
   .nw-fc-agenda-date-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 16px;
-    background: #f3f4f6;
+    padding: 10px var(--_nw-space-4);
+    background: var(--_nw-color-surface-muted);
     border-bottom: 1px solid #E0E0E0;
     position: sticky;
     top: 0;
@@ -1046,29 +1075,29 @@ export const LIST_STYLES = `
 
   .nw-fc-agenda-date-label {
     font-size: 0.85em;
-    font-weight: 700;
-    color: #002855;
+    font-weight: var(--_nw-font-weight-heading);
+    color: var(--_nw-color-secondary);
     letter-spacing: 0.01em;
   }
 
   .nw-fc-agenda-today .nw-fc-agenda-date-label {
-    color: #004C97;
+    color: var(--_nw-color-primary);
   }
 
   .nw-fc-agenda-count {
     font-size: 0.72em;
     font-weight: 600;
     color: #9E9E9E;
-    background: white;
+    background: var(--_nw-color-surface);
     padding: 2px 10px;
     border-radius: 999px;
     border: 1px solid #E0E0E0;
   }
 
   .nw-fc-agenda-today .nw-fc-agenda-count {
-    background: white;
+    background: var(--_nw-color-surface);
     border-color: #9DD9F5;
-    color: #004C97;
+    color: var(--_nw-color-primary);
   }
 
   /* ── Event Row ── */
@@ -1076,11 +1105,11 @@ export const LIST_STYLES = `
   .nw-fc-agenda-row {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
+    gap: var(--_nw-space-3);
+    padding: var(--_nw-space-3) var(--_nw-space-4);
     border: none;
-    border-bottom: 1px solid #f3f4f6;
-    background: white;
+    border-bottom: var(--_nw-border-width) solid var(--_nw-color-surface-muted);
+    background: var(--_nw-color-surface);
     cursor: pointer;
     transition: background 0.15s;
     width: 100%;
@@ -1115,7 +1144,7 @@ export const LIST_STYLES = `
   .nw-fc-agenda-thumb {
     width: 56px;
     height: 56px;
-    border-radius: 8px;
+    border-radius: var(--_nw-radius);
     overflow: hidden;
     flex-shrink: 0;
   }
@@ -1144,8 +1173,8 @@ export const LIST_STYLES = `
 
   .nw-fc-agenda-title {
     font-size: 0.92em;
-    font-weight: 700;
-    color: #2D2926;
+    font-weight: var(--_nw-font-weight-heading);
+    color: var(--_nw-color-text);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1162,14 +1191,14 @@ export const LIST_STYLES = `
   .nw-fc-agenda-time {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--_nw-space-1);
     font-weight: 500;
-    color: #474747;
+    color: var(--_nw-color-text-subtle);
   }
 
   .nw-fc-agenda-campus {
     font-weight: 600;
-    color: #004C97;
+    color: var(--_nw-color-primary);
     text-transform: uppercase;
     letter-spacing: 0.03em;
     font-size: 0.95em;
@@ -1178,7 +1207,7 @@ export const LIST_STYLES = `
   .nw-fc-agenda-location {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--_nw-space-1);
     font-size: 0.75em;
     color: #9E9E9E;
   }
@@ -1188,26 +1217,26 @@ export const LIST_STYLES = `
   .nw-fc-agenda-badges {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--_nw-space-1);
     align-items: flex-end;
     flex-shrink: 0;
   }
 
   .nw-fc-agenda-badge {
     display: inline-block;
-    padding: 2px 8px;
+    padding: 2px var(--_nw-space-2);
     border-radius: 999px;
     font-size: 0.65em;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    color: white;
+    color: var(--_nw-color-on-primary);
     white-space: nowrap;
   }
 
   .nw-fc-agenda-badge-featured {
-    background: #F1BE48 !important;
-    color: #2D2926 !important;
+    background: var(--_nw-color-accent) !important;
+    color: var(--_nw-color-text) !important;
   }
 
   /* ── Chevron ── */
@@ -1232,8 +1261,8 @@ export const LIST_STYLES = `
     }
 
     .nw-fc-agenda-row {
-      padding: 10px 12px;
-      gap: 8px;
+      padding: 10px var(--_nw-space-3);
+      gap: var(--_nw-space-2);
     }
 
     .nw-fc-agenda-badges {
@@ -1252,7 +1281,7 @@ export const MONTH_LAYOUT_STYLES = `
   .nw-fc-month-layout {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: var(--_nw-space-6);
   }
 
   .nw-fc-month-layout .nw-fc-mini-cal {
@@ -1260,7 +1289,7 @@ export const MONTH_LAYOUT_STYLES = `
   }
 
   .nw-fc-month-layout .nw-fc-mini-cal-grid {
-    gap: 4px;
+    gap: var(--_nw-space-1);
   }
 
   .nw-fc-month-layout .nw-fc-mini-cal-day {
@@ -1271,11 +1300,11 @@ export const MONTH_LAYOUT_STYLES = `
 
   .nw-fc-month-layout .nw-fc-mini-cal-dow {
     font-size: 0.75em;
-    padding: 6px 4px;
+    padding: 6px var(--_nw-space-1);
   }
 
   .nw-fc-month-layout .nw-fc-mini-cal-header {
-    margin-bottom: 16px;
+    margin-bottom: var(--_nw-space-4);
   }
 
   .nw-fc-month-layout .nw-fc-mini-cal-title {
@@ -1301,4 +1330,4 @@ export const MONTH_LAYOUT_STYLES = `
 // Single constant that concatenates every section for convenient one-shot
 // injection into the Shadow DOM.
 
-export const ALL_STYLES = BASE_STYLES + TOOLBAR_STYLES + CARDS_STYLES + FILTER_STYLES + MINI_CAL_STYLES + MODAL_STYLES + LIST_STYLES + MONTH_LAYOUT_STYLES;
+export const ALL_STYLES = HEADING_RESET_STYLES + BASE_STYLES + TOOLBAR_STYLES + CARDS_STYLES + FILTER_STYLES + MINI_CAL_STYLES + MODAL_STYLES + LIST_STYLES + MONTH_LAYOUT_STYLES;
