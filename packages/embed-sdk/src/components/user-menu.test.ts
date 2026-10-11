@@ -423,7 +423,7 @@ describe("<next-user-menu> auth modes", () => {
       const el = await mountSignedIn('<a href="/give">Give</a>');
       shadow(el).querySelector<HTMLButtonElement>(".nw-avatar-btn")!.click();
       shadow(el).querySelector<HTMLButtonElement>(".nw-avatar-btn")!.click();
-      const hits = warn.mock.calls.filter((c) => String(c[0]).includes('slot="menu-items"'));
+      const hits = warn.mock.calls.filter((c: unknown[]) => String(c[0]).includes('slot="menu-items"'));
       expect(hits).toHaveLength(1);
     });
   });
