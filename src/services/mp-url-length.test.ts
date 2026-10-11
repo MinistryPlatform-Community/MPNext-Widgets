@@ -205,10 +205,12 @@ function withIdentity(inner?: Responder): Responder {
 }
 
 /**
- * A busy six-week grid at a large multi-site church: 400 events across 60
- * programs (30 ministries), 40 locations, 12 campuses and 25 event types.
+ * A busy six-week grid at a large multi-site church: 400 events across 120
+ * programs (30 ministries), 120 locations, 12 campuses and 25 event types.
+ * Programs and locations are past the ~75 distinct ids at which an unbatched
+ * `X_ID = n OR ...` lookup overflowed, so this case proves the batching.
  */
-const CALENDAR = { events: 400, programs: 60, ministries: 30, locations: 40, campuses: 12, types: 25 };
+const CALENDAR = { events: 400, programs: 120, ministries: 30, locations: 120, campuses: 12, types: 25 };
 
 function calendarEvents() {
   const programs = ids(CALENDAR.programs, 2_000_000);

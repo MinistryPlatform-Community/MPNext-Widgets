@@ -1,6 +1,7 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
 import { publicEventFilter } from "@/services/_shared/public-events";
+import { inFilter, readByIdBatches } from "@/services/_shared/id-batches";
 import type { CalendarEvent } from "@mpnext/types";
 
 // ── MP Record Types ──
@@ -352,12 +353,17 @@ export class FullCalendarService {
     if (ids.length === 0) return map;
 
     try {
-      const filter = ids.map((id) => `Program_ID = ${id}`).join(" OR ");
-      const programs = await this.mp!.getTableRecords<ProgramRecord>({
-        table: "Programs",
-        select: "Program_ID,Program_Name,Ministry_ID",
-        filter,
-      });
+      // Every lookup below is keyed by the distinct ids in the visible window,
+      // which a busy multi-site calendar pushes past the ~75 ids at which one
+      // `X_ID = n OR ...` filter overflowed IIS's 2048-char query limit. Batched
+      // `IN (...)` reads keep each request bounded (see _shared/id-batches).
+      const programs = await readByIdBatches(ids, (batch) =>
+        this.mp!.getTableRecords<ProgramRecord>({
+          table: "Programs",
+          select: "Program_ID,Program_Name,Ministry_ID",
+          filter: inFilter("Program_ID", batch),
+        })
+      );
 
       // Collect ministry IDs for secondary lookup
       const ministryIds = [
@@ -368,12 +374,13 @@ export class FullCalendarService {
 
       const ministryMap = new Map<number, MinistryRecord>();
       if (ministryIds.length > 0) {
-        const mFilter = ministryIds.map((id) => `Ministry_ID = ${id}`).join(" OR ");
-        const ministries = await this.mp!.getTableRecords<MinistryRecord>({
-          table: "Ministries",
-          select: "Ministry_ID,Ministry_Name,Available_Online",
-          filter: mFilter,
-        });
+        const ministries = await readByIdBatches(ministryIds, (batch) =>
+          this.mp!.getTableRecords<MinistryRecord>({
+            table: "Ministries",
+            select: "Ministry_ID,Ministry_Name,Available_Online",
+            filter: inFilter("Ministry_ID", batch),
+          })
+        );
         for (const m of ministries) {
           ministryMap.set(m.Ministry_ID, m);
         }
@@ -536,12 +543,13 @@ export class FullCalendarService {
     if (ids.length === 0) return map;
 
     try {
-      const filter = ids.map((id) => `Event_Type_ID = ${id}`).join(" OR ");
-      const records = await this.mp!.getTableRecords<EventTypeRecord>({
-        table: "Event_Types",
-        select: "Event_Type_ID,Event_Type",
-        filter,
-      });
+      const records = await readByIdBatches(ids, (batch) =>
+        this.mp!.getTableRecords<EventTypeRecord>({
+          table: "Event_Types",
+          select: "Event_Type_ID,Event_Type",
+          filter: inFilter("Event_Type_ID", batch),
+        })
+      );
       for (const r of records) {
         map.set(r.Event_Type_ID, r.Event_Type);
       }
@@ -557,12 +565,13 @@ export class FullCalendarService {
     if (ids.length === 0) return map;
 
     try {
-      const filter = ids.map((id) => `Congregation_ID = ${id}`).join(" OR ");
-      const records = await this.mp!.getTableRecords<CongregationRecord>({
-        table: "Congregations",
-        select: "Congregation_ID,Congregation_Name",
-        filter,
-      });
+      const records = await readByIdBatches(ids, (batch) =>
+        this.mp!.getTableRecords<CongregationRecord>({
+          table: "Congregations",
+          select: "Congregation_ID,Congregation_Name",
+          filter: inFilter("Congregation_ID", batch),
+        })
+      );
       for (const r of records) {
         map.set(r.Congregation_ID, r.Congregation_Name);
       }
@@ -578,12 +587,13 @@ export class FullCalendarService {
     if (ids.length === 0) return map;
 
     try {
-      const filter = ids.map((id) => `Location_ID = ${id}`).join(" OR ");
-      const records = await this.mp!.getTableRecords<LocationRecord>({
-        table: "Locations",
-        select: "Location_ID,Location_Name",
-        filter,
-      });
+      const records = await readByIdBatches(ids, (batch) =>
+        this.mp!.getTableRecords<LocationRecord>({
+          table: "Locations",
+          select: "Location_ID,Location_Name",
+          filter: inFilter("Location_ID", batch),
+        })
+      );
       for (const r of records) {
         map.set(r.Location_ID, r.Location_Name);
       }

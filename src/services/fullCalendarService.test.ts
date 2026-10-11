@@ -293,6 +293,66 @@ describe('FullCalendarService', () => {
       expect(filters[1]).toBe(filters[0]);
       expect(filters[2]).toBe(filters[0]);
     });
+
+    it('batches every lookup into IN lists of at most 100 ids and merges the results', async () => {
+      // 230 distinct programs / ministries / locations / campuses / event types:
+      // past the ~75 ids at which one `X_ID = n OR ...` filter overflowed IIS's
+      // 2048-char query limit, which blanked every name on the grid.
+      const N = 230;
+      const events = Array.from({ length: N }, (_, i) => ({
+        ...baseEvent,
+        Event_ID: 1_000_000 + i,
+        Event_Type_ID: 2_000_000 + i,
+        Congregation_ID: 3_000_000 + i,
+        Location_ID: 4_000_000 + i,
+        Program_ID: 5_000_000 + i,
+      }));
+      const idsIn = (filter: string) =>
+        (/IN \(([^)]*)\)/.exec(filter)?.[1] ?? '').split(',').filter(Boolean).map(Number);
+      mockGetTableRecords.mockImplementation(async (q: { table: string; filter: string }) => {
+        const ids = idsIn(q.filter);
+        switch (q.table) {
+          case 'Events':
+            return events;
+          case 'Event_Types':
+            return ids.map((id) => ({ Event_Type_ID: id, Event_Type: `T${id}` }));
+          case 'Congregations':
+            return ids.map((id) => ({ Congregation_ID: id, Congregation_Name: `C${id}` }));
+          case 'Locations':
+            return ids.map((id) => ({ Location_ID: id, Location_Name: `L${id}` }));
+          case 'Programs':
+            return ids.map((id) => ({ Program_ID: id, Program_Name: `P${id}`, Ministry_ID: id + 1 }));
+          case 'Ministries':
+            return ids.map((id) => ({ Ministry_ID: id, Ministry_Name: `M${id}`, Available_Online: true }));
+          default:
+            return [];
+        }
+      });
+
+      const service = await FullCalendarService.getInstance();
+      const result = await service.getEvents(start, end);
+
+      for (const table of ['Event_Types', 'Congregations', 'Locations', 'Programs', 'Ministries']) {
+        const filters = mockGetTableRecords.mock.calls
+          .filter(([q]) => q.table === table)
+          .map(([q]) => q.filter as string);
+        expect(filters, table).toHaveLength(3);
+        for (const f of filters) {
+          expect(f).not.toMatch(/ OR /);
+          expect(idsIn(f).length).toBeLessThanOrEqual(100);
+        }
+        expect(new Set(filters.flatMap(idsIn)).size, table).toBe(N);
+      }
+
+      expect(result.events).toHaveLength(N);
+      for (const ev of result.events) {
+        expect(ev.Event_Type).toBe(`T${ev.Event_Type_ID}`);
+        expect(ev.Congregation_Name).toBe(`C${ev.Congregation_ID}`);
+        expect(ev.Location_Name).toMatch(/^L\d+$/);
+        expect(ev.Program_Name).toBe(`P${ev.Program_ID}`);
+        expect(ev.Ministry_Name).toBe(`M${ev.Program_ID! + 1}`);
+      }
+    });
   });
 
   // C03. MP evaluates the $filter, and the live dataset has no public
