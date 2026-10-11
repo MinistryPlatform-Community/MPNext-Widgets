@@ -53,14 +53,21 @@ export class MyGivingWidget extends MPNextWidget {
     // this widget already paints while it queries the API.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.loadDonations();
     });
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue !== null && oldValue !== newValue) {
-      this.loadDonations();
-    }
+  /**
+   * An observed attribute changed after the first paint (C39; the base class's
+   * `attributeChangedCallback` routes here). Every attribute this widget reads
+   * only changes how already-loaded data is drawn, so a re-render is enough; a
+   * load still in flight reads them when it lands.
+   */
+  protected override reload(): void {
+    if (this.loading) return;
+    this.render();
+    this.attachListeners();
   }
 
   public retryLoad() {

@@ -265,4 +265,26 @@ describe("<next-pledge-campaign> registration window and capacity", () => {
       expect(text(el)).not.toContain("Registration opens");
     });
   });
+
+  describe("late attributes (C39)", () => {
+    it("re-inits when campaign-id changes on a widget whose first load failed", async () => {
+      const fn = mockFetch();
+      const base = fn.getMockImplementation()!;
+      fn.mockImplementation(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.endsWith("/api/embed/pledge-campaign/99")) {
+          return jsonResponse({ error: "not_found" }, 404);
+        }
+        return base(input);
+      });
+
+      document.body.innerHTML = `<next-pledge-campaign api-host="${HOST}" campaign-id="99"></next-pledge-campaign>`;
+      const el = document.body.firstElementChild as HTMLElement;
+      await vi.waitFor(() => expect(text(el)).toContain("No pledge campaign found."));
+      expect(shadow(el).querySelector(".pc-detail")).toBeNull();
+
+      el.setAttribute("campaign-id", "3");
+      await vi.waitFor(() => expect(shadow(el).querySelector(".pc-detail")).not.toBeNull());
+    });
+  });
 });

@@ -237,6 +237,34 @@ describe("giving widgets", () => {
     });
   });
 
+  // ── C39: an attribute set after mount takes effect ─────────────────────
+
+  describe("late attributes (C39)", () => {
+    it("next-my-giving: hiding soft credits after mount removes the toggle", async () => {
+      mockFetch((url) =>
+        url.includes("/api/embed/my-giving")
+          ? jsonResponse({ donations: [donation(), donation({ isSoftCredit: true })] })
+          : undefined,
+      );
+      const el = await settled(mount("next-my-giving"));
+      expect($(el, "#giving-soft-toggle")).not.toBeNull();
+
+      el.setAttribute("hidesoftcredits", "true");
+      expect($(el, "#giving-soft-toggle")).toBeNull();
+    });
+
+    it("next-my-pledges: showing the cancel button after mount draws it", async () => {
+      mockFetch((url) =>
+        url.includes("/api/embed/my-pledges") ? jsonResponse({ pledges: [pledge()] }) : undefined,
+      );
+      const el = await settled(mount("next-my-pledges", 'hidecancelbuttonpledge="true"'));
+      expect($(el, '[data-action="request-cancel"]')).toBeNull();
+
+      el.setAttribute("hidecancelbuttonpledge", "false");
+      expect($(el, '[data-action="request-cancel"]')).not.toBeNull();
+    });
+  });
+
   // ── protect: the money ─────────────────────────────────────────────────
 
   describe("next-my-giving money (regression guard)", () => {

@@ -48,14 +48,21 @@ export class MyPledgesWidget extends MPNextWidget {
     // sees English swap to Spanish.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.loadPledges();
     });
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue !== null && oldValue !== newValue) {
-      this.loadPledges();
-    }
+  /**
+   * An observed attribute changed after the first paint (C39; the base class's
+   * `attributeChangedCallback` routes here). Every attribute this widget reads
+   * only changes how already-loaded pledges are drawn, so a re-render is
+   * enough; a load still in flight reads them when it lands.
+   */
+  protected override reload(): void {
+    if (this.loading) return;
+    this.render();
+    this.attachListeners();
   }
 
   public retryLoad() {

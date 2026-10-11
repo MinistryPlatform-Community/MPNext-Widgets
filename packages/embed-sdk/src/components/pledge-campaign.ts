@@ -122,21 +122,25 @@ export class PledgeCampaignWidget extends MPNextWidget {
     ];
   }
 
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue === newValue) return;
-    if (name === "campaign-id" && this.campaign) {
-      this.init();
-    }
-  }
-
   connectedCallback() {
     this.injectStyles(this.getStyles() + FORM_VALIDATION_STYLES);
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish.
     void this.initLocale().then(() => {
       this.render();
+      this.painted = true;
       this.init();
     });
+  }
+
+  /**
+   * An observed attribute changed after the first paint (C39; the base class's
+   * `attributeChangedCallback` routes here). Re-init unconditionally: the old
+   * guard re-ran only when a campaign had already loaded, so a widget whose
+   * first load failed could never be pointed at another campaign.
+   */
+  protected override reload(): void {
+    void this.init();
   }
 
   /** Re-run the load — exposed so the demo page can refresh on sign-in. */
