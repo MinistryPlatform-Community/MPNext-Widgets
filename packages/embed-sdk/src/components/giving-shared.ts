@@ -39,23 +39,23 @@ export function givingSignedOut(panel: string, rows = 3): string {
 export const GIVING_SIGNED_OUT_STYLES = `
   .gv-signed-out { display: grid; }
   .gv-signed-out > * { grid-area: 1 / 1; }
-  .gv-skeleton { display: flex; flex-direction: column; gap: 12px; opacity: 0.55; }
+  .gv-skeleton { display: flex; flex-direction: column; gap: var(--_nw-space-3); opacity: 0.55; }
   .gv-sk-bar { height: 14px; border-radius: 6px; background: #e5e7eb; }
-  .gv-sk-bar--wide { height: 48px; border-left: 3px solid #F1BE48; background: #f3f4f6; }
+  .gv-sk-bar--wide { height: 48px; border-left: 3px solid var(--_nw-color-accent); background: var(--_nw-color-surface-muted); }
   .gv-sk-bar--short { width: 60%; }
-  .gv-sk-row { display: flex; gap: 12px; }
-  .gv-sk-block { flex: 1; height: 96px; border-radius: 8px; background: #eef0f3; }
+  .gv-sk-row { display: flex; gap: var(--_nw-space-3); }
+  .gv-sk-block { flex: 1; height: 96px; border-radius: var(--_nw-radius); background: #eef0f3; }
   .gv-signed-out .nw-signin {
     align-self: center;
     justify-self: center;
     max-width: 420px;
-    margin: 0 8px;
+    margin: 0 var(--_nw-space-2);
     background: rgba(255, 255, 255, 0.94);
-    border-radius: 12px;
+    border-radius: var(--_nw-radius-lg);
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-    color: #2D2926;
+    color: var(--_nw-color-text);
     font-size: 15px;
-    line-height: 1.5;
+    line-height: var(--_nw-line-height);
   }
 `;
 
