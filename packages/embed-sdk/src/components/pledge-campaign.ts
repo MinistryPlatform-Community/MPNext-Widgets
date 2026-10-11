@@ -1163,59 +1163,59 @@ export class PledgeCampaignWidget extends MPNextWidget {
 
   private getStyles(): string {
     return `
-      :host { all: initial; display: block; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #2D2926; }
+      :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .pc { max-width: 760px; margin: 0 auto; }
 
-      .pc-message { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin: 16px 0; }
+      .pc-message { padding: var(--_nw-space-3) var(--_nw-space-4); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); margin: var(--_nw-space-4) 0; }
       .pc-message--success { background: #ecf6e0; color: #4d6b1f; }
       .pc-message--warning { background: #fdf6e3; color: #8a6d3b; }
       .pc-message--info { background: #e6f6fc; color: #015a7a; }
-      .pc-message--danger { background: #ffe9e9; color: #b91c1c; }
+      .pc-message--danger { background: #ffe9e9; color: var(--_nw-color-error-text); }
 
-      .pc-image { width: 100%; height: 240px; background-size: cover; background-position: center; border-radius: 12px; margin-bottom: 16px; }
-      .pc-title { font-size: 28px; font-weight: 800; color: #002855; margin: 0 0 10px; }
-      .pc-description { font-size: 15px; line-height: 1.6; color: #474747; margin: 0 0 16px; }
+      .pc-image { width: 100%; height: 240px; background-size: cover; background-position: center; border-radius: var(--_nw-radius-lg); margin-bottom: var(--_nw-space-4); }
+      .pc-title { font-size: 28px; font-weight: 800; color: var(--_nw-color-secondary); margin: 0 0 10px; }
+      .pc-description { font-size: 15px; line-height: 1.6; color: var(--_nw-color-text-subtle); margin: 0 0 var(--_nw-space-4); }
 
-      .pc-progress-title { font-size: 16px; font-weight: 700; color: #002855; margin: 16px 0 8px; }
-      .pc-progress { margin-bottom: 8px; }
-      .pc-progress-sub { font-size: 15px; font-weight: 700; color: #004C97; margin: 0 0 6px; }
-      .pc-legend { font-size: 13px; color: #6b7280; margin: 8px 0 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      .pc-progress-title { font-size: 16px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: var(--_nw-space-4) 0 var(--_nw-space-2); }
+      .pc-progress { margin-bottom: var(--_nw-space-2); }
+      .pc-progress-sub { font-size: 15px; font-weight: 700; color: var(--_nw-color-primary); margin: 0 0 6px; }
+      .pc-legend { font-size: 13px; color: var(--_nw-color-muted); margin: var(--_nw-space-2) 0 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
       .pc-dot { width: 10px; height: 10px; border-radius: 9999px; display: inline-block; }
       .pc-dot--received { background: #000; }
-      .pc-dot--pledged { background: #1fb5ac; margin-left: 12px; }
+      .pc-dot--pledged { background: #1fb5ac; margin-left: var(--_nw-space-3); }
 
-      .pc-form-wrap { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-top: 16px; }
-      .pc-form-title { font-size: 20px; font-weight: 800; color: #002855; margin: 0 0 16px; }
-      .pc-subtitle { font-size: 15px; font-weight: 700; color: #002855; margin: 16px 0 8px; }
+      .pc-form-wrap { background: var(--_nw-color-surface); border: var(--_nw-border-width) solid var(--_nw-color-border); border-radius: var(--_nw-radius-lg); padding: var(--_nw-space-5); box-shadow: var(--_nw-shadow); margin-top: var(--_nw-space-4); }
+      .pc-form-title { font-size: 20px; font-weight: 800; color: var(--_nw-color-secondary); margin: 0 0 var(--_nw-space-4); }
+      .pc-subtitle { font-size: 15px; font-weight: var(--_nw-font-weight-heading); color: var(--_nw-color-secondary); margin: var(--_nw-space-4) 0 var(--_nw-space-2); }
       .pc-login-panel { text-align: center; }
-      .pc-login-panel p { margin: 0 0 12px; font-size: 15px; }
+      .pc-login-panel p { margin: 0 0 var(--_nw-space-3); font-size: 15px; }
 
-      .pc-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-      .pc-field label { font-size: 13px; font-weight: 600; color: #6b7280; }
-      .pc-input { padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; color: #2D2926; background: white; outline: none; }
-      .pc-input:focus { border-color: #004C97; box-shadow: 0 0 0 1px #004C97; }
-      .pc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-      .pc-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+      .pc-field { display: flex; flex-direction: column; gap: var(--_nw-space-1); margin-bottom: var(--_nw-space-3); }
+      .pc-field label { font-size: 13px; font-weight: 600; color: var(--_nw-color-muted); }
+      .pc-input { padding: 9px var(--_nw-space-3); border: var(--_nw-border-width) solid var(--_nw-color-border-strong); border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-family: inherit; color: var(--_nw-color-text); background: var(--_nw-color-surface); outline: none; }
+      .pc-input:focus { border-color: var(--_nw-color-primary); box-shadow: 0 0 0 1px var(--_nw-color-primary); }
+      .pc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--_nw-space-3); }
+      .pc-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--_nw-space-3); }
 
-      .pc-amount-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+      .pc-amount-buttons { display: flex; flex-wrap: wrap; gap: var(--_nw-space-2); margin-bottom: var(--_nw-space-3); }
 
-      .pc-btn { padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
-      .pc-btn--primary { background: #004C97; color: white; }
-      .pc-btn--primary:hover { background: #002855; }
-      .pc-btn--ghost { background: white; color: #004C97; border: 1px solid #004C97; }
-      .pc-btn--ghost:hover, .pc-btn--ghost.active { background: #004C97; color: white; }
+      .pc-btn { padding: 10px 18px; border-radius: var(--_nw-radius); font-size: var(--_nw-font-size-base); font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
+      .pc-btn--primary { background: var(--_nw-button-bg); color: var(--_nw-button-fg); border-radius: var(--_nw-button-radius); }
+      .pc-btn--primary:hover { background: var(--_nw-button-bg-hover); }
+      .pc-btn--ghost { background: var(--_nw-color-surface); color: var(--_nw-color-primary); border: var(--_nw-border-width) solid var(--_nw-color-primary); }
+      .pc-btn--ghost:hover, .pc-btn--ghost.active { background: var(--_nw-color-primary); color: var(--_nw-color-on-primary); }
       .pc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-      .pc-total { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 2px solid #e5e7eb; margin: 16px 0; }
-      .pc-total-label { font-size: 16px; font-weight: 700; color: #002855; }
-      .pc-total-value { font-size: 20px; font-weight: 800; color: #004C97; }
+      .pc-total { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-top: 2px solid var(--_nw-color-border); margin: var(--_nw-space-4) 0; }
+      .pc-total-label { font-size: 16px; font-weight: 700; color: var(--_nw-color-secondary); }
+      .pc-total-value { font-size: 20px; font-weight: 800; color: var(--_nw-color-primary); }
 
-      .pc-buttons { display: flex; justify-content: flex-end; gap: 12px; }
+      .pc-buttons { display: flex; justify-content: flex-end; gap: var(--_nw-space-3); }
 
-      .pc-state { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: #6b7280; font-size: 15px; }
+      .pc-state { display: flex; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 48px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; }
       .pc-error { flex-direction: column; }
-      .pc-error p { color: #b91c1c; }
-      .pc-spinner { animation: pc-spin 1s linear infinite; color: #004C97; }
+      .pc-error p { color: var(--_nw-color-error-text); }
+      .pc-spinner { animation: pc-spin 1s linear infinite; color: var(--_nw-color-primary); }
       @keyframes pc-spin { to { transform: rotate(360deg); } }
 
       @media (max-width: 640px) {
