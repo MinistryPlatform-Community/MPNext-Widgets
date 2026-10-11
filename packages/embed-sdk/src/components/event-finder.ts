@@ -373,9 +373,7 @@ export class EventFinderWidget extends MPNextWidget {
     const badge = e.featured
       ? `<span class="nw-ef-badge">${this.escapeHtml(this.t("eventFinder.featured"))}</span>`
       : "";
-    // `weekdayShort` matches the pre-i18n shape ("Thu, Sep 10"); C09 tracks
-    // whether these cards should carry the year at all.
-    const dateRange = this.fmt.dateRange(e.startDate, e.endDate, "weekdayShort");
+    const dateRange = this.fmt.dateRange(e.startDate, e.endDate, this.cardDateStyle(e));
     const location = e.location
       ? `<div class="nw-ef-card-loc">${this.escapeHtml(e.location)}</div>`
       : "";
@@ -400,6 +398,21 @@ export class EventFinderWidget extends MPNextWidget {
 
   // ── Date / text helpers ──
 
+  /**
+   * "Thu, Sep 10" for this year, "Sun, Jan 3, 2027" otherwise (C09).
+   *
+   * The result list is unpaginated and runs ~4 months, so a year boundary
+   * falls inside it about a third of the year; without the year "Sat, Jan 2"
+   * reads as last week. Keeping the common case short is why this is not
+   * always-on. The year is read off MP's wall-clock string, so no time zone
+   * is involved; "this year" is the visitor's clock.
+   */
+  private cardDateStyle(e: EventSearchResult): "weekdayShort" | "weekdayMedium" {
+    const thisYear = String(new Date().getFullYear());
+    const startYear = (e.startDate || "").slice(0, 4);
+    const endYear = (e.endDate || e.startDate || "").slice(0, 4);
+    return startYear === thisYear && endYear === thisYear ? "weekdayShort" : "weekdayMedium";
+  }
 
   private truncate(text: string, max: number): string {
     const clean = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();

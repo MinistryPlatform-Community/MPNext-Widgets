@@ -122,6 +122,28 @@ describe("<next-event-finder> result cards (C05)", () => {
   });
 });
 
+describe("<next-event-finder> card dates (C09)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 8, 8, 12, 0, 0)); // 8 Sep 2026
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const dates = (el: HTMLElement) =>
+    Array.from(shadow(el).querySelectorAll(".nw-ef-card-date")).map((n) =>
+      (n.textContent || "").replace(/[ -   ]/g, " "),
+    );
+
+  it("omits the year for this year's events and shows it for next year's", async () => {
+    const el = mount();
+    await settle();
+    const [sep, jan] = dates(el);
+    expect(sep).toContain("Sat, Sep 12,");
+    expect(sep).not.toContain("2026");
+    expect(jan).toContain("Sun, Jan 3, 2027");
+  });
+});
+
 describe("<next-event-finder> Featured filter (C04)", () => {
   const featuredBox = (el: HTMLElement) =>
     shadow(el).querySelector<HTMLInputElement>("#ef-featured")!;
