@@ -59,6 +59,7 @@ export const THEME_TOKENS: readonly ThemeToken[] = [
   { name: "nw-color-info", value: "#009CDE", description: "Informational colour; also the default focus-ring colour." },
   { name: "nw-color-success", value: "#86AD3F", description: "Success states and confirmations." },
   { name: "nw-color-error", value: "#FF6D6A", description: "Error accent: invalid-field borders, required markers, error icons." },
+  { name: "nw-color-warning", value: "#F1BE48", description: "Pending and warning states: a payment still processing, an amount due, warning toasts, the sandbox notice." },
   { name: "nw-color-text", value: "#2D2926", description: "Body text." },
   // ── Colour: neutrals ──
   { name: "nw-color-text-subtle", value: "#474747", description: "Secondary body text, such as descriptions." },

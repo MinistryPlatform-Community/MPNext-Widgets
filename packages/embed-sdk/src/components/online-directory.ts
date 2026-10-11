@@ -1,4 +1,4 @@
-import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -145,7 +145,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body, "onlineDirectory.loadFailed"));
+        throw new WidgetError(this.errorText(body, "onlineDirectory.loadFailed"));
       }
       const data: { canAccess: boolean } = await res.json();
       if (!data.canAccess) {
@@ -158,9 +158,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       // `errorText` has already translated an API code; anything else (a
       // dropped connection) becomes this widget's own load message.
       this.error =
-        err instanceof Error
-          ? err.message
-          : this.t("onlineDirectory.loadFailed");
+        this.caughtText(err, "onlineDirectory.loadFailed");
       this.render();
       this.emit("directoryError", { error: this.error });
       return;
@@ -239,16 +237,14 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       const res = await this.fetch(`/api/embed/online-directory?${params.toString()}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data, "onlineDirectory.searchFailed"));
+        throw new WidgetError(this.errorText(data, "onlineDirectory.searchFailed"));
       }
       const data: { members: DirectoryMember[] } = await res.json();
       this.members = data.members || [];
       this.emit("directorySearched", { count: this.members.length });
     } catch (err) {
       const msg =
-        err instanceof Error
-          ? err.message
-          : this.t("onlineDirectory.searchFailed");
+        this.caughtText(err, "onlineDirectory.searchFailed");
       this.emit("directoryError", { error: msg });
       this.showResultsMessage("warning", msg);
       this.searching = false;
@@ -363,7 +359,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       const data: { success: boolean; error?: string; message?: string } =
         await res.json().catch(() => ({ success: false }));
       if (!data.success) {
-        throw new Error(this.errorText(data, "onlineDirectory.sendFailed"));
+        throw new WidgetError(this.errorText(data, "onlineDirectory.sendFailed"));
       }
       this.emailSentFor.add(contactId);
       this.composeFor = null;
@@ -373,9 +369,7 @@ export class OnlineDirectoryWidget extends MPNextWidget {
       const errEl = form.querySelector<HTMLElement>(".nw-od-email-error");
       if (errEl) {
         errEl.textContent =
-          err instanceof Error
-            ? err.message
-            : this.t("onlineDirectory.sendFailed");
+          this.caughtText(err, "onlineDirectory.sendFailed");
       }
       if (sendBtn) sendBtn.disabled = false;
     }

@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import { parseWallClock } from "../i18n";
 import {
   renderCustomFormFields,
@@ -196,11 +196,11 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       );
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body, "errors.opportunity_not_found"));
+        throw new WidgetError(this.errorText(body, "errors.opportunity_not_found"));
       }
       const data: { opportunity: OpportunityDetail } = await res.json();
       if (!data || !data.opportunity) {
-        throw new Error(this.t("errors.opportunity_not_found"));
+        throw new WidgetError(this.t("errors.opportunity_not_found"));
       }
       this.opportunity = data.opportunity;
 
@@ -226,7 +226,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       // `errorText` has already produced a translated sentence; a thrown
       // non-Error (a dropped connection) becomes the generic network message
       // rather than leaking English.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.opportunity = null;
       this.loading = false;
       this.render();
@@ -361,7 +361,7 @@ export class OpportunityDetailsWidget extends MPNextWidget {
       this.render();
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : this.t("errors.submitFailed");
+        this.caughtText(err, "errors.submitFailed");
       this.setMessage("danger", msg);
       this.emit("responseError", { error: msg });
       this.setSubmitDisabled(false);

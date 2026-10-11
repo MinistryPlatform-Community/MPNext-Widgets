@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import { injectExternalCSS, loadScript } from "../shared/cdn-loader";
 import { ALL_STYLES } from "./full-calendar-styles";
 import {
@@ -17,6 +17,7 @@ import {
 import { renderDetailModal } from "./full-calendar-modal";
 import { dialogFocus, type DialogCloseReason, type DialogFocusHandle } from "../shared/dialog-focus";
 import { renderAgendaList } from "./full-calendar-list";
+import { headingTag } from "../shared/heading-level";
 
 // ── Constants ──
 
@@ -550,7 +551,7 @@ export class FullCalendarWidget extends MPNextWidget {
       const body = await res.json().catch(() => ({}));
       const msg = this.errorText(body);
       this.emit("fullCalendarError", { error: msg });
-      throw new Error(msg);
+      throw new WidgetError(msg);
     }
 
     const data = await res.json();
@@ -615,7 +616,7 @@ export class FullCalendarWidget extends MPNextWidget {
       const res = await this.fetch(`/api/embed/full-calendar?${params}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body));
+        throw new WidgetError(this.errorText(body));
       }
       const data = await res.json();
       return {
@@ -668,12 +669,10 @@ export class FullCalendarWidget extends MPNextWidget {
       this.emit("calendarLoaded", { count: this.allEvents.length });
     } catch (err) {
       if (seq !== this.loadSeq) return;
-      console.error("FullCalendarWidget: Failed to load cards data:", err);
       // `errorText` has already turned an API machine code into a translated
-      // sentence; anything else (a dropped connection) becomes the generic
-      // network message rather than leaking English.
-      this.cardsError =
-        err instanceof Error && err.message ? err.message : this.t("errors.network");
+      // sentence (a WidgetError); anything else (a dropped connection) is
+      // logged and becomes the network message rather than leaking English.
+      this.cardsError = this.caughtText(err, "errors.network");
       this.emit("fullCalendarError", { error: this.cardsError });
     }
 
@@ -808,7 +807,11 @@ export class FullCalendarWidget extends MPNextWidget {
   // ── Toolbar ──
 
   private renderToolbar(): string {
-    if (!this.showToolbar) return "";
+    // The title is the widget's heading (CROSS-3), placed in the host outline
+    // by `heading-level` (C35 convention, default h2). Without a toolbar it is
+    // kept, visually hidden, so every view still has one.
+    const h = headingTag(this.getAttribute("heading-level"));
+    if (!this.showToolbar) return `<${h} class="nw-fc-sr-only" id="nw-fc-title"></${h}>`;
 
     const views: { key: ViewType; label: string }[] = [
       { key: "month", label: this.t("fullCalendar.viewMonth") },
@@ -843,7 +846,7 @@ export class FullCalendarWidget extends MPNextWidget {
       <div class="nw-fc-toolbar">
         <div class="nw-fc-toolbar-left">${nav}
         </div>
-        <div class="nw-fc-toolbar-center" id="nw-fc-title"></div>
+        <${h} class="nw-fc-toolbar-center" id="nw-fc-title"></${h}>
         <div class="nw-fc-toolbar-right">
           ${viewButtons}
         </div>
@@ -980,6 +983,9 @@ export class FullCalendarWidget extends MPNextWidget {
           )
         : null;
 
+    /** Card titles / agenda dates sit one level under the widget title. */
+    const itemHeading = headingTag(this.getAttribute("heading-level"), 1);
+
     /** The listing itself, or its loading / error state. */
     const listing = (kind: "cards" | "list"): HTMLElement => {
       if (this.cardsLoading) return this.renderCardsState("loading");
@@ -991,7 +997,8 @@ export class FullCalendarWidget extends MPNextWidget {
           (typeId) => this.getEventColor(typeId),
           this.t,
           this.fmt,
-          emptyText
+          emptyText,
+          itemHeading
         );
       }
       return renderCardsGrid(
@@ -1004,7 +1011,8 @@ export class FullCalendarWidget extends MPNextWidget {
         },
         this.t,
         this.fmt,
-        emptyText
+        emptyText,
+        itemHeading
       );
     };
 

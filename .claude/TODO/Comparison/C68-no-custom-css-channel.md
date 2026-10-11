@@ -159,3 +159,32 @@ channels above stay **open** (see the end of this section).
    churches get automatically. **Migration notes must say this.** A legacy church that
    brands its widgets through the domain stylesheet has to restate that branding as
    `--nw-*` tokens on its own site. Its MP skin stylesheet no longer reaches the widgets.
+
+### Addendum — 2026-10-11 (final fix-ups): the ratchet reaches zero
+
+W7b left three entries in the `BUDGET` table of `shared/theme-tokens.test.ts`. All three
+are converted, the table is gone, and the guard is now the plain assertion the W7
+acceptance asked for: **no widget source may contain a raw brand hex or a literal
+`ui-sans-serif` font stack.** Three decisions went with that:
+
+1. **New token `--nw-color-warning` (default `#F1BE48`)** for the amber *pending* stripe
+   in `checkout-complete.ts`. W7b had left it literal because tying it to
+   `--nw-color-accent` would let a re-brand recolour a payment status. A separate token
+   keeps that independence and still makes it themeable. It is in `theme-tokens.ts` and
+   the README Theming table (now 36 tokens). It has the accent's hex by default and does
+   not follow the accent.
+   The same token now drives three other uses that were exactly `#F1BE48` (already
+   converted to the accent token by W7b) **and** meant pending/warning: the
+   `my-household` warning-toast border, the `my-invoices` "amount due" row stripe, and
+   the `next-pay` sandbox notice. Left on the accent, because they are highlights rather
+   than statuses: Featured badges and event labels, the giving summary stripes and
+   skeleton, the `group-finder` empty-state border, the full-calendar event-type
+   colour, and the user-menu tax-season icon.
+2. **`add-to-calendar.ts` `:host`** (`… -apple-system, BlinkMacSystemFont, sans-serif`)
+   reads `var(--_nw-font-family)`. The token stack drops `BlinkMacSystemFont`, which
+   only ever matched where `system-ui` / `-apple-system` already did, so the rendered
+   font is the same on every platform.
+3. **`my-giving.ts` SVG chart labels** (`ui-sans-serif, system-ui, sans-serif`) read
+   `var(--_nw-font-family)` as well. The token stack adds `-apple-system`, which again
+   resolves to the same system UI font. The labels now also follow a church's
+   `--nw-font-family`, which they should: they are text in the widget.

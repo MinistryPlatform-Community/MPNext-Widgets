@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -6,6 +6,7 @@ import {
   FORM_VALIDATION_STYLES,
   type ValidateOptions,
 } from "../shared/form-validation";
+import { headingTag, HEADING_RESET_STYLES } from "../shared/heading-level";
 import { paymentOutcomeView, type PaymentTone } from "./checkout-status";
 
 interface CheckoutLineItem {
@@ -167,7 +168,7 @@ export class CheckoutWidget extends MPNextWidget {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { invoiceId?: number | null; status?: unknown } = await res.json();
 
@@ -185,18 +186,18 @@ export class CheckoutWidget extends MPNextWidget {
       // We do not know whether it was recorded, so this is never the amber
       // "processing" banner (C41), and the form is held back.
       this.holdPayForm = true;
+      const errorText = this.caughtText(err, "errors.network");
       this.confirmation = {
         tone: "failed",
-        // `err.message` is itself already a translated sentence from
-        // `errorText`, so it is safe to quote inside this one.
+        // A WidgetError's message is already a translated sentence from
+        // `errorText`, so it is safe to quote inside this one. Anything else
+        // (the browser's "Failed to fetch") is never quoted.
         message:
-          err instanceof Error
-            ? this.t("checkout.paymentUnconfirmedDetail", { detail: err.message })
+          err instanceof WidgetError
+            ? this.t("checkout.paymentUnconfirmedDetail", { detail: errorText })
             : this.t("checkout.paymentUnconfirmed"),
       };
-      this.emit("checkoutError", {
-        error: err instanceof Error ? err.message : this.t("errors.network"),
-      });
+      this.emit("checkoutError", { error: errorText });
     } finally {
       this.processing = false;
       this.render();
@@ -221,18 +222,18 @@ export class CheckoutWidget extends MPNextWidget {
         `/api/embed/checkout/invoice?guid=${encodeURIComponent(this.guid)}`,
       );
       if (res.status === 404) {
-        throw new Error(this.t("errors.invoice_not_found"));
+        throw new WidgetError(this.t("errors.invoice_not_found"));
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { invoice: CheckoutInvoice } = await res.json();
       this.invoice = data.invoice;
       this.payChoice = "full";
       this.emit("invoiceLoaded", { invoiceId: this.invoice.invoiceId });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("checkoutError", { error: this.error });
     } finally {
       this.loading = false;
@@ -322,7 +323,7 @@ export class CheckoutWidget extends MPNextWidget {
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { token: string } = await res.json();
       const sep = processorUrl.includes("?") ? "&" : "?";
@@ -331,7 +332,7 @@ export class CheckoutWidget extends MPNextWidget {
       )}`;
     } catch (err) {
       this.processing = false;
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.render();
       this.emit("checkoutError", { error: this.error });
     }
@@ -424,9 +425,12 @@ export class CheckoutWidget extends MPNextWidget {
   }
 
   private shell(body: string): string {
+    // The title is a real heading (CROSS-3); `heading-level` places it in the
+    // host page's outline (C35 convention, default h2).
+    const h = headingTag(this.getAttribute("heading-level"));
     return `
       <div class="nw-co">
-        <div class="nw-co-header">${this.escapeHtml(this.t("checkout.header"))}</div>
+        <${h} class="nw-co-header">${this.escapeHtml(this.t("checkout.header"))}</${h}>
         <div class="nw-co-body">
           ${this.confirmation ? this.renderConfirmation() : ""}
           ${body}
@@ -666,7 +670,7 @@ export class CheckoutWidget extends MPNextWidget {
   }
 
   private getStyles(): string {
-    return `
+    return `${HEADING_RESET_STYLES}
       :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .nw-co { max-width: 720px; margin: 0 auto; background: var(--_nw-color-surface); border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
       .nw-co-header { background: var(--_nw-color-secondary); color: var(--_nw-color-on-primary); padding: var(--_nw-space-6); font-size: 22px; font-weight: var(--_nw-font-weight-heading); text-align: center; }

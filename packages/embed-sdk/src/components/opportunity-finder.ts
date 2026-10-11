@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import { parseWallClock } from "../i18n";
 import { cardLink, bindCardSelect, CARD_LINK_STYLES } from "../shared/card-link";
 
@@ -187,7 +187,7 @@ export class OpportunityFinderWidget extends MPNextWidget {
       const res = await this.fetch(`/api/embed/opportunity-finder${this.buildQuery()}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { opportunities: OpportunitySearchResult[] } = await res.json();
       this.opportunities = data.opportunities || [];
@@ -196,7 +196,7 @@ export class OpportunityFinderWidget extends MPNextWidget {
       // `errorText` has already produced a translated sentence; a thrown
       // non-Error (a dropped connection) becomes the generic network message
       // rather than leaking English.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("opportunityFinderError", { error: this.error });
     } finally {
       this.loading = false;

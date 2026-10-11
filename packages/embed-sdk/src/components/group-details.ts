@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import { parseWallClock } from "../i18n";
 import {
   validateForm,
@@ -205,12 +205,12 @@ export class GroupDetailsWidget extends MPNextWidget {
         `/api/embed/group-details/${encodeURIComponent(groupId)}${qs ? `?${qs}` : ""}`
       );
       if (!res.ok) {
-        if (res.status === 404) throw new Error(this.t("errors.group_not_found"));
+        if (res.status === 404) throw new WidgetError(this.t("errors.group_not_found"));
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body));
+        throw new WidgetError(this.errorText(body));
       }
       const data: { group: GroupDetail } = await res.json();
-      if (!data || !data.group) throw new Error(this.t("errors.group_not_found"));
+      if (!data || !data.group) throw new WidgetError(this.t("errors.group_not_found"));
       this.group = data.group;
 
       // Seed dropdown selections + prior-activity warnings.
@@ -227,7 +227,7 @@ export class GroupDetailsWidget extends MPNextWidget {
       // `errorText` has already produced a translated sentence; a thrown
       // non-Error (a dropped connection) becomes the generic network message
       // rather than leaking English.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.group = null;
       this.emit("groupDetailError", { error: this.error });
     } finally {
@@ -364,7 +364,7 @@ export class GroupDetailsWidget extends MPNextWidget {
     } catch (err) {
       this.setMessage(
         "danger",
-        err instanceof Error ? err.message : this.t("errors.submitFailed")
+        this.caughtText(err, "errors.submitFailed")
       );
       this.setSubmitDisabled(false);
     }

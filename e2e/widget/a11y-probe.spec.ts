@@ -81,42 +81,15 @@ const HEADING_NEEDS_A_RECORD = new Set([
 ]);
 
 /**
- * Real defects this probe found (W8, 2026-10-11). Each is a CROSS-3 / C35-class
- * gap: the widget's title is a `<div>`/`<p>` in every state, so a screen-reader
- * user listing headings finds nothing. Do not add to this list to silence a new
- * one; delete an entry in the commit that fixes it.
+ * Real defects this probe found. Do not add to this list to silence a new one;
+ * delete an entry in the commit that fixes it.
+ *
+ * Empty since 2026-10-11: the four W8 found (checkout, pay, full-calendar and
+ * unsubscribe rendering their title as a `<div>`/`<p>`) were fixed by giving
+ * each a real heading under the `heading-level` convention
+ * (`shared/heading-level.ts`).
  */
-const KNOWN_DEFECTS: KnownDefect[] = [
-  {
-    page: "demo-checkout.html",
-    rule: "heading",
-    widget: "next-checkout",
-    node: "(no h1-h6)",
-    source: 'checkout.ts:425 <div class="nw-co-header"> should be a heading',
-  },
-  {
-    page: "demo-pay.html",
-    rule: "heading",
-    widget: "next-pay",
-    node: "(no h1-h6)",
-    source: 'pay.ts:355 <div class="nw-pay-header"> should be a heading',
-  },
-  {
-    page: "demo-full-calendar.html",
-    rule: "heading",
-    widget: "next-full-calendar",
-    node: "(no h1-h6)",
-    source:
-      'full-calendar.ts:839 <div id="nw-fc-title"> (month/week title) is not a heading; the cards/list views emit none either (only the event modal has one, full-calendar-modal.ts:239)',
-  },
-  {
-    page: "demo-unsubscribe.html",
-    rule: "heading",
-    widget: "next-unsubscribe",
-    node: "(no h1-h6)",
-    source: 'unsubscribe.ts:332/345/361/399 <p class="headline"> in every state should be a heading',
-  },
-];
+const KNOWN_DEFECTS: KnownDefect[] = [];
 
 const matches = (d: KnownDefect, page: string, v: A11yViolation) =>
   d.page === page && d.rule === v.rule && d.widget === v.widget && v.node.includes(d.node);

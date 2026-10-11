@@ -1,4 +1,4 @@
-import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -143,7 +143,7 @@ export class ProfileWidget extends MPNextWidget {
       }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body));
+        throw new WidgetError(this.errorText(body));
       }
       const data = await res.json();
       this.profile = data.profile;
@@ -158,7 +158,7 @@ export class ProfileWidget extends MPNextWidget {
       this.loading = false;
       // `errorText` has already translated an API code; anything else (a
       // dropped connection) becomes the generic network message.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.render();
       this.emit("profileError", { error: this.error });
     }
@@ -211,7 +211,7 @@ export class ProfileWidget extends MPNextWidget {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
 
       this.uploadingPhoto = false;
@@ -220,7 +220,7 @@ export class ProfileWidget extends MPNextWidget {
     } catch (err) {
       this.uploadingPhoto = false;
       this.error =
-        err instanceof Error ? err.message : this.t("errors.saveFailed");
+        this.caughtText(err, "errors.saveFailed");
       this.render();
     }
   }
@@ -602,7 +602,7 @@ export class ProfileWidget extends MPNextWidget {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
 
       if (this.profile) {
@@ -622,7 +622,7 @@ export class ProfileWidget extends MPNextWidget {
     } catch (err) {
       this.saving = false;
       this.error =
-        err instanceof Error ? err.message : this.t("errors.saveFailed");
+        this.caughtText(err, "errors.saveFailed");
       this.render();
       this.emit("profileError", { error: this.error });
     }
@@ -656,7 +656,7 @@ export class ProfileWidget extends MPNextWidget {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
 
       this.savingPassword = false;
@@ -677,7 +677,7 @@ export class ProfileWidget extends MPNextWidget {
     } catch (err) {
       this.savingPassword = false;
       this.passwordError =
-        err instanceof Error ? err.message : this.t("errors.saveFailed");
+        this.caughtText(err, "errors.saveFailed");
       this.render();
       this.emit("passwordError", { error: this.passwordError });
     }

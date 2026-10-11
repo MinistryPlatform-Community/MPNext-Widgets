@@ -997,6 +997,7 @@ buttons follow unless you also set `--nw-button-bg`.
 | `--nw-color-info` | `#009CDE` | Informational accents; the focus-ring colour |
 | `--nw-color-success` | `#86AD3F` | Success states and confirmations |
 | `--nw-color-error` | `#FF6D6A` | Invalid-field borders, required markers, error icons |
+| `--nw-color-warning` | `#F1BE48` | Pending and warning states: a payment still processing, an amount due, warning toasts, the payment sandbox notice. Same hex as the accent by default, but separate, so re-branding the accent never recolours a status |
 | `--nw-color-text` | `#2D2926` | Body text |
 | `--nw-color-text-subtle` | `#474747` | Secondary body text, such as descriptions |
 | `--nw-color-muted` | `#6b7280` | Field labels, metadata, empty and loading states |

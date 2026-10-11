@@ -120,6 +120,13 @@ export class OpportunityDetailsService {
       // twice, put the query string past IIS's 2048-char maxQueryString once
       // the base URL reached ~215 chars, which MP answers with an HTML 404
       // (the C50 pattern; onlineDirectoryService made the same change).
+      // Unqualified on purpose, and verified live (read-only, 2026-10-11): MP
+      // resolves the bare `dp_FileUniqueID` pseudo-column to the base table
+      // even with `_Table` joins in the select. Opportunity 3 returned
+      // ImageGuid null beside a non-null ContactImageGuid, and Contacts 98
+      // with a Household join returned its own file GUID. Note that it
+      // cannot be qualified in a $filter (`Opportunities.dp_FileUniqueID`
+      // is "Invalid column name"); it is a $select-only pseudo-column.
       "dp_FileUniqueID AS ImageGuid",
       "Group_Role_ID_Table.Role_Title AS NoImageText",
       "Opportunity_Title AS Title",

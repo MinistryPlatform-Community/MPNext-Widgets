@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -6,6 +6,7 @@ import {
   FORM_VALIDATION_STYLES,
   type ValidateOptions,
 } from "../shared/form-validation";
+import { headingTag, HEADING_RESET_STYLES } from "../shared/heading-level";
 
 interface PaymentRequestToken {
   invoiceId: string;
@@ -176,13 +177,13 @@ export class PayWidget extends MPNextWidget {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         if (this.isLinkState(data)) return;
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { request: PaymentRequestToken } = await res.json();
       this.request = data.request;
     } catch (err) {
       this.error =
-        err instanceof Error ? err.message : this.t("pay.decodeFailed");
+        this.caughtText(err, "pay.decodeFailed");
     } finally {
       this.loading = false;
       this.render();
@@ -228,7 +229,7 @@ export class PayWidget extends MPNextWidget {
           this.render();
           return;
         }
-        throw new Error(this.errorText(data, "errors.payment_declined"));
+        throw new WidgetError(this.errorText(data, "errors.payment_declined"));
       }
       const data: { token: string } = await res.json();
 
@@ -239,7 +240,7 @@ export class PayWidget extends MPNextWidget {
     } catch (err) {
       this.submitting = false;
       this.formError =
-        err instanceof Error ? err.message : this.t("pay.submitFailed");
+        this.caughtText(err, "pay.submitFailed");
       this.render();
     }
   }
@@ -361,9 +362,12 @@ export class PayWidget extends MPNextWidget {
   }
 
   private shell(body: string): string {
+    // The title is a real heading (CROSS-3); `heading-level` places it in the
+    // host page's outline (C35 convention, default h2).
+    const h = headingTag(this.getAttribute("heading-level"));
     return `
       <div class="nw-pay">
-        <div class="nw-pay-header">${this.escapeHtml(this.t("pay.header"))}</div>
+        <${h} class="nw-pay-header">${this.escapeHtml(this.t("pay.header"))}</${h}>
         <div class="nw-pay-sandbox">
           ${this.escapeHtml(this.t("pay.sandboxNotice", { card: TEST_CARD }))}
         </div>
@@ -470,11 +474,11 @@ export class PayWidget extends MPNextWidget {
   }
 
   private getStyles(): string {
-    return `
+    return `${HEADING_RESET_STYLES}
       :host { all: initial; display: block; font-family: var(--_nw-font-family); color: var(--_nw-color-text); }
       .nw-pay { max-width: 480px; margin: 0 auto; background: var(--_nw-color-surface); border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
       .nw-pay-header { background: var(--_nw-color-secondary); color: var(--_nw-color-on-primary); padding: var(--_nw-space-6); font-size: 22px; font-weight: var(--_nw-font-weight-heading); text-align: center; }
-      .nw-pay-sandbox { background: var(--_nw-color-accent); color: var(--_nw-color-text); padding: 10px var(--_nw-space-4); font-size: 13px; font-weight: 700; text-align: center; }
+      .nw-pay-sandbox { background: var(--_nw-color-warning); color: var(--_nw-color-text); padding: 10px var(--_nw-space-4); font-size: 13px; font-weight: 700; text-align: center; }
       .nw-pay-body { padding: var(--_nw-space-6); }
 
       .nw-pay-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--_nw-space-3); padding: 40px var(--_nw-space-4); color: var(--_nw-color-muted); font-size: 15px; text-align: center; }

@@ -1,24 +1,17 @@
 /**
- * Guard: raw brand values in widget stylesheets only ever go down (C68, W7).
+ * Guard: no widget stylesheet writes a raw brand value (C68, W7).
  *
  * The `--nw-*` contract (`theme-tokens.ts`) is only worth publishing if every
  * widget actually reads it — a half-converted token set is worse than none,
- * because a church cannot tell which rules a token reaches. This ratchet keeps
- * the conversion honest, in the style of `i18n/no-english-literals.test.ts`.
+ * because a church cannot tell which rules a token reaches.
  *
- * ## The ratchet
- *
- * Each style-bearing file carries a **budget** per value class: how many raw
- * values a token covers that it still writes as literals. The test fails in
- * both directions:
- *
- *   - **over budget** — a regression: new CSS wrote a brand hex instead of
- *     `var(--_nw-…)`.
- *   - **under budget** — lower the number in the same commit that did the
- *     conversion, so the table never drifts into fiction.
- *
- * Finish line: every entry at 0, then collapse the table into one "no file may
- * contain any" assertion.
+ * This was a per-file ratchet (a `BUDGET` table, in the style of
+ * `i18n/no-english-literals.test.ts`) while W7 converted the catalogue. It
+ * reached zero on 2026-10-11 — the last three entries were the amber pending
+ * stripe in `checkout-complete.ts` (now `--nw-color-warning`) and two font
+ * stacks in `add-to-calendar.ts` / `my-giving.ts` that differed slightly from
+ * the token stack (now `--nw-font-family`) — and collapsed into the plain
+ * assertion below: **no file may contain any.**
  *
  * ## What is counted
  *
@@ -55,25 +48,6 @@ type ValueClass = "brandHex" | "fontStack";
 const PATTERNS: Record<ValueClass, RegExp> = {
   brandHex: /#(?:004C97|002855|F1BE48|009CDE|86AD3F|FF6D6A|2D2926)(?![0-9a-f])/gi,
   fontStack: /ui-sans-serif/g,
-};
-
-/**
- * Raw values a token covers that each file still writes as literals.
- * Keys are paths under `packages/embed-sdk/src/`. Omitted classes are 0.
- *
- * Baseline 2026-10-11 (W7a): 497 brand hexes and 35 font stacks across 37
- * files. That is after the reference conversion — `event-finder.ts` (was
- * 18 + 1) and `shared/card-link.ts` (was 1) went to 0, and
- * `full-calendar-styles.ts` (was 50) mapped eight brand `--fc-classic-*`
- * defaults onto the tokens with the old hex as the `var()` fallback.
- */
-const BUDGET: Record<string, Partial<Record<ValueClass, number>>> = {
-  "components/add-to-calendar.ts": { fontStack: 1 }, // stack adds BlinkMacSystemFont: not an exact match, so it stays literal
-  // W7b-payments: the pending (amber) status stripe. Its hex equals the accent,
-  // but it means "pending", not "highlight"; tying it to --nw-color-accent would
-  // let a re-brand recolour a payment status. No warning token exists. Permanent.
-  "components/checkout-complete.ts": { brandHex: 1 },
-  "components/my-giving.ts": { fontStack: 2 },
 };
 
 function stripComments(text: string): string {
@@ -120,17 +94,12 @@ const files = scannedFiles();
 const actual = Object.fromEntries(files.map((f) => [f, countFile(f)]));
 const CLASSES = Object.keys(PATTERNS) as ValueClass[];
 
-describe("theme tokens: raw brand values ratchet", () => {
+describe("theme tokens: no raw brand values", () => {
   it("scans the widget sources it is supposed to scan", () => {
-    // A scanner that silently stopped finding files would pass every budget.
+    // A scanner that silently stopped finding files would always pass.
     expect(files.length).toBeGreaterThan(30);
     expect(files).toContain("components/event-finder.ts");
     expect(files).toContain("components/full-calendar-styles.ts");
-  });
-
-  it("has no budget entry for a file that no longer exists", () => {
-    const stale = Object.keys(BUDGET).filter((f) => !files.includes(f));
-    expect(stale, "budget entries for missing files").toEqual([]);
   });
 
   it("strips var() fallbacks and comments before counting", () => {
@@ -145,28 +114,19 @@ describe("theme tokens: raw brand values ratchet", () => {
     expect(text.match(PATTERNS.brandHex)).toEqual(["#2d2926"]);
   });
 
-  for (const file of files) {
-    it(`${file} stays at its budget`, () => {
-      const budget = BUDGET[file] ?? {};
-      const problems: string[] = [];
+  it("no widget source writes a raw brand hex or font stack", () => {
+    const problems: string[] = [];
+    for (const file of files) {
       for (const cls of CLASSES) {
-        const allowed = budget[cls] ?? 0;
         const found = actual[file][cls];
-        if (found > allowed) {
-          problems.push(
-            `${cls}: ${found} raw values, over the budget of ${allowed}. Use var(--_nw-…) — see W7-theming-tokens.md "How to convert".`,
-          );
-        } else if (found < allowed) {
-          problems.push(
-            `${cls}: down to ${found}, below the budget of ${allowed}. Lower the entry in BUDGET to ${found}${found === 0 ? " (or delete it)" : ""} — the ratchet only means something if the number is kept honest.`,
-          );
-        }
+        if (found > 0) problems.push(`${file}: ${found} raw ${cls}`);
       }
-      if (problems.length > 0) {
-        throw new Error([`${file}:`, ...problems].join("\n"));
-      }
-    });
-  }
+    }
+    expect(
+      problems,
+      'Use var(--_nw-…) instead -- see W7-theming-tokens.md "How to convert". A value with no token stays literal only if it is not one of these.',
+    ).toEqual([]);
+  });
 });
 
 describe("theme tokens: the contract", () => {

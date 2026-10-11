@@ -1,4 +1,4 @@
-import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
+import { MPNextWidget, WidgetError, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 
 interface SubscriptionItem {
   Publication_ID: number;
@@ -101,7 +101,7 @@ export class SubscriptionsWidget extends MPNextWidget {
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { subscriptions: SubscriptionItem[]; bulkEmailOptOut?: boolean } = await res.json();
       this.items = data.subscriptions || [];
@@ -109,7 +109,7 @@ export class SubscriptionsWidget extends MPNextWidget {
         typeof data.bulkEmailOptOut === "boolean" ? data.bulkEmailOptOut : null;
       this.emit("subscriptionsLoaded", { count: this.items.length });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("subscriptionError", { error: this.error });
     } finally {
       this.loading = false;
@@ -147,11 +147,11 @@ export class SubscriptionsWidget extends MPNextWidget {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
       const data: { success: boolean; error?: string } = await res.json();
       if (!data.success) {
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
 
       // The publication title is MP-authored, so only the sentence around it
@@ -172,7 +172,7 @@ export class SubscriptionsWidget extends MPNextWidget {
         type: "error",
         text: this.t("subscriptions.updateFailed"),
       };
-      const errText = err instanceof Error ? err.message : this.t("errors.network");
+      const errText = this.caughtText(err, "errors.network");
       this.emit("subscriptionError", { error: errText });
     } finally {
       this.savingIds.delete(pubId);
@@ -202,7 +202,7 @@ export class SubscriptionsWidget extends MPNextWidget {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        throw new Error(this.errorText(data, "errors.saveFailed"));
+        throw new WidgetError(this.errorText(data, "errors.saveFailed"));
       }
       this.message = {
         type: "success",
@@ -212,7 +212,7 @@ export class SubscriptionsWidget extends MPNextWidget {
     } catch (err) {
       this.bulkEmailOptOut = previous;
       this.message = { type: "error", text: this.t("subscriptions.updateFailed") };
-      const errText = err instanceof Error ? err.message : this.t("errors.network");
+      const errText = this.caughtText(err, "errors.network");
       this.emit("subscriptionError", { error: errText });
     } finally {
       this.savingBulk = false;

@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import { parseWallClock } from "../i18n";
 
 /**
@@ -173,13 +173,13 @@ export class MissionTripFinderWidget extends MPNextWidget {
         const body = await res.json().catch(() => ({}));
         // `errorText` renders the machine code's catalogue sentence; the
         // server's English `message` is never shown to a visitor.
-        throw new Error(this.errorText(body));
+        throw new WidgetError(this.errorText(body));
       }
       const data: { trips?: MissionTripCard[] } = await res.json();
       this.trips = data.trips || [];
       this.emit("missionTripsLoaded", { count: this.trips.length });
     } catch (err) {
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.trips = [];
       this.emit("missionTripFinderError", { error: this.error });
     } finally {

@@ -429,6 +429,30 @@ describe("<next-pledge-campaign> registration window and capacity", () => {
     });
   });
 
+  describe("a dropped connection never shows the browser's own error text", () => {
+    it("renders the translated network sentence, not 'Failed to fetch'", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const fn = mockFetch();
+      const base = fn.getMockImplementation()!;
+      fn.mockImplementation(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.endsWith("/api/embed/pledge-campaign/3")) throw new TypeError("Failed to fetch");
+        return base(input);
+      });
+
+      document.body.innerHTML = `<next-pledge-campaign api-host="${HOST}" campaign-id="3"></next-pledge-campaign>`;
+      const el = document.body.firstElementChild as HTMLElement;
+      await vi.waitFor(() =>
+        expect(text(el)).toContain("We could not reach the server."),
+      );
+      expect(text(el)).not.toContain("Failed to fetch");
+      // Not "No pledge campaign found." either: nothing said it was missing.
+      expect(text(el)).not.toContain("No pledge campaign found.");
+      // The raw error is still there for whoever opens the console.
+      expect(errorSpy).toHaveBeenCalled();
+    });
+  });
+
   describe("late attributes (C39)", () => {
     it("re-inits when campaign-id changes on a widget whose first load failed", async () => {
       const fn = mockFetch();

@@ -285,6 +285,35 @@ describe("<next-full-calendar> month navigation (C02)", () => {
       expect(cardTitles(el)).toContain("Christmas Eve Service");
     });
   });
+
+  describe("headings (CROSS-3, C35 heading-level)", () => {
+    it("the toolbar title is an h2 and each card title an h3 by default", async () => {
+      const el = mount('view="month"');
+      await settle();
+      expect(shadow(el).querySelector("h2#nw-fc-title")).toHaveTextContent("October 2026");
+      const cards = Array.from(shadow(el).querySelectorAll(".nw-fc-card-title"));
+      expect(cards.length).toBeGreaterThan(0);
+      expect(cards.every((n) => n.localName === "h3")).toBe(true);
+    });
+
+    it("keeps a visually hidden title heading when the toolbar is off", async () => {
+      const el = mount('view="cards" cards-scope="rolling" show-toolbar="false"');
+      await settle();
+      expect(shadow(el).querySelector(".nw-fc-toolbar")).toBeNull();
+      const heading = shadow(el).querySelector("h2#nw-fc-title");
+      expect(heading).toHaveClass("nw-fc-sr-only");
+      expect(heading).toHaveTextContent("Upcoming events");
+    });
+
+    it("the list view's date headers are headings one level below heading-level", async () => {
+      const el = mount('view="list" heading-level="3"');
+      await settle();
+      expect(shadow(el).querySelector("h3#nw-fc-title")).not.toBeNull();
+      const dates = Array.from(shadow(el).querySelectorAll(".nw-fc-agenda-date-label"));
+      expect(dates.length).toBeGreaterThan(0);
+      expect(dates.every((n) => n.localName === "h4")).toBe(true);
+    });
+  });
 });
 
 describe("<next-full-calendar> event modal focus (C08)", () => {

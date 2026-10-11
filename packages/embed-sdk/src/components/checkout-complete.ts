@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import type { MessageKey } from "../i18n";
 import { paymentOutcomeView, type PaymentTone } from "./checkout-status";
 
@@ -69,7 +69,7 @@ export class CheckoutCompleteWidget extends MPNextWidget {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(data));
+        throw new WidgetError(this.errorText(data));
       }
       const data: { invoiceId?: number | null; status?: unknown } = await res.json();
 
@@ -92,9 +92,7 @@ export class CheckoutCompleteWidget extends MPNextWidget {
       // is safe — the server de-duplicates on the transaction code.
       this.canRetry = true;
       this.message =
-        err instanceof Error
-          ? err.message
-          : this.t("checkoutComplete.unconfirmed");
+        this.caughtText(err, "checkoutComplete.unconfirmed");
       this.emit("paymentComplete", {
         invoiceId: null,
         paymentReceived: false,
@@ -198,7 +196,7 @@ export class CheckoutCompleteWidget extends MPNextWidget {
       .nw-cc { max-width: 480px; margin: 0 auto; }
       .nw-cc-card { background: var(--_nw-color-surface); border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 40px 32px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: var(--_nw-space-3); border-top: 6px solid var(--_nw-color-primary); }
       .nw-cc-card--success { border-top-color: var(--_nw-color-success); }
-      .nw-cc-card--pending { border-top-color: #F1BE48; }
+      .nw-cc-card--pending { border-top-color: var(--_nw-color-warning); }
       .nw-cc-card--failed { border-top-color: var(--_nw-color-error); }
 
       .nw-cc-icon { width: 72px; height: 72px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; }

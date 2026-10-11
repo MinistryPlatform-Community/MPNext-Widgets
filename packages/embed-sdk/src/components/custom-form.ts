@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import {
   renderCustomFormFields,
   bindCustomFormDependsOn,
@@ -168,7 +168,7 @@ export class CustomFormWidget extends MPNextWidget {
       const res = await this.fetch(`/api/embed/custom-form?${params.toString()}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body, "errors.form_not_found"));
+        throw new WidgetError(this.errorText(body, "errors.form_not_found"));
       }
       const data: { header: CustomFormHeader; fields: CustomFormField[] } = await res.json();
       this.header = data.header;
@@ -179,7 +179,7 @@ export class CustomFormWidget extends MPNextWidget {
       // `errorText` has already produced a translated sentence; a thrown
       // non-Error (a dropped connection) becomes the generic network message
       // rather than leaking English.
-      this.error = err instanceof Error ? err.message : this.t("errors.network");
+      this.error = this.caughtText(err, "errors.network");
       this.emit("formError", { error: this.error });
     } finally {
       this.loading = false;
@@ -357,7 +357,7 @@ export class CustomFormWidget extends MPNextWidget {
       this.render();
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : this.t("errors.submitFailed");
+        this.caughtText(err, "errors.submitFailed");
       this.error = msg;
       this.emit("formError", { error: msg });
       this.setSubmitDisabled(false);

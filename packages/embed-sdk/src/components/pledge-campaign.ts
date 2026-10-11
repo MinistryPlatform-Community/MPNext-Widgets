@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import {
   validateForm,
   bindLiveValidation,
@@ -221,7 +221,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
         // A 404 and a route-reported error code land in the same place: a
         // translated sentence, with "no campaign found" as the fallback.
         const body = await campaignRes.json().catch(() => ({}));
-        throw new Error(this.errorText(body, "pledgeCampaign.notFound"));
+        throw new WidgetError(this.errorText(body, "pledgeCampaign.notFound"));
       }
       const data: { campaign: PledgeCampaign; userHasAlreadyPledged: boolean } =
         await campaignRes.json();
@@ -240,8 +240,10 @@ export class PledgeCampaignWidget extends MPNextWidget {
         title: this.campaign.title,
       });
     } catch (err) {
-      this.error =
-        err instanceof Error ? err.message : this.t("pledgeCampaign.notFound");
+      // A 404 arrives here as a WidgetError already reading "not found"; what
+      // is left is transport (the browser's untranslated "Failed to fetch"),
+      // so the fallback is the network sentence, not a misleading "not found".
+      this.error = this.caughtText(err, "errors.network");
       this.campaign = null;
       this.loading = false;
       this.render();
@@ -466,7 +468,7 @@ export class PledgeCampaignWidget extends MPNextWidget {
       this.setMessage("success", thankYou);
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : this.t("errors.network");
+        this.caughtText(err, "errors.network");
       this.setMessage("danger", msg);
       this.emit("pledgeError", { error: msg });
       this.setSubmitDisabled(false);

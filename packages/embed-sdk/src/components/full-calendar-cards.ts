@@ -247,6 +247,8 @@ export function filterEvents(
  * @param fmt          Locale-aware formatters, likewise.
  * @param emptyText    Already-translated empty-state sentence ("No events in
  *                     December"); defaults to `fullCalendar.noEventsFound`.
+ * @param headingTag   Tag for each card's title (`h3` under the default `h2`
+ *                     widget title; see `shared/heading-level.ts`).
  */
 export function renderCardsGrid(
   events: CalendarEvent[],
@@ -255,7 +257,8 @@ export function renderCardsGrid(
   onShowMore: () => void,
   t: Translator,
   fmt: Formatters,
-  emptyText?: string
+  emptyText?: string,
+  headingTag = "h3"
 ): HTMLElement {
   const grid = document.createElement("div");
   grid.className = "nw-fc-cards-grid";
@@ -349,7 +352,7 @@ export function renderCardsGrid(
 
     body.appendChild(infoRow);
 
-    const titleEl = document.createElement("div");
+    const titleEl = document.createElement(headingTag);
     titleEl.className = "nw-fc-card-title";
     titleEl.textContent = event.Event_Title;
     body.appendChild(titleEl);

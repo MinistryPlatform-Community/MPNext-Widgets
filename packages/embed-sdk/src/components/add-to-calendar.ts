@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, WidgetError } from "../shared/base-widget";
 import {
   buildGoogleCalendarUrl,
   buildIcsContent,
@@ -213,7 +213,7 @@ export class AddToCalendarWidget extends MPNextWidget {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(this.errorText(body));
+        throw new WidgetError(this.errorText(body));
       }
 
       const eventData: CalendarEventData = await res.json();
@@ -226,7 +226,7 @@ export class AddToCalendarWidget extends MPNextWidget {
       // `errorText` has already produced a translated sentence; anything else
       // (a dropped connection) becomes the generic network message.
       this.state.error =
-        err instanceof Error ? err.message : this.t("errors.network");
+        this.caughtText(err, "errors.network");
       this.render();
       this.emit("addToCalendarError", { error: this.state.error });
     }
@@ -313,7 +313,7 @@ export class AddToCalendarWidget extends MPNextWidget {
       });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : this.t("addToCalendar.buildFailed");
+        this.caughtText(err, "addToCalendar.buildFailed");
       this.state.error = message;
       this.emit("addToCalendarError", { error: message });
       this.render();
@@ -550,7 +550,7 @@ export class AddToCalendarWidget extends MPNextWidget {
     return `
       :host {
         display: block;
-        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: var(--_nw-font-family);
         color: var(--_nw-color-text);
         box-sizing: border-box;
       }
