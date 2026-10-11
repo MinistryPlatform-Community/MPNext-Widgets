@@ -34,7 +34,7 @@ const CANCELLED_STATUS_ID = 7;
 /**
  * `next-my-invoices` — the signed-in member's invoices, with a detail view.
  *
- * ## Paying (C44 / C45, Route A of `Plans/my-invoices.md`)
+ * ## Paying (C44 / C45)
  *
  * "Pay" is a real `<a href>` to the church's checkout page —
  * `<checkout-url>?id=<Invoice_GUID>`, which is what `next-checkout` (default

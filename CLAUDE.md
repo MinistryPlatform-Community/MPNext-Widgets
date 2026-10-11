@@ -19,7 +19,8 @@ ls src/app/api/embed/ ; ls src/services/*.ts | grep -v '\.test\.'
 Snapshot at 2026-10-11 (re-measured): **33** registered `next-*` elements, 32 demo
 pages, 33 `src/app/api/embed/` route directories, 32 services.
 - These are the same numbers as on 2026-09-11. The comparison-remediation epic
-  (`.claude/TODO/Comparison/Plans/EPIC/`) fixed widgets rather than adding them.
+  (closed 2026-10-11; see `.claude/TODO/Comparison/README.md`) fixed widgets rather than
+  adding them.
 - What it added went into `shared/` primitives, base-class conventions, three
   `src/services/_shared/` helpers and guard tests. All of these are covered below.
 
@@ -260,16 +261,15 @@ returns. Full incident and the "grep the built chunk" diagnostic:
 `@IsMissionTrip bit` parameter and never references it in the body, and the two legacy
 clients share the household "apply as" picker, the custom form, the has-pledged check and
 the confirmation email. `next-pledge-campaign` is the mission-trip details page — the finder
-links to it through the `id-parameter-name` attribute both elements share. See
-`.claude/TODO/Comparison/Plans/mission-trips.md`.
+links to it through the `id-parameter-name` attribute both elements share.
 
 **MP widget styling**: `public/embed-sdk/mp-widget-overrides.css` injected into MP Shadow DOM widgets via `customcss` attribute. User-menu applies this automatically.
 
 ## Widget Building Blocks
 
 These were built once, in the comparison-remediation epic's W0, so that no widget
-hand-rolls them again. The design is in `.claude/TODO/Comparison/Plans/EPIC/W0-foundation.md`,
-whose "How to consume" section has a snippet for each one. **Do not fork a primitive.** If
+hand-rolls them again. `.claude/references/widget-building-blocks.md` has the signatures
+and a copy-ready snippet for each one. **Do not fork a primitive.** If
 one is wrong, fix it in `shared/`.
 
 **Signed-out is a state, not an error** (`MPNextWidget`, C81).
@@ -352,7 +352,9 @@ one is wrong, fix it in `shared/`.
 `shared/theme-tokens.ts` declares 36 public tokens: colour, type, shape, space and
 controls. `injectStyles()` prepends them to every widget sheet. README "Theming" documents
 them as a **supported, versioned API**. C68 is only partly done: `part=`, a `custom-css`
-attribute and a domain stylesheet are still open.
+attribute and a domain stylesheet are still open (`.claude/TODO/Comparison/C68-*`). The
+raw-value → token table for converting a stylesheet is in
+`.claude/references/widget-building-blocks.md` §2.
 
 - **Public input, private resolved name.**
   - A church sets `--nw-color-primary` (on `:root` or on the element).
@@ -377,7 +379,7 @@ attribute and a domain stylesheet are still open.
 
 ## Widget Localisation
 
-Ships **`en`, `es`, `pt-BR`**. Closes `.claude/TODO/Comparison/C67` and `C73`. The
+Ships **`en`, `es`, `pt-BR`**. Closes comparison findings C67 and C73. The
 catalogue is **TypeScript in this repo - deliberately not MinistryPlatform**: a new
 language is a developer step plus a deploy, and no church-authored copy is read from MP.
 Full design and the deliberate limits: `WIDGET-I18N-PLAN.md`; customer-facing docs in
@@ -711,6 +713,8 @@ await mp.executeProcedure('ProcName', { param: 'value' });
 | `WIDGET-AUTH-MIGRATION-PLAN.md` | Legacy → hardened migration plan, phases, per-customer cutover runbook |
 | `public/embed-sdk/mp-widget-overrides.css` | Brand CSS for MP Shadow DOM widgets |
 | `.claude/TODO/README.md` | Numbered deferred work + what was already attempted and reverted -- read before a dependency bump |
+| `.claude/TODO/Comparison/README.md` | Closed legacy-vs-next comparison: every `C`-number with its outcome, plus the three still open (C68, C74, C75) |
+| `.claude/references/widget-building-blocks.md` | Signatures and snippets for the shared widget primitives (sign-in panel, `cardLink`, `field`, `dialogFocus`, reconfigure, attribute aliases) and how to convert CSS onto the `--nw-*` tokens |
 | `.claude/references/ministryplatform.query-syntax.md` | MP REST API query syntax reference (`$filter`, `$select`, `_TABLE` traversal) |
 | `.claude/references/ministryplatform.datetimehandling.md` | How to send/receive MP datetimes safely via `DomainTimezoneService`, anti-patterns, Windows↔IANA mapping, test guidance |
 | `.claude/references/nextjs.build-hazards.md` | Faults that exist only in a minified production build — the `+`-joined template-literal fold, and how to grep the built chunk |

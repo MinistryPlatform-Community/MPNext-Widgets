@@ -69,6 +69,16 @@ the brand colours.
    the unhashed copy or its rule** — that is the URL churches point at, and
    `src/proxy.test.ts` / `src/app/site-chrome.test.ts` assert it resolves.
 
+## Update — 2026-09-08: reading 2 confirmed at runtime
+
+The legacy-vs-next comparison run checked step 1: the injected `<mpp-user-login>` carries
+**zero** attributes (no `customcss`), its shadow root holds only MP's own stylesheet, and the
+control computes to MP's default blue, not brand `#004C97`. So the build maintains dead
+plumbing. One trap for the fix in step 2: `window.__nextEmbedCSSUrl` is set only by the
+generated production loader, so a naive fix works in production and silently no-ops under
+`vite dev`. Derive the URL from `api-host` / `import.meta.url` instead, or fall back to it.
+This is distinct from C68, which is about styling *our* widgets rather than MP's.
+
 ## Done when
 
 `CLAUDE.md`'s MP-widget-styling line matches what the code does, and either a

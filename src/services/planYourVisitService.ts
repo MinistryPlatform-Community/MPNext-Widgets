@@ -397,7 +397,7 @@ export class PlanYourVisitService {
       // `ContactManager.CreateContact` writes `{"Status", …}` and this service
       // was ported from it faithfully — but MP has no `Status` column on
       // `Contacts`, so the Active id resolved just above was being computed and
-      // then discarded. See `.claude/TODO/Comparison/C83-*`.
+      // then discarded. See comparison finding C83.
       Contact_Status_ID: c.statusId,
       Household_Position_ID: c.positionId,
       Mobile_Phone: c.mobilePhone,

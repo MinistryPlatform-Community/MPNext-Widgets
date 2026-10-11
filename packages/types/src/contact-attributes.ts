@@ -10,7 +10,7 @@
  * `Attributes` carries no online flag at all, so a church cannot hide one
  * attribute within a visible type.
  *
- * Full reasoning: `.claude/TODO/Comparison/Plans/contact-attributes.md`.
+ * Comparison finding C52.
  */
 
 import { z } from "zod";

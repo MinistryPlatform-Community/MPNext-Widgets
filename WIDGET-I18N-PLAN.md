@@ -2,8 +2,7 @@
 
 **Status:** proposed, not started
 **Author:** drafted 2026-09-09
-**Closes:** `.claude/TODO/Comparison/C67-no-mp-configurable-labels.md`,
-`.claude/TODO/Comparison/C73-no-locale-selector-no-localisation.md`
+**Closes:** comparison findings C67 and C73 (see `.claude/TODO/Comparison/README.md`)
 **Ships:** `en`, `es`, `pt-BR`
 
 Every string in every `next-*` widget is a hardcoded English literal, and all 43
@@ -285,7 +284,7 @@ visitor. Rungs 2–6 are page-wide.
   leak a subscription per mount. This is the easiest thing in the plan to get silently
   wrong.
 - Add `"lang"` to `observedAttributes` on all 30 components; **11 have no
-  `observedAttributes` getter at all** and need one added. Note `C39-attribute-changed-callback-ignores-first-set.md`
+  `observedAttributes` getter at all** and need one added. Note C39
   — several `attributeChangedCallback` implementations ignore the first set, so re-check
   each against that filed bug rather than pattern-matching the neighbours.
 - Reflect `lang` and `dir` onto the shadow host so screen readers switch voice

@@ -102,14 +102,26 @@ when `link-text` is absent; resolve tokens from `AuthSession`; render one anchor
 ## Status — DEFERRED, decided 2026-10-11 (comparison-remediation epic)
 
 **Still open, and deliberately left out of the epic.** C74 (`mpp-smart-link`) and C75
-(`mpp-smart-frame`) both wait on the same Tier 3 auth-design decision.
+(`mpp-smart-frame`) both wait on the same auth-design decision.
 
 - **The question:** can the signed-in user's PII (email, display name) be merged into a URL
   that is handed to a third party, or to a framed origin, under the hardened auth model?
-- **Where it is framed:** `Plans/ROADMAP-missing-widgets.md`, Tier 3. That section also
-  lists the security requirements that apply if either element is built.
-- **Possible outcome:** "won't port, here is what to use instead" is still a legitimate
-  answer.
+  This repo's hardened model exists so that MP tokens and user PII stay in the encrypted
+  server session and never reach host-page storage (`WIDGET-AUTH-MIGRATION-PLAN.md`).
+  Interpolating the user's email into an arbitrary third-party URL runs against that premise,
+  and it is entirely plausible both elements were omitted on purpose.
+- **Owner:** whoever owns the auth design.
+- **Possible outcome:** "won't port, here is what to use instead" is a legitimate answer.
+- **If either is built, these requirements are not optional:** `encodeURIComponent` every
+  substituted value; restrict the scheme to `https:` (a `javascript:` href with an
+  interpolated display name is script injection driven by MP profile data); consider a
+  per-field opt-in for the email; for the frame, an explicit `sandbox` allow-list, a
+  `referrerpolicy`, and a **required** `frame-title` (WCAG 4.1.2). Build C74 first and share
+  its token-substitution helper with C75.
 
 Until the decision is made, a church that relies on this widget keeps MPWidgets.js on that
 page. README "Migrating from MPWidgets.js" says so.
+
+**Done when:** the decision is recorded here, and either the element ships (component, demo
+page, tests, README entry) or this file is closed as won't-port with the migration note
+updated.

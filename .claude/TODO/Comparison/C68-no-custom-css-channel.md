@@ -91,100 +91,42 @@ report.
 - No screenshot: static-only item by design
 - Method note: `.claude/playwright/widget/CONFIG-MAP.md` section 4.18
 
-## Where to fix
+## Status — partial (2026-10-11)
 
-- `packages/embed-sdk/src/shared/base-widget.ts` — `injectStyles()` (:111-125) and a new
-  `custom-css` attribute handled once for every widget
-- optionally `src/app/api/embed/` — a `GetCustomStyles` equivalent, if domain-level
-  styling should be automatic as it is on legacy
+**Shipped** in the comparison-remediation epic:
 
-## Suggested fix
+- `injectStyles()` no longer assigns over `adoptedStyleSheets`. The widget's own sheet goes
+  first and is replaced in place, so a sheet a host page adopts into the open shadow root
+  survives re-render and wins on equal specificity.
+- The `--nw-*` theming-token contract: 36 public tokens in
+  `packages/embed-sdk/src/shared/theme-tokens.ts`, documented in README "Theming" as a
+  supported, versioned API, adopted by every widget, and guarded by
+  `shared/theme-tokens.test.ts`. How to convert a stylesheet:
+  `.claude/references/widget-building-blocks.md` §2. (This section once described the
+  shadow root as closed and the token surface as absent; both are now false.)
 
-Two independent pieces, and the first is small enough to do now:
+## Still open
 
-1. **Per-element `custom-css`.** In `base-widget.ts`, read `custom-css` and append a
-   `<link>` to the shadow root after `injectStyles()` runs, and change `injectStyles()` to
-   *push onto* `adoptedStyleSheets` rather than assign, so the host sheet survives
-   re-renders and lands last. Note this is an author-controlled URL fetched into the page —
-   `cdn-loader.ts` already establishes the house pattern of `integrity` +
-   `crossOrigin="anonymous"` for external assets, so consider whether an optional
-   `custom-css-integrity` belongs here too; that is a security call, not mine to make.
-2. **A theming token contract** — publish a documented set of `--nw-*` custom properties
-   (they pierce Shadow DOM, unlike selectors) covering the brand palette, radius, font
-   stack and spacing scale, so most churches never need a stylesheet. This is the larger
-   change and should be designed once across all 25 widgets rather than per widget.
+Three channels, deliberately left out of the epic's scope. Each is independent.
 
-If domain-level automatic styling is judged out of scope, record that in the migration
-notes, because it is the piece a legacy church gets for free today.
+1. **`part=` / `::part()`** on the handful of structural elements a church may need to
+   reposition — card, card media, toolbar, form row, submit button — so `::part()` covers
+   what tokens cannot. Keep the list small and deliberate: **every part is an API**, versioned
+   like the tokens.
+2. **A per-element `custom-css` attribute.** Read it once in `base-widget.ts` (not per widget)
+   and append a `<link rel="stylesheet">` into the shadow root after `injectStyles()` runs, so
+   it lands last. It is an author-controlled URL fetched into the page, so make the security
+   call explicitly before building it: whether to restrict it to `https:`, and whether an
+   optional `custom-css-integrity` belongs beside it (`cdn-loader.ts` already sets the house
+   pattern of `integrity` + `crossOrigin="anonymous"` for external assets). That is an
+   auth-design decision, not a styling one.
+3. **A domain-level stylesheet channel**, the `GetCustomStyles` equivalent: a route under
+   `src/app/api/embed/` returning the domain's configured stylesheet URLs, fetched once per
+   page and applied to every widget, so a church configures branding once. This is what a
+   legacy church gets for free today. Until it exists, **migration notes must say** that a
+   legacy church branding its widgets through the MP domain skin has to restate that branding
+   as `--nw-*` tokens on its own site, because the MP skin stylesheet no longer reaches the
+   widgets. The same https / integrity question as (2) applies.
 
-## Resolution — 2026-10-11 (partial)
-
-**Partially fixed.** Scope was decided on 2026-10-11: `--nw-*` tokens only. Three of the
-channels above stay **open** (see the end of this section).
-
-**Shipped:**
-
-- **W0** — `injectStyles()` no longer assigns over `adoptedStyleSheets`. The widget's own
-  sheet goes first and is replaced in place, so a sheet that a host page adopts into the
-  open shadow root survives re-render and wins on equal specificity. This is suggested fix
-  §1's "companion change". The `custom-css` attribute itself was not built.
-- **W7a** (branch `ws/w7a-tokens`) — the theming-token contract, suggested fix §2:
-  - `packages/embed-sdk/src/shared/theme-tokens.ts` declares 35 public `--nw-*` tokens
-    (colour, type, shape, space, controls), with defaults equal to the values the
-    components hard-coded. `injectStyles()` prepends the block to every widget sheet.
-  - It is documented in README "Theming" as a supported, versioned API.
-  - **Design decision: public input, private resolved name.** A church sets
-    `--nw-color-primary`. The SDK never declares that name. It declares
-    `--_nw-color-primary: var(--nw-color-primary, #004C97)` on `:host`, and widget CSS
-    reads the `--_nw-` form. The simpler plan was to declare `--nw-color-primary: #004C97`
-    on `:host`, but that would break `:root { --nw-color-primary: … }`: a value declared
-    on the host element beats an inherited one, so only rules aimed at the element itself
-    would reach the widget.
-  - `next-event-finder` is the reference conversion, with zero raw brand values left.
-    Computed styles and screenshots are identical before and after, at 1280px and 390px.
-    A `:root` override re-brands it.
-  - `full-calendar-styles.ts` maps eight brand `--fc-classic-*` defaults onto the tokens,
-    keeping the old hex as the `var()` fallback.
-  - Guard: `shared/theme-tokens.test.ts` is a per-file ratchet on raw brand hexes and
-    literal font stacks. Its baseline is 497 + 35 across 37 files. W7b converts the
-    remaining widgets and drives the ratchet to zero.
-
-**Still open, and out of this epic's scope (decided 2026-10-11):**
-
-1. **`part=` / `::part()`** on structural elements (card, card media, toolbar, form row,
-   submit button).
-2. **A per-element `custom-css` attribute.** This includes the open security call on
-   `custom-css-integrity` and on restricting it to `https:`.
-3. **A domain-level stylesheet endpoint**, the `GetCustomStyles` equivalent that legacy
-   churches get automatically. **Migration notes must say this.** A legacy church that
-   brands its widgets through the domain stylesheet has to restate that branding as
-   `--nw-*` tokens on its own site. Its MP skin stylesheet no longer reaches the widgets.
-
-### Addendum — 2026-10-11 (final fix-ups): the ratchet reaches zero
-
-W7b left three entries in the `BUDGET` table of `shared/theme-tokens.test.ts`. All three
-are converted, the table is gone, and the guard is now the plain assertion the W7
-acceptance asked for: **no widget source may contain a raw brand hex or a literal
-`ui-sans-serif` font stack.** Three decisions went with that:
-
-1. **New token `--nw-color-warning` (default `#F1BE48`)** for the amber *pending* stripe
-   in `checkout-complete.ts`. W7b had left it literal because tying it to
-   `--nw-color-accent` would let a re-brand recolour a payment status. A separate token
-   keeps that independence and still makes it themeable. It is in `theme-tokens.ts` and
-   the README Theming table (now 36 tokens). It has the accent's hex by default and does
-   not follow the accent.
-   The same token now drives three other uses that were exactly `#F1BE48` (already
-   converted to the accent token by W7b) **and** meant pending/warning: the
-   `my-household` warning-toast border, the `my-invoices` "amount due" row stripe, and
-   the `next-pay` sandbox notice. Left on the accent, because they are highlights rather
-   than statuses: Featured badges and event labels, the giving summary stripes and
-   skeleton, the `group-finder` empty-state border, the full-calendar event-type
-   colour, and the user-menu tax-season icon.
-2. **`add-to-calendar.ts` `:host`** (`… -apple-system, BlinkMacSystemFont, sans-serif`)
-   reads `var(--_nw-font-family)`. The token stack drops `BlinkMacSystemFont`, which
-   only ever matched where `system-ui` / `-apple-system` already did, so the rendered
-   font is the same on every platform.
-3. **`my-giving.ts` SVG chart labels** (`ui-sans-serif, system-ui, sans-serif`) read
-   `var(--_nw-font-family)` as well. The token stack adds `-apple-system`, which again
-   resolves to the same system UI font. The labels now also follow a church's
-   `--nw-font-family`, which they should: they are text in the widget.
+**Done when:** each channel is either built (with its README "Theming" entry and a test) or
+recorded as won't-do in README "Migrating from MPWidgets.js".

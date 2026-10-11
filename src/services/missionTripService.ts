@@ -24,8 +24,7 @@ import type {
  * Platform).
  *
  * Four legacy defects are deliberately *not* ported, each marked `D1`…`D4` at
- * the point where the divergence happens. Full reasoning:
- * `.claude/TODO/Comparison/Plans/mission-trips.md`.
+ * the point where the divergence happens (comparison finding C76).
  *
  * Every MP datetime here is a **wall-clock string passed through verbatim**.
  * The procedures already convert into the congregation's zone with

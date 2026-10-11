@@ -27,8 +27,8 @@
  *
  * Neutral greys, radii, spacing and shadows are tokenised too, but a raw
  * `8px` or `#e5e7eb` cannot be told apart from a deliberate per-component
- * value, so they are converted by hand (W7-theming-tokens.md, "How to
- * convert") rather than counted.
+ * value, so they are converted by hand
+ * (`.claude/references/widget-building-blocks.md` §2) rather than counted.
  */
 
 import { describe, expect, it } from "vitest";
@@ -124,7 +124,7 @@ describe("theme tokens: no raw brand values", () => {
     }
     expect(
       problems,
-      'Use var(--_nw-…) instead -- see W7-theming-tokens.md "How to convert". A value with no token stays literal only if it is not one of these.',
+      'Use var(--_nw-…) instead -- see .claude/references/widget-building-blocks.md §2. A value with no token stays literal only if it is not one of these.',
     ).toEqual([]);
   });
 });

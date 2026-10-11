@@ -1853,7 +1853,7 @@ This section covers moving a page from a legacy `mpp-*` widget to its `next-*` c
 It is about what changes for the widgets themselves. Sign-in is a separate topic: see
 [Cutover Runbook](#cutover-runbook) and the per-widget "Migrating from…" sections above
 (prayer, newsletter, pre-check, about-me, mission trips). The full side-by-side comparison
-behind these notes is `.claude/TODO/Comparison/`.
+behind these notes is indexed in `.claude/TODO/Comparison/README.md` (details in git history).
 
 > ### The RSS reader has no replacement
 >

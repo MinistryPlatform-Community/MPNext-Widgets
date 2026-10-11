@@ -33,8 +33,8 @@
  * existed — the dominant value in a survey of all component stylesheets
  * (2026-10-11). With nothing set, a widget renders exactly as it did. Where a
  * component used a different value from the dominant one, it keeps its literal;
- * tokens replace *exact* matches only (see W7-theming-tokens.md, "How to
- * convert").
+ * tokens replace *exact* matches only (see
+ * `.claude/references/widget-building-blocks.md` §2).
  *
  * **This is a supported, versioned API** (README "Theming"). Adding a token is
  * a minor change; renaming or removing one, or changing what it controls, is a

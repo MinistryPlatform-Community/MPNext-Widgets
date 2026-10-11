@@ -54,7 +54,7 @@ const FORBIDDEN: ForbiddenColumn[] = [
     note:
       "`Contacts` has no `Status` column — confirmed against the live domain. " +
       "Legacy's ContactManager.CreateContact writes `Status`, so a port from it " +
-      "reproduces the bug. See .claude/TODO/Comparison/C83-*.",
+      "reproduces the bug. See comparison finding C83.",
   },
 ];
 
@@ -79,8 +79,8 @@ const FORBIDDEN_SELECT: ForbiddenSelect[] = [
     note:
       "`Invoices` has no `Amount_Paid` column (12 columns, confirmed live) — MP " +
       "500s the whole GET. The paid total comes from the `api_MPPW_GetInvoice` " +
-      "header via `invoiceService.getCheckoutInvoiceByGuid`. See " +
-      ".claude/TODO/Comparison/C40-*.",
+      "header via `invoiceService.getCheckoutInvoiceByGuid`. See comparison " +
+      "finding C40.",
   },
 ];
 

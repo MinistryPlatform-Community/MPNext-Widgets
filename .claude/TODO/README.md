@@ -30,21 +30,29 @@ match the Node 24 runtime (Vercel runs 24).
 | 3 | `03-typescript-7.md` | **blocked upstream** — attempted 2026-09-07, not merged; re-checked 2026-09-08 (a verified workaround exists, still not advised) | wait for TS 7.1 |
 | 17 | `17-better-auth-vitest5-peer.md` | **suppressed 2026-09-08** — warning gone; remove the rule when upstream widens | 5 min to retire |
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire. **Now the sole gate on a warning-free `pnpm install`** | 15 min |
-| 37 | `37-playwright-local-network-access-blocks-widget-e2e.md` | **done 2026-09-08** — and the Local Network Access diagnosis was a **misdiagnosis**; do not add the launch flag | — |
 | 38 | `38-mp-widget-overrides-css-never-injected.md` | either MP widgets render unbranded in prod, or the build maintains dead plumbing — read the file, it is one browser check | 30 min to triage |
-| 39 | `39-full-calendar-density-dots-first-paint.md` | **done 2026-09-08** — the decoration was dropped, not reordered; do not reintroduce `dayCellDidMount` | — |
+| 40 | `40-regenerate-mp-models.md` | low — `mp-column-names.test.ts` carries a `MODEL_GAPS` entry for `Forms.Standalone_Form_Use_Only` | 30 min |
+| 41 | `41-plan-your-visit-config-application-code.md` | a config key under two applications is read ambiguously | small |
+| 42 | `42-overpay-refuse-or-record-with-real-vendor.md` | C43 follow-up; waits on the real payment vendor | decision + small |
+| 43 | `43-payor-billing-data-source-for-vendor.md` | C48 follow-up; waits on the real payment vendor | decision + M |
+| 44 | `44-partly-public-widgets-adopt-sign-in-helper.md` | optional consolidation onto `renderSignInRequired()` | S–M |
+| 45 | `45-remove-legacy-attribute-aliases.md` | after one release; removing early breaks host pages | 15 min |
+| 46 | `46-opportunity-search-hidden-flag-unread.md` | possible hidden-opportunity exposure; needs a DB answer | 30 min to answer |
+| 47 | `47-rate-limiter-log-noise.md` | log flood while the session store is down | small |
+| 48 | `48-comparison-run-test-records-cleanup.md` | clutter; needs a Platform UI user | 10 min |
 
-Item 37 (widget E2E) is **done (2026-09-08)** — and, like item 7, the blocker the
-file first recorded was a **misdiagnosis**. Chromium's Local Network Access
-checks do *not* block `localhost:5173 → localhost:3000`; loopback → loopback is
-not a cross-address-space request, and it was measured passing on the bundled
-Chromium 153 even with the feature force-enabled, and on real Chrome. **Do not
-add the `--disable-features=LocalNetworkAccess...` launch flag** the file
-originally proposed: it fixes nothing and would blind the harness to a real class
-of browser-policy bug. The actual defect was that the specs could not tell a
-working widget from a de-authenticated one — `AuthSession` degrades every config
-failure to `legacy` + a public token by design, and the assertions accepted that.
-See the file for what replaced them.
+Items 40–48 are not dependency upgrades: they are the open follow-ups from the
+comparison-remediation epic (2026-10-11). The epic's own still-open findings — C68 (the
+remaining theming channels) and C74 / C75 (smart-link / smart-frame, waiting on an
+auth-design decision) — live in `Comparison/`; see `Comparison/README.md`.
+
+**Do not redo, from deleted items:**
+- Item 37: do **not** add the `--disable-features=LocalNetworkAccess...` Playwright launch
+  flag. Loopback → loopback is not blocked; the flag fixes nothing and would blind the
+  harness to a real class of browser-policy bug.
+- Item 39: do **not** reintroduce `dayCellDidMount` or any calendar-level density-dot
+  decoration on FullCalendar. It never rendered on a first mount and duplicated what `week`
+  already draws; the mini calendar's own dots are separate and stay.
 
 Item 3 (`typescript` 6.0.3 → 7.0.2) was **attempted on 2026-09-07 and reverted —
 do not simply retry it.** The bump itself is clean (0 type errors in all three
@@ -103,8 +111,8 @@ Three more of the file's findings did not survive contact with the 7.1.0 bundle:
   `role="gridcell"` day cell itself, so the dots now append straight to it,
   which is both the fix and less fragile than the old lookup. The dots were
   nonetheless **already absent on first paint under 6.1.21** for an unrelated
-  ordering reason — filed as item 39, and resolved by deleting the decoration
-  (see below); the hook is no longer passed at all.
+  ordering reason — filed as item 39, and resolved by deleting the decoration;
+  the hook is no longer passed at all.
 - **`eventColor` did not become background-only.** The bundle resolves
   `color: eventUi.color || options.eventColor` for normal events, with a
   separate `options.backgroundEventColor`. Both `eventColor: "#004C97"` and the
@@ -191,21 +199,6 @@ first Apply. `month` is now the selected option, and `#main-calendar` carries no
 `view` attribute, so the two agree on load. `grid` is one of the two views that
 actually mount FullCalendar, and it was driven from the console throughout item
 7's first attempt; it is now selectable from the page.
-
-Item 39 (density dots never appeared on the first paint of `week`) is
-**done (2026-09-08)** — resolved by **deleting the feature**, not by fixing the
-ordering. The `dayCellDidMount` hook only ever painted on `week` (its own guard
-excluded `grid`, and those are the only two views that mount FullCalendar), and
-`week` is a `timeGridWeek` that already draws every event as a positioned,
-timed block — so the dots duplicated what the view shows and had never once
-rendered on a first mount. `addDensityDots()`, the hook, the orphaned private
-`toDateKey()` and the `getDensityDotCount` import are gone from
-`full-calendar.ts`; `buildEventCountMap` / `eventCountsByDate` and the
-`.nw-fc-density-dot{,s}` rules stay, because the **mini calendar** renders its
-own dots on a path that runs after the data loads and has always worked. The
-test that used to assert the dots now asserts their absence
-(`registers no day-cell hook — the FC density dots are gone`), so the dead path
-cannot drift back in. Do not reintroduce a calendar-level dot decoration.
 
 Item 14 is **not** a dependency upgrade — it was found while browser-testing
 item 11 on 2026-09-07: Better Auth has no `database` configured and silently
@@ -652,15 +645,6 @@ and warns once instead of failing silently. The masking test (it called
 adopt-an-already-registered-element case; the bootstrap cases live in
 `user-menu-prefer-mp-login.test.ts`, which drives them from an unregistered
 registry and fails against the old getter.
-
-Item 37 was filed from that verification: with no launch flags, the bundled
-Chromium blocked `http://localhost:5173` → `http://localhost:3000/api/embed/*`
-outright ("Permission was denied for this request to access the `loopback`
-address space"), so the demo banner read "legacy (config unavailable)" while the
-server was in `dual`. `playwright.config.ts` sets no such flag, which means the
-widget E2E project has been driving a widget that silently fell back to a public
-token. Every item-36 measurement below was taken with
-`--disable-features=LocalNetworkAccessChecks,...` set.
 
 **Standard verification gate** for every branch below:
 
