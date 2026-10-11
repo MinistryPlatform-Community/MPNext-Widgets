@@ -102,6 +102,7 @@ export const ptBRGroups = {
     startsOn: "Começa: {date}",
     groupConnect: "Group Connect",
     volunteerConnect: "Volunteer Connect",
+    signInPrompt: "Entre para ver seus grupos.",
   },
 
   opportunityFinder: {

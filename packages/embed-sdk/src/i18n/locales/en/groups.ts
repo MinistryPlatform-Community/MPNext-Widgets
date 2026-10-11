@@ -117,6 +117,7 @@ export const groups = {
     /** MinistryPlatform product names — intentionally the same in every locale. */
     groupConnect: "Group Connect",
     volunteerConnect: "Volunteer Connect",
+    signInPrompt: "Please sign in to view your groups.",
   },
 
   opportunityFinder: {

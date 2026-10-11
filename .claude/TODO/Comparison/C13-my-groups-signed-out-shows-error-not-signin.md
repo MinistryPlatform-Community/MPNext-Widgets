@@ -118,3 +118,29 @@ the whole "my-" family in one pass with the sibling agents' findings.
 Four agents found this independently in four widget families (C13, C30, C46, C53). The
 sign-in affordance already exists as `requestLogin()` in `base-widget.ts` and is used by
 nine other components, so the fix is shared — do not close this item by fixing one widget.
+
+## Resolution — 2026-10-11
+
+**Fixed (W3, `ws/w3-groups`)** on W0's shared helper, not a per-widget panel.
+
+- `loadGroups()` branches on `isNeedsAuth(res)` into a `needsAuth` state that renders the
+  "My Groups" header plus `renderSignInRequired({ subject: "my-groups", message:
+  myGroups.signInPrompt })`. Mode-aware: a Sign In button in `dual`/`hardened`;
+  instructional copy ("…Use the sign-in link on this page.") and no button in `legacy`,
+  with the cancelable `loginRequired` event still fired for the host. **No Try Again** in
+  that state. A 401 reaching a *signed-in* visitor still renders as an error (W0's rule).
+- New key `myGroups.signInPrompt` ("Please sign in to view your groups.", legacy's
+  meaning) in en / es / pt-BR.
+- `demo-my-groups.html` no longer hides the widget until sign-in, so the signed-out state
+  is visible on the demo — the hiding is how this went unseen.
+- Same commit, same widget: **C39** — the `oldValue !== null` guard is gone; the widget
+  sets `painted` and implements `reload()`, so the base `reconfigure()` reloads on any
+  observed change after first paint. **C79** — `hidegrouplife` → `hide-group-life` via
+  `readAttr` + `attributeAliases`; the old spelling is observed and read for one release
+  with a single deprecation warning, and its entry is deleted from the
+  `observed-attributes.test.ts` ratchet. The demo snippet documents what "Group Life"
+  means (MP's Group Connect / Volunteer Connect link).
+- Not done: the plan's "link to the group finder from the signed-out panel". There is no
+  attribute convention for a finder URL on this widget, and inventing one was out of
+  scope.
+- Tests: `packages/embed-sdk/src/components/my-groups.test.ts`.

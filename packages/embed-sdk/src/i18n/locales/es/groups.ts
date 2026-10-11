@@ -103,6 +103,7 @@ export const esGroups = {
     startsOn: "Comienza: {date}",
     groupConnect: "Group Connect",
     volunteerConnect: "Volunteer Connect",
+    signInPrompt: "Inicie sesión para ver sus grupos.",
   },
 
   opportunityFinder: {

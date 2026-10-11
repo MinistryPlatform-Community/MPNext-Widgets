@@ -1,4 +1,4 @@
-import { MPNextWidget } from "../shared/base-widget";
+import { MPNextWidget, SIGN_IN_REQUIRED_STYLES } from "../shared/base-widget";
 import { parseWallClock } from "../i18n";
 
 interface GroupAddress {
@@ -28,49 +28,71 @@ interface Group {
   location: GroupAddress | null;
 }
 
+/**
+ * `next-my-groups` — the signed-in visitor's groups.
+ *
+ * Signed out it renders the shared sign-in panel (C13), never "Unable to Load"
+ * with a Try Again that re-sends the same anonymous request.
+ *
+ * Attribute: `hide-group-life="true"` hides the Group Connect / Volunteer
+ * Connect button (MP's "Group Life" app link). The flat `hidegrouplife`
+ * spelling is still read for one release, with a console warning (C79).
+ */
 export class MyGroupsWidget extends MPNextWidget {
   private groups: Group[] = [];
   private cloudUrlPrefix: string | null = null;
   private loading = true;
   private error: string | null = null;
+  private needsAuth = false;
+
+  static readonly attributeAliases = { "hide-group-life": "hidegrouplife" };
 
   static get observedAttributes() {
-    return ["hidegrouplife"];
+    return ["hide-group-life", ...Object.values(this.attributeAliases)];
   }
 
   private get hideGroupLife(): boolean {
-    return (this.getAttribute("hidegrouplife") || "false").toLowerCase() === "true";
+    return (this.readAttr("hide-group-life") || "false").toLowerCase() === "true";
   }
 
   connectedCallback() {
-    this.injectStyles(this.getStyles());
+    this.injectStyles(this.getStyles() + SIGN_IN_REQUIRED_STYLES);
     // Await the catalogue before the first paint so a Spanish visitor never
     // sees English swap to Spanish; the fetch hides inside the loading state
     // this widget already paints while it queries the API.
     void this.initLocale().then(() => {
       this.render();
-      this.loadGroups();
+      this.painted = true;
+      void this.loadGroups();
     });
   }
 
-  attributeChangedCallback(_name: string, oldValue: string | null, newValue: string | null) {
-    if (oldValue !== null && oldValue !== newValue) {
-      this.loadGroups();
-    }
+  /**
+   * C39: any observed attribute change after the first paint reloads — the
+   * base class calls this. The old `oldValue !== null` guard ignored a
+   * `hide-group-life` set from script after mount.
+   */
+  protected override reload(): void {
+    void this.loadGroups();
   }
 
   public retryLoad() {
     this.error = null;
-    this.loadGroups();
+    void this.loadGroups();
   }
 
   private async loadGroups() {
     this.loading = true;
     this.error = null;
+    this.needsAuth = false;
     this.render();
 
     try {
       const res = await this.fetch("/api/embed/my-groups");
+      if (this.isNeedsAuth(res)) {
+        this.needsAuth = true;
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(this.errorText(data));
@@ -109,6 +131,22 @@ export class MyGroupsWidget extends MPNextWidget {
               <span>${this.escapeHtml(this.t("myGroups.loading"))}</span>
             </div>
           </div>
+        </div>`;
+      return;
+    }
+
+    if (this.needsAuth) {
+      // No Try Again here: retrying an anonymous request fails identically.
+      this.root.innerHTML = `
+        <div class="nw-groups">
+          <div class="header">
+            <div class="title">${this.escapeHtml(this.t("myGroups.title"))}</div>
+          </div>
+          ${this.renderSignInRequired({
+            subject: "my-groups",
+            message: this.t("myGroups.signInPrompt"),
+            buttonClass: "retry-btn",
+          })}
         </div>`;
       return;
     }
