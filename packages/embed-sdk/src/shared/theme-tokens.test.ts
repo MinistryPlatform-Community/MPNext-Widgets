@@ -68,14 +68,11 @@ const PATTERNS: Record<ValueClass, RegExp> = {
  * defaults onto the tokens with the old hex as the `var()` fallback.
  */
 const BUDGET: Record<string, Partial<Record<ValueClass, number>>> = {
-  "components/add-to-calendar.ts": { brandHex: 7, fontStack: 1 },
+  "components/add-to-calendar.ts": { fontStack: 1 }, // stack adds BlinkMacSystemFont: not an exact match, so it stays literal
   "components/checkout-complete.ts": { brandHex: 9, fontStack: 1 },
   "components/checkout.ts": { brandHex: 17, fontStack: 1 },
   "components/contact-attributes.ts": { brandHex: 9, fontStack: 1 },
   "components/custom-form.ts": { brandHex: 6, fontStack: 1 },
-  "components/event-details.ts": { brandHex: 29, fontStack: 1 },
-  "components/full-calendar-styles.ts": { brandHex: 42, fontStack: 1 },
-  "components/full-calendar.ts": { brandHex: 7 },
   "components/giving-shared.ts": { brandHex: 2 },
   "components/group-details.ts": { brandHex: 18, fontStack: 1 },
   "components/group-finder.ts": { brandHex: 21, fontStack: 1 },

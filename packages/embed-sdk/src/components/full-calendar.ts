@@ -466,7 +466,7 @@ export class FullCalendarWidget extends MPNextWidget {
         const raw: CalendarEvent = info.event.extendedProps._raw;
         this.showEventModal(raw, info.event);
       },
-      eventColor: "#004C97",
+      eventColor: "var(--_nw-color-primary)",
       height: "auto",
       nowIndicator: true,
       dayMaxEvents: 4,
@@ -710,15 +710,22 @@ export class FullCalendarWidget extends MPNextWidget {
 
   // ── Event Color Coding ──
 
+  /**
+   * Every consumer writes this into the shadow tree as a CSS value — an
+   * inline `style` (list, modal) or FullCalendar's inline
+   * `--fc-event-color` — so the theming tokens resolve there and a church's
+   * `--nw-color-*` re-colours the event types too. Never compute with it
+   * (alpha suffixes, canvas, a URL): it is a `var()`, not a hex.
+   */
   private getEventColor(typeId: number | null): string {
     const colors: Record<number, string> = {
-      1: "#004C97",
-      2: "#002855",
-      3: "#F1BE48",
-      4: "#009CDE",
-      5: "#FF6D6A",
+      1: "var(--_nw-color-primary)",
+      2: "var(--_nw-color-secondary)",
+      3: "var(--_nw-color-accent)",
+      4: "var(--_nw-color-info)",
+      5: "var(--_nw-color-error)",
     };
-    return colors[typeId ?? 0] || "#004C97";
+    return colors[typeId ?? 0] || "var(--_nw-color-primary)";
   }
 
   // ── Event Modal ──
