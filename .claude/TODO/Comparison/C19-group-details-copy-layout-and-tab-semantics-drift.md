@@ -108,3 +108,32 @@ Three concrete changes, in value order:
 The rest (rows 1–6, 11) is wording; fold it into whatever decision comes out of C18 about
 whether the SDK re-voices MP's copy or matches it. Keep row 12 (mailto leaders) and the
 picker ordering in row 7 — both are improvements.
+
+## Resolution — 2026-10-11
+
+**Fixed (W3, `ws/w3-groups`)** — the three changes the item ranks, in its order.
+
+1. **Message beside the submit (row 10).** `#gd-message` now renders inside each form,
+   directly above `.gd-actions`, with `aria-live="polite"`; it no longer sits above the
+   group's title and image.
+2. **Tab semantics (row 13).** `role="tablist"` on the strip; each tab is
+   `role="tab"` with an `id`, `aria-selected`, `aria-controls` and a roving `tabindex`
+   (0 on the active tab, -1 on the other); the body is `role="tabpanel"` with
+   `aria-labelledby`. Left/Right (wrapping), Home and End move between tabs with
+   activation following focus, and focus stays on the newly selected tab across the
+   re-render. The click binding now targets `[role="tab"]` only — the old `[data-tab]`
+   selector also matched the submit buttons.
+3. **Field-specific required messages (row 9).** The identity block is built with W0's
+   `field()` (done under C16), so a missing value reads "First Name is required.";
+   `validateForm` now receives the widget's own `t`, so the message follows the widget's
+   locale rather than the page's.
+
+**Copy rows (1–6, 8, 11) — decided: keep ours.** Per CROSS-5's principle (pick the better
+string, not the legacy one): "← Back to groups", "Contact this Group" / "Sign Up for this
+Group", "Send Message" / "Sign Up" and the labelled Group Focus block are clear, translated
+in three locales, and renameable per church through `MPNextEmbed.setMessages`. Rows 3–4
+(meeting line, "Already meeting") follow the C18 decision. **Rows 7 and 12 kept as
+improvements**, as the item recommends: "Someone else…" stays last (the default remains
+the signed-in contact) and leaders stay `mailto:` links.
+
+Tests: `group-details.test.ts` ("layout and tab semantics (C19)").

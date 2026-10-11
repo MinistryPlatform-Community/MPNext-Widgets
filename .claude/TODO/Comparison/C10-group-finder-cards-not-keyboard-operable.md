@@ -101,3 +101,21 @@ that treats `Enter` (and `Space`, with `preventDefault`) as a click; but that st
 the card unlinked, so the anchor version is the better fix. `next-event-finder`'s card
 markup is worth checking at the same time — it is likely the same pattern (events agent
 owns C01–C09).
+
+## Resolution — 2026-10-11
+
+**Fixed (W3, `ws/w3-groups`)** with W0's shared `cardLink()` — the anchor version the item
+recommends, not the keydown patch.
+
+- `renderCard` wraps the card body in `<a class="nw-card-link nw-gf-card" href=…>` built
+  from `buildDetailUrl(g.id)`. Enter, middle-click, Ctrl/Cmd-click, "copy link address"
+  and the hover status bar all work, and the anchor is the single focus stop. No
+  `role="link"`, no `tabindex`, and nothing interactive inside it (the "See Details →" CTA
+  is a decorative span).
+- Without `target-url` the card is a `role="article"` div, as before, and is not in the
+  tab order.
+- The click listener and its `window.location.href` navigation are gone;
+  `bindCardSelect` only emits `groupSelected` and never cancels a modified click.
+- `CARD_LINK_STYLES` supplies the focus ring; the hover style moved from
+  `[role="link"]` to `a.nw-gf-card`.
+- Tests: `packages/embed-sdk/src/components/group-finder.test.ts` ("result cards (C10)").

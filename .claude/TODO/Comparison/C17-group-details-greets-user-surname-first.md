@@ -80,3 +80,21 @@ contact, though not for the other household members; if the greeting is worth th
 column, add `First_Name` to the `getHouseholdMembers()` select and use it, which also
 removes the string parsing entirely. Check the same `.replace(/,/g, "")` idiom has not been
 copied into other widgets that render `Display_Name`.
+
+## Resolution — 2026-10-11
+
+**Fixed (W3, `ws/w3-groups`).** Took the "better still" option: the greeting uses the
+first name alone — **"Thanks, Chris!"**.
+
+- `GroupsService.getHouseholdMembers()` now also selects `First_Name` and `Nickname`;
+  `GroupContactOptionSchema` carries them as `firstName` / `nickname`.
+- `displayNameFor` uses `nickname || firstName` for a picked member (MP's own
+  "how to address this person" order), the signed-in contact's `firstName` when the
+  household list was empty, and the typed first name on the "Someone else…" path. The
+  `replace(/,/g, "")` is gone; for an older server without the new columns it reorders
+  "Last, First" instead.
+- The catalogue copy was already `{name}`, so no locale change was needed.
+- Grep for the same idiom: `pledge-campaign.ts:461` (`getDisplayName`) strips the comma
+  from the "apply as" option text in exactly the same way. That file is W5's; reported to
+  the integrator rather than changed here.
+- Tests: `group-details.test.ts` ("greeting (C17)").

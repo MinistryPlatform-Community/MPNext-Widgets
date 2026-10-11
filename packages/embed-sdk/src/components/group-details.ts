@@ -4,6 +4,7 @@ import {
   validateForm,
   bindLiveValidation,
   requiredStar,
+  field,
   FORM_VALIDATION_STYLES,
 } from "../shared/form-validation";
 
@@ -45,6 +46,8 @@ interface GroupDetail {
 interface ContactOption {
   contactId: number;
   displayName: string;
+  firstName?: string | null;
+  nickname?: string | null;
 }
 
 interface CurrentContact {
@@ -68,12 +71,14 @@ type Tab = "inquire" | "signup";
  * "Sign Up for this Group" (requires sign-in). Honors the legacy attributes for
  * hiding tabs, inquiring about full groups, and showing the full address.
  *
- * Simplifications relative to legacy (noted inline):
- *  - Optional inquiry/sign-up confirmation + leader-notification emails are not
- *    sent in v1; the Group_Inquiries / Group_Participants records are still
- *    created. The *-email-template attributes are accepted but currently no-op.
- *  - Sign-up uses a household-member contact (no anonymous "Blank Form" sign-up,
- *    which the backend cannot attribute to a participant).
+ * Notification emails (C11): `inquiry-email-template`, `signup-email-template`
+ * and `leader-signup-email-template` are `dp_Communications` message-template
+ * ids, posted with the write. The server sends after the insert; a template
+ * fault still reports success, with a sentence saying the email did not go.
+ *
+ * Sign-up offers the household plus "Someone else…" (C14), which finds or
+ * creates the typed person server-side. Sign-up itself still requires sign-in,
+ * exactly as legacy did, so no anonymous request can create a contact.
  */
 export class GroupDetailsWidget extends MPNextWidget {
   private group: GroupDetail | null = null;
@@ -104,12 +109,31 @@ export class GroupDetailsWidget extends MPNextWidget {
       "inquiry-email-template",
       "signup-email-template",
       "leader-signup-email-template",
+      "require-inquiry-phone",
     ];
   }
 
-  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
+  /** Read at submit time, so a change needs no reload. */
+  private static readonly SUBMIT_TIME_ATTRIBUTES = new Set([
+    "inquiry-email-template",
+    "signup-email-template",
+    "leader-signup-email-template",
+  ]);
+
+  /**
+   * C39: every other observed attribute reconfigures through the base class.
+   * The old guard (`name === "group-id" && this.group`) ignored a `group-id`
+   * set after a failed first load — exactly when a host most needs it — and
+   * ignored every other attribute entirely.
+   */
+  override attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
     if (oldValue === newValue) return;
-    if (name === "group-id" && this.group) this.init();
+    if (GroupDetailsWidget.SUBMIT_TIME_ATTRIBUTES.has(name)) return;
+    this.reconfigure();
+  }
+
+  protected override reload(): void {
+    void this.init();
   }
 
   connectedCallback() {
@@ -119,7 +143,8 @@ export class GroupDetailsWidget extends MPNextWidget {
     // this widget already paints while it queries the API.
     void this.initLocale().then(() => {
       this.render();
-      this.init();
+      this.painted = true;
+      void this.init();
     });
   }
 
@@ -133,6 +158,10 @@ export class GroupDetailsWidget extends MPNextWidget {
   }
   private boolAttr(name: string): boolean {
     return this.getAttribute(name) === "true";
+  }
+  /** C16: the inquiry phone is required unless the page opts out. Default true. */
+  private get requireInquiryPhone(): boolean {
+    return this.getAttribute("require-inquiry-phone") !== "false";
   }
 
   private resolveGroupId(): string {
@@ -258,7 +287,7 @@ export class GroupDetailsWidget extends MPNextWidget {
     );
     if (!form || !this.group) return;
 
-    if (!validateForm(form).valid) {
+    if (!validateForm(form, { t: this.t }).valid) {
       this.setMessage("danger", this.t("validation.formIncomplete"));
       return;
     }
@@ -266,11 +295,6 @@ export class GroupDetailsWidget extends MPNextWidget {
     const fd = new FormData(form);
     const contactRaw = String(fd.get("contactId") || "").trim();
     const contactId = contactRaw && contactRaw !== "blank" ? Number(contactRaw) : null;
-
-    if (tab === "signup" && (contactId == null || contactId <= 0)) {
-      this.setMessage("danger", this.t("groupDetails.chooseSignup"));
-      return;
-    }
 
     const payload = {
       targetId: this.group.id,
@@ -280,6 +304,7 @@ export class GroupDetailsWidget extends MPNextWidget {
       emailAddress: String(fd.get("emailAddress") || "").trim() || null,
       mobilePhoneNumber: String(fd.get("mobilePhoneNumber") || "").trim() || null,
       message: String(fd.get("message") || "").trim() || null,
+      ...this.emailTemplates(tab),
     };
 
     const endpoint =
@@ -294,7 +319,7 @@ export class GroupDetailsWidget extends MPNextWidget {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data: { success: boolean; message?: string } = await res
+      const data: { success: boolean; message?: string; warning?: string } = await res
         .json()
         .catch(() => ({ success: false }));
 
@@ -317,22 +342,24 @@ export class GroupDetailsWidget extends MPNextWidget {
       // so splicing a name into the middle of a translated string does not
       // travel.
       const who = this.displayNameFor(tab, payload);
+      let done: string;
       if (tab === "inquire") {
         this.emit("inquirySubmitted", { groupId: this.group.id });
-        this.setMessage(
-          "success",
-          who
-            ? this.t("groupDetails.inquirySentNamed", { name: who })
-            : this.t("groupDetails.inquirySent")
-        );
+        done = who
+          ? this.t("groupDetails.inquirySentNamed", { name: who })
+          : this.t("groupDetails.inquirySent");
       } else {
         this.emit("signupSubmitted", { groupId: this.group.id });
-        this.setMessage(
-          "success",
-          who
-            ? this.t("groupDetails.signedUpNamed", { name: who })
-            : this.t("groupDetails.signedUp")
-        );
+        done = who
+          ? this.t("groupDetails.signedUpNamed", { name: who })
+          : this.t("groupDetails.signedUp");
+      }
+      // The record is saved either way; a template fault (C11) is reported as
+      // a second sentence rather than as a failure.
+      if (data.warning === "email_not_sent") {
+        this.setMessage("warning", [done, this.t("groupDetails.emailNotSent")].join(" "));
+      } else {
+        this.setMessage("success", done);
       }
       form.reset();
       this.setSubmitDisabled(false);
@@ -345,13 +372,48 @@ export class GroupDetailsWidget extends MPNextWidget {
     }
   }
 
+  /** The configured template ids for this tab's write (C11). */
+  private emailTemplates(tab: Tab): Record<string, number> {
+    const id = (name: string): number | null => {
+      const n = Number(this.getAttribute(name));
+      return Number.isInteger(n) && n > 0 ? n : null;
+    };
+    const out: Record<string, number> = {};
+    if (tab === "inquire") {
+      const inquiry = id("inquiry-email-template");
+      if (inquiry) out.inquiryEmailTemplate = inquiry;
+    } else {
+      const signup = id("signup-email-template");
+      const leader = id("leader-signup-email-template");
+      if (signup) out.signupEmailTemplate = signup;
+      if (leader) out.leaderSignupEmailTemplate = leader;
+    }
+    return out;
+  }
+
+  /**
+   * The name in the post-submit greeting: the first name alone — "Thanks,
+   * Chris!" (C17). MP's `Display_Name` is "Last, First", and the greeting used
+   * to strip its comma, producing "Thanks, Kehayias Chris!". Nickname wins over
+   * First_Name, as it does everywhere MP addresses a person.
+   */
   private displayNameFor(tab: Tab, payload: { firstName: string | null; lastName: string | null }): string {
     const id = tab === "inquire" ? this.inquireContactId : this.signupContactId;
     if (id && id !== "blank") {
       const member = this.contact?.members.find((m) => String(m.contactId) === id);
-      if (member) return member.displayName.replace(/,/g, "");
+      if (member) {
+        const first = member.nickname || member.firstName;
+        if (first) return first;
+        // An older server without the first-name columns: reorder
+        // "Last, First" rather than deleting the comma.
+        const [last, given] = member.displayName.split(",").map((p) => p.trim());
+        return given || last || "";
+      }
+      if (this.contact && String(this.contact.contactId) === id) {
+        return this.contact.firstName ?? "";
+      }
     }
-    return [payload.firstName, payload.lastName].filter(Boolean).join(" ");
+    return payload.firstName ?? "";
   }
 
   private setSubmitDisabled(disabled: boolean) {
@@ -408,19 +470,20 @@ export class GroupDetailsWidget extends MPNextWidget {
   // ── Listeners ──
 
   private attachListeners() {
-    const login = this.root.querySelector('[data-action="login"]');
-    if (login) login.addEventListener("click", () => this.requestLogin("group-details"));
-
-    // Tab switching.
-    this.root.querySelectorAll<HTMLElement>("[data-tab]").forEach((el) => {
-      el.addEventListener("click", () => {
-        const tab = el.getAttribute("data-tab") as Tab;
-        if (tab && tab !== this.activeTab) {
-          this.activeTab = tab;
-          this.message = null;
-          this.render();
-          this.attachListeners();
-        }
+    // Tab switching (C19): click, plus the ARIA tabs keyboard pattern —
+    // Left/Right wrap between tabs, Home/End jump, activation follows focus.
+    const tabs = Array.from(this.root.querySelectorAll<HTMLElement>('[role="tab"]'));
+    tabs.forEach((el, index) => {
+      el.addEventListener("click", () => this.selectTab(el.getAttribute("data-tab") as Tab));
+      el.addEventListener("keydown", (e) => {
+        let next = -1;
+        if (e.key === "ArrowRight") next = (index + 1) % tabs.length;
+        else if (e.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+        else if (e.key === "Home") next = 0;
+        else if (e.key === "End") next = tabs.length - 1;
+        if (next < 0) return;
+        e.preventDefault();
+        this.selectTab(tabs[next].getAttribute("data-tab") as Tab, true);
       });
     });
 
@@ -438,7 +501,8 @@ export class GroupDetailsWidget extends MPNextWidget {
     if (signupAs) {
       signupAs.addEventListener("change", () => {
         this.signupContactId = signupAs.value;
-        const id = signupAs.value ? Number(signupAs.value) : null;
+        this.toggleBlankFields("signup");
+        const id = signupAs.value && signupAs.value !== "blank" ? Number(signupAs.value) : null;
         void this.checkPriorActivity("signup", id);
       });
     }
@@ -451,10 +515,26 @@ export class GroupDetailsWidget extends MPNextWidget {
       });
     });
 
+    // Sync `required` on the identity blocks with their visibility.
+    this.toggleBlankFields("inquire");
+    this.toggleBlankFields("signup");
+
     const inquireForm = this.root.querySelector<HTMLFormElement>("#gd-inquire-form");
     if (inquireForm) bindLiveValidation(inquireForm);
     const signupForm = this.root.querySelector<HTMLFormElement>("#gd-signup-form");
     if (signupForm) bindLiveValidation(signupForm);
+  }
+
+  private selectTab(tab: Tab, focus = false) {
+    if (tab && tab !== this.activeTab) {
+      this.activeTab = tab;
+      this.message = null;
+      this.render();
+      this.attachListeners();
+    }
+    if (focus) {
+      this.root.querySelector<HTMLElement>(`[role="tab"][data-tab="${tab}"]`)?.focus();
+    }
   }
 
   /** Show/hide the blank-form fields for the inquiry form based on the dropdown. */
@@ -464,7 +544,11 @@ export class GroupDetailsWidget extends MPNextWidget {
     );
     if (!blank) return;
     const id = tab === "inquire" ? this.inquireContactId : this.signupContactId;
-    const showBlank = !id || id === "blank";
+    // Anonymous inquirers have no picker: the block is their only identity.
+    const showBlank =
+      tab === "inquire"
+        ? !this.isAuthenticated || !id || id === "blank"
+        : id === "blank";
     blank.style.display = showBlank ? "" : "none";
     blank.querySelectorAll<HTMLInputElement>("input[data-required]").forEach((input) => {
       if (showBlank) input.setAttribute("required", "");
@@ -491,7 +575,6 @@ export class GroupDetailsWidget extends MPNextWidget {
     this.root.innerHTML = `
       <div class="gd">
         ${this.renderBackLink()}
-        ${this.renderMessage()}
         ${this.renderDetails()}
         ${this.renderForms()}
       </div>`;
@@ -502,9 +585,18 @@ export class GroupDetailsWidget extends MPNextWidget {
     return `<div class="gd-back"><a href="${this.escapeAttr(this.returnUrl)}">&larr; ${this.escapeHtml(this.t("groupDetails.backToGroups"))}</a></div>`;
   }
 
+  /**
+   * The form-level message, rendered **inside the form, directly above the
+   * submit row** (C19 row 10). At the top of the shadow root it sat above the
+   * group's title and image — off-screen on a phone, so a press of Send Message
+   * with a field missing looked like the button did nothing. `aria-live` so
+   * the outcome is announced, not only painted.
+   */
   private renderMessage(): string {
-    if (!this.message) return `<div id="gd-message" class="gd-message" style="display:none"></div>`;
-    return `<div id="gd-message" class="gd-message gd-message--${this.escapeAttr(this.message.type)}">${this.escapeHtml(this.message.text)}</div>`;
+    if (!this.message) {
+      return `<div id="gd-message" class="gd-message" aria-live="polite" style="display:none"></div>`;
+    }
+    return `<div id="gd-message" class="gd-message gd-message--${this.escapeAttr(this.message.type)}" aria-live="polite">${this.escapeHtml(this.message.text)}</div>`;
   }
 
   private renderDetails(): string {
@@ -639,24 +731,25 @@ export class GroupDetailsWidget extends MPNextWidget {
     if (this.activeTab === "inquire" && !showInquire) this.activeTab = "signup";
     if (this.activeTab === "signup" && !showSignup) this.activeTab = "inquire";
 
+    // Real tab semantics (C19 row 13): tablist / tab / tabpanel, with
+    // aria-selected and a roving tabindex so Tab enters the strip once and
+    // the arrow keys move within it.
+    const panelId = `${this.instanceId}-gd-panel`;
+    const tabId = (t: Tab) => `${this.instanceId}-gd-tab-${t}`;
+    const tab = (t: Tab, labelKey: "groupDetails.contactTab" | "groupDetails.signupTab") => {
+      const active = this.activeTab === t;
+      return `<button type="button" role="tab" id="${tabId(t)}" class="gd-tab ${active ? "gd-tab--active" : ""}" data-tab="${t}" aria-selected="${active}" aria-controls="${panelId}" tabindex="${active ? "0" : "-1"}">${this.escapeHtml(this.t(labelKey))}</button>`;
+    };
     const tabs: string[] = [];
-    if (showInquire) {
-      tabs.push(
-        `<button type="button" class="gd-tab ${this.activeTab === "inquire" ? "gd-tab--active" : ""}" data-tab="inquire">${this.escapeHtml(this.t("groupDetails.contactTab"))}</button>`
-      );
-    }
-    if (showSignup) {
-      tabs.push(
-        `<button type="button" class="gd-tab ${this.activeTab === "signup" ? "gd-tab--active" : ""}" data-tab="signup">${this.escapeHtml(this.t("groupDetails.signupTab"))}</button>`
-      );
-    }
+    if (showInquire) tabs.push(tab("inquire", "groupDetails.contactTab"));
+    if (showSignup) tabs.push(tab("signup", "groupDetails.signupTab"));
 
     const body = this.activeTab === "inquire" ? this.renderInquireForm() : this.renderSignupForm();
 
     return `
       <div class="gd-form-wrap">
-        <div class="gd-tabs">${tabs.join("")}</div>
-        <div class="gd-tab-body">${body}</div>
+        <div class="gd-tabs" role="tablist">${tabs.join("")}</div>
+        <div class="gd-tab-body" role="tabpanel" id="${panelId}" aria-labelledby="${tabId(this.activeTab)}">${body}</div>
       </div>`;
   }
 
@@ -670,12 +763,13 @@ export class GroupDetailsWidget extends MPNextWidget {
       <form id="gd-inquire-form" class="gd-form" novalidate>
         ${asPicker}
         <div id="gd-inquire-blank" style="display:${showBlank ? "" : "none"}">
-          ${this.renderBlankFields(showBlank)}
+          ${this.renderBlankFields("inquire")}
         </div>
         <div class="gd-field">
           <label for="gd-inquire-message">${this.escapeHtml(this.t("fields.message"))}</label>
           <textarea id="gd-inquire-message" class="gd-input" name="message" maxlength="500" rows="4"></textarea>
         </div>
+        ${this.renderMessage()}
         <div class="gd-actions">
           <button type="button" class="gd-btn gd-btn--primary gd-submit" data-tab="inquire">${this.escapeHtml(this.t("groupDetails.sendMessage"))}</button>
         </div>
@@ -684,22 +778,32 @@ export class GroupDetailsWidget extends MPNextWidget {
 
   private renderSignupForm(): string {
     if (!this.isAuthenticated) {
-      return `
-        <div class="gd-login-panel">
-          <p>${this.escapeHtml(this.t("groupDetails.signInToSignUp"))}</p>
-          <button class="gd-btn gd-btn--primary" type="button" data-action="login">${this.escapeHtml(this.t("common.signIn"))}</button>
-        </div>`;
+      // The shared, mode-aware panel (W0 / C81): a Sign In button where the
+      // SDK can start a sign-in, the page's own sign-in link named in
+      // `legacy` — where the old hand-rolled button did nothing visible. The
+      // base class binds the button.
+      return this.renderSignInRequired({
+        subject: "group-details",
+        message: this.t("groupDetails.signInToSignUp"),
+        className: "gd-login-panel",
+        buttonClass: "gd-btn gd-btn--primary",
+      });
     }
+    const showBlank = this.signupContactId === "blank";
     return `
       <div id="gd-signup-warning" class="gd-message gd-message--info" style="display:${this.signupWarning ? "" : "none"}">
         ${this.escapeHtml(this.t("groupDetails.alreadySignedUp"))}
       </div>
       <form id="gd-signup-form" class="gd-form" novalidate>
         ${this.renderAsPicker("signup")}
+        <div id="gd-signup-blank" style="display:${showBlank ? "" : "none"}">
+          ${this.renderBlankFields("signup")}
+        </div>
         <div class="gd-field">
           <label for="gd-signup-message">${this.escapeHtml(this.t("fields.message"))} <span class="gd-optional">(${this.escapeHtml(this.t("common.optional"))})</span></label>
           <textarea id="gd-signup-message" class="gd-input" name="message" maxlength="500" rows="3"></textarea>
         </div>
+        ${this.renderMessage()}
         <div class="gd-actions">
           <button type="button" class="gd-btn gd-btn--primary gd-submit" data-tab="signup">${this.escapeHtml(this.t("groupDetails.signUp"))}</button>
         </div>
@@ -715,6 +819,7 @@ export class GroupDetailsWidget extends MPNextWidget {
       : [
           {
             contactId: this.contact.contactId,
+            firstName: this.contact.firstName,
             displayName:
               [this.contact.firstName, this.contact.lastName]
                 .filter(Boolean)
@@ -727,11 +832,9 @@ export class GroupDetailsWidget extends MPNextWidget {
           `<option value="${m.contactId}" ${String(m.contactId) === selected ? "selected" : ""}>${this.escapeHtml(m.displayName)}</option>`
       )
       .join("");
-    // Inquiry permits an anonymous "Blank Form"; sign-up always needs a contact.
-    const blankOpt =
-      tab === "inquire"
-        ? `<option value="blank" ${selected === "blank" ? "selected" : ""}>${this.escapeHtml(this.t("groupDetails.someoneElse"))}</option>`
-        : "";
+    // "Someone else…" on both tabs (C14). Listed last, so the default stays
+    // the signed-in contact — legacy listed "Blank Form" first (C19 row 7).
+    const blankOpt = `<option value="blank" ${selected === "blank" ? "selected" : ""}>${this.escapeHtml(this.t("groupDetails.someoneElse"))}</option>`;
     const id = tab === "inquire" ? "gd-inquire-as" : "gd-signup-as";
     const label = this.t(
       tab === "inquire" ? "groupDetails.contactAs" : "groupDetails.signUpAs"
@@ -746,16 +849,46 @@ export class GroupDetailsWidget extends MPNextWidget {
       </div>`;
   }
 
-  private renderBlankFields(required: boolean): string {
-    const req = required ? "required" : "";
+  /**
+   * The "Someone else…" identity block. Each control comes from the shared
+   * `field()` (W0), so it has a real `<label for>` and a missing value reads
+   * "{label} is required." (C19 row 9).
+   *
+   * Rendered `required` with its star, then {@link toggleBlankFields} strips
+   * `required` while the block is hidden: rendering it non-required would
+   * draw no star, and the star would then be missing when the block opens.
+   *
+   * The phone is required (C16) — on the inquiry tab unless the page sets
+   * `require-inquiry-phone="false"`, and always on a sign-up, as legacy did.
+   */
+  private renderBlankFields(tab: Tab): string {
+    const phoneRequired = tab === "signup" || this.requireInquiryPhone;
+    const f = (
+      name: string,
+      label: string,
+      opts: { type?: string; autocomplete?: string; required?: boolean } = {},
+    ) => {
+      const required = opts.required ?? true;
+      return field({
+        name,
+        label,
+        type: opts.type,
+        autocomplete: opts.autocomplete,
+        required,
+        idPrefix: `${this.instanceId}-${tab}`,
+        wrapperClass: "gd-field",
+        inputClass: "gd-input",
+        attrs: required ? { "data-required": true } : undefined,
+      });
+    };
     return `
       <div class="gd-grid2">
-        <div class="gd-field"><label>${this.escapeHtml(this.t("fields.firstName"))}${requiredStar()}</label><input class="gd-input" name="firstName" data-required ${req}></div>
-        <div class="gd-field"><label>${this.escapeHtml(this.t("fields.lastName"))}${requiredStar()}</label><input class="gd-input" name="lastName" data-required ${req}></div>
+        ${f("firstName", this.t("fields.firstName"), { autocomplete: "given-name" })}
+        ${f("lastName", this.t("fields.lastName"), { autocomplete: "family-name" })}
       </div>
       <div class="gd-grid2">
-        <div class="gd-field"><label>${this.escapeHtml(this.t("fields.email"))}${requiredStar()}</label><input class="gd-input" type="email" name="emailAddress" data-required ${req}></div>
-        <div class="gd-field"><label>${this.escapeHtml(this.t("fields.mobilePhone"))}</label><input class="gd-input" type="tel" name="mobilePhoneNumber"></div>
+        ${f("emailAddress", this.t("fields.email"), { type: "email", autocomplete: "email" })}
+        ${f("mobilePhoneNumber", this.t("fields.mobilePhone"), { type: "tel", required: phoneRequired })}
       </div>`;
   }
 
@@ -867,6 +1000,8 @@ export class GroupDetailsWidget extends MPNextWidget {
       .gd-tabs { display: flex; gap: 4px; border-bottom: 1px solid #e5e7eb; margin-bottom: 16px; }
       .gd-tab { background: none; border: none; border-bottom: 3px solid transparent; padding: 10px 14px; font-size: 14px; font-weight: 600; color: #6b7280; cursor: pointer; font-family: inherit; margin-bottom: -1px; }
       .gd-tab--active { color: #004C97; border-bottom-color: #004C97; }
+      .gd-tab:focus-visible { outline: 2px solid #009CDE; outline-offset: 2px; }
+      .gd-form .gd-message { margin: 4px 0 12px; }
 
       .gd-form { display: block; }
       .gd-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }

@@ -41,7 +41,9 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const contact = await service.getCurrentContact(user.User_ID);
+    // `getCurrentContact` takes a Contact_ID. This passed `User_ID` until C12,
+    // which only worked on domains where the two happen to coincide.
+    const contact = await service.getCurrentContact(user.Contact_ID);
     if (!contact) {
       return NextResponse.json(
         { error: "contact_not_found", message: "Contact not found" },

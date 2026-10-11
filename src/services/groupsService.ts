@@ -1,7 +1,12 @@
 import { MPHelper } from "@/lib/providers/ministry-platform";
 import { getEnv } from "@/lib/env";
 import { DomainTimezoneService } from "@/services/domainTimezoneService";
-import { clean } from "@/services/_shared/mp-lookup";
+import { cap, clean, getIdByValue, sqlLiteral } from "@/services/_shared/mp-lookup";
+import {
+  MessageTemplateService,
+  type TemplateMergeData,
+  type TemplateRecipient,
+} from "@/services/messageTemplateService";
 import type {
   GroupCard,
   GroupConfigurations,
@@ -107,10 +112,75 @@ function toNumber(value: number | string | null | undefined, fallback = 0): numb
   return n === null ? fallback : n;
 }
 
+function capOrNull(value: string | null, max: number): string | null {
+  return value == null ? null : cap(value, max);
+}
+
+/** A contact's identity columns, as read from MP. */
+export interface ContactIdentity {
+  contactId: number;
+  firstName: string | null;
+  nickname: string | null;
+  lastName: string | null;
+  displayName: string | null;
+  emailAddress: string | null;
+  mobilePhoneNumber: string | null;
+  householdId: number | null;
+}
+
+/** Who an inquiry or sign-up was written for — the recipient of its confirmation. */
+export interface InquirerDetails {
+  contactId: number | null;
+  firstName: string | null;
+  nickname: string | null;
+  lastName: string | null;
+  emailAddress: string | null;
+  mobilePhoneNumber: string | null;
+}
+
+/**
+ * The three `*-email-template` attributes of `next-group-details` (C11). Each
+ * is a `dp_Communications` **message template** id — the same kind of id every
+ * other legacy widget's `*emailtemplate` attribute carries.
+ */
+export interface GroupEmailTemplates {
+  /** Confirmation to the inquirer. */
+  inquiry?: number | null;
+  /** Confirmation to the person signed up. */
+  signup?: number | null;
+  /** Notification to the group's leaders on a sign-up. */
+  leaderSignup?: number | null;
+}
+
+/**
+ * A "Someone else…" sign-up arrived without the first name, last name and
+ * email it needs to find or create a contact. Routes answer
+ * `validation_failed` (422).
+ */
+export class IncompleteIdentityError extends Error {
+  constructor() {
+    super("A first name, last name and email are required to sign up someone else.");
+    this.name = "IncompleteIdentityError";
+  }
+}
+
+/**
+ * The request named a contact the caller may not act for: an anonymous caller
+ * naming any contact, or a signed-in one naming a contact outside their own
+ * household. Routes answer `not_household_member` (403).
+ */
+export class NotHouseholdMemberError extends Error {
+  constructor(public readonly contactId: number) {
+    super(`Contact ${contactId} is not in the caller's household.`);
+    this.name = "NotHouseholdMemberError";
+  }
+}
+
 export class GroupsService {
   private static instance: GroupsService;
   private mp: MPHelper | null = null;
   private imageBaseUrl = "";
+  private idCache = new Map<string, number | null>();
 
   private constructor() {
     const raw = getEnv("MINISTRY_PLATFORM_BASE_URL").replace(/\/$/, "");
@@ -415,9 +485,14 @@ export class GroupsService {
     const rows = await this.mp!.getTableRecords<{
       ContactId: number | string;
       DisplayName: string | null;
+      FirstName: string | null;
+      Nickname: string | null;
     }>({
       table: "Contacts",
-      select: "Contacts.Contact_ID AS ContactId, Contacts.Display_Name AS DisplayName",
+      // First_Name / Nickname feed the post-submit greeting (C17): MP's
+      // Display_Name is "Last, First", so greeting from it reads backwards.
+      select:
+        "Contacts.Contact_ID AS ContactId, Contacts.Display_Name AS DisplayName, Contacts.First_Name AS FirstName, Contacts.Nickname AS Nickname",
       filter: `Contacts.Household_ID = ${householdId} AND Contacts.Contact_Status_ID <> 3`,
       orderBy: "Contacts.Date_Of_Birth",
     });
@@ -425,48 +500,150 @@ export class GroupsService {
       .map((r) => ({
         contactId: toNumber(r.ContactId),
         displayName: clean(r.DisplayName) ?? "",
+        firstName: clean(r.FirstName),
+        nickname: clean(r.Nickname),
       }))
       .filter((m) => m.contactId > 0 && m.displayName);
   }
 
+  // ── Acting-as contact resolution (C12) ──
+
+  /** Read one contact's identity columns. */
+  private async getContactIdentity(contactId: number): Promise<ContactIdentity | null> {
+    const rows = await this.mp!.getTableRecords<{
+      Contact_ID: number | string;
+      First_Name: string | null;
+      Nickname: string | null;
+      Last_Name: string | null;
+      Display_Name: string | null;
+      Email_Address: string | null;
+      Mobile_Phone: string | null;
+      Household_ID: number | string | null;
+    }>({
+      table: "Contacts",
+      select:
+        "Contact_ID,First_Name,Nickname,Last_Name,Display_Name,Email_Address,Mobile_Phone,Household_ID",
+      filter: `Contact_ID = ${contactId}`,
+      top: 1,
+    });
+    const c = rows[0];
+    if (!c) return null;
+    return {
+      contactId: toNumber(c.Contact_ID),
+      firstName: clean(c.First_Name),
+      nickname: clean(c.Nickname),
+      lastName: clean(c.Last_Name),
+      displayName: clean(c.Display_Name),
+      emailAddress: clean(c.Email_Address),
+      mobilePhoneNumber: clean(c.Mobile_Phone),
+      householdId: toNumberOrNull(c.Household_ID),
+    };
+  }
+
+  /**
+   * Resolve the contact a signed-in user picked from the "as" picker, and
+   * prove they may act for it: it must be the user's own contact, or share the
+   * user's (non-null) household. Everything about the chosen person — name,
+   * email, phone — then comes from MP, **never from the request**: the client
+   * only ever knew the member's display name, and accepting a client-supplied
+   * email for a contact picked from a list would let a caller attach an
+   * address of their choosing to someone else's record (C12).
+   *
+   * Throws {@link NotHouseholdMemberError} for an anonymous caller naming a
+   * contact at all, or a signed-in caller naming one outside their household.
+   */
+  public async resolveActingContact(
+    selectedContactId: number,
+    actorContactId: number | null
+  ): Promise<ContactIdentity> {
+    if (actorContactId == null) throw new NotHouseholdMemberError(selectedContactId);
+    const selected = await this.getContactIdentity(selectedContactId);
+    if (!selected) throw new NotHouseholdMemberError(selectedContactId);
+    if (selected.contactId === actorContactId) return selected;
+
+    const actor = await this.getContactIdentity(actorContactId);
+    const sameHousehold =
+      actor?.householdId != null && actor.householdId === selected.householdId;
+    if (!sameHousehold) throw new NotHouseholdMemberError(selectedContactId);
+    return selected;
+  }
+
   // ── Inquiry ──
 
+  /**
+   * Write a `Group_Inquiries` row and return who it was written for.
+   *
+   * With a `contactId`, the four denormalised columns are **back-filled from
+   * MP** (C12) — the picker hides those inputs, so the client sends nulls, and
+   * legacy stored the contact's real details there. Without one (an anonymous
+   * visitor, or "Someone else…"), the typed fields are the only source.
+   */
   public async createInquiry(
     form: GroupInquiryRequest,
-    userId: number | null
-  ): Promise<void> {
+    actor: { userId: number | null; contactId: number | null }
+  ): Promise<InquirerDetails> {
     const tz = DomainTimezoneService.getInstance();
     const inquiryDate = await tz.toMpSqlDatetime(new Date().toISOString());
-    const contactId = form.contactId && form.contactId > 0 ? form.contactId : null;
+    const selectedId = form.contactId && form.contactId > 0 ? form.contactId : null;
     const message = clean(form.message);
+
+    let who: InquirerDetails;
+    if (selectedId != null) {
+      const c = await this.resolveActingContact(selectedId, actor.contactId);
+      who = {
+        contactId: c.contactId,
+        firstName: c.firstName,
+        nickname: c.nickname,
+        lastName: c.lastName,
+        emailAddress: c.emailAddress,
+        mobilePhoneNumber: c.mobilePhoneNumber,
+      };
+    } else {
+      who = {
+        contactId: null,
+        firstName: clean(form.firstName),
+        nickname: null,
+        lastName: clean(form.lastName),
+        emailAddress: clean(form.emailAddress),
+        mobilePhoneNumber: clean(form.mobilePhoneNumber),
+      };
+    }
 
     const record: Record<string, unknown> = {
       Inquiry_Date: inquiryDate,
-      First_name: clean(form.firstName),
-      Last_name: clean(form.lastName),
-      Phone: clean(form.mobilePhoneNumber),
-      Email: clean(form.emailAddress),
+      First_Name: capOrNull(who.firstName, 50),
+      Last_Name: capOrNull(who.lastName, 50),
+      Phone: who.mobilePhoneNumber,
+      Email: capOrNull(who.emailAddress, 254),
       Comments: message && message.length > 500 ? message.slice(0, 500) : message,
       Group_ID: form.targetId,
-      Contact_ID: contactId,
-      _From_Group_Finder: true,
+      Contact_ID: who.contactId,
     };
 
     await this.mp!.createTableRecords("Group_Inquiries", [record], {
-      ...(userId != null ? { $userId: userId } : {}),
+      ...(actor.userId != null ? { $userId: actor.userId } : {}),
     });
+    return who;
   }
 
   // ── Sign-up ──
 
   public async signUp(
     form: GroupInquiryRequest,
-    userId: number | null
-  ): Promise<void> {
-    const contactId = form.contactId && form.contactId > 0 ? form.contactId : null;
-    if (contactId == null) {
-      throw new Error("A contact is required to sign up for a group.");
-    }
+    actor: { userId: number | null; contactId: number | null }
+  ): Promise<InquirerDetails> {
+    const userId = actor.userId;
+    const selectedId = form.contactId && form.contactId > 0 ? form.contactId : null;
+    // A picked contact follows the household rule: a caller may sign up
+    // themselves or a member of their own household, never an arbitrary
+    // Contact_ID. "Someone else…" (C14) finds or creates the typed person.
+    // Both paths sit behind sign-in — the route refuses a public token — so
+    // this is never an unauthenticated contact-creation endpoint.
+    const person =
+      selectedId != null
+        ? await this.resolveActingContact(selectedId, actor.contactId)
+        : await this.findOrCreateContact(form, userId);
+    const contactId = person.contactId;
 
     const participantId = await this.resolveParticipantId(contactId, userId);
     const defaultRoleId = await this.getDefaultGroupRole(form.targetId);
@@ -486,6 +663,260 @@ export class GroupsService {
     await this.mp!.createTableRecords("Group_Participants", [record], {
       ...(userId != null ? { $userId: userId } : {}),
     });
+    return {
+      contactId,
+      firstName: person.firstName,
+      nickname: person.nickname,
+      lastName: person.lastName,
+      emailAddress: person.emailAddress,
+      mobilePhoneNumber: person.mobilePhoneNumber,
+    };
+  }
+
+  // ── Notification emails (C11) ──
+
+  /**
+   * Send the inquiry confirmation. Best-effort by design: the
+   * `Group_Inquiries` row is already written, so a template fault must not
+   * turn a recorded inquiry into a reported failure. Returns `false` when a
+   * configured template could not be sent, so the route can answer
+   * `200 { success: true, warning: "email_not_sent" }` — legacy's own promise
+   * ("Saving the record is allowed, however no email notifications will be
+   * sent"), made visible instead of silent.
+   */
+  public async sendInquiryEmails(
+    groupId: number,
+    who: InquirerDetails,
+    message: string | null | undefined,
+    templates: GroupEmailTemplates
+  ): Promise<boolean> {
+    if (!templates.inquiry) return true;
+    const group = await this.getGroupForEmail(groupId);
+    return this.trySend(
+      templates.inquiry,
+      [this.recipientFor(who)],
+      this.mergeData(group.title, who, message),
+      group.fromContactId
+    );
+  }
+
+  /**
+   * Send the sign-up confirmation to the person signed up and the
+   * notification to the group's leaders. Same best-effort contract as
+   * {@link sendInquiryEmails}; `false` when any configured send failed.
+   */
+  public async sendSignupEmails(
+    groupId: number,
+    who: InquirerDetails,
+    message: string | null | undefined,
+    templates: GroupEmailTemplates
+  ): Promise<boolean> {
+    if (!templates.signup && !templates.leaderSignup) return true;
+    const group = await this.getGroupForEmail(groupId);
+    const merge = this.mergeData(group.title, who, message);
+
+    let ok = true;
+    if (templates.signup) {
+      ok =
+        (await this.trySend(templates.signup, [this.recipientFor(who)], merge, group.fromContactId)) &&
+        ok;
+    }
+    if (templates.leaderSignup) {
+      // Leaders come from MP (the detail proc's second result set), never from
+      // the request — a client-supplied recipient list would make this an open
+      // relay for church-branded mail.
+      ok =
+        (await this.trySend(templates.leaderSignup, group.leaders, merge, group.fromContactId)) &&
+        ok;
+    }
+    return ok;
+  }
+
+  /** The group's title, its leaders' addresses, and a fallback sender. */
+  private async getGroupForEmail(groupId: number): Promise<{
+    title: string;
+    leaders: TemplateRecipient[];
+    fromContactId: number | undefined;
+  }> {
+    // Never throws: the record is already written by the time this runs, so a
+    // failed read degrades to "no group name, no leaders" and the send that
+    // needed them reports itself as not sent.
+    const detail = await this.getGroupDetails(groupId, false, false, null).catch((err) => {
+      console.warn(`GroupsService: could not read group ${groupId} for email:`, err);
+      return null;
+    });
+    const contacts = detail?.contacts ?? [];
+    return {
+      title: detail?.title ?? "",
+      leaders: contacts
+        .filter((c) => c.emailAddress)
+        .map((c) => ({
+          email: c.emailAddress as string,
+          name: [c.nickName || c.firstName, c.lastName].filter(Boolean).join(" "),
+        })),
+      // Used only when the template row carries no From contact: the group's
+      // own leader is the least surprising sender for a group email.
+      fromContactId: contacts[0]?.contactId,
+    };
+  }
+
+  private recipientFor(who: InquirerDetails): TemplateRecipient {
+    return {
+      email: who.emailAddress ?? "",
+      name: [who.nickname || who.firstName, who.lastName].filter(Boolean).join(" "),
+    };
+  }
+
+  /**
+   * Merge tokens. Two vocabularies, because two kinds of template exist in the
+   * wild: MP's own platform notifications use `[Web_First_Name]` /
+   * `[GP_Display_Name]` and friends (the stock "New Group Inquiry" and "Small
+   * Group Sign-up" templates), while church-authored ones use the column names.
+   * Supplying both costs nothing — an absent token is simply not substituted.
+   * Values are HTML-escaped by `MessageTemplateService`.
+   */
+  private mergeData(
+    groupName: string,
+    who: InquirerDetails,
+    message: string | null | undefined
+  ): TemplateMergeData {
+    const first = who.firstName ?? "";
+    const nick = who.nickname || first;
+    const last = who.lastName ?? "";
+    const email = who.emailAddress ?? "";
+    const phone = who.mobilePhoneNumber ?? "";
+    const comments = clean(message) ?? "";
+    const display = [last, nick].filter(Boolean).join(", ");
+    return {
+      Group_Name: groupName,
+      First_Name: first,
+      Nickname: nick,
+      Last_Name: last,
+      Display_Name: display,
+      Email_Address: email,
+      Mobile_Phone: phone,
+      Comments: comments,
+      Message: comments,
+      Web_First_Name: first,
+      Web_Last_Name: last,
+      Web_Email: email,
+      Web_Phone: phone,
+      GP_Display_Name: display,
+      GP_Email_Address: email,
+      GP_Mobile_Phone: phone,
+    };
+  }
+
+  /**
+   * Send one template, swallowing (and logging) any failure. Refuses an id
+   * that is not a **message template** (`dp_Communications.Template = 1`): the
+   * id arrives from a page attribute, and without the check any past
+   * communication — a staff email, say — could be replayed to an inquirer's
+   * typed address.
+   */
+  private async trySend(
+    templateId: number,
+    to: TemplateRecipient[],
+    merge: TemplateMergeData,
+    fromContactId: number | undefined
+  ): Promise<boolean> {
+    if (!to.some((r) => r.email)) {
+      console.warn(`GroupsService: email template ${templateId} has no recipient address; no email sent.`);
+      return false;
+    }
+    try {
+      const rows = await this.mp!.getTableRecords<{ Communication_ID: number }>({
+        table: "dp_Communications",
+        select: "Communication_ID",
+        filter: `Communication_ID = ${templateId} AND Template = 1`,
+        top: 1,
+      });
+      if (!rows[0]) {
+        console.warn(
+          `GroupsService: email template ${templateId} is not a dp_Communications message template; no email sent.`
+        );
+        return false;
+      }
+      const templates = await MessageTemplateService.getInstance();
+      await templates.sendMessageTemplate(templateId, to, merge, { fromContactId });
+      return true;
+    } catch (err) {
+      console.warn(`GroupsService: email template ${templateId} could not be sent:`, err);
+      return false;
+    }
+  }
+
+  /**
+   * The "Someone else…" sign-up (C14): match an existing contact on last name,
+   * first name (or nickname) **and** email, else create a minimal one. Same
+   * shape as legacy's `ContactManager.FindContact`, and as
+   * `pledgeCampaignService.resolveContactId`. The match needs all three so a
+   * shared family address does not sign up the wrong family member.
+   */
+  private async findOrCreateContact(
+    form: GroupInquiryRequest,
+    userId: number | null
+  ): Promise<ContactIdentity> {
+    const first = clean(form.firstName);
+    const last = clean(form.lastName);
+    const email = clean(form.emailAddress);
+    const phone = clean(form.mobilePhoneNumber);
+    if (!first || !last || !email) throw new IncompleteIdentityError();
+
+    const matches = await this.mp!.getTableRecords<{ Contact_ID: number | string }>({
+      table: "Contacts",
+      select: "Contact_ID",
+      filter: [
+        `Last_Name = '${sqlLiteral(last)}'`,
+        `(First_Name = '${sqlLiteral(first)}' OR Nickname = '${sqlLiteral(first)}')`,
+        `Email_Address = '${sqlLiteral(email)}'`,
+      ].join(" AND "),
+      orderBy: "Contact_ID",
+      top: 1,
+    });
+    const matchedId = toNumberOrNull(matches[0]?.Contact_ID ?? null);
+    if (matchedId != null) {
+      const existing = await this.getContactIdentity(matchedId);
+      if (existing) return existing;
+    }
+
+    const activeStatusId = await getIdByValue(
+      { mp: this.mp!, cache: this.idCache, label: "GroupsService" },
+      "Contact_Statuses",
+      "Contact_Status",
+      "Active",
+      "Contact_Status_ID"
+    );
+    const record: Record<string, unknown> = {
+      Company: false,
+      Display_Name: cap(`${last}, ${first}`, 125),
+      First_Name: cap(first, 50),
+      Nickname: cap(first, 50),
+      Last_Name: cap(last, 50),
+      Email_Address: cap(email, 254),
+      Mobile_Phone: phone,
+    };
+    // Omitted rather than guessed when the lookup misses: MP's column default
+    // is a better answer than a hard-coded id on a renumbered domain.
+    if (activeStatusId != null) record.Contact_Status_ID = activeStatusId;
+
+    const created = await this.mp!.createTableRecords("Contacts", [record], {
+      ...(userId != null ? { $userId: userId } : {}),
+    });
+    const contactId = toNumberOrNull(
+      (created[0] as { Contact_ID?: number | string } | undefined)?.Contact_ID ?? null
+    );
+    if (contactId == null) throw new Error("Failed to create contact.");
+    return {
+      contactId,
+      firstName: first,
+      nickname: first,
+      lastName: last,
+      displayName: `${last}, ${first}`,
+      emailAddress: email,
+      mobilePhoneNumber: phone,
+      householdId: null,
+    };
   }
 
   /** Resolve the contact's Participant_Record, creating one when missing. */

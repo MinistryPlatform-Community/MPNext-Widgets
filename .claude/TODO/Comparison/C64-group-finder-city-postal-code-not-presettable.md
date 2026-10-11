@@ -83,3 +83,20 @@ the way `congregation-id`, `keyword` and the rest are seeded. The plumbing below
 service or route work. Decide deliberately whether an attribute-supplied value should also
 *lock* the input as legacy does, or just pre-fill it — the rest of the new finder pre-fills
 and leaves editable, so pre-fill is probably the consistent choice.
+
+## Resolution — 2026-10-11
+
+**Fixed (W3, `ws/w3-groups`).**
+
+- `city-postal-code` is in `observedAttributes` and seeded into `this.cityPostalCode` by
+  `seedFromAttributes()`, like `congregation-id` and the rest; the existing plumbing sends
+  it as `cityPostalCode`. `city-postal-code="90210"` now pre-scopes the first search.
+- **Decided: pre-fill, not lock.** Consistent with every other filter attribute on this
+  widget, and a visitor who has moved can still search elsewhere.
+- In the same change the finder moved onto W0's `reconfigure()`: its old guard
+  (`groups.length || !loading`) dropped an attribute change that landed while the first
+  search was in flight, so a CMS that sets attributes after insertion could lose this one
+  too. Seeding moved after the locale await for the same reason.
+- `demo-group-finder.html` shows the attribute in its snippet.
+- Tests: `group-finder.test.ts` ("city-postal-code (C64)": first-search pre-scope, field
+  pre-filled, late set re-searches).

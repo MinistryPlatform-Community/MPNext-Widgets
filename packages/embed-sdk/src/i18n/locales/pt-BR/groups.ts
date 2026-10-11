@@ -31,7 +31,7 @@ export const ptBRGroups = {
     afternoon: "Tarde",
     evening: "Noite",
     loading: "Carregando os grupos…",
-    empty: "Nenhum grupo encontrado.",
+    empty: "Nenhum grupo encontrado. Tente outros critérios de busca.",
     truncated:
       "Exibindo os primeiros resultados — refine sua busca para reduzi-los.",
     imagePlaceholder: "Grupo",
@@ -80,12 +80,13 @@ export const ptBRGroups = {
     signUpAs: "Inscrever",
     someoneElse: "Outra pessoa…",
     myInfo: "Minhas informações",
-    chooseSignup: "Escolha quem vai se inscrever.",
     inquirySent: "Obrigado! Sua mensagem foi enviada ao grupo.",
     inquirySentNamed: "Obrigado, {name}! Sua mensagem foi enviada ao grupo.",
     signedUp: "Você está inscrito! O líder do grupo entrará em contato.",
     signedUpNamed:
       "Você está inscrito, {name}! O líder do grupo entrará em contato.",
+    emailNotSent:
+      "Não foi possível enviar o e-mail de confirmação, mas sua solicitação foi salva.",
   },
 
   myGroups: {
@@ -101,6 +102,7 @@ export const ptBRGroups = {
     startsOn: "Começa: {date}",
     groupConnect: "Group Connect",
     volunteerConnect: "Volunteer Connect",
+    signInPrompt: "Entre para ver seus grupos.",
   },
 
   opportunityFinder: {

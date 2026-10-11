@@ -31,7 +31,7 @@ export const esGroups = {
     afternoon: "Tarde",
     evening: "Noche",
     loading: "Cargando los grupos…",
-    empty: "No se encontraron grupos.",
+    empty: "No se encontraron grupos. Pruebe con otros criterios de búsqueda.",
     truncated:
       "Se muestran los primeros resultados: refine su búsqueda para reducirlos.",
     imagePlaceholder: "Grupo",
@@ -80,13 +80,14 @@ export const esGroups = {
     signUpAs: "Inscribir a",
     someoneElse: "Otra persona…",
     myInfo: "Mi información",
-    chooseSignup: "Elija quién se va a inscribir.",
     inquirySent: "¡Gracias! Su mensaje ha sido enviado al grupo.",
     inquirySentNamed: "¡Gracias, {name}! Su mensaje ha sido enviado al grupo.",
     signedUp:
       "¡Ya está inscrito! El líder del grupo se pondrá en contacto con usted.",
     signedUpNamed:
       "¡Ya está inscrito, {name}! El líder del grupo se pondrá en contacto con usted.",
+    emailNotSent:
+      "No pudimos enviar el correo de confirmación, pero su solicitud quedó guardada.",
   },
 
   myGroups: {
@@ -102,6 +103,7 @@ export const esGroups = {
     startsOn: "Comienza: {date}",
     groupConnect: "Group Connect",
     volunteerConnect: "Volunteer Connect",
+    signInPrompt: "Inicie sesión para ver sus grupos.",
   },
 
   opportunityFinder: {

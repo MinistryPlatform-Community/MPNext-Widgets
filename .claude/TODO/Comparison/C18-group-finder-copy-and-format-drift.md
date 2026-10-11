@@ -99,3 +99,40 @@ Two are worth fixing regardless of that decision:
 
 Note that any per-church wording ultimately depends on **C67** (no MP label channel), so
 this item is about picking better hardcoded defaults, not about making them configurable.
+
+## Resolution — 2026-10-11
+
+**Fixed / decided (W3, `ws/w3-groups`).** The meta-question first: **the SDK re-voices MP's
+copy deliberately** (CROSS-5's principle — pick the better string, not the legacy one).
+Every string is a catalogue key in en / es / pt-BR, and a church that wants MP's wording
+renames it per page with `MPNextEmbed.setMessages("groupFinder", …)` (C67 part 1). So the
+question for each row was "is legacy's string *better*", not "is it different".
+
+The two rows worth fixing regardless:
+
+- **Row 13, empty state — fixed.** Adopted legacy's *meaning* in our voice: "No groups
+  found. Try different search criteria." (es / pt-BR translated), rendered as a gold-bordered
+  alert with an info icon and `role="status"` instead of grey body text.
+- **Row 12, no-photo placeholder — fixed.** A group icon (the same glyph as
+  `next-my-groups`) replaces the `NoImageText` body text; `NoImageText` (e.g. "Small Group")
+  is now the icon's `aria-label`, falling back to `groupFinder.imagePlaceholder`.
+
+The other eleven rows — **keep ours**, recorded so the drift is a decision rather than an
+accident:
+
+| # | Decision | Why |
+|---|---|---|
+| 1 | No widget heading | The host page owns its `h1`; a hard-coded one doubles it. |
+| 2–3 | `Congregation` / `All Congregations` | MP's own entity name; this domain's congregations are themselves named "…Congregation" and "…Campus", so neither word fits all data — it is the church's call via `setMessages`. |
+| 4 | Placeholder + `aria-label` for keyword | Accessible name present; a visible "Key Word" label adds nothing. |
+| 5–7 | `Advanced Search`, `All Focuses`, `Search` | Shorter, equally clear. |
+| 8 | Full weekday names | From `fmt.weekdayNames` — localised for free; "Su Mo" abbreviations are poor for screen readers. |
+| 9 | `Monday · 6:30 PM` (singular) | The day name is MP-authored; pluralising it with an English "s" breaks in es / pt-BR. Recorded as the one row where legacy reads better in English. |
+| 10 | `2 of 20` | Shown next to the "Full" badge logic; renameable via `groupFinder.capacity`. |
+| 11 | `Already meeting` | Sentence case is the SDK's house style. |
+
+Not done: the "do better" item — `MeetingFrequency` on the card. The search result type
+(`GroupCard`) does not carry it today; adding it is a types + mapper change worth its own
+item rather than a copy fix.
+
+Tests: `group-finder.test.ts` ("empty state and no-photo placeholder (C18)").

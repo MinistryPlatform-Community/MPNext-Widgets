@@ -110,3 +110,24 @@ difference undocumented.
 Separately, and cheaply: pass the failing field's label into the required-field message
 (`${label} is required.`), and render the form-level summary inside `.gd-form-wrap` next to
 the submit button instead of at the top of the shadow root.
+
+## Resolution — 2026-10-11
+
+**Fixed (W3, `ws/w3-groups`).** Decided per the plan's recommendation: **required, and
+configurable.**
+
+- The "Someone else…" identity block is now built from W0's `field()`: real
+  `<label for>`, `requiredStar()` inside the label, `type="tel"` with `autocomplete="tel"`
+  / `inputmode="tel"`, and field-named required messages ("Mobile Phone is required.").
+- The inquiry phone is required by default. New attribute **`require-inquiry-phone`**
+  (default `true`): `require-inquiry-phone="false"` restores the lower-friction form for a
+  church that would rather have the inquiry than the number. A sign-up's "Someone else…"
+  phone is always required, as legacy's Blank Form was.
+- The block renders `required` (so the star is drawn) and `toggleBlankFields` strips
+  `required` while it is hidden, so picking a household member never validates hidden
+  inputs.
+- Migration note for W9: a church that wants legacy's behaviour needs nothing; a church
+  that wants the phone optional sets `require-inquiry-phone="false"`.
+- The two secondary notes here (field-specific messages, message position) are handled in
+  C19.
+- Tests: `group-details.test.ts` ("inquiry phone (C16)").

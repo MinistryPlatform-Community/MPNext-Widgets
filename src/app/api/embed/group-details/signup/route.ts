@@ -2,13 +2,15 @@
  * Group sign-up submission for the next-group-details widget.
  * POST /api/embed/group-details/signup
  *
- * Requires authentication. Resolves the selected contact's participant record
- * (creating one when missing) and adds a pending Group_Participant using the
- * group type's default role.
+ * Requires authentication. Resolves the selected household contact — or, for
+ * "Someone else…" (C14), finds or creates the typed person — then their
+ * participant record (creating one when missing), and adds a Group_Participant
+ * using the group type's default role.
  *
- * NOTE: optional participant-confirmation and leader-notification emails the
- * legacy widget could send are not ported in v1 — the Group_Participants record
- * is still created exactly as before.
+ * `signup-email-template` sends a confirmation to the person signed up, and
+ * `leader-signup-email-template` notifies the group's leaders (C11). Both are
+ * `dp_Communications` message templates and both are best-effort: a template
+ * fault answers `200 { success: true, warning: "email_not_sent" }`.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -19,8 +21,17 @@ import {
   buildOptionsResponse,
   buildFallbackCorsHeaders,
 } from "@/lib/embed/auth";
-import { GroupsService } from "@/services/groupsService";
+import {
+  GroupsService,
+  IncompleteIdentityError,
+  NotHouseholdMemberError,
+} from "@/services/groupsService";
 import type { GroupInquiryRequest } from "@mpnext/types";
+
+function templateId(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
 
 export async function POST(req: NextRequest) {
   const origin = resolveRequestOrigin(req);
@@ -63,15 +74,41 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Default the sign-up to the signed-in contact when the form omits one.
-    if (!payload.contactId || payload.contactId <= 0) {
+    // Default the sign-up to the signed-in contact when the form names no one —
+    // neither a picked contact nor a typed "Someone else…" identity (C14).
+    const typedSomeoneElse = Boolean(payload.firstName || payload.lastName || payload.emailAddress);
+    if ((!payload.contactId || payload.contactId <= 0) && !typedSomeoneElse) {
       payload.contactId = user.Contact_ID;
     }
 
-    await service.signUp(payload, user.User_ID);
+    let emailed = true;
+    try {
+      const who = await service.signUp(payload, {
+        userId: user.User_ID,
+        contactId: user.Contact_ID,
+      });
+      emailed = await service.sendSignupEmails(payload.targetId, who, payload.message, {
+        signup: templateId(payload.signupEmailTemplate),
+        leaderSignup: templateId(payload.leaderSignupEmailTemplate),
+      });
+    } catch (err) {
+      if (err instanceof NotHouseholdMemberError) {
+        return NextResponse.json(
+          { success: false, error: "not_household_member", message: err.message },
+          { status: 403, headers: getCorsHeaders(origin) }
+        );
+      }
+      if (err instanceof IncompleteIdentityError) {
+        return NextResponse.json(
+          { success: false, error: "validation_failed", message: err.message },
+          { status: 422, headers: getCorsHeaders(origin) }
+        );
+      }
+      throw err;
+    }
 
     return NextResponse.json(
-      { success: true },
+      emailed ? { success: true } : { success: true, warning: "email_not_sent" },
       { status: 200, headers: getCorsHeaders(origin) }
     );
   } catch (error) {
