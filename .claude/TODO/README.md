@@ -31,7 +31,16 @@ patch ESLint's own transitive deps, and ESLint 10 dropped `@eslint/eslintrc`
   `>=5.0.12 <6` and `source-map-js` `>=1.2.2 <2` were added; both are inside their consumers'
   declared ranges (`^5.0.8`, `^1.2.1`). Delete those two when `eslint` and `@tailwindcss/node`
   pull patched versions on their own.
-- **Routine bumps:** `better-auth` 1.7.7 (patch re-targeted, peer rule deleted — item 17),
+- **Item 17 is closed** (file deleted). `better-auth` 1.7.7 widened its `vitest` peer to `^5`,
+  so the `peerDependencyRules` suppression is gone. The `@better-auth/core` `clockTolerance`
+  patch was re-targeted to `@better-auth__core@1.7.7.patch` with unchanged content. A live MP
+  app sign-in was verified on 2026-10-11: 4/4 runs of `/demo` → MP →
+  `/api/auth/callback/ministryplatform` 302 → `/demo`, with `get-session` returning a user and
+  no id_token/`nbf` error in the server log. That callback reaches the patched function through
+  `genericOAuth` → `verifyProviderIdToken`. **On the next `better-auth` bump, re-target the
+  patch the same way.** First check whether upstream has added `clockTolerance`, and drop the
+  patch if it has.
+- **Routine bumps:** `better-auth` 1.7.7 (see item 17 above),
   `react`/`react-dom` 19.3.0, `vitest` + coverage 5.0.3, `jsdom` 30.1.2, `eslint` 10.12.0,
   `vite` 8.3.4, `zod` 4.6.6 (root and `@mpnext/types`, kept identical), `@types/node` ^24.19.2
   (still the 24 line), `playwright` 1.64.0 (**run `npx playwright install chromium`** — it
@@ -52,7 +61,6 @@ deliberately held to match the Node 24 runtime (Vercel runs 24).
 | # | File | Risk | Rough size |
 |---|------|------|-----------|
 | 3 | `03-typescript-7.md` | **blocked upstream** — attempted 2026-09-07, not merged; re-checked 2026-09-08 (a verified workaround exists, still not advised) | wait for TS 7.1 |
-| 17 | `17-better-auth-vitest5-peer.md` | suppression **deleted 2026-10-11** (1.7.7 widened the peer); one live MP sign-in owed on the re-targeted patch | 10 min |
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire. **Now the sole gate on a warning-free `pnpm install`** | 15 min |
 | 38 | `38-mp-widget-overrides-css-never-injected.md` | either MP widgets render unbranded in prod, or the build maintains dead plumbing — read the file, it is one browser check | 30 min to triage |
 | 41 | `41-plan-your-visit-config-application-code.md` | a config key under two applications is read ambiguously | small |
