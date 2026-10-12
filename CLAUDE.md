@@ -164,12 +164,12 @@ that it starts. Prerequisites:
 
 ## Toolchain & Pinned Versions
 
-Node **24** (`.nvmrc`, `engines.node: 24.x`, CI). TypeScript **6.0.3**, Next **16.3.4**,
-React **19.2.8**, Better Auth **1.7.3**, Vitest **5** + `@vitest/coverage-v8` **5** on
-jsdom **30**, ESLint **10.10.0**, chalk **6**. `eslint.config.mjs` carries a
+Node **24** (`.nvmrc`, `engines.node: 24.x`, CI). TypeScript **6.0.3**, Next **16.4.0**,
+React **19.3.0**, Better Auth **1.7.7**, Vitest **5** + `@vitest/coverage-v8` **5** on
+jsdom **30**, ESLint **10.12.0**, chalk **6**. `eslint.config.mjs` carries a
 version-detection workaround for `eslint-plugin-react`, which has no ESLint 10 support
-yet (`.claude/TODO/18-*`). Two peer warnings on `pnpm install` are expected and filed
-(`.claude/TODO/17-*`, `18-*`).
+yet (`.claude/TODO/18-*`). The ESLint-plugin peer warnings on `pnpm install` are
+expected and filed (`.claude/TODO/18-*`).
 
 **One pin is deliberate — read the TODO before bumping it.** It was attempted and
 reverted on 2026-09-07:
@@ -178,7 +178,7 @@ reverted on 2026-09-07:
   `does not support TS 7.0` inside `eslint-config-next`'s import chain, so `pnpm lint`
   fails outright. See `.claude/TODO/03-typescript-7.md`.
 
-Do not bump `@types/node` past `^24.13.3` — it matches the Node 24 runtime.
+Do not bump `@types/node` off the 24 line (`^24.19.2`) — it matches the Node 24 runtime.
 
 **CDN assets carry SRI.** `loadScript(url, integrity?)` and
 `injectExternalCSS(root, url, integrity?)`

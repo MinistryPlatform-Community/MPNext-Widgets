@@ -96,3 +96,12 @@ workaround is load-bearing.
 `eslint.config.mjs` is back to just the two `eslint-config-next` spreads plus the
 `ignores` block, `pnpm lint` is still 0 errors / 0 warnings over 813 files, and
 `pnpm install` reports no ESLint-related peer warnings.
+
+## Re-checked 2026-10-11 (dependency pass)
+
+Unchanged upstream. `eslint-config-next` 16.3.4 → 16.4.0 and `eslint` 10.10.0 → 10.12.0 were
+applied; 16.4.0 still depends on `eslint-plugin-react ^7.37.0`, and the newest release is still
+`7.37.5` (peer `eslint ^3 … || ^9.7`). `eslint-plugin-jsx-a11y@6.10.2` and
+`eslint-plugin-import@2.32.0` still peer at `^9`. The workaround is still load-bearing, and lint
+is 0/0 with it. Item 17's suppression was **deleted** in the same pass (better-auth 1.7.7 widened
+its peer), so these four lines are now the banner's entire contents.

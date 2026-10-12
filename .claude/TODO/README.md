@@ -22,13 +22,37 @@ patch ESLint's own transitive deps, and ESLint 10 dropped `@eslint/eslintrc`
 (the sole `js-yaml` source) while depending on a fixed `@humanfs/node` directly.
 `pnpm audit` was clean as of 2026-09-07.
 
-Do **not** bump `@types/node` past `^24.13.3` — it is deliberately pinned to
-match the Node 24 runtime (Vercel runs 24).
+**Dependency pass of 2026-10-11 — already done, do not redo.**
+- **Security bumps:** `next` + `eslint-config-next` 16.3.4 → 16.4.0 (closes 7 `next`
+  advisories, including a critical `next/og` RCE and the image-optimizer SSRF; this also lifts
+  `sharp` to 0.35.5). `concurrently` 10.0.6 (pins `shell-quote` 1.12.0, a critical).
+- **Overrides:** the `minimatch@3>brace-expansion` floor was raised `>=1.1.18` → `>=1.1.21 <2`,
+  because the old floor sat *below* three newer advisories. `minimatch@10>brace-expansion`
+  `>=5.0.12 <6` and `source-map-js` `>=1.2.2 <2` were added; both are inside their consumers'
+  declared ranges (`^5.0.8`, `^1.2.1`). Delete those two when `eslint` and `@tailwindcss/node`
+  pull patched versions on their own.
+- **Routine bumps:** `better-auth` 1.7.7 (patch re-targeted, peer rule deleted — item 17),
+  `react`/`react-dom` 19.3.0, `vitest` + coverage 5.0.3, `jsdom` 30.1.2, `eslint` 10.12.0,
+  `vite` 8.3.4, `zod` 4.6.6 (root and `@mpnext/types`, kept identical), `@types/node` ^24.19.2
+  (still the 24 line), `playwright` 1.64.0 (**run `npx playwright install chromium`** — it
+  needs headless shell v1248), and every `@radix-ui/*` minor.
+- **FullCalendar CDN** 7.1.0 → 7.1.1. All four SRI hashes were recomputed, and each was verified
+  byte-identical to the npm tarball. `theme.css` is unchanged. `skeleton.css` and
+  `themes/classic/global.js` read the same `var()` set as 7.1.0, so the `:host` contract in
+  `full-calendar-styles.ts` needs nothing new. 7.1.1 and the four hashes were confirmed in the
+  built bundle.
+- `pnpm audit` went from 17 advisories to 1 (item 51, which has no fix upstream).
+- Not taken, deliberately: `typescript` 7 (item 3, still blocked), `@types/node` 26 (runtime is
+  24), `jest-dom` 7 and `dotenv` 18 (items 49/50 — both trial-verified green, deferred only
+  because they are majors).
+
+Do **not** bump `@types/node` past the 24 line (`^24.19.2` as of 2026-10-11) — it is
+deliberately held to match the Node 24 runtime (Vercel runs 24).
 
 | # | File | Risk | Rough size |
 |---|------|------|-----------|
 | 3 | `03-typescript-7.md` | **blocked upstream** — attempted 2026-09-07, not merged; re-checked 2026-09-08 (a verified workaround exists, still not advised) | wait for TS 7.1 |
-| 17 | `17-better-auth-vitest5-peer.md` | **suppressed 2026-09-08** — warning gone; remove the rule when upstream widens | 5 min to retire |
+| 17 | `17-better-auth-vitest5-peer.md` | suppression **deleted 2026-10-11** (1.7.7 widened the peer); one live MP sign-in owed on the re-targeted patch | 10 min |
 | 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire. **Now the sole gate on a warning-free `pnpm install`** | 15 min |
 | 38 | `38-mp-widget-overrides-css-never-injected.md` | either MP widgets render unbranded in prod, or the build maintains dead plumbing — read the file, it is one browser check | 30 min to triage |
 | 41 | `41-plan-your-visit-config-application-code.md` | a config key under two applications is read ambiguously | small |
@@ -39,6 +63,9 @@ match the Node 24 runtime (Vercel runs 24).
 | 46 | `46-opportunity-search-hidden-flag-unread.md` | possible hidden-opportunity exposure; needs a DB answer | 30 min to answer |
 | 47 | `47-rate-limiter-log-noise.md` | log flood while the session store is down | small |
 | 48 | `48-comparison-run-test-records-cleanup.md` | clutter; needs a Platform UI user | 10 min |
+| 49 | `49-testing-library-jest-dom-7.md` | low — trial bump green 2026-10-11 | 15 min |
+| 50 | `50-dotenv-18.md` | low — trial bump green 2026-10-11 | 15 min |
+| 51 | `51-braces-advisory-no-fix.md` | the one advisory left; lint-only path; **no patched release exists** | wait on upstream |
 
 Items 41–48 are not dependency upgrades: they are the open follow-ups from the
 comparison-remediation epic (2026-10-11).

@@ -286,3 +286,9 @@ Standard verification gate passes with a single `typescript` version (no
 three packages typecheck, `next build` is confirmed to be running the new
 compiler, and a freshly built SDK bundle loads in `pnpm test:widget` without
 console errors.
+
+## Re-checked 2026-10-11 (dependency pass)
+
+Still blocked. `typescript-eslint@8.71.1` (latest) peers `typescript >=4.8.4 <6.1.0`.
+`typescript` `latest` is `7.0.2`, and 7.1 exists only as `next` nightlies
+(`7.1.0-dev.20261011.1`). Nothing to do until a stable 7.1 ships *and* typescript-eslint accepts it.
