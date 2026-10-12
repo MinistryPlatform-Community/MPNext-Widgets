@@ -21,7 +21,7 @@ import { headingTag } from "../shared/heading-level";
 
 // ── Constants ──
 
-const FC_VERSION = "7.1.0";
+const FC_VERSION = "7.1.1";
 
 /**
  * FullCalendar 7 theme. Each theme is a separate CDN script (an IIFE over
@@ -71,15 +71,15 @@ const FC_CDN_BASE = `https://cdn.jsdelivr.net/npm/fullcalendar@${FC_VERSION}`;
 const FC_ASSETS = {
   coreScript: {
     url: `${FC_CDN_BASE}/all/global.js`,
-    sri: "sha384-yWkgABI02aCf8JCYAEQvzSyenUdhkerT0PnFLYOT4ldOYQiZIjZBE0gyAUfNbnRx",
+    sri: "sha384-87X9ycNYnj8A5timloK8njw9wWAzDj1j7tOj8eCC8jfjfuTvTpnsp+PwmGBawGaG",
   },
   themeScript: {
     url: `${FC_CDN_BASE}/themes/${FC_THEME}/global.js`,
-    sri: "sha384-iB9H+Q8A2/TowGFk6PrYdoCWS0+fVFOgcF66sgg3RXG8EFzCPTVBb40cCd1c0EN+",
+    sri: "sha384-k96WJtaaqjei6cV+oa9NPj7HPuoJPe3pbTuXf9PJ05IThWf2KouM5nLfHelpeuxS",
   },
   skeletonCss: {
     url: `${FC_CDN_BASE}/skeleton.css`,
-    sri: "sha384-k1DJvRPX4MQk68X4A7pdPTF6VV9ocE8YPtbBRNBvjukLp1Zp5KXRiqOVC/JBlFR9",
+    sri: "sha384-YE5qrtGrEE3JFDnmUvkI85S6TU45zXb0TlZSOY6011/VHU5mc17XxvO68KOSnyVR",
   },
   themeCss: {
     url: `${FC_CDN_BASE}/themes/${FC_THEME}/theme.css`,
