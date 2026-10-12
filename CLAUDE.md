@@ -167,7 +167,7 @@ that it starts. Prerequisites:
 Node **24** (`.nvmrc`, `engines.node: 24.x`, CI). TypeScript **6.0.3**, Next **16.4.0**,
 React **19.3.0**, Better Auth **1.7.7**, Vitest **5** + `@vitest/coverage-v8` **5** on
 jsdom **30**, ESLint **10.12.0**, chalk **6**, `@testing-library/jest-dom` **7**, dotenv
-**18**. `pnpm install` is warning-free.
+**18**. `pnpm install` reports no peer-dependency warnings. (Any `npm warn Unknown env config` lines from the `preinstall` hook come from the local npm/pnpm config, not from this repo.)
 
 `eslint-plugin-react`, `-import` and `-jsx-a11y` still declare peers that stop at ESLint 9.
 Since 16.4.0, `eslint-config-next` wraps the first two in its own `fixupPluginRules`
