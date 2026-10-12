@@ -55,6 +55,17 @@ patch ESLint's own transitive deps, and ESLint 10 dropped `@eslint/eslintrc`
   24).
 
 **Closed later on 2026-10-11 — do not redo.**
+- **Item 47:** `checkRateLimit()` (`src/lib/embed/rate-limit.ts`) no longer logs once per
+  request while the session store is down.
+  - It logs the first failure in full, with the same message as before.
+  - It then logs at most one `console.error` summary per 60s. The summary gives the outage's
+    age and the counts of allowed and denied requests suppressed since the previous line.
+  - It logs one `console.warn` when the store recovers.
+  - The allow/deny results are unchanged; `failClosed` still denies.
+  - The state is module-level, not `globalThis`, so the RSC bundle and the route-handler
+    bundle may each emit their own line. Two lines a minute is acceptable; one line per
+    request was the defect.
+  - Four tests in `rate-limit.test.ts` cover it. Three of them fail against the old code.
 - **Item 49:** `@testing-library/jest-dom` 6.9.1 → 7.0.1, with `@testing-library/dom` ^10.4.1
   now declared explicitly as its required peer. The `./vitest` entry that
   `src/test-setup.ts` imports is unchanged in v7. tsc is clean and the test count is identical.
@@ -76,7 +87,7 @@ patch ESLint's own transitive deps, and ESLint 10 dropped `@eslint/eslintrc`
   The four peer warnings are therefore inert and are suppressed per plugin
   (`eslint-plugin-{react,import,jsx-a11y}>eslint: "10"` in `package.json`
   `pnpm.peerDependencyRules`). The `"10"` pin is deliberate, so the suppression expires at
-  ESLint 11. **`pnpm install` is warning-free** (checked with a `--resolution-only` pass,
+  ESLint 11. **`pnpm install` reports no peer-dependency warnings** (checked with a `--resolution-only` pass,
   which also shows no `Unknown env config` line). If `eslint-config-next` ever drops
   `rule-context.js`, lint fails loudly with the original
   `contextOrFilename.getFilename is not a function`. Then put the workaround back:
@@ -95,7 +106,6 @@ deliberately held to match the Node 24 runtime (Vercel runs 24).
 | 44 | `44-partly-public-widgets-adopt-sign-in-helper.md` | optional consolidation onto `renderSignInRequired()` | S–M |
 | 45 | `45-remove-legacy-attribute-aliases.md` | after one release; removing early breaks host pages | 15 min |
 | 46 | `46-opportunity-search-hidden-flag-unread.md` | possible hidden-opportunity exposure; needs a DB answer | 30 min to answer |
-| 47 | `47-rate-limiter-log-noise.md` | log flood while the session store is down | small |
 | 48 | `48-comparison-run-test-records-cleanup.md` | clutter; needs a Platform UI user | 10 min |
 | 51 | `51-braces-advisory-no-fix.md` | the one advisory left; lint-only path; **no patched release exists** | wait on upstream |
 
