@@ -1,15 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { checkRateLimit, getDefaultRateLimit } from './rate-limit';
+import { __resetRateLimitLogForTests, checkRateLimit, getDefaultRateLimit } from './rate-limit';
 import { __resetSessionStoreForTests, getSessionStore, MemorySessionStore } from './session-store';
 
 describe('rate-limit', () => {
   beforeEach(() => {
     __resetSessionStoreForTests();
+    __resetRateLimitLogForTests();
     vi.useFakeTimers();
     vi.setSystemTime(1_700_000_000_000); // aligned-ish; we compute windows relative to this
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.stubEnv('NODE_ENV', 'test');
@@ -154,6 +156,95 @@ describe('rate-limit', () => {
 
       expect((await checkRateLimit('ip:1.2.3.4', 10)).ok).toBe(true);
       err.mockRestore();
+    });
+  });
+
+  describe('outage logging is throttled', () => {
+    // A store outage fails every rate-limited request the same way. One line
+    // per request floods the log and buries the first one, which is the one
+    // that matters.
+    function storeDown() {
+      const store = getSessionStore() as MemorySessionStore;
+      return vi.spyOn(store, 'incr').mockRejectedValue(new Error('redis down'));
+    }
+
+    it('logs one line for many failures in one interval, with results unchanged', async () => {
+      storeDown();
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const open = [];
+      const closed = [];
+      for (let i = 0; i < 50; i++) {
+        open.push(await checkRateLimit(`ip:${i}`, 10));
+        closed.push(await checkRateLimit(`ip:${i}`, 10, { failClosed: true }));
+        vi.advanceTimersByTime(500);
+      }
+
+      expect(open.every((r) => r.ok && r.remaining === 10)).toBe(true);
+      expect(closed.every((r) => !r.ok && r.remaining === 0)).toBe(true);
+      expect(err).toHaveBeenCalledTimes(1);
+      expect(err).toHaveBeenCalledWith(expect.stringContaining('allowing request'), 'redis down');
+      err.mockRestore();
+    });
+
+    it('logs a summary with suppressed counts once the interval elapses', async () => {
+      storeDown();
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await checkRateLimit('ip:a', 10); // logged
+      await checkRateLimit('ip:a', 10); // suppressed (allowed)
+      await checkRateLimit('ip:a', 10, { failClosed: true }); // suppressed (denied)
+      vi.advanceTimersByTime(60_000);
+      await checkRateLimit('ip:a', 10); // summary
+
+      expect(err).toHaveBeenCalledTimes(2);
+      expect(err).toHaveBeenLastCalledWith(
+        expect.stringMatching(/still unavailable after 60s; 1 allowed and 1 denied/),
+        'redis down',
+      );
+
+      vi.advanceTimersByTime(30_000);
+      await checkRateLimit('ip:a', 10); // inside the new interval: suppressed
+      expect(err).toHaveBeenCalledTimes(2);
+      err.mockRestore();
+    });
+
+    it('logs recovery once, then a later outage is logged in full again', async () => {
+      const incr = storeDown();
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      await checkRateLimit('ip:r', 10);
+      await checkRateLimit('ip:r', 10);
+      vi.advanceTimersByTime(12_000);
+      incr.mockRestore();
+
+      expect((await checkRateLimit('ip:r', 10)).ok).toBe(true);
+      expect((await checkRateLimit('ip:r', 10)).ok).toBe(true);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringMatching(/recovered after 12s; 1 allowed and 0 denied/),
+      );
+
+      storeDown();
+      await checkRateLimit('ip:r', 10);
+      expect(err).toHaveBeenCalledTimes(2);
+      expect(err).toHaveBeenLastCalledWith(expect.stringContaining('allowing request'), 'redis down');
+      err.mockRestore();
+      warn.mockRestore();
+    });
+
+    it('logs nothing on a healthy store', async () => {
+      // Create the store first: the in-memory fallback announces itself once
+      // with its own console.warn, which is not this module's line.
+      getSessionStore();
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      for (let i = 0; i < 5; i++) await checkRateLimit('ip:h', 10);
+      expect(err).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+      err.mockRestore();
+      warn.mockRestore();
     });
   });
 });

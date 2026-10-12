@@ -25,6 +25,65 @@ import { getSessionStore } from "./session-store";
 const WINDOW_SECONDS = 60;
 const DEFAULT_LIMIT = 120;
 
+/**
+ * While the store is down every rate-limited request fails the same way, so a
+ * line per request floods the log and buries the first one, which is the line
+ * that matters. Log the first failure in full, then at most one summary per
+ * interval with a count of what was suppressed, then one line on recovery.
+ * This throttles the logging only. The allow/deny decision is unaffected.
+ */
+const OUTAGE_LOG_INTERVAL_MS = 60_000;
+
+interface StoreOutage {
+  sinceMs: number;
+  lastLoggedMs: number;
+  suppressedAllowed: number;
+  suppressedDenied: number;
+}
+
+let outage: StoreOutage | null = null;
+
+/** Test hook: forget any outage in progress. */
+export function __resetRateLimitLogForTests(): void {
+  outage = null;
+}
+
+function logStoreFailure(failClosed: boolean, error: unknown, nowMs: number): void {
+  const detail = error instanceof Error ? error.message : error;
+  if (!outage) {
+    outage = { sinceMs: nowMs, lastLoggedMs: nowMs, suppressedAllowed: 0, suppressedDenied: 0 };
+    console.error(
+      failClosed
+        ? "checkRateLimit: session store unavailable; denying request"
+        : "checkRateLimit: session store unavailable; allowing request",
+      detail,
+    );
+    return;
+  }
+  if (nowMs - outage.lastLoggedMs < OUTAGE_LOG_INTERVAL_MS) {
+    if (failClosed) outage.suppressedDenied++;
+    else outage.suppressedAllowed++;
+    return;
+  }
+  const outageSeconds = Math.round((nowMs - outage.sinceMs) / 1000);
+  console.error(
+    `checkRateLimit: session store still unavailable after ${outageSeconds}s; ${outage.suppressedAllowed} allowed and ${outage.suppressedDenied} denied since the last log line`,
+    detail,
+  );
+  outage.lastLoggedMs = nowMs;
+  outage.suppressedAllowed = 0;
+  outage.suppressedDenied = 0;
+}
+
+function logStoreRecovery(nowMs: number): void {
+  if (!outage) return;
+  const outageSeconds = Math.round((nowMs - outage.sinceMs) / 1000);
+  console.warn(
+    `checkRateLimit: session store recovered after ${outageSeconds}s; ${outage.suppressedAllowed} allowed and ${outage.suppressedDenied} denied since the last log line`,
+  );
+  outage = null;
+}
+
 export interface RateLimitOptions {
   /** Window length in seconds. Defaults to 60. */
   windowSeconds?: number;
@@ -48,7 +107,8 @@ export async function checkRateLimit(
 ): Promise<{ ok: boolean; remaining: number }> {
   const limit = Math.max(1, Math.floor(limitPerWindow));
   const windowSeconds = Math.max(1, Math.floor(options.windowSeconds ?? WINDOW_SECONDS));
-  const nowSeconds = Math.floor(Date.now() / 1000);
+  const nowMs = Date.now();
+  const nowSeconds = Math.floor(nowMs / 1000);
   const windowStart = nowSeconds - (nowSeconds % windowSeconds);
   // The window length is part of the key: without it, changing a limit's window
   // would have the new window's counter collide with the old one's.
@@ -59,14 +119,10 @@ export async function checkRateLimit(
     // TTL slightly longer than the window so the key outlives the last request in it.
     count = await getSessionStore().incr(counterKey, windowSeconds + 5);
   } catch (error) {
-    console.error(
-      options.failClosed
-        ? "checkRateLimit: session store unavailable; denying request"
-        : "checkRateLimit: session store unavailable; allowing request",
-      error instanceof Error ? error.message : error,
-    );
+    logStoreFailure(options.failClosed === true, error, nowMs);
     return options.failClosed ? { ok: false, remaining: 0 } : { ok: true, remaining: limit };
   }
 
+  logStoreRecovery(nowMs);
   return { ok: count <= limit, remaining: Math.max(0, limit - count) };
 }
