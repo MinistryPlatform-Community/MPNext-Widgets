@@ -47,7 +47,7 @@ vi.mock("../shared/cdn-loader", async (importOriginal) => {
 import "./full-calendar";
 
 const HOST = "https://widgets.example.com";
-const FC_BASE = "https://cdn.jsdelivr.net/npm/fullcalendar@7.1.0";
+const FC_BASE = "https://cdn.jsdelivr.net/npm/fullcalendar@7.1.1";
 // The two scripts loadFullCalendar() pulls, in order. loadScript() early-
 // resolves when a matching tag is already in the document, which is how the
 // harness stands in for the CDN without touching the network.
