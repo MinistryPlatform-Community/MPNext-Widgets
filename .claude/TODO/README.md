@@ -52,8 +52,35 @@ patch ESLint's own transitive deps, and ESLint 10 dropped `@eslint/eslintrc`
   built bundle.
 - `pnpm audit` went from 17 advisories to 1 (item 51, which has no fix upstream).
 - Not taken, deliberately: `typescript` 7 (item 3, still blocked), `@types/node` 26 (runtime is
-  24), `jest-dom` 7 and `dotenv` 18 (items 49/50 — both trial-verified green, deferred only
-  because they are majors).
+  24).
+
+**Closed later on 2026-10-11 — do not redo.**
+- **Item 49:** `@testing-library/jest-dom` 6.9.1 → 7.0.1, with `@testing-library/dom` ^10.4.1
+  now declared explicitly as its required peer. The `./vitest` entry that
+  `src/test-setup.ts` imports is unchanged in v7. tsc is clean and the test count is identical.
+- **Item 50:** `dotenv` 17.4.2 → 18.0.7, and moved to `devDependencies` (only
+  `playwright.config.ts` and the `mp:generate` script import it; Next reads `.env*` itself).
+  Nothing used preloading or `.env.vault`, both removed in v18. `quiet: true` is still typed.
+  `pnpm mp:generate:models` regenerated 307/307 models with no diff beyond the timestamps.
+- **Item 18:** the `settings.react.version` workaround was deleted from `eslint.config.mjs`.
+  It turned out to be fixed **downstream**, not upstream: `eslint-plugin-react` is still
+  7.37.5 and still calls `context.getFilename()`, but `eslint-config-next` 16.4.0 now wraps
+  `react` and `import` in its own `fixupPluginRules` (`dist/rule-context.js`), restoring
+  `getFilename` / `getSourceCode` / `getCwd` / `getPhysicalFilename`. Verified:
+  - `eslint --print-config` resolves the same 113 rules for a `.tsx` and a `.ts` file before
+    and after;
+  - 917 files are linted both ways, and lint is 0/0;
+  - a probe file trips `react/jsx-key`, `react/display-name`, `jsx-a11y/alt-text` and
+    `import/no-anonymous-default-export`.
+
+  The four peer warnings are therefore inert and are suppressed per plugin
+  (`eslint-plugin-{react,import,jsx-a11y}>eslint: "10"` in `package.json`
+  `pnpm.peerDependencyRules`). The `"10"` pin is deliberate, so the suppression expires at
+  ESLint 11. **`pnpm install` is warning-free** (checked with a `--resolution-only` pass,
+  which also shows no `Unknown env config` line). If `eslint-config-next` ever drops
+  `rule-context.js`, lint fails loudly with the original
+  `contextOrFilename.getFilename is not a function`. Then put the workaround back:
+  `settings: { react: { version: require("react/package.json").version } }`.
 
 Do **not** bump `@types/node` past the 24 line (`^24.19.2` as of 2026-10-11) — it is
 deliberately held to match the Node 24 runtime (Vercel runs 24).
@@ -61,7 +88,6 @@ deliberately held to match the Node 24 runtime (Vercel runs 24).
 | # | File | Risk | Rough size |
 |---|------|------|-----------|
 | 3 | `03-typescript-7.md` | **blocked upstream** — attempted 2026-09-07, not merged; re-checked 2026-09-08 (a verified workaround exists, still not advised) | wait for TS 7.1 |
-| 18 | `18-eslint-plugin-react-eslint10.md` | none — lint is green; a workaround to retire. **Now the sole gate on a warning-free `pnpm install`** | 15 min |
 | 38 | `38-mp-widget-overrides-css-never-injected.md` | either MP widgets render unbranded in prod, or the build maintains dead plumbing — read the file, it is one browser check | 30 min to triage |
 | 41 | `41-plan-your-visit-config-application-code.md` | a config key under two applications is read ambiguously | small |
 | 42 | `42-overpay-refuse-or-record-with-real-vendor.md` | C43 follow-up; waits on the real payment vendor | decision + small |
@@ -71,8 +97,6 @@ deliberately held to match the Node 24 runtime (Vercel runs 24).
 | 46 | `46-opportunity-search-hidden-flag-unread.md` | possible hidden-opportunity exposure; needs a DB answer | 30 min to answer |
 | 47 | `47-rate-limiter-log-noise.md` | log flood while the session store is down | small |
 | 48 | `48-comparison-run-test-records-cleanup.md` | clutter; needs a Platform UI user | 10 min |
-| 49 | `49-testing-library-jest-dom-7.md` | low — trial bump green 2026-10-11 | 15 min |
-| 50 | `50-dotenv-18.md` | low — trial bump green 2026-10-11 | 15 min |
 | 51 | `51-braces-advisory-no-fix.md` | the one advisory left; lint-only path; **no patched release exists** | wait on upstream |
 
 Items 41–48 are not dependency upgrades: they are the open follow-ups from the

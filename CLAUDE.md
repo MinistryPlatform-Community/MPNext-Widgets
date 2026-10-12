@@ -166,10 +166,18 @@ that it starts. Prerequisites:
 
 Node **24** (`.nvmrc`, `engines.node: 24.x`, CI). TypeScript **6.0.3**, Next **16.4.0**,
 React **19.3.0**, Better Auth **1.7.7**, Vitest **5** + `@vitest/coverage-v8` **5** on
-jsdom **30**, ESLint **10.12.0**, chalk **6**. `eslint.config.mjs` carries a
-version-detection workaround for `eslint-plugin-react`, which has no ESLint 10 support
-yet (`.claude/TODO/18-*`). The ESLint-plugin peer warnings on `pnpm install` are
-expected and filed (`.claude/TODO/18-*`).
+jsdom **30**, ESLint **10.12.0**, chalk **6**, `@testing-library/jest-dom` **7**, dotenv
+**18**. `pnpm install` is warning-free.
+
+`eslint-plugin-react`, `-import` and `-jsx-a11y` still declare peers that stop at ESLint 9.
+Since 16.4.0, `eslint-config-next` wraps the first two in its own `fixupPluginRules`
+(`dist/rule-context.js`), which restores the context methods ESLint 10 removed, so
+`settings.react.version: "detect"` works again with no local workaround. The three
+plugin→`eslint` peer edges are suppressed in `package.json` `pnpm.peerDependencyRules`,
+scoped per plugin and pinned to `"10"`, so the warning returns at ESLint 11 and prompts a
+re-check. Do not widen that pin to `"*"`. Do not move the rule into `pnpm-workspace.yaml`
+either: pnpm exports workspace settings to the `preinstall` hook as npm config, which prints
+`npm warn Unknown env config` on every install.
 
 **One pin is deliberate — read the TODO before bumping it.** It was attempted and
 reverted on 2026-09-07:
